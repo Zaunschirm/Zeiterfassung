@@ -17,9 +17,9 @@
   h1,h2,h3{margin:0 0 12px}
   label{display:block;font-size:14px;margin:8px 0 4px}
   input,select,button{width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;font:inherit}
-  button{background:var(--ink);color:#fff}
+  button{background:var(--ink);color:#fff;cursor:pointer}
   button.ghost{background:#fff;color:var(--ink);border:1px solid #d1d5db}
-  button.secondary{background:#374151}
+  button.secondary{background:var(--ink-2)}
   .row{display:flex;gap:12px;flex-wrap:wrap}
   .row>*{flex:1 1 220px}
   .hidden{display:none}
@@ -33,12 +33,11 @@
   .rangeRow output{width:80px;text-align:center;font-variant-numeric:tabular-nums}
   input[type=range]{width:100%}
   .archived{opacity:.6;text-decoration:line-through}
-  .muted{color:#6b7280;font-size:12px}
+  .muted{color:var(--muted);font-size:12px}
   .photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px}
   .photo-item{position:relative;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;background:#fafafa}
   .photo-item img{width:100%;height:110px;object-fit:cover;display:block}
   .photo-item .meta{position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.55);color:#fff;font-size:11px;padding:4px 6px;display:flex;justify-content:space-between}
-  .photo-item button{position:absolute;top:6px;right:6px;background:#ef4444;border:none;border-radius:6px;padding:4px 6px;font-size:11px;color:#fff}
   .lightbox{position:fixed;inset:0;background:rgba(0,0,0,.87);display:none;align-items:center;justify-content:center;z-index:50}
   .lightbox img{max-width:92vw;max-height:92vh;border-radius:12px;box-shadow:0 12px 36px rgba(0,0,0,.5)}
   .toolbar{display:flex;gap:8px;flex-wrap:wrap}
@@ -50,6 +49,7 @@
   <div><strong>Zeiterfassung</strong> <span class="pill">Web PWA</span></div>
   <div class="toolbar">
     <span id="userBadge"></span>
+    <a id="btnUsers" class="ghost" href="users.html" style="text-decoration:none;padding:10px 12px;display:none">Mitarbeiter</a>
     <button id="btnInstall" class="ghost hidden">Installieren</button>
     <button id="btnLogout" class="ghost">Logout</button>
   </div>
@@ -187,8 +187,9 @@
     </div>
 
     <div class="card" id="adminPanel">
-      <h3>Admin · Projekte & Nutzer</h3>
-      <div class="row">
+      <h3>Admin</h3>
+      <a class="ghost" href="users.html" style="text-decoration:none;display:inline-block;width:auto">👤 Mitarbeiterverwaltung öffnen</a>
+      <div class="row" style="margin-top:12px">
         <div><label>Neues Projekt<input id="newProjectName" placeholder="z. B. Halle XY"></label></div>
         <div><label>Kostenstelle<input id="newProjectCost" placeholder="z. B. 4010‑BAU‑001"></label></div>
         <div style="align-self:end"><button id="btnAddProject">Hinzufügen</button></div>
@@ -203,13 +204,13 @@
 </main>
 
 <script>
-// Install prompt
+// PWA
 let deferredPrompt=null;
 window.addEventListener('beforeinstallprompt', (e)=>{ e.preventDefault(); deferredPrompt=e; document.getElementById('btnInstall').classList.remove('hidden'); document.getElementById('pwaHint').style.display='block'; });
 document.getElementById('btnInstall').onclick=async()=>{ if(deferredPrompt){ deferredPrompt.prompt(); await deferredPrompt.userChoice; deferredPrompt=null; document.getElementById('btnInstall').classList.add('hidden'); } };
 if (location.protocol.startsWith('http')) { navigator.serviceWorker && navigator.serviceWorker.register('./sw.js'); } else { document.getElementById('pwaHint').style.display='block'; }
 
-// IndexedDB
+// DB
 const DB_NAME='zeit-web-pwa', DB_VERSION=1;
 const STORE={ users:'users', projects:'projects', entries:'entries', photos:'photos' };
 function withDB(){ return new Promise((resolve,reject)=>{ const r=indexedDB.open(DB_NAME,DB_VERSION); r.onupgradeneeded=()=>{ const db=r.result; if(!db.objectStoreNames.contains(STORE.users)) db.createObjectStore(STORE.users,{keyPath:'username'}); if(!db.objectStoreNames.contains(STORE.projects)) db.createObjectStore(STORE.projects,{keyPath:'id'}); if(!db.objectStoreNames.contains(STORE.entries)) db.createObjectStore(STORE.entries,{keyPath:'id'}); if(!db.objectStoreNames.contains(STORE.photos)) db.createObjectStore(STORE.photos,{keyPath:'id'}); }; r.onsuccess=()=>resolve(r.result); r.onerror=()=>reject(r.error); });}
@@ -223,17 +224,17 @@ let currentUser=null;
 function uuid(){return'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0,v=c==='x'?r:(r&0x3|0x8);return v.toString(16)})}
 function todayISO(){ const d=new Date(); d.setHours(0,0,0,0); return d.toISOString().slice(0,10); }
 function currentMonth(){ const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; }
-function ixToTime(ix){ const m=ix*15, h=String(Math.floor(m/60)).padStart(2,'0'), mm=String(m%60).padStart(2,'0'); return `${h}:${mm}`; }
+function ixToTime(ix){ const m=ix*15, h=String(Math.floor(m/60)).padStart(2,'0'), mm=m%60; return `${h}:${mm}`; }
 function minToHHMM(m){ const h=Math.floor(m/60), mm=m%60; return `${String(h).padStart(2,'0')}:${String(mm).padStart(2,'0')}`; }
 function durationMin(a,b){ return Math.max(0, Math.round((new Date(b)-new Date(a))/60000)); }
 
-// Demo data
+// Demo
 async function ensureDemo(){
   const admin=await get(STORE.users,'admin');
   if(!admin){
-    await put(STORE.users,{username:'admin',password:'admin',role:'admin',display:'Administrator'});
-    await put(STORE.users,{username:'armin',password:'1234',role:'worker',display:'Armin'});
-    await put(STORE.users,{username:'michael',password:'1234',role:'worker',display:'Michael'});
+    await put(STORE.users,{username:'admin',password:'admin',role:'admin',display:'Administrator',active:true});
+    await put(STORE.users,{username:'armin',password:'1234',role:'worker',display:'Armin',active:true});
+    await put(STORE.users,{username:'michael',password:'1234',role:'worker',display:'Michael',active:true});
   }
   const projs=await getAll(STORE.projects);
   if(projs.length===0){
@@ -248,13 +249,15 @@ async function ensureDemo(){
 function renderUserBadge(){ const u=JSON.parse(localStorage.getItem('cu')||'null'); document.getElementById('userBadge').textContent = u ? (u.display||u.username) : ''; }
 async function login(u,p){
   const user=await get(STORE.users,u);
-  if(!user || user.password!==p) throw new Error('Login fehlgeschlagen');
+  if(!user || user.password!==p || user.active===false) throw new Error('Login fehlgeschlagen');
   currentUser=user; localStorage.setItem('cu', JSON.stringify(user));
   document.getElementById('loginView').classList.add('hidden');
   document.getElementById('appView').classList.remove('hidden');
   document.getElementById('manualDate').value=todayISO();
   document.getElementById('monthPicker').value=currentMonth();
   renderUserBadge();
+  document.getElementById('adminPanel').style.display = (user.role==='admin') ? 'block' : 'none';
+  document.getElementById('btnUsers').style.display = (user.role==='admin') ? 'inline-block' : 'none';
   await loadProjects(); await loadUsersToFilter(); setupRanges(); await refreshMonth(); await refreshPhotoProjects(); await refreshPhotoGrid();
 }
 
@@ -288,13 +291,13 @@ function renderProjectList(projs){
 }
 document.getElementById('toggleArchived').onchange=async()=>{ const projs=await getAll(STORE.projects); renderProjectList(projs); };
 
-// Users filter
+// Users in filter
 async function loadUsersToFilter(){
   const sel=document.getElementById('userFilter'); sel.innerHTML='';
-  const users=await getAll(STORE.users);
+  const users=(await getAll(STORE.users)).filter(u=>u.active!==false);
   const isAdmin=(currentUser && currentUser.role==='admin');
   const list=isAdmin?users:users.filter(u=>u.username===currentUser.username);
-  list.forEach(u=>{ const o=document.createElement('option'); o.value=u.username; o.textContent=u.display||u.username; if(u.username===currentUser.username) o.selected=true; sel.appendChild(o); });
+  list.forEach(u=>{ const o=document.createElement('option'); o.value=u.username; o.textContent=u.display||u.username; if(currentUser && u.username===currentUser.username) o.selected=true; sel.appendChild(o); });
   sel.disabled=!isAdmin;
 }
 
@@ -352,7 +355,7 @@ async function refreshMonth(){
   sumWorkTd.textContent=minToHHMM(sumWork); sumOtTd.textContent=minToHHMM(sumOT);
 }
 
-// Exports
+// Export
 async function exportCSV(){
   const monthVal=document.getElementById('monthPicker').value||currentMonth();
   const userVal=document.getElementById('userFilter').value||(currentUser&&currentUser.username);
@@ -386,19 +389,32 @@ async function exportPDF(){
   const w=window.open('', '_blank'); w.document.write(html); w.document.close();
 }
 
-// Photos
-async function refreshPhotoProjects(){ const sel=document.getElementById('photoProject'); sel.innerHTML=''; const projs=await getAll(STORE.projects); projs.filter(p=>!p.archived).forEach(p=>{ const o=document.createElement('option'); o.value=p.id; o.textContent=p.name; sel.appendChild(o); }); }
-async function compressImage(file,maxDim=1600,quality=.85){ const img=new Image(); const data=await new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(file); }); await new Promise((res,rej)=>{ img.onload=res; img.onerror=rej; img.src=data; }); let {width,height}=img; if(width>height){ if(width>maxDim){ height=Math.round(height*maxDim/width); width=maxDim; } } else { if(height>maxDim){ width=Math.round(width*maxDim/height); height=maxDim; } } const c=document.createElement('canvas'); c.width=width; c.height=height; c.getContext('2d').drawImage(img,0,0,width,height); return c.toDataURL('image/jpeg', quality); }
-async function savePhotoLocal(pid, filename, dataUrl){ const rec={id:uuid(),projectId:pid,filename,createdAt:new Date().toISOString(),dataUrl}; await put(STORE.photos, rec); return rec; }
-async function refreshPhotoGrid(){ const grid=document.getElementById('photoGrid'); grid.innerHTML=''; const pid=document.getElementById('photoProject').value; if(!pid) return; const photos=(await getAll(STORE.photos)).filter(p=>p.projectId===pid); photos.sort((a,b)=>(a.createdAt||'').localeCompare(b.createdAt||'')); for(const p of photos){ const div=document.createElement('div'); div.className='photo-item'; const img=document.createElement('img'); img.src=p.dataUrl; img.alt=p.filename; img.onclick=()=>{ const lb=document.getElementById('lightbox'); document.getElementById('lightboxImg').src=p.dataUrl; lb.style.display='flex'; }; const meta=document.createElement('div'); meta.className='meta'; meta.innerHTML=`<span>${new Date(p.createdAt).toLocaleString()}</span>`; const del=document.createElement('button'); del.textContent='Löschen'; del.onclick=async()=>{ if(!confirm('Foto wirklich löschen?'))return; await delRec(STORE.photos,p.id); await refreshPhotoGrid(); }; div.appendChild(img); div.appendChild(meta); div.appendChild(del); grid.appendChild(div); } }
-async function onPhotoInput(ev){ const files=Array.from(ev.target.files||[]), pid=document.getElementById('photoProject').value; if(!pid){ alert('Bitte Projekt wählen'); return; } for(const f of files){ const comp=await compressImage(f,1600,.85); await savePhotoLocal(pid, f.name, comp); } await refreshPhotoGrid(); }
-
-// Data export/import
-async function exportData(){ const users=await getAll(STORE.users), projects=await getAll(STORE.projects), entries=await getAll(STORE.entries), photos=await getAll(STORE.photos); const payload={ users, projects, entries, photos, exportedAt:new Date().toISOString(), app:'zeit-web-pwa' }; const blob=new Blob([JSON.stringify(payload)],{type:'application/json'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='zeiterfassung_web_export.json'; a.click(); URL.revokeObjectURL(a.href); }
-async function importData(file){ const text=await file.text(); const payload=JSON.parse(text||'{}'); if(!payload || !payload.app){ alert('Ungültige Datei'); return; } if(payload.users) for(const u of payload.users) await put(STORE.users,u); if(payload.projects) for(const p of payload.projects) await put(STORE.projects,p); if(payload.entries) for(const e of payload.entries) await put(STORE.entries,e); if(payload.photos) for(const p of payload.photos) await put(STORE.photos,p); alert('Daten importiert'); await loadProjects(); await loadUsersToFilter(); await refreshMonth(); await refreshPhotoProjects(); await refreshPhotoGrid(); }
-
 // Wire up
-window.addEventListener('DOMContentLoaded', async ()=>{ const cu=localStorage.getItem('cu'); if(cu){ currentUser=JSON.parse(cu); document.getElementById('loginView').classList.add('hidden'); document.getElementById('appView').classList.remove('hidden'); renderUserBadge(); document.getElementById('manualDate').value=todayISO(); document.getElementById('monthPicker').value=currentMonth(); await loadProjects(); await loadUsersToFilter(); setupRanges(); await refreshMonth(); await refreshPhotoProjects(); await refreshPhotoGrid(); } document.getElementById('btnLogin').onclick=async()=>{ const u=document.getElementById('loginUser').value.trim(); const p=document.getElementById('loginPass').value; try{ await login(u,p);}catch(e){ alert(e.message);} }; document.getElementById('btnDemo').onclick=ensureDemo; document.getElementById('btnLogout').onclick=()=>{ localStorage.removeItem('cu'); location.reload(); }; document.getElementById('btnAddEntry').onclick=addEntryManual; document.getElementById('monthPicker').onchange=refreshMonth; document.getElementById('userFilter').onchange=refreshMonth; document.getElementById('btnExportCSV').onclick=exportCSV; document.getElementById('btnExportPDF').onclick=exportPDF; document.getElementById('btnExportData').onclick=exportData; document.getElementById('btnImportData').onclick=()=>document.getElementById('importFile').click(); document.getElementById('importFile').addEventListener('change', async (e)=>{ if(e.target.files && e.target.files[0]) await importData(e.target.files[0]); e.target.value=''; }); document.getElementById('btnAddProject').onclick=async()=>{ const name=document.getElementById('newProjectName').value.trim(); const cost=document.getElementById('newProjectCost').value.trim(); if(!name) return; await put(STORE.projects,{id:uuid(),name, costCenter:(cost||null), archived:false}); document.getElementById('newProjectName').value=''; document.getElementById('newProjectCost').value=''; await loadProjects(); await refreshPhotoProjects(); }; document.getElementById('photoProject').onchange=refreshPhotoGrid; document.getElementById('photoInput').addEventListener('change', onPhotoInput); });
+window.addEventListener('DOMContentLoaded', async ()=>{
+  const cu=localStorage.getItem('cu'); if(cu){ currentUser=JSON.parse(cu); document.getElementById('loginView').classList.add('hidden'); document.getElementById('appView').classList.remove('hidden'); renderUserBadge(); document.getElementById('manualDate').value=todayISO(); document.getElementById('monthPicker').value=currentMonth(); document.getElementById('adminPanel').style.display = (currentUser.role==='admin') ? 'block' : 'none'; document.getElementById('btnUsers').style.display = (currentUser.role==='admin') ? 'inline-block' : 'none'; await loadProjects(); await loadUsersToFilter(); setupRanges(); await refreshMonth(); await refreshPhotoProjects(); await refreshPhotoGrid(); }
+  document.getElementById('btnLogin').onclick=async()=>{ const u=document.getElementById('loginUser').value.trim(); const p=document.getElementById('loginPass').value; try{ await login(u,p);}catch(e){ alert(e.message);} };
+  document.getElementById('btnDemo').onclick=ensureDemo;
+  document.getElementById('btnLogout').onclick=()=>{ localStorage.removeItem('cu'); location.reload(); };
+  document.getElementById('btnAddEntry').onclick=addEntryManual;
+  document.getElementById('monthPicker').onchange=refreshMonth;
+  document.getElementById('userFilter').onchange=refreshMonth;
+  document.getElementById('btnExportCSV').onclick=exportCSV;
+  document.getElementById('btnExportPDF').onclick=exportPDF;
+  document.getElementById('btnExportData').onclick=async()=>{
+    const users=await getAll(STORE.users), projects=await getAll(STORE.projects), entries=await getAll(STORE.entries), photos=await getAll(STORE.photos);
+    const payload={ users, projects, entries, photos, exportedAt:new Date().toISOString(), app:'zeit-web-pwa' };
+    const blob=new Blob([JSON.stringify(payload)],{type:'application/json'});
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='zeiterfassung_web_export.json'; a.click(); URL.revokeObjectURL(a.href);
+  };
+  document.getElementById('btnImportData').onclick=()=>document.getElementById('importFile').click();
+  document.getElementById('importFile').addEventListener('change', async (e)=>{ if(e.target.files && e.target.files[0]){ const text=await e.target.files[0].text(); const payload=JSON.parse(text||'{}'); if(!payload || !payload.app){ alert('Ungültige Datei'); return;} if(payload.users) for(const u of payload.users) await put(STORE.users,u); if(payload.projects) for(const p of payload.projects) await put(STORE.projects,p); if(payload.entries) for(const en of payload.entries) await put(STORE.entries,en); if(payload.photos) for(const ph of payload.photos) await put(STORE.photos,ph); alert('Daten importiert'); await loadProjects(); await loadUsersToFilter(); await refreshMonth(); await refreshPhotoProjects(); await refreshPhotoGrid(); } e.target.value=''; });
+  document.getElementById('btnAddProject').onclick=async()=>{
+    const name=document.getElementById('newProjectName').value.trim(); const cost=document.getElementById('newProjectCost').value.trim();
+    if(!name) return; await put(STORE.projects,{id:uuid(),name, costCenter:(cost||null), archived:false}); document.getElementById('newProjectName').value=''; document.getElementById('newProjectCost').value=''; await loadProjects(); await refreshPhotoProjects();
+  };
+  document.getElementById('photoProject').onchange=refreshPhotoGrid;
+  document.getElementById('photoInput').addEventListener('change', async (e)=>{ const files=Array.from(e.target.files||[]); const pid=document.getElementById('photoProject').value; if(!pid){ alert('Bitte Projekt wählen'); return; } for(const f of files){ const comp=await (async function(file){ const img=new Image(); const data=await new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(file); }); await new Promise((res,rej)=>{ img.onload=res; img.onerror=rej; img.src=data; }); let {width,height}=img; if(width>height){ if(width>1600){ height=Math.round(height*1600/width); width=1600; } } else { if(height>1600){ width=Math.round(width*1600/height); height=1600; } } const c=document.createElement('canvas'); c.width=width; c.height=height; c.getContext('2d').drawImage(img,0,0,width,height); return c.toDataURL('image/jpeg', .85); })(f); await put(STORE.photos,{id:uuid(),projectId:pid,filename:f.name,createdAt:new Date().toISOString(),dataUrl:comp}); } await refreshPhotoGrid(); });
+});
 </script>
 </body>
 </html>

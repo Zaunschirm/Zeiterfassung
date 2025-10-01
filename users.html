@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Mitarbeiterverwaltung – Zeiterfassung</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#111827"/>
+<link rel="icon" href="icons/icon-192.png">
+<style>
+  :root{--bg:#f6f7fb;--card:#fff;--ink:#111827;--ink-2:#374151;--muted:#6b7280;--line:#e5e7eb;--accent:#1f2937}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink)}
+  header{background:var(--accent);color:#fff;padding:12px 16px;display:flex;justify-content:space-between;align-items:center}
+  main{max-width:1000px;margin:0 auto;padding:16px}
+  .card{background:var(--card);border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,.06);padding:16px;margin:12px 0}
+  label{display:block;font-size:14px;margin:8px 0 4px}
+  input,select,button{width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;font:inherit}
+  button{background:var(--ink);color:#fff;cursor:pointer}
+  button.ghost{background:#fff;color:var(--ink);border:1px solid #d1d5db}
+  button.secondary{background:var(--ink-2)}
+  button.danger{background:#ef4444;border:none}
+  table{width:100%;border-collapse:collapse}
+  th,td{padding:8px;border-bottom:1px solid #eee;font-size:14px;text-align:left;vertical-align:middle}
+  .inline-input{width:100%;padding:6px 8px;border:1px solid #e5e7eb;border-radius:8px;font:inherit}
+  .tag{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;background:#e5f3ff;color:#075985}
+  .tag.gray{background:#f3f4f6;color:#374151}
+</style>
+</head>
+<body>
+<header>
+  <div><strong>Mitarbeiterverwaltung</strong></div>
+  <div style="display:flex;gap:8px;align-items:center">
+    <a class="ghost" href="./" style="text-decoration:none;padding:10px 12px;display:inline-block;width:auto">← Zurück</a>
+    <button id="btnLogout" class="ghost">Logout</button>
+  </div>
+</header>
+<main>
+  <section class="card" id="guard">
+    <p>Du musst als <strong>Admin</strong> angemeldet sein, um diese Seite zu sehen.</p>
+    <a href="./" class="ghost" style="text-decoration:none;display:inline-block;width:auto">Zur Login-Seite</a>
+  </section>
+  <section class="card hidden" id="userView">
+    <h2>Neuen Nutzer anlegen</h2>
+    <div style="display:flex;gap:12px;flex-wrap:wrap">
+      <div style="flex:1 1 200px"><label>Benutzername<input id="nuUser" placeholder="z. B. max"></label></div>
+      <div style="flex:1 1 260px"><label>Anzeigename<input id="nuDisplay" placeholder="z. B. Max Mustermann"></label></div>
+      <div style="flex:1 1 200px"><label>Passwort<input id="nuPass" type="password" placeholder="Startpasswort"></label></div>
+      <div style="flex:1 1 200px"><label>Rolle
+        <select id="nuRole">
+          <option value="worker">Mitarbeiter</option>
+          <option value="admin">Admin</option>
+        </select>
+      </label></div>
+      <div style="align-self:end"><button id="btnCreateUser">Anlegen</button></div>
+    </div>
+  </section>
+
+  <section class="card hidden" id="listView">
+    <h2>Nutzerliste</h2>
+    <table id="userTable">
+      <thead><tr><th>Benutzername</th><th>Anzeigename</th><th>Rolle</th><th>Status</th><th>Aktion</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <p class="muted">Hinweis: Der <strong>letzte aktive Admin</strong> kann nicht gelöscht oder deaktiviert werden.</p>
+  </section>
+</main>
+
+<script>
+// SW
+if (location.protocol.startsWith('http')) { navigator.serviceWorker && navigator.serviceWorker.register('./sw.js'); }
+
+// DB helpers (same as main)
+const DB_NAME='zeit-web-pwa', DB_VERSION=1;
+const STORE={ users:'users', projects:'projects', entries:'entries', photos:'photos' };
+function withDB(){ return new Promise((resolve,reject)=>{ const r=indexedDB.open(DB_NAME,DB_VERSION); r.onupgradeneeded=()=>{ const db=r.result; if(!db.objectStoreNames.contains(STORE.users)) db.createObjectStore(STORE.users,{keyPath:'username'}); if(!db.objectStoreNames.contains(STORE.projects)) db.createObjectStore(STORE.projects,{keyPath:'id'}); if(!db.objectStoreNames.contains(STORE.entries)) db.createObjectStore(STORE.entries,{keyPath:'id'}); if(!db.objectStoreNames.contains(STORE.photos)) db.createObjectStore(STORE.photos,{keyPath:'id'}); }; r.onsuccess=()=>resolve(r.result); r.onerror=()=>reject(r.error); });}
+async function put(store, val){ const db=await withDB(); return new Promise((res,rej)=>{ const tx=db.transaction(store,'readwrite'); tx.objectStore(store).put(val); tx.oncomplete=()=>res(val); tx.onerror=()=>rej(tx.error);});}
+async function get(store, key){ const db=await withDB(); return new Promise((res,rej)=>{ const tx=db.transaction(store,'readonly'); const q=tx.objectStore(store).get(key); q.onsuccess=()=>res(q.result); q.onerror=()=>rej(q.error);});}
+async function getAll(store){ const db=await withDB(); return new Promise((res,rej)=>{ const tx=db.transaction(store,'readonly'); const q=tx.objectStore(store).getAll(); q.onsuccess=()=>res(q.result); q.onerror=()=>rej(q.error);});}
+async function delRec(store,key){ const db=await withDB(); return new Promise((res,rej)=>{ const tx=db.transaction(store,'readwrite'); tx.objectStore(store).delete(key); tx.oncomplete=()=>res(true); tx.onerror=()=>rej(tx.error);});}
+
+// Guard: must be admin
+function currentUser(){ try{ return JSON.parse(localStorage.getItem('cu')||'null'); }catch(e){ return null; } }
+function show(sectionId){ document.getElementById('guard').classList.add('hidden'); document.getElementById('userView').classList.add('hidden'); document.getElementById('listView').classList.add('hidden'); document.getElementById(sectionId).classList.remove('hidden'); }
+
+async function init(){
+  const cu=currentUser();
+  if(!cu || cu.role!=='admin'){ show('guard'); return; }
+  show('userView'); document.getElementById('listView').classList.remove('hidden');
+  await renderUsersTable();
+}
+window.addEventListener('DOMContentLoaded', init);
+document.getElementById('btnLogout').onclick=()=>{ localStorage.removeItem('cu'); location.href='./'; };
+
+// Render users
+async function renderUsersTable(){
+  const tbody=document.querySelector('#userTable tbody'); tbody.innerHTML='';
+  const users=await getAll(STORE.users);
+  const adminCount=users.filter(u=>u.role==='admin' && u.active!==false).length;
+  for(const u of users){
+    const tr=document.createElement('tr');
+    const tdU=document.createElement('td'); tdU.textContent=u.username;
+    const tdD=document.createElement('td'); const inD=document.createElement('input'); inD.className='inline-input'; inD.value=u.display||''; tdD.appendChild(inD);
+    const tdR=document.createElement('td'); const selR=document.createElement('select'); selR.className='inline-input'; ['worker','admin'].forEach(r=>{ const o=document.createElement('option'); o.value=r; o.textContent=(r==='admin'?'Admin':'Mitarbeiter'); if(u.role===r) o.selected=true; selR.appendChild(o); }); tdR.appendChild(selR);
+    const tdS=document.createElement('td'); const tag=document.createElement('span'); tag.className='tag '+(u.active===false?'gray':''); tag.textContent=(u.active===false?'Inaktiv':'Aktiv'); tdS.appendChild(tag);
+    const tdA=document.createElement('td');
+    const btnSave=document.createElement('button'); btnSave.textContent='Speichern'; btnSave.onclick=async()=>{ const upd={...u, display:inD.value.trim(), role:selR.value}; await put(STORE.users,upd); await renderUsersTable(); };
+    const btnPwd=document.createElement('button'); btnPwd.className='secondary'; btnPwd.textContent='Passwort setzen'; btnPwd.onclick=async()=>{ const np=prompt('Neues Passwort für '+u.username+':'); if(!np) return; const upd={...u, password:np}; await put(STORE.users,upd); alert('Passwort aktualisiert.'); };
+    const btnToggle=document.createElement('button'); btnToggle.className='ghost'; btnToggle.textContent=(u.active===false?'Aktivieren':'Deaktivieren'); btnToggle.onclick=async()=>{
+      if(u.role==='admin' && u.active!==false && adminCount<=1){ alert('Letzter aktiver Admin – kann nicht deaktiviert werden.'); return; }
+      const upd={...u, active: !(u.active===false)}; await put(STORE.users,upd); await renderUsersTable();
+    };
+    const btnDel=document.createElement('button'); btnDel.className='danger'; btnDel.textContent='Löschen'; btnDel.onclick=async()=>{
+      if(u.role==='admin' && u.active!==false && adminCount<=1){ alert('Letzter aktiver Admin kann nicht gelöscht werden.'); return; }
+      if(!confirm('Nutzer wirklich löschen?')) return;
+      await delRec(STORE.users,u.username); await renderUsersTable();
+    };
+    tdA.appendChild(btnSave); tdA.appendChild(btnPwd); tdA.appendChild(btnToggle); tdA.appendChild(btnDel);
+    tr.appendChild(tdU); tr.appendChild(tdD); tr.appendChild(tdR); tr.appendChild(tdS); tr.appendChild(tdA);
+    tbody.appendChild(tr);
+  }
+}
+
+// Create user
+document.getElementById('btnCreateUser').onclick=async()=>{
+  const u=document.getElementById('nuUser').value.trim();
+  const d=document.getElementById('nuDisplay').value.trim();
+  const p=document.getElementById('nuPass').value;
+  const r=document.getElementById('nuRole').value;
+  if(!u || !p) return alert('Benutzername und Passwort sind Pflicht.');
+  const exists=await get(STORE.users,u); if(exists) return alert('Benutzername existiert bereits.');
+  await put(STORE.users,{username:u, display:d||u, password:p, role:r, active:true});
+  document.getElementById('nuUser').value=''; document.getElementById('nuDisplay').value=''; document.getElementById('nuPass').value=''; document.getElementById('nuRole').value='worker';
+  await renderUsersTable();
+};
+</script>
+</body>
+</html>
