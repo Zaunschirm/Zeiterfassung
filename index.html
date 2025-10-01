@@ -19,7 +19,7 @@
   input,select,button{width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;font:inherit}
   button{background:var(--ink);color:#fff}
   button.ghost{background:#fff;color:var(--ink);border:1px solid #d1d5db}
-  button.secondary{background:var(--ink-2)}
+  button.secondary{background:#374151}
   .row{display:flex;gap:12px;flex-wrap:wrap}
   .row>*{flex:1 1 220px}
   .hidden{display:none}
@@ -33,7 +33,7 @@
   .rangeRow output{width:80px;text-align:center;font-variant-numeric:tabular-nums}
   input[type=range]{width:100%}
   .archived{opacity:.6;text-decoration:line-through}
-  .muted{color:var(--muted);font-size:12px}
+  .muted{color:#6b7280;font-size:12px}
   .photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px}
   .photo-item{position:relative;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;background:#fafafa}
   .photo-item img{width:100%;height:110px;object-fit:cover;display:block}
@@ -57,7 +57,7 @@
 
 <main>
   <section class="banner" id="pwaHint" style="display:none">
-    💡 Tipp: Du kannst diese App installieren (Menü → „Zum Home-Bildschirm“ / „Install app“). Danach läuft sie voll offline.
+    💡 Tipp: Du kannst diese App installieren (Menü → „Zum Home‑Bildschirm“ / „Install app“).
   </section>
 
   <section id="loginView" class="card">
@@ -68,7 +68,7 @@
     </div>
     <div class="row">
       <button id="btnLogin">Login</button>
-      <button class="ghost" id="btnDemo">Demo-Daten füllen</button>
+      <button class="ghost" id="btnDemo">Demo‑Daten füllen</button>
     </div>
     <p class="muted">Diese Web‑Version läuft komplett im Browser (kein Server). Daten bleiben lokal (IndexedDB). Export/Import möglich.</p>
   </section>
@@ -158,8 +158,8 @@
         <tfoot><tr><td colspan="6" class="right">Summe</td><td class="right" id="sumWork">00:00</td><td class="right" id="sumOT">00:00</td><td></td><td></td></tr></tfoot>
       </table>
       <div class="toolbar" style="margin-top:8px">
-        <button id="btnExportCSV" class="ghost">CSV-Export</button>
-        <button id="btnExportPDF" class="ghost">PDF-Export</button>
+        <button id="btnExportCSV" class="ghost">CSV‑Export</button>
+        <button id="btnExportPDF" class="ghost">PDF‑Export</button>
         <input id="importFile" type="file" accept="application/json" class="hidden">
         <button id="btnExportData">Daten exportieren</button>
         <button id="btnImportData" class="secondary">Daten importieren</button>
@@ -190,7 +190,7 @@
       <h3>Admin · Projekte & Nutzer</h3>
       <div class="row">
         <div><label>Neues Projekt<input id="newProjectName" placeholder="z. B. Halle XY"></label></div>
-        <div><label>Kostenstelle<input id="newProjectCost" placeholder="z. B. 4010-BAU-001"></label></div>
+        <div><label>Kostenstelle<input id="newProjectCost" placeholder="z. B. 4010‑BAU‑001"></label></div>
         <div style="align-self:end"><button id="btnAddProject">Hinzufügen</button></div>
       </div>
       <div class="row" style="align-items:center">
@@ -203,48 +203,22 @@
 </main>
 
 <script>
-// ---- PWA install prompt ----
+// Install prompt
 let deferredPrompt=null;
-window.addEventListener('beforeinstallprompt', (e)=>{
-  e.preventDefault();
-  deferredPrompt = e;
-  document.getElementById('btnInstall').classList.remove('hidden');
-  document.getElementById('pwaHint').style.display='block';
-});
-document.getElementById('btnInstall').onclick=async()=>{
-  if(deferredPrompt){ deferredPrompt.prompt(); await deferredPrompt.userChoice; deferredPrompt=null; document.getElementById('btnInstall').classList.add('hidden'); }
-};
+window.addEventListener('beforeinstallprompt', (e)=>{ e.preventDefault(); deferredPrompt=e; document.getElementById('btnInstall').classList.remove('hidden'); document.getElementById('pwaHint').style.display='block'; });
+document.getElementById('btnInstall').onclick=async()=>{ if(deferredPrompt){ deferredPrompt.prompt(); await deferredPrompt.userChoice; deferredPrompt=null; document.getElementById('btnInstall').classList.add('hidden'); } };
+if (location.protocol.startsWith('http')) { navigator.serviceWorker && navigator.serviceWorker.register('./sw.js'); } else { document.getElementById('pwaHint').style.display='block'; }
 
-// Register SW (only if served via http/https)
-if (location.protocol.startsWith('http')) {
-  navigator.serviceWorker && navigator.serviceWorker.register('./sw.js');
-} else {
-  // file:// hint
-  document.getElementById('pwaHint').style.display='block';
-}
-
-// ===== IndexedDB utilities =====
+// IndexedDB
 const DB_NAME='zeit-web-pwa', DB_VERSION=1;
 const STORE={ users:'users', projects:'projects', entries:'entries', photos:'photos' };
-function withDB(){
-  return new Promise((resolve,reject)=>{
-    const r=indexedDB.open(DB_NAME,DB_VERSION);
-    r.onupgradeneeded=()=>{
-      const db=r.result;
-      if(!db.objectStoreNames.contains(STORE.users)) db.createObjectStore(STORE.users,{keyPath:'username'});
-      if(!db.objectStoreNames.contains(STORE.projects)) db.createObjectStore(STORE.projects,{keyPath:'id'});
-      if(!db.objectStoreNames.contains(STORE.entries)) db.createObjectStore(STORE.entries,{keyPath:'id'});
-      if(!db.objectStoreNames.contains(STORE.photos)) db.createObjectStore(STORE.photos,{keyPath:'id'});
-    };
-    r.onsuccess=()=>resolve(r.result); r.onerror=()=>reject(r.error);
-  });
-}
+function withDB(){ return new Promise((resolve,reject)=>{ const r=indexedDB.open(DB_NAME,DB_VERSION); r.onupgradeneeded=()=>{ const db=r.result; if(!db.objectStoreNames.contains(STORE.users)) db.createObjectStore(STORE.users,{keyPath:'username'}); if(!db.objectStoreNames.contains(STORE.projects)) db.createObjectStore(STORE.projects,{keyPath:'id'}); if(!db.objectStoreNames.contains(STORE.entries)) db.createObjectStore(STORE.entries,{keyPath:'id'}); if(!db.objectStoreNames.contains(STORE.photos)) db.createObjectStore(STORE.photos,{keyPath:'id'}); }; r.onsuccess=()=>resolve(r.result); r.onerror=()=>reject(r.error); });}
 async function put(store, val){ const db=await withDB(); return new Promise((res,rej)=>{ const tx=db.transaction(store,'readwrite'); tx.objectStore(store).put(val); tx.oncomplete=()=>res(val); tx.onerror=()=>rej(tx.error);});}
 async function get(store, key){ const db=await withDB(); return new Promise((res,rej)=>{ const tx=db.transaction(store,'readonly'); const q=tx.objectStore(store).get(key); q.onsuccess=()=>res(q.result); q.onerror=()=>rej(q.error);});}
 async function getAll(store){ const db=await withDB(); return new Promise((res,rej)=>{ const tx=db.transaction(store,'readonly'); const q=tx.objectStore(store).getAll(); q.onsuccess=()=>res(q.result); q.onerror=()=>rej(q.error);});}
 async function delRec(store,key){ const db=await withDB(); return new Promise((res,rej)=>{ const tx=db.transaction(store,'readwrite'); tx.objectStore(store).delete(key); tx.oncomplete=()=>res(true); tx.onerror=()=>rej(tx.error);});}
 
-// ===== Helpers =====
+// Helpers
 let currentUser=null;
 function uuid(){return'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0,v=c==='x'?r:(r&0x3|0x8);return v.toString(16)})}
 function todayISO(){ const d=new Date(); d.setHours(0,0,0,0); return d.toISOString().slice(0,10); }
@@ -253,7 +227,7 @@ function ixToTime(ix){ const m=ix*15, h=String(Math.floor(m/60)).padStart(2,'0')
 function minToHHMM(m){ const h=Math.floor(m/60), mm=m%60; return `${String(h).padStart(2,'0')}:${String(mm).padStart(2,'0')}`; }
 function durationMin(a,b){ return Math.max(0, Math.round((new Date(b)-new Date(a))/60000)); }
 
-// ===== Demo data =====
+// Demo data
 async function ensureDemo(){
   const admin=await get(STORE.users,'admin');
   if(!admin){
@@ -270,7 +244,7 @@ async function ensureDemo(){
   alert('Demo-Logins: admin/admin · armin/1234 · michael/1234');
 }
 
-// ===== Auth/UI =====
+// Auth/UI
 function renderUserBadge(){ const u=JSON.parse(localStorage.getItem('cu')||'null'); document.getElementById('userBadge').textContent = u ? (u.display||u.username) : ''; }
 async function login(u,p){
   const user=await get(STORE.users,u);
@@ -284,7 +258,7 @@ async function login(u,p){
   await loadProjects(); await loadUsersToFilter(); setupRanges(); await refreshMonth(); await refreshPhotoProjects(); await refreshPhotoGrid();
 }
 
-// ===== Projects =====
+// Projects
 async function loadProjects(){
   const sel=document.getElementById('projectSelect'); sel.innerHTML='';
   const projs=await getAll(STORE.projects);
@@ -314,7 +288,7 @@ function renderProjectList(projs){
 }
 document.getElementById('toggleArchived').onchange=async()=>{ const projs=await getAll(STORE.projects); renderProjectList(projs); };
 
-// ===== Users in filter =====
+// Users filter
 async function loadUsersToFilter(){
   const sel=document.getElementById('userFilter'); sel.innerHTML='';
   const users=await getAll(STORE.users);
@@ -324,7 +298,7 @@ async function loadUsersToFilter(){
   sel.disabled=!isAdmin;
 }
 
-// ===== Time input =====
+// Time input
 function setupRanges(){
   const s=document.getElementById('startRange'), e=document.getElementById('endRange');
   const so=document.getElementById('startOut'), eo=document.getElementById('endOut'), b=document.getElementById('breakMin'), w=document.getElementById('workMinPreview');
@@ -342,7 +316,7 @@ async function addEntryManual(){
   await put(STORE.entries, entry); await refreshMonth();
 }
 
-// ===== Month view =====
+// Month view
 function fmt(dt){ if(!dt) return ''; const d=new Date(dt); return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); }
 async function refreshMonth(){
   const monthVal=document.getElementById('monthPicker').value||currentMonth();
@@ -378,7 +352,7 @@ async function refreshMonth(){
   sumWorkTd.textContent=minToHHMM(sumWork); sumOtTd.textContent=minToHHMM(sumOT);
 }
 
-// ===== CSV/PDF export =====
+// Exports
 async function exportCSV(){
   const monthVal=document.getElementById('monthPicker').value||currentMonth();
   const userVal=document.getElementById('userFilter').value||(currentUser&&currentUser.username);
@@ -408,88 +382,23 @@ async function exportPDF(){
   </head><body><h1 style="font-size:18px;margin:0 0 8px">Monatsübersicht ${monthVal} – ${userVal}</h1>
   <table><thead><tr><th>Datum</th><th>Von</th><th>Bis</th><th>Projekt</th><th>Kostenstelle</th><th>Pausen (min)</th><th>Arbeitszeit</th><th>Überstunden</th><th>Notiz</th></tr></thead>
   <tbody>${rows}</tbody><tfoot><tr><td colspan="6" class="r">Summe</td><td class="r">${minToHHMM(sumW)}</td><td class="r">${minToHHMM(sumO)}</td><td></td></tr></tfoot></table>
-  <script>window.print()</script></body></html>`;
+  <script>window.print()<\/script></body></html>`;
   const w=window.open('', '_blank'); w.document.write(html); w.document.close();
 }
 
-// ===== Photos (IndexedDB only) =====
-async function refreshPhotoProjects(){
-  const sel=document.getElementById('photoProject'); sel.innerHTML='';
-  const projs=await getAll(STORE.projects);
-  projs.filter(p=>!p.archived).forEach(p=>{ const o=document.createElement('option'); o.value=p.id; o.textContent=p.name; sel.appendChild(o); });
-}
-async function compressImage(file,maxDim=1600,quality=.85){
-  const img=new Image();
-  const data=await new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(file); });
-  await new Promise((res,rej)=>{ img.onload=res; img.onerror=rej; img.src=data; });
-  let {width,height}=img;
-  if(width>height){ if(width>maxDim){ height=Math.round(height*maxDim/width); width=maxDim; } } else { if(height>maxDim){ width=Math.round(width*maxDim/height); height=maxDim; } }
-  const c=document.createElement('canvas'); c.width=width; c.height=height; c.getContext('2d').drawImage(img,0,0,width,height);
-  return c.toDataURL('image/jpeg', quality);
-}
-async function savePhotoLocal(pid, filename, dataUrl){
-  const rec={id:uuid(),projectId:pid,filename,createdAt:new Date().toISOString(),dataUrl};
-  await put(STORE.photos, rec);
-  return rec;
-}
-async function refreshPhotoGrid(){
-  const grid=document.getElementById('photoGrid'); grid.innerHTML='';
-  const pid=document.getElementById('photoProject').value; if(!pid) return;
-  const photos=(await getAll(STORE.photos)).filter(p=>p.projectId===pid);
-  photos.sort((a,b)=>(a.createdAt||'').localeCompare(b.createdAt||''));
-  for(const p of photos){
-    const div=document.createElement('div'); div.className='photo-item';
-    const img=document.createElement('img'); img.src=p.dataUrl; img.alt=p.filename; img.onclick=()=>{ const lb=document.getElementById('lightbox'); document.getElementById('lightboxImg').src=p.dataUrl; lb.style.display='flex'; };
-    const meta=document.createElement('div'); meta.className='meta'; meta.innerHTML=`<span>${new Date(p.createdAt).toLocaleString()}</span>`;
-    const del=document.createElement('button'); del.textContent='Löschen'; del.onclick=async()=>{ if(!confirm('Foto wirklich löschen?'))return; await delRec(STORE.photos,p.id); await refreshPhotoGrid(); };
-    div.appendChild(img); div.appendChild(meta); div.appendChild(del); grid.appendChild(div);
-  }
-}
-async function onPhotoInput(ev){
-  const files=Array.from(ev.target.files||[]); const pid=document.getElementById('photoProject').value; if(!pid){ alert('Bitte Projekt wählen'); return; }
-  for(const f of files){ const comp=await compressImage(f,1600,.85); await savePhotoLocal(pid, f.name, comp); }
-  await refreshPhotoGrid();
-}
+// Photos
+async function refreshPhotoProjects(){ const sel=document.getElementById('photoProject'); sel.innerHTML=''; const projs=await getAll(STORE.projects); projs.filter(p=>!p.archived).forEach(p=>{ const o=document.createElement('option'); o.value=p.id; o.textContent=p.name; sel.appendChild(o); }); }
+async function compressImage(file,maxDim=1600,quality=.85){ const img=new Image(); const data=await new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(file); }); await new Promise((res,rej)=>{ img.onload=res; img.onerror=rej; img.src=data; }); let {width,height}=img; if(width>height){ if(width>maxDim){ height=Math.round(height*maxDim/width); width=maxDim; } } else { if(height>maxDim){ width=Math.round(width*maxDim/height); height=maxDim; } } const c=document.createElement('canvas'); c.width=width; c.height=height; c.getContext('2d').drawImage(img,0,0,width,height); return c.toDataURL('image/jpeg', quality); }
+async function savePhotoLocal(pid, filename, dataUrl){ const rec={id:uuid(),projectId:pid,filename,createdAt:new Date().toISOString(),dataUrl}; await put(STORE.photos, rec); return rec; }
+async function refreshPhotoGrid(){ const grid=document.getElementById('photoGrid'); grid.innerHTML=''; const pid=document.getElementById('photoProject').value; if(!pid) return; const photos=(await getAll(STORE.photos)).filter(p=>p.projectId===pid); photos.sort((a,b)=>(a.createdAt||'').localeCompare(b.createdAt||'')); for(const p of photos){ const div=document.createElement('div'); div.className='photo-item'; const img=document.createElement('img'); img.src=p.dataUrl; img.alt=p.filename; img.onclick=()=>{ const lb=document.getElementById('lightbox'); document.getElementById('lightboxImg').src=p.dataUrl; lb.style.display='flex'; }; const meta=document.createElement('div'); meta.className='meta'; meta.innerHTML=`<span>${new Date(p.createdAt).toLocaleString()}</span>`; const del=document.createElement('button'); del.textContent='Löschen'; del.onclick=async()=>{ if(!confirm('Foto wirklich löschen?'))return; await delRec(STORE.photos,p.id); await refreshPhotoGrid(); }; div.appendChild(img); div.appendChild(meta); div.appendChild(del); grid.appendChild(div); } }
+async function onPhotoInput(ev){ const files=Array.from(ev.target.files||[]), pid=document.getElementById('photoProject').value; if(!pid){ alert('Bitte Projekt wählen'); return; } for(const f of files){ const comp=await compressImage(f,1600,.85); await savePhotoLocal(pid, f.name, comp); } await refreshPhotoGrid(); }
 
-// ===== Data export/import =====
-async function exportData(){
-  const users=await getAll(STORE.users), projects=await getAll(STORE.projects), entries=await getAll(STORE.entries), photos=await getAll(STORE.photos);
-  const payload={ users, projects, entries, photos, exportedAt:new Date().toISOString(), app:'zeit-web-pwa' };
-  const blob=new Blob([JSON.stringify(payload)],{type:'application/json'});
-  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='zeiterfassung_web_export.json'; a.click(); URL.revokeObjectURL(a.href);
-}
-async function importData(file){
-  const text=await file.text(); const payload=JSON.parse(text||'{}');
-  if(!payload || !payload.app){ alert('Ungültige Datei'); return; }
-  if(payload.users) for(const u of payload.users) await put(STORE.users,u);
-  if(payload.projects) for(const p of payload.projects) await put(STORE.projects,p);
-  if(payload.entries) for(const e of payload.entries) await put(STORE.entries,e);
-  if(payload.photos) for(const p of payload.photos) await put(STORE.photos,p);
-  alert('Daten importiert');
-  await loadProjects(); await loadUsersToFilter(); await refreshMonth(); await refreshPhotoProjects(); await refreshPhotoGrid();
-}
+// Data export/import
+async function exportData(){ const users=await getAll(STORE.users), projects=await getAll(STORE.projects), entries=await getAll(STORE.entries), photos=await getAll(STORE.photos); const payload={ users, projects, entries, photos, exportedAt:new Date().toISOString(), app:'zeit-web-pwa' }; const blob=new Blob([JSON.stringify(payload)],{type:'application/json'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='zeiterfassung_web_export.json'; a.click(); URL.revokeObjectURL(a.href); }
+async function importData(file){ const text=await file.text(); const payload=JSON.parse(text||'{}'); if(!payload || !payload.app){ alert('Ungültige Datei'); return; } if(payload.users) for(const u of payload.users) await put(STORE.users,u); if(payload.projects) for(const p of payload.projects) await put(STORE.projects,p); if(payload.entries) for(const e of payload.entries) await put(STORE.entries,e); if(payload.photos) for(const p of payload.photos) await put(STORE.photos,p); alert('Daten importiert'); await loadProjects(); await loadUsersToFilter(); await refreshMonth(); await refreshPhotoProjects(); await refreshPhotoGrid(); }
 
-// ===== Wire up =====
-window.addEventListener('DOMContentLoaded', async ()=>{
-  const cu=localStorage.getItem('cu'); if(cu){ currentUser=JSON.parse(cu); document.getElementById('loginView').classList.add('hidden'); document.getElementById('appView').classList.remove('hidden'); renderUserBadge(); document.getElementById('manualDate').value=todayISO(); document.getElementById('monthPicker').value=currentMonth(); await loadProjects(); await loadUsersToFilter(); setupRanges(); await refreshMonth(); await refreshPhotoProjects(); await refreshPhotoGrid(); }
-  document.getElementById('btnLogin').onclick=async()=>{ const u=document.getElementById('loginUser').value.trim(); const p=document.getElementById('loginPass').value; try{ await login(u,p);}catch(e){ alert(e.message);} };
-  document.getElementById('btnDemo').onclick=ensureDemo;
-  document.getElementById('btnLogout').onclick=()=>{ localStorage.removeItem('cu'); location.reload(); };
-  document.getElementById('btnAddEntry').onclick=addEntryManual;
-  document.getElementById('monthPicker').onchange=refreshMonth;
-  document.getElementById('userFilter').onchange=refreshMonth;
-  document.getElementById('btnExportCSV').onclick=exportCSV;
-  document.getElementById('btnExportPDF').onclick=exportPDF;
-  document.getElementById('btnExportData').onclick=exportData;
-  document.getElementById('btnImportData').onclick=()=>document.getElementById('importFile').click();
-  document.getElementById('importFile').addEventListener('change', async (e)=>{ if(e.target.files && e.target.files[0]) await importData(e.target.files[0]); e.target.value=''; });
-  document.getElementById('btnAddProject').onclick=async()=>{
-    const name=document.getElementById('newProjectName').value.trim(); const cost=document.getElementById('newProjectCost').value.trim();
-    if(!name) return; await put(STORE.projects,{id:uuid(),name, costCenter:(cost||null), archived:false}); document.getElementById('newProjectName').value=''; document.getElementById('newProjectCost').value=''; await loadProjects(); await refreshPhotoProjects();
-  };
-  document.getElementById('photoProject').onchange=refreshPhotoGrid;
-  document.getElementById('photoInput').addEventListener('change', onPhotoInput);
-});
+// Wire up
+window.addEventListener('DOMContentLoaded', async ()=>{ const cu=localStorage.getItem('cu'); if(cu){ currentUser=JSON.parse(cu); document.getElementById('loginView').classList.add('hidden'); document.getElementById('appView').classList.remove('hidden'); renderUserBadge(); document.getElementById('manualDate').value=todayISO(); document.getElementById('monthPicker').value=currentMonth(); await loadProjects(); await loadUsersToFilter(); setupRanges(); await refreshMonth(); await refreshPhotoProjects(); await refreshPhotoGrid(); } document.getElementById('btnLogin').onclick=async()=>{ const u=document.getElementById('loginUser').value.trim(); const p=document.getElementById('loginPass').value; try{ await login(u,p);}catch(e){ alert(e.message);} }; document.getElementById('btnDemo').onclick=ensureDemo; document.getElementById('btnLogout').onclick=()=>{ localStorage.removeItem('cu'); location.reload(); }; document.getElementById('btnAddEntry').onclick=addEntryManual; document.getElementById('monthPicker').onchange=refreshMonth; document.getElementById('userFilter').onchange=refreshMonth; document.getElementById('btnExportCSV').onclick=exportCSV; document.getElementById('btnExportPDF').onclick=exportPDF; document.getElementById('btnExportData').onclick=exportData; document.getElementById('btnImportData').onclick=()=>document.getElementById('importFile').click(); document.getElementById('importFile').addEventListener('change', async (e)=>{ if(e.target.files && e.target.files[0]) await importData(e.target.files[0]); e.target.value=''; }); document.getElementById('btnAddProject').onclick=async()=>{ const name=document.getElementById('newProjectName').value.trim(); const cost=document.getElementById('newProjectCost').value.trim(); if(!name) return; await put(STORE.projects,{id:uuid(),name, costCenter:(cost||null), archived:false}); document.getElementById('newProjectName').value=''; document.getElementById('newProjectCost').value=''; await loadProjects(); await refreshPhotoProjects(); }; document.getElementById('photoProject').onchange=refreshPhotoGrid; document.getElementById('photoInput').addEventListener('change', onPhotoInput); });
 </script>
 </body>
 </html>
