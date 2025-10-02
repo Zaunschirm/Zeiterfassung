@@ -19,7 +19,7 @@
   body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink)}
   header{background:var(--primary);color:var(--primaryText);padding:10px 14px;display:flex;justify-content:space-between;align-items:center}
   header .brand{display:flex;gap:10px;align-items:center}
-  header .brand img{height:34px;width:auto}
+  header .brand img{height:34px;width:auto;object-fit:contain;image-rendering:auto}
   main{max-width:1100px;margin:0 auto;padding:16px}
   .card{background:var(--card);border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,.06);padding:16px;margin:12px 0}
   h1,h2,h3{margin:0 0 12px}
@@ -57,7 +57,7 @@ async function applyBranding(){try{const res=await fetch('./config.json',{cache:
 </head><body onload='applyBranding()'>
 <header>
   <div class="brand">
-    <img id="brandLogo" src="assets/logo.png" alt="Logo">
+    <img id="brandLogo" src="./assets/logo.png" alt="Logo">
     <strong id="brandTitle">Zeiterfassung</strong> <span class="pill">Web PWA</span>
   </div>
   <div class="toolbar">
@@ -80,7 +80,7 @@ async function applyBranding(){try{const res=await fetch('./config.json',{cache:
   </section>
   <section id="appView" class="hidden">
     <div class="card">
-      <h2>Zeiteingabe (manuell, 15‑Minuten‑Raster)</h2>
+      <h2>Zeiteingabe</h2>
       <div class="row">
         <div><label>Projekt<select id="projectSelect"></select></label></div>
         <div><label>Pausen (Minuten)
