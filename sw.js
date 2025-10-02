@@ -1,5 +1,5 @@
-const CACHE = 'zeit-pwa-v4';
-const ASSETS = ['./','./index.html','./users.html','./manifest.json','./icons/icon-192.png','./icons/icon-512.png'];
+const CACHE = 'zeit-pwa-v6-zaunschirm';
+const ASSETS = ['./','./index.html','./users.html','./config.json','./assets/logo.png','./manifest.json','./icons/icon-192.png','./icons/icon-512.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS))); self.skipWaiting(); });
 self.addEventListener('activate', e => { e.waitUntil(self.clients.claim()); });
 self.addEventListener('fetch', e => {

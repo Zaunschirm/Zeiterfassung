@@ -1,35 +1,65 @@
-<!doctype html>
-<html lang="de">
-<head>
+<!doctype html><html lang='de'><head><title>Mitarbeiterverwaltung – Zeiterfassung</title>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Mitarbeiterverwaltung – Zeiterfassung</title>
 <link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#111827"/>
+<meta name="theme-color" content="#111827" id="metaTheme"/>
 <link rel="icon" href="icons/icon-192.png">
 <style>
-  :root{--bg:#f6f7fb;--card:#fff;--ink:#111827;--ink-2:#374151;--muted:#6b7280;--line:#e5e7eb;--accent:#1f2937}
+  :root{
+    --bg:#f6f7fb;
+    --card:#fff;
+    --ink:#111827;
+    --muted:#6b7280;
+    --primary:#1f2937;
+    --primaryText:#ffffff;
+    --button:#111827;
+    --line:#e5e7eb;
+  }
   *{box-sizing:border-box}
   body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink)}
-  header{background:var(--accent);color:#fff;padding:12px 16px;display:flex;justify-content:space-between;align-items:center}
-  main{max-width:1000px;margin:0 auto;padding:16px}
+  header{background:var(--primary);color:var(--primaryText);padding:10px 14px;display:flex;justify-content:space-between;align-items:center}
+  header .brand{display:flex;gap:10px;align-items:center}
+  header .brand img{height:34px;width:auto}
+  main{max-width:1100px;margin:0 auto;padding:16px}
   .card{background:var(--card);border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,.06);padding:16px;margin:12px 0}
+  h1,h2,h3{margin:0 0 12px}
   label{display:block;font-size:14px;margin:8px 0 4px}
   input,select,button{width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;font:inherit}
-  button{background:var(--ink);color:#fff;cursor:pointer}
+  button{background:var(--button);color:#fff;cursor:pointer}
   button.ghost{background:#fff;color:var(--ink);border:1px solid #d1d5db}
-  button.secondary{background:var(--ink-2)}
-  button.danger{background:#ef4444;border:none}
+  button.secondary{background:#374151}
+  .row{display:flex;gap:12px;flex-wrap:wrap}
+  .row>*{flex:1 1 220px}
+  .hidden{display:none}
+  .pill{display:inline-block;padding:2px 8px;border-radius:999px;background:#eef2ff;color:#4338ca;font-size:12px}
   table{width:100%;border-collapse:collapse}
-  th,td{padding:8px;border-bottom:1px solid #eee;font-size:14px;text-align:left;vertical-align:middle}
+  th,td{padding:8px;border-bottom:1px solid #eee;font-size:14px;text-align:left}
+  th.right,td.right{text-align:right}
+  tfoot td{font-weight:600}
   .inline-input{width:100%;padding:6px 8px;border:1px solid #e5e7eb;border-radius:8px;font:inherit}
-  .tag{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;background:#e5f3ff;color:#075985}
-  .tag.gray{background:#f3f4f6;color:#374151}
+  .rangeRow{display:flex;align-items:center;gap:12px}
+  .rangeRow output{width:80px;text-align:center;font-variant-numeric:tabular-nums}
+  input[type=range]{width:100%}
+  .archived{opacity:.6;text-decoration:line-through}
+  .muted{color:var(--muted);font-size:12px}
+  .photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px}
+  .photo-item{position:relative;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;background:#fafafa}
+  .photo-item img{width:100%;height:110px;object-fit:cover;display:block}
+  .photo-item .meta{position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.55);color:#fff;font-size:11px;padding:4px 6px;display:flex;justify-content:space-between}
+  .lightbox{position:fixed;inset:0;background:rgba(0,0,0,.87);display:none;align-items:center;justify-content:center;z-index:50}
+  .lightbox img{max-width:92vw;max-height:92vh;border-radius:12px;box-shadow:0 12px 36px rgba(0,0,0,.5)}
+  .toolbar{display:flex;gap:8px;flex-wrap:wrap}
+  .banner{background:#fff4cc;border:1px solid #ffe08a;color:#7a5d00;padding:8px 12px;border-radius:10px;margin-bottom:10px}
 </style>
-</head>
-<body>
+<script>
+async function applyBranding(){try{const res=await fetch('./config.json',{cache:'reload'});const cfg=await res.json();if(cfg.bg)document.documentElement.style.setProperty('--bg',cfg.bg);if(cfg.card)document.documentElement.style.setProperty('--card',cfg.card);if(cfg.primary)document.documentElement.style.setProperty('--primary',cfg.primary);if(cfg.primaryText)document.documentElement.style.setProperty('--primaryText',cfg.primaryText);if(cfg.accent)document.documentElement.style.setProperty('--button',cfg.accent);if(cfg.muted)document.documentElement.style.setProperty('--muted',cfg.muted);if(cfg.appName){{document.title=cfg.appName+' – Web PWA';const ttl=document.getElementById('brandTitle');if(ttl)ttl.textContent=cfg.appName;}}if(cfg.logoPath){const img=document.getElementById('brandLogo');if(img)img.src=cfg.logoPath;}const meta=document.getElementById('metaTheme');if(meta&&cfg.primary)meta.setAttribute('content',cfg.primary);}catch(e){{}}}
+</script>
+</head><body onload='applyBranding()'>
 <header>
-  <div><strong>Mitarbeiterverwaltung</strong></div>
+  <div class="brand">
+    <img id="brandLogo" src="assets/logo.png" alt="Logo">
+    <strong id="brandTitle">Zeiterfassung</strong>
+  </div>
   <div style="display:flex;gap:8px;align-items:center">
     <a class="ghost" href="./" style="text-decoration:none;padding:10px 12px;display:inline-block;width:auto">← Zurück</a>
     <button id="btnLogout" class="ghost">Logout</button>
@@ -47,15 +77,11 @@
       <div style="flex:1 1 260px"><label>Anzeigename<input id="nuDisplay" placeholder="z. B. Max Mustermann"></label></div>
       <div style="flex:1 1 200px"><label>Passwort<input id="nuPass" type="password" placeholder="Startpasswort"></label></div>
       <div style="flex:1 1 200px"><label>Rolle
-        <select id="nuRole">
-          <option value="worker">Mitarbeiter</option>
-          <option value="admin">Admin</option>
-        </select>
+        <select id="nuRole"><option value="worker">Mitarbeiter</option><option value="admin">Admin</option></select>
       </label></div>
       <div style="align-self:end"><button id="btnCreateUser">Anlegen</button></div>
     </div>
   </section>
-
   <section class="card hidden" id="listView">
     <h2>Nutzerliste</h2>
     <table id="userTable">
@@ -65,12 +91,8 @@
     <p class="muted">Hinweis: Der <strong>letzte aktive Admin</strong> kann nicht gelöscht oder deaktiviert werden.</p>
   </section>
 </main>
-
 <script>
-// SW
 if (location.protocol.startsWith('http')) { navigator.serviceWorker && navigator.serviceWorker.register('./sw.js'); }
-
-// DB helpers (same as main)
 const DB_NAME='zeit-web-pwa', DB_VERSION=1;
 const STORE={ users:'users', projects:'projects', entries:'entries', photos:'photos' };
 function withDB(){ return new Promise((resolve,reject)=>{ const r=indexedDB.open(DB_NAME,DB_VERSION); r.onupgradeneeded=()=>{ const db=r.result; if(!db.objectStoreNames.contains(STORE.users)) db.createObjectStore(STORE.users,{keyPath:'username'}); if(!db.objectStoreNames.contains(STORE.projects)) db.createObjectStore(STORE.projects,{keyPath:'id'}); if(!db.objectStoreNames.contains(STORE.entries)) db.createObjectStore(STORE.entries,{keyPath:'id'}); if(!db.objectStoreNames.contains(STORE.photos)) db.createObjectStore(STORE.photos,{keyPath:'id'}); }; r.onsuccess=()=>resolve(r.result); r.onerror=()=>reject(r.error); });}
@@ -78,21 +100,11 @@ async function put(store, val){ const db=await withDB(); return new Promise((res
 async function get(store, key){ const db=await withDB(); return new Promise((res,rej)=>{ const tx=db.transaction(store,'readonly'); const q=tx.objectStore(store).get(key); q.onsuccess=()=>res(q.result); q.onerror=()=>rej(q.error);});}
 async function getAll(store){ const db=await withDB(); return new Promise((res,rej)=>{ const tx=db.transaction(store,'readonly'); const q=tx.objectStore(store).getAll(); q.onsuccess=()=>res(q.result); q.onerror=()=>rej(q.error);});}
 async function delRec(store,key){ const db=await withDB(); return new Promise((res,rej)=>{ const tx=db.transaction(store,'readwrite'); tx.objectStore(store).delete(key); tx.oncomplete=()=>res(true); tx.onerror=()=>rej(tx.error);});}
-
-// Guard: must be admin
 function currentUser(){ try{ return JSON.parse(localStorage.getItem('cu')||'null'); }catch(e){ return null; } }
 function show(sectionId){ document.getElementById('guard').classList.add('hidden'); document.getElementById('userView').classList.add('hidden'); document.getElementById('listView').classList.add('hidden'); document.getElementById(sectionId).classList.remove('hidden'); }
-
-async function init(){
-  const cu=currentUser();
-  if(!cu || cu.role!=='admin'){ show('guard'); return; }
-  show('userView'); document.getElementById('listView').classList.remove('hidden');
-  await renderUsersTable();
-}
+async function init(){ const cu=currentUser(); if(!cu || cu.role!=='admin'){ show('guard'); return; } show('userView'); document.getElementById('listView').classList.remove('hidden'); await renderUsersTable(); }
 window.addEventListener('DOMContentLoaded', init);
 document.getElementById('btnLogout').onclick=()=>{ localStorage.removeItem('cu'); location.href='./'; };
-
-// Render users
 async function renderUsersTable(){
   const tbody=document.querySelector('#userTable tbody'); tbody.innerHTML='';
   const users=await getAll(STORE.users);
@@ -120,8 +132,6 @@ async function renderUsersTable(){
     tbody.appendChild(tr);
   }
 }
-
-// Create user
 document.getElementById('btnCreateUser').onclick=async()=>{
   const u=document.getElementById('nuUser').value.trim();
   const d=document.getElementById('nuDisplay').value.trim();
@@ -134,5 +144,4 @@ document.getElementById('btnCreateUser').onclick=async()=>{
   await renderUsersTable();
 };
 </script>
-</body>
-</html>
+</body></html>

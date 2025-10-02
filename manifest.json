@@ -1,11 +1,11 @@
 {
-  "name": "Zeiterfassung \u2013 Web PWA",
-  "short_name": "Zeiterfassung",
+  "name": "Holzbau Zaunschirm Zeiterfassung",
+  "short_name": "Zaunschirm Zeit",
   "start_url": ".",
   "scope": ".",
   "display": "standalone",
-  "background_color": "#f6f7fb",
-  "theme_color": "#111827",
+  "background_color": "#faf8f6",
+  "theme_color": "#c9b8a6",
   "icons": [
     {
       "src": "icons/icon-192.png",
