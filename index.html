@@ -274,6 +274,32 @@ async function exportCSV(){
   const csv=rows.map(r=>r.map(x=>'"'+str(x).replace('"','""').replace('"','""')+'"').join(',')).join('\n');
   const blob=new Blob([csv],{type:'text/csv'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`monat_${monthVal}_${userVal}.csv`; a.click(); URL.revokeObjectURL(a.href);
 }
+
+async function refreshPhotoProjects(){
+  const sel=document.getElementById('photoProject');
+  if(!sel) return;
+  sel.innerHTML='';
+  const projs=await getAll(STORE.projects);
+  projs.filter(p=>!p.archived).forEach(p=>{ const o=document.createElement('option'); o.value=p.id; o.textContent=p.name; sel.appendChild(o); });
+}
+
+async function refreshPhotoGrid(){
+  const grid=document.getElementById('photoGrid');
+  if(!grid) return;
+  const sel=document.getElementById('photoProject');
+  const pid= sel ? sel.value : null;
+  const photos=await getAll(STORE.photos);
+  const arr=photos.filter(p=>!pid || p.projectId===pid).sort((a,b)=> (b.createdAt||'').localeCompare(a.createdAt||''));
+  grid.innerHTML='';
+  for(const ph of arr){
+    const item=document.createElement('div'); item.className='photo-item';
+    const img=document.createElement('img'); img.src=ph.dataUrl||''; img.alt=ph.filename||'';
+    img.onclick=()=>{ const lb=document.getElementById('lightbox'); const im=document.getElementById('lightboxImg'); im.src=ph.dataUrl||''; lb.style.display='flex'; };
+    const meta=document.createElement('div'); meta.className='meta'; meta.textContent=ph.filename||'';
+    item.appendChild(img); item.appendChild(meta); grid.appendChild(item);
+  }
+}
+
 async function exportPDF(){
   const monthVal=document.getElementById('monthPicker').value||currentMonth();
   const userVal=document.getElementById('userFilter').value||(currentUser&&currentUser.username);
