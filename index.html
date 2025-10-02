@@ -151,7 +151,37 @@ function withDB(){ return new Promise((resolve,reject)=>{ const r=indexedDB.open
 async function put(store, val){ const db=await withDB(); return new Promise((res,rej)=>{ const tx=db.transaction(store,'readwrite'); tx.objectStore(store).put(val); tx.oncomplete=()=>res(val); tx.onerror=()=>rej(tx.error);});}
 async function get(store, key){ const db=await withDB(); return new Promise((res,rej)=>{ const tx=db.transaction(store,'readonly'); const q=tx.objectStore(store).get(key); q.onsuccess=()=>res(q.result); q.onerror=()=>rej(q.error);});}
 async function getAll(store){ const db=await withDB(); return new Promise((res,rej)=>{ const tx=db.transaction(store,'readonly'); const q=tx.objectStore(store).getAll(); q.onsuccess=()=>res(q.result); q.onerror=()=>rej(q.error);});}
-async function delRec(store,key){ const db=await withDB(); return new Promise((res,rej)=>{ const tx=db.transaction(store,'readwrite'); tx.objectStore(store).delete(key); tx.oncomplete=()=>res(true); tx.onerror=()=>rej(tx.error);});}
+async function delRec(store,key){ const db=await withDB(); return new Promise((res,rej)=>{ const tx=db.transaction(store,'readwrite'); tx.objectStore(store).delete(key); tx.oncomplete=()=>res(true); tx.onerror=()=>rej(tx.error);});
+
+// === Photo helpers (always present) ===
+async function refreshPhotoProjects(){
+  try{
+    const sel=document.getElementById('photoProject');
+    if(!sel) return;
+    sel.innerHTML='';
+    const projs=await getAll(STORE.projects);
+    projs.filter(p=>!p.archived).forEach(p=>{ const o=document.createElement('option'); o.value=p.id; o.textContent=p.name; sel.appendChild(o); });
+  }catch(e){ console.warn('refreshPhotoProjects failed', e); }
+}
+async function refreshPhotoGrid(){
+  try{
+    const grid=document.getElementById('photoGrid');
+    if(!grid) return;
+    const sel=document.getElementById('photoProject');
+    const pid= sel ? sel.value : null;
+    const photos=await getAll(STORE.photos);
+    const arr=photos.filter(p=>!pid || p.projectId===pid).sort((a,b)=> (b.createdAt||'').localeCompare(a.createdAt||''));
+    grid.innerHTML='';
+    for(const ph of arr){
+      const item=document.createElement('div'); item.className='photo-item';
+      const img=document.createElement('img'); img.src=ph.dataUrl||''; img.alt=ph.filename||'';
+      img.onclick=()=>{ const lb=document.getElementById('lightbox'); const im=document.getElementById('lightboxImg'); im.src=ph.dataUrl||''; lb.style.display='flex'; };
+      const meta=document.createElement('div'); meta.className='meta'; meta.textContent=ph.filename||'';
+      item.appendChild(img); item.appendChild(meta); grid.appendChild(item);
+    }
+  }catch(e){ console.warn('refreshPhotoGrid failed', e); }
+}
+}
 let currentUser=null;
 function uuid(){return'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0,v=c==='x'?r:(r&0x3|0x8);return v.toString(16)})}
 function todayISO(){ const d=new Date(); d.setHours(0,0,0,0); return d.toISOString().slice(0,10); }
@@ -172,7 +202,7 @@ async function login(u,p){
   renderUserBadge();
   document.getElementById('adminPanel').style.display = (user.role==='admin') ? 'block' : 'none';
   document.getElementById('btnUsers').style.display = (user.role==='admin') ? 'inline-block' : 'none';
-  await loadProjects(); await loadUsersToFilter(); setupRanges(); await refreshMonth(); await refreshPhotoProjects(); await refreshPhotoGrid();
+  await loadProjects(); await loadUsersToFilter(); setupRanges(); await refreshMonth(); if (typeof refreshPhotoProjects==='function') await if (typeof refreshPhotoProjects==='function') refreshPhotoProjects(); if (typeof refreshPhotoGrid==='function') await if (typeof refreshPhotoGrid==='function') refreshPhotoGrid();
 }
 async function loadProjects(){
   const sel=document.getElementById('projectSelect'); sel.innerHTML='';
@@ -190,11 +220,11 @@ function renderProjectList(projs){
     const actions=document.createElement('div'); actions.style.display='flex'; actions.style.gap='8px';
     const save=document.createElement('button'); save.textContent='Speichern'; save.onclick=async()=>{
       const upd={id:p.id,name:name.value.trim(),costCenter:(cost.value.trim()||null),archived:!!p.archived};
-      await put(STORE.projects,upd); await loadProjects(); await refreshPhotoProjects(); await refreshMonth();
+      await put(STORE.projects,upd); await loadProjects(); if (typeof refreshPhotoProjects==='function') await if (typeof refreshPhotoProjects==='function') refreshPhotoProjects(); await refreshMonth();
     };
     const arch=document.createElement('button'); arch.className='secondary'; arch.textContent=p.archived?'Wiederherstellen':'Archivieren'; arch.onclick=async()=>{
       const upd={...p,name:name.value.trim()||p.name,costCenter:(cost.value.trim()||p.costCenter||null),archived:!p.archived};
-      await put(STORE.projects,upd); await loadProjects(); await refreshPhotoProjects(); await refreshMonth();
+      await put(STORE.projects,upd); await loadProjects(); if (typeof refreshPhotoProjects==='function') await if (typeof refreshPhotoProjects==='function') refreshPhotoProjects(); await refreshMonth();
     };
     actions.appendChild(save); actions.appendChild(arch);
     row.appendChild(name); row.appendChild(cost); row.appendChild(actions);
@@ -320,7 +350,7 @@ async function exportPDF(){
 }
 window.addEventListener('DOMContentLoaded', async ()=>{
   await ensureFirstAdmin();
-  const cu=localStorage.getItem('cu'); if(cu){ currentUser=JSON.parse(cu); document.getElementById('loginView').classList.add('hidden'); document.getElementById('appView').classList.remove('hidden'); renderUserBadge(); document.getElementById('manualDate').value=todayISO(); document.getElementById('monthPicker').value=currentMonth(); document.getElementById('adminPanel').style.display = (currentUser.role==='admin') ? 'block' : 'none'; document.getElementById('btnUsers').style.display = (currentUser.role==='admin') ? 'inline-block' : 'none'; await loadProjects(); await loadUsersToFilter(); setupRanges(); await refreshMonth(); await refreshPhotoProjects(); await refreshPhotoGrid(); }
+  const cu=localStorage.getItem('cu'); if(cu){ currentUser=JSON.parse(cu); document.getElementById('loginView').classList.add('hidden'); document.getElementById('appView').classList.remove('hidden'); renderUserBadge(); document.getElementById('manualDate').value=todayISO(); document.getElementById('monthPicker').value=currentMonth(); document.getElementById('adminPanel').style.display = (currentUser.role==='admin') ? 'block' : 'none'; document.getElementById('btnUsers').style.display = (currentUser.role==='admin') ? 'inline-block' : 'none'; await loadProjects(); await loadUsersToFilter(); setupRanges(); await refreshMonth(); if (typeof refreshPhotoProjects==='function') await if (typeof refreshPhotoProjects==='function') refreshPhotoProjects(); if (typeof refreshPhotoGrid==='function') await if (typeof refreshPhotoGrid==='function') refreshPhotoGrid(); }
   document.getElementById('btnLogin').onclick=async()=>{ const u=document.getElementById('loginUser').value.trim(); const p=document.getElementById('loginPass').value; try{ await login(u,p);}catch(e){ alert(e.message);} };
   document.getElementById('btnLogout').onclick=()=>{ localStorage.removeItem('cu'); location.reload(); };
   document.getElementById('btnAddEntry').onclick=addEntryManual;
@@ -335,9 +365,9 @@ window.addEventListener('DOMContentLoaded', async ()=>{
     const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='zeiterfassung_web_export.json'; a.click(); URL.revokeObjectURL(a.href);
   };
   document.getElementById('btnImportData').onclick=()=>document.getElementById('importFile').click();
-  document.getElementById('importFile').addEventListener('change', async (e)=>{ if(e.target.files && e.target.files[0]){ const text=await e.target.files[0].text(); const payload=JSON.parse(text||'{}'); if(!payload || !payload.app){ alert('Ungültige Datei'); return;} if(payload.users) for(const u of payload.users) await put(STORE.users,u); if(payload.projects) for(const p of payload.projects) await put(STORE.projects,p); if(payload.entries) for(const en of payload.entries) await put(STORE.entries,en); if(payload.photos) for(const ph of payload.photos) await put(STORE.photos,ph); alert('Daten importiert'); await loadProjects(); await loadUsersToFilter(); await refreshMonth(); await refreshPhotoProjects(); await refreshPhotoGrid(); } e.target.value=''; });
+  document.getElementById('importFile').addEventListener('change', async (e)=>{ if(e.target.files && e.target.files[0]){ const text=await e.target.files[0].text(); const payload=JSON.parse(text||'{}'); if(!payload || !payload.app){ alert('Ungültige Datei'); return;} if(payload.users) for(const u of payload.users) await put(STORE.users,u); if(payload.projects) for(const p of payload.projects) await put(STORE.projects,p); if(payload.entries) for(const en of payload.entries) await put(STORE.entries,en); if(payload.photos) for(const ph of payload.photos) await put(STORE.photos,ph); alert('Daten importiert'); await loadProjects(); await loadUsersToFilter(); await refreshMonth(); if (typeof refreshPhotoProjects==='function') await if (typeof refreshPhotoProjects==='function') refreshPhotoProjects(); if (typeof refreshPhotoGrid==='function') await if (typeof refreshPhotoGrid==='function') refreshPhotoGrid(); } e.target.value=''; });
   document.getElementById('photoProject').onchange=refreshPhotoGrid;
-  document.getElementById('photoInput').addEventListener('change', async (e)=>{ const files=Array.from(e.target.files||[]); const pid=document.getElementById('photoProject').value; if(!pid){ alert('Bitte Projekt wählen'); return; } for(const f of files){ const comp=await (async function(file){ const img=new Image(); const data=await new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(file); }); await new Promise((res,rej)=>{ img.onload=res; img.onerror=rej; img.src=data; }); let {width,height}=img; if(width>height){ if(width>1600){ height=Math.round(height*1600/width); width=1600; } } else { if(height>1600){ width=Math.round(width*1600/height); height=1600; } } const c=document.createElement('canvas'); c.width=width; c.height=height; c.getContext('2d').drawImage(img,0,0,width,height); return c.toDataURL('image/jpeg', .85); })(f); await put(STORE.photos,{id:uuid(),projectId:pid,filename:f.name,createdAt:new Date().toISOString(),dataUrl:comp}); } await refreshPhotoGrid(); });
+  document.getElementById('photoInput').addEventListener('change', async (e)=>{ const files=Array.from(e.target.files||[]); const pid=document.getElementById('photoProject').value; if(!pid){ alert('Bitte Projekt wählen'); return; } for(const f of files){ const comp=await (async function(file){ const img=new Image(); const data=await new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(file); }); await new Promise((res,rej)=>{ img.onload=res; img.onerror=rej; img.src=data; }); let {width,height}=img; if(width>height){ if(width>1600){ height=Math.round(height*1600/width); width=1600; } } else { if(height>1600){ width=Math.round(width*1600/height); height=1600; } } const c=document.createElement('canvas'); c.width=width; c.height=height; c.getContext('2d').drawImage(img,0,0,width,height); return c.toDataURL('image/jpeg', .85); })(f); await put(STORE.photos,{id:uuid(),projectId:pid,filename:f.name,createdAt:new Date().toISOString(),dataUrl:comp}); } if (typeof refreshPhotoGrid==='function') await if (typeof refreshPhotoGrid==='function') refreshPhotoGrid(); });
 });
 </script>
 </body></html>
