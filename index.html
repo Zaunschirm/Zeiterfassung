@@ -159,7 +159,7 @@ function currentMonth(){ const d=new Date(); return `${d.getFullYear()}-${String
 function ixToTime(ix){ const m=ix*15, h=String(Math.floor(m/60)).padStart(2,'0'), mm=m%60; return `${h}:${mm}`; }
 function minToHHMM(m){ const h=Math.floor(m/60), mm=m%60; return `${String(h).padStart(2,'0')}:${String(mm).padStart(2,'0')}`; }
 function durationMin(a,b){ return Math.max(0, Math.round((new Date(b)-new Date(a))/60000)); }
-async function ensureFirstAdmin(){ const users=await getAll(STORE.users); if(!users or users.length===0){ await put(STORE.users,{username:'admin',password:'admin',role:'admin',display:'Administrator',active:true}); } }
+async function ensureFirstAdmin(){ const users=await getAll(STORE.users); if(!users || users.length===0){ await put(STORE.users,{username:'admin',password:'admin',role:'admin',display:'Administrator',active:true}); } }
 function renderUserBadge(){ const u=JSON.parse(localStorage.getItem('cu')||'null'); document.getElementById('userBadge').textContent = u ? (u.display||u.username) : ''; }
 async function login(u,p){
   const user=await get(STORE.users,u);
