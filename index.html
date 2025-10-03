@@ -1,61 +1,128 @@
-
-<!DOCTYPE html>
-<html lang="de">
-<head>
-  <meta charset="UTF-8">
-  <title>Zeiterfassung</title>
-</head>
-<body>
-  <header>
-    <img id="brandLogo" src="./assets/logo.png" alt="Logo" style="height:60px">
-    <h1>Zeiterfassung</h1>
-  </header>
-  <div id="loginView">
-    <input id="loginUser" placeholder="Benutzer">
-    <input id="loginPass" type="password" placeholder="Passwort">
-    <button id="btnLogin">Login</button>
-  </div>
-  <div id="appView" class="hidden">
-    <p>App-Inhalt hier...</p>
-    <select id="photoProject"></select>
-  </div>
+<!doctype html><html lang="de"><head><title>Zeiterfassung</title>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#c9b8a6" id="metaTheme"/>
+<link rel="icon" href="icons/icon-192.png">
+<style>
+  :root{--bg:#faf8f6;--card:#fff;--ink:#2b261f;--muted:#8b857e;--primary:#c9b8a6;--primaryText:#2b261f;--button:#8c7b6a;--line:#e5e7eb}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink)}
+  header{background:var(--primary);color:var(--primaryText);padding:10px 14px;display:flex;justify-content:space-between;align-items:center}
+  .brand{display:flex;gap:10px;align-items:center}
+  .brand img{height:34px;width:auto;object-fit:contain}
+  main{max-width:1100px;margin:0 auto;padding:16px}
+  .card{background:var(--card);border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,.06);padding:16px;margin:12px 0}
+  label{display:block;font-size:14px;margin:8px 0 4px}
+  input,select,button{width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;font:inherit}
+  button{background:var(--button);color:#fff;cursor:pointer}
+  button.ghost{background:#fff;color:var(--ink);border:1px solid #d1d5db}
+  .row{display:flex;gap:12px;flex-wrap:wrap}
+  .row>*{flex:1 1 220px}
+  .hidden{display:none}
+</style>
 <script>
-const STORE={users:"users"};
+async function applyBranding(){try{const r=await fetch('./config.json',{cache:'reload'});const c=await r.json();
+ if(c.bg)document.documentElement.style.setProperty('--bg',c.bg);
+ if(c.card)document.documentElement.style.setProperty('--card',c.card);
+ if(c.primary)document.documentElement.style.setProperty('--primary',c.primary);
+ if(c.primaryText)document.documentElement.style.setProperty('--primaryText',c.primaryText);
+ if(c.accent)document.documentElement.style.setProperty('--button',c.accent);
+ if(c.muted)document.documentElement.style.setProperty('--muted',c.muted);
+ if(c.appName){document.title=c.appName; const t=document.getElementById('brandTitle'); if(t)t.textContent=c.appName;}
+ if(c.logoPath){const i=document.getElementById('brandLogo'); if(i)i.src=c.logoPath;}
+ const meta=document.getElementById('metaTheme'); if(meta&&c.primary)meta.setAttribute('content',c.primary);
+}catch(e){}}
+</script>
+</head>
+<body onload="applyBranding()">
+<header>
+  <div class="brand">
+    <img id="brandLogo" src="./assets/logo.png" alt="Logo">
+    <strong id="brandTitle">Zeiterfassung</strong>
+  </div>
+  <div class="row" style="flex:0 0 auto;gap:8px;align-items:center">
+    <a href="./users/" class="ghost" style="text-decoration:none;display:inline-block;width:auto">Mitarbeiterverwaltung</a>
+    <button id="btnLogout" class="ghost">Logout</button>
+  </div>
+</header>
+<main>
+  <section id="loginView" class="card">
+    <h2>Anmelden</h2>
+    <div class="row">
+      <div><label>Nutzername<input id="loginUser" autocomplete="username" value="admin"></label></div>
+      <div><label>Passwort<input id="loginPass" type="password" autocomplete="current-password" value="admin"></label></div>
+    </div>
+    <div class="row"><button id="btnLogin">Login</button></div>
+  </section>
+  <section id="appView" class="card hidden">
+    <h2>Start</h2>
+    <p>Du bist angemeldet.</p>
+    <div class="row">
+      <div><label>Projekt<select id="projectSelect"></select></label></div>
+      <div><label>Fotos Projekt<select id="photoProject"></select></label></div>
+    </div>
+  </section>
+</main>
+
+<script>
+if (location.protocol.startsWith('http')) { navigator.serviceWorker && navigator.serviceWorker.register('./sw.js'); }
+
+const DB_NAME='zeit-web-pwa', DB_VERSION=1;
+const STORE={ users:'users', projects:'projects', entries:'entries', photos:'photos' };
+
+function withDB(){return new Promise((resolve,reject)=>{const r=indexedDB.open(DB_NAME,DB_VERSION);
+ r.onupgradeneeded=()=>{const db=r.result;
+  if(!db.objectStoreNames.contains(STORE.users)) db.createObjectStore(STORE.users,{keyPath:'username'});
+  if(!db.objectStoreNames.contains(STORE.projects)) db.createObjectStore(STORE.projects,{keyPath:'id'});
+  if(!db.objectStoreNames.contains(STORE.entries)) db.createObjectStore(STORE.entries,{keyPath:'id'});
+  if(!db.objectStoreNames.contains(STORE.photos)) db.createObjectStore(STORE.photos,{keyPath:'id'});
+ };
+ r.onsuccess=()=>resolve(r.result); r.onerror=()=>reject(r.error); }); }
+
+async function put(store,val){const db=await withDB();return new Promise((res,rej)=>{const tx=db.transaction(store,'readwrite');tx.objectStore(store).put(val);tx.oncomplete=()=>res(val);tx.onerror=()=>rej(tx.error);});}
+async function get(store,key){const db=await withDB();return new Promise((res,rej)=>{const tx=db.transaction(store,'readonly');const q=tx.objectStore(store).get(key);q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error);});}
+async function getAll(store){const db=await withDB();return new Promise((res,rej)=>{const tx=db.transaction(store,'readonly');const q=tx.objectStore(store).getAll();q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error);});}
+
 let currentUser=null;
-async function getAll(store){return [];} // Platzhalter
-async function get(store,key){return null;}
-async function put(store,obj){return obj;}
 
 async function ensureFirstAdmin(){
   const users = await getAll(STORE.users);
-  if(!users || users.length===0){
-    await put(STORE.users,{username:'admin',password:'admin',role:'admin',display:'Administrator',active:true});
+  if (!users || users.length === 0) {
+    await put(STORE.users, {username:'admin', password:'admin', role:'admin', display:'Administrator', active:true});
   }
 }
 
+async function loadProjects(){
+  const sel=document.getElementById('projectSelect'); if(!sel) return; sel.innerHTML='';
+  const projs=await getAll(STORE.projects);
+  projs.filter(p=>!p.archived).forEach(p=>{ const o=document.createElement('option'); o.value=p.id; o.textContent=p.name; sel.appendChild(o); });
+}
+
+async function refreshPhotoProjects(){
+  const sel=document.getElementById('photoProject'); if(!sel) return; sel.innerHTML='';
+  const projs=await getAll(STORE.projects);
+  projs.filter(p=>!p.archived).forEach(p=>{ const o=document.createElement('option'); o.value=p.id; o.textContent=p.name; sel.appendChild(o); });
+}
+
 async function login(u,p){
-  const user = await get(STORE.users,u);
-  if(!user){alert('Nutzer nicht gefunden');return;}
-  if(user.active===false){alert('Nutzer ist deaktiviert');return;}
-  if(user.password!==p){alert('Passwort falsch');return;}
-  currentUser=user;
-  localStorage.setItem('cu',JSON.stringify(user));
+  const user=await get(STORE.users,u);
+  if(!user){ alert('Nutzer nicht gefunden'); return; }
+  if(user.active===false){ alert('Nutzer ist deaktiviert'); return; }
+  if(user.password!==p){ alert('Passwort falsch'); return; }
+  currentUser=user; localStorage.setItem('cu', JSON.stringify(user));
   document.getElementById('loginView').classList.add('hidden');
   document.getElementById('appView').classList.remove('hidden');
+  await loadProjects(); await refreshPhotoProjects();
 }
 
 window.addEventListener('DOMContentLoaded', async ()=>{
   await ensureFirstAdmin();
-  document.getElementById('btnLogin').onclick=async()=>{
-    const u=document.getElementById('loginUser').value.trim();
-    const p=document.getElementById('loginPass').value;
-    try{await login(u,p);}catch(e){alert('Login fehlgeschlagen');}
-  };
-  const photoSel=document.getElementById('photoProject');
-  if(photoSel){
-    photoSel.onchange=()=>{if(typeof refreshPhotoGrid==='function')refreshPhotoGrid();};
-  }
+  const cu=localStorage.getItem('cu');
+  if(cu){ currentUser=JSON.parse(cu); document.getElementById('loginView').classList.add('hidden'); document.getElementById('appView').classList.remove('hidden'); await loadProjects(); await refreshPhotoProjects(); }
+  document.getElementById('btnLogin').onclick=async()=>{ const u=document.getElementById('loginUser').value.trim(); const p=document.getElementById('loginPass').value; try{ await login(u,p); }catch(e){ alert('Login fehlgeschlagen'); } };
+  const photoSel=document.getElementById('photoProject'); if(photoSel){ photoSel.onchange=()=>{}; }
+  document.getElementById('btnLogout').onclick=()=>{ localStorage.removeItem('cu'); location.reload(); };
 });
 </script>
-</body>
-</html>
+</body></html>
