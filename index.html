@@ -11,15 +11,21 @@
   header{background:var(--primary);color:var(--primaryText);padding:10px 14px;display:flex;justify-content:space-between;align-items:center}
   .brand{display:flex;gap:10px;align-items:center}
   .brand img{height:34px;width:auto;object-fit:contain}
-  main{max-width:1100px;margin:0 auto;padding:16px}
+  main{max-width:1200px;margin:0 auto;padding:16px}
   .card{background:var(--card);border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,.06);padding:16px;margin:12px 0}
   label{display:block;font-size:14px;margin:8px 0 4px}
   input,select,button{width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;font:inherit}
+  input.inline,select.inline{padding:6px 8px}
   button{background:var(--button);color:#fff;cursor:pointer}
   button.ghost{background:#fff;color:var(--ink);border:1px solid #d1d5db}
+  button.secondary{background:#6b7280}
   .row{display:flex;gap:12px;flex-wrap:wrap}
   .row>*{flex:1 1 220px}
   .hidden{display:none}
+  table{width:100%;border-collapse:collapse}
+  th,td{padding:8px;border-bottom:1px solid #eee;font-size:14px;text-align:left}
+  th.right,td.right{text-align:right}
+  tfoot td{font-weight:600}
 </style>
 <script>
 async function applyBranding(){try{const r=await fetch('./config.json',{cache:'reload'});const c=await r.json();
@@ -50,17 +56,67 @@ async function applyBranding(){try{const r=await fetch('./config.json',{cache:'r
   <section id="loginView" class="card">
     <h2>Anmelden</h2>
     <div class="row">
-      <div><label>Nutzername<input id="loginUser" autocomplete="username" value="admin"></label></div>
-      <div><label>Passwort<input id="loginPass" type="password" autocomplete="current-password" value="admin"></label></div>
+      <div><label>Nutzername<input id="loginUser" autocomplete="username"></label></div>
+      <div><label>Passwort<input id="loginPass" type="password" autocomplete="current-password"></label></div>
     </div>
     <div class="row"><button id="btnLogin">Login</button></div>
+    <p class="muted">Hinweis: Beim ersten Start wird automatisch ein Admin (admin/admin) erzeugt.</p>
   </section>
-  <section id="appView" class="card hidden">
-    <h2>Start</h2>
-    <p>Du bist angemeldet.</p>
-    <div class="row">
-      <div><label>Projekt<select id="projectSelect"></select></label></div>
-      <div><label>Fotos Projekt<select id="photoProject"></select></label></div>
+
+  <section id="appView" class="hidden">
+    <div class="card">
+      <h2>Zeiteingabe</h2>
+      <div class="row">
+        <div><label>Projekt<select id="projectSelect"></select></label></div>
+        <div><label>Pausen (Minuten)<select id="breakMin"><option>0</option><option>15</option><option selected>30</option><option>45</option><option>60</option></select></label></div>
+        <div><label>Bemerkung<input id="noteInput" placeholder="z. B. Montage, Fahrtzeit"></label></div>
+      </div>
+      <div class="row">
+        <div style="flex:1 1 100%">
+          <div class="row" style="align-items:center">
+            <output id="startOut">06:45</output>
+            <input id="startRange" type="range" min="16" max="80" step="1" value="27">
+            <span>Start</span>
+          </div>
+          <div class="row" style="align-items:center">
+            <output id="endOut">16:30</output>
+            <input id="endRange" type="range" min="16" max="80" step="1" value="66">
+            <span>Ende</span>
+          </div>
+        </div>
+      </div>
+      <div class="row">
+        <div><label>Datum<input type="date" id="manualDate"></label></div>
+        <div><label>Arbeitszeit (HH:MM)<input id="workMinPreview" readonly></label></div>
+        <div style="align-self:end"><button id="btnAddEntry">Speichern</button></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="row" style="align-items:flex-end">
+        <h3 style="flex:1 1 200px">Übersicht Monat</h3>
+        <div><label>Monat<input type="month" id="monthPicker"></label></div>
+        <div><label>Nutzer<select id="userFilter"></select></label></div>
+      </div>
+      <table id="monthTable">
+        <thead><tr><th>Datum</th><th>Von</th><th>Bis</th><th>Projekt</th><th class="right">Kostenstelle</th><th class="right">Pausen</th><th class="right">Arbeitszeit</th><th class="right">Überstunden</th><th>Notiz</th><th>Aktion</th></tr></thead>
+        <tbody></tbody>
+        <tfoot><tr><td colspan="6" class="right">Summe</td><td class="right" id="sumWork">00:00</td><td class="right" id="sumOT">00:00</td><td></td><td></td></tr></tfoot>
+      </table>
+      <div class="row" style="margin-top:8px">
+        <button id="btnExportCSV" class="ghost">CSV‑Export</button>
+        <button id="btnExportPDF" class="ghost">PDF‑Export</button>
+      </div>
+    </div>
+
+    <div class="card" id="adminPanel">
+      <h3>Projekte (Admin)</h3>
+      <div class="row">
+        <div><label>Name<input id="newProjectName"></label></div>
+        <div><label>Kostenstelle<input id="newProjectCost"></label></div>
+        <div style="align-self:end"><button id="btnAddProject">Hinzufügen</button></div>
+      </div>
+      <div id="projectList" style="margin-top:10px"></div>
     </div>
   </section>
 </main>
@@ -69,22 +125,28 @@ async function applyBranding(){try{const r=await fetch('./config.json',{cache:'r
 if (location.protocol.startsWith('http')) { navigator.serviceWorker && navigator.serviceWorker.register('./sw.js'); }
 
 const DB_NAME='zeit-web-pwa', DB_VERSION=1;
-const STORE={ users:'users', projects:'projects', entries:'entries', photos:'photos' };
+const STORE={ users:'users', projects:'projects', entries:'entries' };
 
 function withDB(){return new Promise((resolve,reject)=>{const r=indexedDB.open(DB_NAME,DB_VERSION);
  r.onupgradeneeded=()=>{const db=r.result;
   if(!db.objectStoreNames.contains(STORE.users)) db.createObjectStore(STORE.users,{keyPath:'username'});
   if(!db.objectStoreNames.contains(STORE.projects)) db.createObjectStore(STORE.projects,{keyPath:'id'});
   if(!db.objectStoreNames.contains(STORE.entries)) db.createObjectStore(STORE.entries,{keyPath:'id'});
-  if(!db.objectStoreNames.contains(STORE.photos)) db.createObjectStore(STORE.photos,{keyPath:'id'});
  };
  r.onsuccess=()=>resolve(r.result); r.onerror=()=>reject(r.error); }); }
 
 async function put(store,val){const db=await withDB();return new Promise((res,rej)=>{const tx=db.transaction(store,'readwrite');tx.objectStore(store).put(val);tx.oncomplete=()=>res(val);tx.onerror=()=>rej(tx.error);});}
 async function get(store,key){const db=await withDB();return new Promise((res,rej)=>{const tx=db.transaction(store,'readonly');const q=tx.objectStore(store).get(key);q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error);});}
 async function getAll(store){const db=await withDB();return new Promise((res,rej)=>{const tx=db.transaction(store,'readonly');const q=tx.objectStore(store).getAll();q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error);});}
+async function delRec(store,key){const db=await withDB();return new Promise((res,rej)=>{const tx=db.transaction(store,'readwrite');tx.objectStore(store).delete(key);tx.oncomplete=()=>res(true);tx.onerror=()=>rej(tx.error);});}
 
 let currentUser=null;
+function uuid(){return'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0,v=c==='x'?r:(r&0x3|0x8);return v.toString(16)})}
+function todayISO(){ const d=new Date(); d.setHours(0,0,0,0); return d.toISOString().slice(0,10); }
+function currentMonth(){ const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; }
+function ixToTime(ix){ const m=ix*15, h=String(Math.floor(m/60)).padStart(2,'0'), mm=m%60; return `${h}:${mm}`; }
+function minToHHMM(m){ const h=Math.floor(m/60), mm=m%60; return `${String(h).padStart(2,'0')}:${String(mm).padStart(2,'0')}`; }
+function durationMin(a,b){ return Math.max(0, Math.round((new Date(b)-new Date(a))/60000)); }
 
 async function ensureFirstAdmin(){
   const users = await getAll(STORE.users);
@@ -93,17 +155,7 @@ async function ensureFirstAdmin(){
   }
 }
 
-async function loadProjects(){
-  const sel=document.getElementById('projectSelect'); if(!sel) return; sel.innerHTML='';
-  const projs=await getAll(STORE.projects);
-  projs.filter(p=>!p.archived).forEach(p=>{ const o=document.createElement('option'); o.value=p.id; o.textContent=p.name; sel.appendChild(o); });
-}
-
-async function refreshPhotoProjects(){
-  const sel=document.getElementById('photoProject'); if(!sel) return; sel.innerHTML='';
-  const projs=await getAll(STORE.projects);
-  projs.filter(p=>!p.archived).forEach(p=>{ const o=document.createElement('option'); o.value=p.id; o.textContent=p.name; sel.appendChild(o); });
-}
+function renderUserBadge(){ const u=JSON.parse(localStorage.getItem('cu')||'null'); }
 
 async function login(u,p){
   const user=await get(STORE.users,u);
@@ -113,16 +165,149 @@ async function login(u,p){
   currentUser=user; localStorage.setItem('cu', JSON.stringify(user));
   document.getElementById('loginView').classList.add('hidden');
   document.getElementById('appView').classList.remove('hidden');
-  await loadProjects(); await refreshPhotoProjects();
+  document.getElementById('manualDate').value=todayISO();
+  document.getElementById('monthPicker').value=currentMonth();
+  document.getElementById('adminPanel').style.display = (user.role==='admin') ? 'block' : 'none';
+  await loadProjects(); await loadUsersToFilter(); setupRanges(); await refreshMonth();
+}
+
+async function loadProjects(){
+  const sel=document.getElementById('projectSelect'); sel.innerHTML='';
+  const projs=await getAll(STORE.projects);
+  projs.filter(p=>!p.archived).forEach(p=>{ const o=document.createElement('option'); o.value=p.id; o.textContent=p.costCenter?`${p.name} (${p.costCenter})`:p.name; sel.appendChild(o); });
+  renderProjectList(projs);
+}
+
+function renderProjectList(projs){
+  const list=document.getElementById('projectList'); list.innerHTML='';
+  projs.forEach(p=>{
+    const row=document.createElement('div'); row.className='row '+(p.archived?'archived':'');
+    const name=document.createElement('input'); name.value=p.name; name.placeholder='Name';
+    const cost=document.createElement('input'); cost.value=p.costCenter||''; cost.placeholder='Kostenstelle';
+    const actions=document.createElement('div'); actions.style.display='flex'; actions.style.gap='8px';
+    const save=document.createElement('button'); save.textContent='Speichern'; save.onclick=async()=>{
+      await put(STORE.projects,{id:p.id,name:name.value.trim(),costCenter:(cost.value.trim()||null),archived:!!p.archived}); await loadProjects(); await refreshMonth();
+    };
+    const arch=document.createElement('button'); arch.className='secondary'; arch.textContent=p.archived?'Wiederherstellen':'Archivieren'; arch.onclick=async()=>{
+      await put(STORE.projects,{...p,name:name.value.trim()||p.name,costCenter:(cost.value.trim()||p.costCenter||null),archived:!p.archived}); await loadProjects(); await refreshMonth();
+    };
+    const delB=document.createElement('button'); delB.className='ghost'; delB.textContent='Löschen'; delB.onclick=async()=>{ if(!confirm('Projekt wirklich löschen?')) return; await delRec(STORE.projects,p.id); await loadProjects(); await refreshMonth(); };
+    actions.appendChild(save); actions.appendChild(arch); actions.appendChild(delB);
+    row.appendChild(name); row.appendChild(cost); row.appendChild(actions);
+    list.appendChild(row);
+  });
+}
+
+function ixToDateISO(dateISO,ix){ const [y,mo,d]=dateISO.split('-').map(v=>parseInt(v,10)); const m=ix*15, h=Math.floor(m/60), mm=m%60; return new Date(y,mo-1,d,h,mm,0).toISOString(); }
+function setupRanges(){
+  const s=document.getElementById('startRange'), e=document.getElementById('endRange');
+  const so=document.getElementById('startOut'), eo=document.getElementById('endOut'), b=document.getElementById('breakMin'), w=document.getElementById('workMinPreview');
+  const recalc=()=>{ if(+e.value<+s.value) e.value=s.value; so.textContent=ixToTime(+s.value); eo.textContent=ixToTime(+e.value);
+    const mins=(+e.value-+s.value)*15 - parseInt(b.value||'0',10); const ot=Math.max(0, mins-540); w.value=`${minToHHMM(Math.max(0,mins))} (Ü: ${minToHHMM(ot)})`; };
+  [s,e,b].forEach(x=>{x.oninput=recalc; x.onchange=recalc;}); recalc();
+}
+
+async function addEntryManual(){
+  const dateISO=document.getElementById('manualDate').value||todayISO();
+  const sIx=+document.getElementById('startRange').value, eIx=+document.getElementById('endRange').value;
+  const breakMin=+document.getElementById('breakMin').value||0; const projectId=document.getElementById('projectSelect').value; const note=document.getElementById('noteInput').value||'';
+  if(!projectId) return alert('Bitte Projekt wählen'); if(eIx<sIx) return alert('Ende darf nicht vor Start liegen');
+  const entry={id:uuid(),user:currentUser.username,date:dateISO,projectId,note,start:ixToDateISO(dateISO,sIx),end:ixToDateISO(dateISO,eIx),breaksMin:breakMin};
+  await put(STORE.entries, entry); await refreshMonth();
+}
+
+function fmt(dt){ if(!dt) return ''; const d=new Date(dt); return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); }
+
+async function loadUsersToFilter(){
+  const sel=document.getElementById('userFilter'); sel.innerHTML='';
+  const users=(await getAll(STORE.users)).filter(u=>u.active!==false);
+  const isAdmin=(currentUser && currentUser.role==='admin'); const list=isAdmin?users:users.filter(u=>u.username===currentUser.username);
+  list.forEach(u=>{ const o=document.createElement('option'); o.value=u.username; o.textContent=u.display||u.username; if(currentUser && u.username===currentUser.username) o.selected=true; sel.appendChild(o); });
+  sel.disabled=!isAdmin;
+}
+
+async function refreshMonth(){
+  const monthVal=document.getElementById('monthPicker').value||currentMonth();
+  const userVal=document.getElementById('userFilter').value||(currentUser&&currentUser.username);
+  const tbody=document.querySelector('#monthTable tbody'); const sumWorkTd=document.getElementById('sumWork'); const sumOtTd=document.getElementById('sumOT');
+  const entries=(await getAll(STORE.entries)).filter(e=>e.user===userVal && (e.date||'').startsWith(monthVal));
+  const projs=await getAll(STORE.projects); const pm=Object.fromEntries(projs.map(p=>[p.id,p]));
+  entries.sort((a,b)=>(a.date||'').localeCompare(b.date||'') || (a.start||'').localeCompare(b.start||''));
+  tbody.innerHTML=''; let sumWork=0, sumOT=0;
+  for(const e of entries){
+    const work=Math.max(0, durationMin(e.start,e.end)-(e.breaksMin||0)); const ot=Math.max(0, work-540); sumWork+=work; sumOT+=ot;
+    const tr=document.createElement('tr');
+    const tdDate=document.createElement('td'); tdDate.textContent=e.date;
+    const tdFrom=document.createElement('td'); const inFrom=document.createElement('input'); inFrom.className='inline'; inFrom.type='time'; inFrom.step=900; const dFrom=new Date(e.start); inFrom.value=`${String(dFrom.getHours()).padStart(2,'0')}:${String(dFrom.getMinutes()).padStart(2,'0')}`; tdFrom.appendChild(inFrom);
+    const tdTo=document.createElement('td'); const inTo=document.createElement('input'); inTo.className='inline'; inTo.type='time'; inTo.step=900; const dTo=new Date(e.end); inTo.value=`${String(dTo.getHours()).padStart(2,'0')}:${String(dTo.getMinutes()).padStart(2,'0')}`; tdTo.appendChild(inTo);
+    const tdProj=document.createElement('td'); const selProj=document.createElement('select'); selProj.className='inline';
+    for(const p of projs.filter(p=>!p.archived || p.id===e.projectId)){ const o=document.createElement('option'); o.value=p.id; o.textContent=p.name; if(p.id===e.projectId) o.selected=true; selProj.appendChild(o); } tdProj.appendChild(selProj);
+    const tdCost=document.createElement('td'); tdCost.className='right'; tdCost.textContent=(pm[e.projectId] && pm[e.projectId].costCenter)||'';
+    const tdBreak=document.createElement('td'); tdBreak.className='right'; const selBreak=document.createElement('select'); selBreak.className='inline'; [0,15,30,45,60].forEach(v=>{ const o=document.createElement('option'); o.value=String(v); o.textContent=String(v); if((e.breaksMin||0)===v) o.selected=true; selBreak.appendChild(o); }); tdBreak.appendChild(selBreak);
+    const tdWork=document.createElement('td'); tdWork.className='right'; tdWork.textContent=minToHHMM(work);
+    const tdOT=document.createElement('td'); tdOT.className='right'; tdOT.textContent=minToHHMM(ot);
+    const tdNote=document.createElement('td'); const inNote=document.createElement('input'); inNote.className='inline'; inNote.value=e.note||''; tdNote.appendChild(inNote);
+    const tdAct=document.createElement('td'); const btn=document.createElement('button'); btn.textContent='Speichern'; btn.onclick=async()=>{
+      const [fh,fm]=inFrom.value.split(':').map(x=>parseInt(x,10)); const [th,tm]=inTo.value.split(':').map(x=>parseInt(x,10));
+      const startISO=new Date(`${e.date}T${String(fh).padStart(2,'0')}:${String(fm).padStart(2,'0')}:00`).toISOString();
+      const endISO=new Date(`${e.date}T${String(th).padStart(2,'0')}:${String(tm).padStart(2,'0')}:00`).toISOString();
+      const upd={...e,start:startISO,end:endISO,breaksMin:parseInt(selBreak.value||'0',10),projectId:selProj.value,note:inNote.value};
+      await put(STORE.entries,upd); await refreshMonth();
+    }; tdAct.appendChild(btn);
+    tr.appendChild(tdDate); tr.appendChild(tdFrom); tr.appendChild(tdTo); tr.appendChild(tdProj); tr.appendChild(tdCost); tr.appendChild(tdBreak); tr.appendChild(tdWork); tr.appendChild(tdOT); tr.appendChild(tdNote); tr.appendChild(tdAct);
+    tbody.appendChild(tr);
+  }
+  sumWorkTd.textContent=minToHHMM(sumWork); sumOtTd.textContent=minToHHMM(sumOT);
+}
+
+function csvExport(rows){
+  return rows.map(r=>r.map(x=>'"'+String(x).replaceAll('"','""')+'"').join(',')).join('\n');
+}
+
+async function exportCSV(){
+  const monthVal=document.getElementById('monthPicker').value||currentMonth();
+  const userVal=document.getElementById('userFilter').value||(currentUser&&currentUser.username);
+  const rows=[[ 'Datum','Mitarbeiter','Von','Bis','Projekt','Kostenstelle','Pausen (min)','Arbeitszeit','Überstunden','Notiz' ]];
+  const entries=(await getAll(STORE.entries)).filter(e=>e.user===userVal&&(e.date||'').startsWith(monthVal));
+  const projs=await getAll(STORE.projects); const pm=Object.fromEntries(projs.map(p=>[p.id,p]));
+  let sumW=0,sumO=0; entries.sort((a,b)=>(a.date||'').localeCompare(b.date||'')||(a.start||'').localeCompare(b.start||''));
+  for(const e of entries){ const w=Math.max(0,durationMin(e.start,e.end)-(e.breaksMin||0)), o=Math.max(0,w-540); sumW+=w; sumO+=o; const p=pm[e.projectId]||{};
+    rows.push([e.date,userVal,fmt(e.start),fmt(e.end),p.name||'',p.costCenter||'',(e.breaksMin||0),minToHHMM(w),minToHHMM(o),e.note||'']); }
+  rows.push([]); rows.push(['','','','','SUMME','','',minToHHMM(sumW),minToHHMM(sumO),'']);
+  const blob=new Blob([csvExport(rows)],{type:'text/csv'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`monat_${monthVal}_${userVal}.csv`; a.click(); URL.revokeObjectURL(a.href);
+}
+
+async function exportPDF(){
+  const monthVal=document.getElementById('monthPicker').value||currentMonth();
+  const userVal=document.getElementById('userFilter').value||(currentUser&&currentUser.username);
+  const entries=(await getAll(STORE.entries)).filter(e=>e.user===userVal&&(e.date||'').startsWith(monthVal));
+  const projs=await getAll(STORE.projects); const pm=Object.fromEntries(projs.map(p=>[p.id,p]));
+  entries.sort((a,b)=>(a.date||'').localeCompare(b.date||'')||(a.start||'').localeCompare(b.start||''));
+  let sumW=0,sumO=0, rows='';
+  const fmtT=(dt)=>{const d=new Date(dt); return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})};
+  for(const e of entries){ const w=Math.max(0,durationMin(e.start,e.end)-(e.breaksMin||0)), o=Math.max(0,w-540); sumW+=w; sumO+=o; const p=pm[e.projectId]||{};
+    rows+=`<tr><td>${e.date}</td><td>${fmtT(e.start)}</td><td>${fmtT(e.end)}</td><td>${p.name||''}</td><td class="r">${p.costCenter||''}</td><td class="r">${e.breaksMin||0}</td><td class="r">${minToHHMM(w)}</td><td class="r">${minToHHMM(o)}</td><td>${e.note||''}</td></tr>`; }
+  const html=`<!doctype html><html><head><meta charset="utf-8"><title>Monatsübersicht ${monthVal} – ${userVal}</title>
+  <style>body{font-family:Arial,sans-serif;margin:24px} table{width:100%;border-collapse:collapse;font-size:12px} th,td{border:1px solid #ddd;padding:6px} th{background:#f3f4f6} .r{text-align:right} tfoot td{font-weight:bold} @media print{@page{size:A4 portrait;margin:12mm}}</style>
+  </head><body><h1 style="font-size:18px;margin:0 0 8px">Monatsübersicht ${monthVal} – ${userVal}</h1>
+  <table><thead><tr><th>Datum</th><th>Von</th><th>Bis</th><th>Projekt</th><th>Kostenstelle</th><th>Pausen (min)</th><th>Arbeitszeit</th><th>Überstunden</th><th>Notiz</th></tr></thead>
+  <tbody>${rows}</tbody><tfoot><tr><td colspan="6" class="r">Summe</td><td class="r">${minToHHMM(sumW)}</td><td class="r">${minToHHMM(sumO)}</td><td></td></tr></tfoot></table>
+  <script>window.print()<\/script></body></html>`;
+  const w=window.open('', '_blank'); w.document.write(html); w.document.close();
 }
 
 window.addEventListener('DOMContentLoaded', async ()=>{
   await ensureFirstAdmin();
   const cu=localStorage.getItem('cu');
-  if(cu){ currentUser=JSON.parse(cu); document.getElementById('loginView').classList.add('hidden'); document.getElementById('appView').classList.remove('hidden'); await loadProjects(); await refreshPhotoProjects(); }
+  if(cu){ currentUser=JSON.parse(cu); document.getElementById('loginView').classList.add('hidden'); document.getElementById('appView').classList.remove('hidden'); document.getElementById('manualDate').value=todayISO(); document.getElementById('monthPicker').value=currentMonth(); document.getElementById('adminPanel').style.display = (currentUser.role==='admin') ? 'block' : 'none'; await loadProjects(); await loadUsersToFilter(); setupRanges(); await refreshMonth(); }
   document.getElementById('btnLogin').onclick=async()=>{ const u=document.getElementById('loginUser').value.trim(); const p=document.getElementById('loginPass').value; try{ await login(u,p); }catch(e){ alert('Login fehlgeschlagen'); } };
-  const photoSel=document.getElementById('photoProject'); if(photoSel){ photoSel.onchange=()=>{}; }
   document.getElementById('btnLogout').onclick=()=>{ localStorage.removeItem('cu'); location.reload(); };
+  document.getElementById('btnAddEntry').onclick=addEntryManual;
+  document.getElementById('monthPicker').onchange=refreshMonth;
+  document.getElementById('userFilter').onchange=refreshMonth;
+  document.getElementById('btnExportCSV').onclick=exportCSV;
+  document.getElementById('btnExportPDF').onclick=exportPDF;
+  document.getElementById('btnAddProject').onclick=async()=>{ const name=(document.getElementById('newProjectName').value||'').trim(); const cost=(document.getElementById('newProjectCost').value||'').trim(); if(!name) return alert('Bitte Projektname angeben'); await put(STORE.projects,{id:uuid(),name,costCenter:(cost||null),archived:false}); document.getElementById('newProjectName').value=''; document.getElementById('newProjectCost').value=''; await loadProjects(); await refreshMonth(); };
 });
 </script>
 </body></html>
