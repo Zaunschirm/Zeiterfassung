@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Login • Zeiterfassung V32</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header><strong>Login</strong></header>
+  <main>
+    <div class="card">
+      <div class="row">
+        <input id="email" placeholder="E-Mail" value="admin@demo.local">
+        <input id="password" type="password" placeholder="Passwort" value="admin123">
+        <button id="btnLogin">Einloggen</button>
+      </div>
+      <p class="muted">Demo: admin@demo.local / admin123 • lead@demo.local / lead123 • user@demo.local / user123</p>
+      <p><a href="/dashboard.html">Zum Dashboard</a> (erfordert Login)</p>
+    </div>
+    <div class="card notice">
+      <p>iPhone/Chrome: Cookies sind <em>SameSite=None; Secure</em> in Produktion. Nutze HTTPS im Live-Betrieb.</p>
+    </div>
+  </main>
+  <script>
+    document.getElementById('btnLogin').onclick = async () => {
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+      const r = await fetch('/api/auth/login', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({email,password})});
+      const j = await r.json();
+      if (j.ok) location.href = '/dashboard.html';
+      else alert('Login fehlgeschlagen');
+    };
+  </script>
+</body>
+</html>
