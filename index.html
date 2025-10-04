@@ -58,6 +58,7 @@
 <!-- V35-FIX -->
 <!-- V36-FIX -->
 <!-- V36.1-FIX -->
+<!-- V37-FIX -->
 <body onload="applyBranding()">
 <header>
   <div class="brand">
@@ -186,7 +187,7 @@
   });
 })();
 
-if (location.protocol.startsWith('http')) { navigator.serviceWorker && navigator.serviceWorker.register('/Zeiterfassung/sw.js', {scope: '/Zeiterfassung/'}); }
+if (location.protocol.startsWith('http')) { navigator.serviceWorker && navigator.serviceWorker.register('/Zeiterfassung/sw.js', {scope:'/Zeiterfassung/'}); }
 
 const DB_NAME='zeit-web-pwa', DB_VERSION=9; // bump
 const STORE={ users:'users', projects:'projects', entries:'entries', photos:'photos' };
@@ -556,7 +557,7 @@ async function exportPDF(){
   }
   const html='<!doctype html><html><head><meta charset="utf-8"><title>Monatsübersicht '+monthVal+' – '+userVal+'</title><style>body{font-family:Arial,sans-serif;margin:24px} table{width:100%;border-collapse:collapse;font-size:12px} th,td{border:1px solid #ddd;padding:6px} th{background:#f3f4f6} .r{text-align:right} tfoot td{font-weight:bold} @media print{@page{size:A4 portrait;margin:12mm}}</style></head><!-- V34-HOTFIX -->
 <!-- V35-FIX -->
-<body><h1 style="font-size:18px;margin:0 0 8px">Monatsübersicht '+monthVal+' – '+userVal+'</h1><table><thead><tr><th>Datum</th><th>Status</th><th>Von</th><th>Bis</th><th>Projekt</th><th>Kostenstelle</th><th>Pausen (min)</th><th>Arbeitszeit</th><th>Überstunden</th><th>Notiz</th></tr></thead><tbody>'+rows+'</tbody><tfoot><tr><td colspan="7" class="r">Summe</td><td class="r">'+minToHHMM(sumW)+'</td><td class="r">'+minToHHMM(sumO)+'</td><td></td></tr></tfoot></table><script>window.print()<\/script>
+<body onload="window.print()"><h1 style="font-size:18px;margin:0 0 8px">Monatsübersicht '+monthVal+' – '+userVal+'</h1><table><thead><tr><th>Datum</th><th>Status</th><th>Von</th><th>Bis</th><th>Projekt</th><th>Kostenstelle</th><th>Pausen (min)</th><th>Arbeitszeit</th><th>Überstunden</th><th>Notiz</th></tr></thead><tbody>'+rows+'</tbody><tfoot><tr><td colspan="7" class="r">Summe</td><td class="r">'+minToHHMM(sumW)+'</td><td class="r">'+minToHHMM(sumO)+'</td><td></td></tr></tfoot></table>
 </body></html>';
   const w=window.open('','_blank'); w.document.write(html); w.document.close();
 }
