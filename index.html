@@ -1,4 +1,3 @@
-
 <!doctype html>
 <html lang="de">
 <head>
@@ -70,6 +69,18 @@
       <div><label>Passwort<input id="loginPass" type="password" autocomplete="current-password"></label></div>
     </div>
     <div class="row"><button id="btnLogin">Login</button></div>
+  </section>
+
+  <section id="forcePwView" class="card hidden">
+    <h2>Passwort ändern</h2>
+    <p>Bitte setze ein neues Passwort, bevor du die App verwendest.</p>
+    <div class="row">
+      <div><label>Neues Passwort<input id="pwNew" type="password"></label></div>
+      <div><label>Wiederholen<input id="pwNew2" type="password"></label></div>
+    </div>
+    <div class="row">
+      <button id="btnSetPw">Passwort speichern</button>
+    </div>
   </section>
 
   <section id="appView" class="hidden">
@@ -149,7 +160,7 @@
 
 if (location.protocol.startsWith('http')) { navigator.serviceWorker && navigator.serviceWorker.register('./sw.js'); }
 
-const DB_NAME='zeit-web-pwa', DB_VERSION=2;
+const DB_NAME='zeit-web-pwa', DB_VERSION=3;
 const STORE={ users:'users', projects:'projects', entries:'entries', photos:'photos' };
 function withDB(){return new Promise((resolve,reject)=>{const r=indexedDB.open(DB_NAME,DB_VERSION);
   r.onupgradeneeded=()=>{const db=r.result;
@@ -179,10 +190,16 @@ async function ensureAdminExists(){
   const users = await getAll(STORE.users);
   const hasAdmin = users && users.some(u => (u.role==='admin') && (u.active!==false));
   if (!hasAdmin) {
-    await put(STORE.users, {username:'admin', password:'admin', role:'admin', display:'Administrator', active:true});
+    await put(STORE.users, {username:'admin', password:'admin', role:'admin', display:'Administrator', active:true, mustChange:false});
   }
 }
 
+function showSection(id){
+  document.getElementById('loginView').classList.add('hidden');
+  document.getElementById('forcePwView').classList.add('hidden');
+  document.getElementById('appView').classList.add('hidden');
+  document.getElementById(id).classList.remove('hidden');
+}
 
 async function login(u,p){
   await ensureAdminExists();
@@ -190,13 +207,28 @@ async function login(u,p){
   if(!user){ alert('Nutzer nicht gefunden'); return; }
   if(user.active===false){ alert('Nutzer ist deaktiviert'); return; }
   if(user.password!==p){ alert('Passwort falsch'); return; }
+  if(user.mustChange===true){
+    currentUser=user; localStorage.setItem('cu_pending', JSON.stringify(user)); showSection('forcePwView'); return;
+  }
   currentUser=user; localStorage.setItem('cu', JSON.stringify(user));
-  document.getElementById('loginView').classList.add('hidden');
-  document.getElementById('appView').classList.remove('hidden');
+  showSection('appView');
   document.getElementById('manualDate').value=todayISO();
   document.getElementById('monthPicker').value=currentMonth();
   document.getElementById('adminPanel').style.display = (user.role==='admin') ? 'block' : 'none';
   await loadProjects(); await loadUsersToFilter(); setupRanges(); await refreshMonth(); await refreshPhotoGallery();
+}
+
+async function finishPasswordChange(){
+  const np=document.getElementById('pwNew').value;
+  const np2=document.getElementById('pwNew2').value;
+  if(np.length<6){ alert('Das Passwort muss mindestens 6 Zeichen haben.'); return; }
+  if(np!==np2){ alert('Passwörter stimmen nicht überein.'); return; }
+  const pending = JSON.parse(localStorage.getItem('cu_pending')||'null');
+  if(!pending){ alert('Kein Nutzer geladen.'); return; }
+  const upd = Object.assign({}, pending, {password:np, mustChange:false});
+  await put(STORE.users, upd);
+  localStorage.removeItem('cu_pending');
+  await login(upd.username, np);
 }
 
 async function loadProjects(){
@@ -205,7 +237,6 @@ async function loadProjects(){
   projs.filter(p=>!p.archived).forEach(p=>{ const o=document.createElement('option'); o.value=p.id; o.textContent=p.costCenter?(p.name+' ('+p.costCenter+')'):p.name; sel.appendChild(o); });
   renderProjectList(projs);
 }
-
 function renderProjectList(projs){
   const list=document.getElementById('projectList'); list.innerHTML='';
   projs.forEach(p=>{
@@ -355,9 +386,19 @@ async function refreshPhotoGallery(){
 window.addEventListener('DOMContentLoaded', async ()=>{
   await ensureAdminExists();
   const cu=localStorage.getItem('cu');
-  if(cu){ currentUser=JSON.parse(cu); document.getElementById('loginView').classList.add('hidden'); document.getElementById('appView').classList.remove('hidden'); document.getElementById('manualDate').value=todayISO(); document.getElementById('monthPicker').value=currentMonth(); document.getElementById('adminPanel').style.display = (currentUser.role==='admin') ? 'block' : 'none'; await loadProjects(); await loadUsersToFilter(); setupRanges(); await refreshMonth(); await refreshPhotoGallery(); }
+  const pend=localStorage.getItem('cu_pending');
+  if(pend){ showSection('forcePwView'); }
+  else if(cu){
+    currentUser=JSON.parse(cu);
+    showSection('appView');
+    document.getElementById('manualDate').value=todayISO();
+    document.getElementById('monthPicker').value=currentMonth();
+    document.getElementById('adminPanel').style.display = (currentUser.role==='admin') ? 'block' : 'none';
+    await loadProjects(); await loadUsersToFilter(); setupRanges(); await refreshMonth(); await refreshPhotoGallery();
+  }
+
   document.getElementById('btnLogin').onclick=async()=>{ const u=document.getElementById('loginUser').value.trim(); const p=document.getElementById('loginPass').value; try{ await login(u,p); }catch(e){ alert('Login fehlgeschlagen'); } };
-  document.getElementById('btnLogout').onclick=()=>{ localStorage.removeItem('cu'); location.reload(); };
+  document.getElementById('btnLogout').onclick=()=>{ localStorage.removeItem('cu'); localStorage.removeItem('cu_pending'); location.reload(); };
   document.getElementById('btnAddEntry').onclick=addEntryManual;
   document.getElementById('monthPicker').onchange=refreshMonth;
   document.getElementById('userFilter').onchange=refreshMonth;
@@ -366,6 +407,8 @@ window.addEventListener('DOMContentLoaded', async ()=>{
   document.getElementById('btnAddProject').onclick=async()=>{ const name=(document.getElementById('newProjectName').value||'').trim(); const cost=(document.getElementById('newProjectCost').value||'').trim(); if(!name) return alert('Bitte Projektname angeben'); await put(STORE.projects,{id:uuid(),name:name,costCenter:(cost||null),archived:false}); document.getElementById('newProjectName').value=''; document.getElementById('newProjectCost').value=''; await loadProjects(); await refreshMonth(); };
   document.getElementById('btnAddPhotos').onclick=addPhotosToProject;
   document.getElementById('projectSelect').onchange=refreshPhotoGallery;
+
+  document.getElementById('btnSetPw').onclick=finishPasswordChange;
 });
 
 // exports

@@ -1,4 +1,3 @@
-
 <!doctype html>
 <html lang="de">
 <head>
@@ -57,7 +56,7 @@
 <script>
 if (location.protocol.startsWith('http')) { navigator.serviceWorker && navigator.serviceWorker.register('../sw.js'); }
 
-const DB_NAME='zeit-web-pwa', DB_VERSION=2; const STORE={ users:'users', projects:'projects', entries:'entries', photos:'photos' };
+const DB_NAME='zeit-web-pwa', DB_VERSION=3; const STORE={ users:'users', projects:'projects', entries:'entries', photos:'photos' };
 function withDB(){return new Promise((resolve,reject)=>{const r=indexedDB.open(DB_NAME,DB_VERSION);
   r.onupgradeneeded=()=>{const db=r.result; if(!db.objectStoreNames.contains(STORE.users)) db.createObjectStore(STORE.users,{keyPath:'username'}); if(!db.objectStoreNames.contains(STORE.projects)) db.createObjectStore(STORE.projects,{keyPath:'id'}); if(!db.objectStoreNames.contains(STORE.entries)) db.createObjectStore(STORE.entries,{keyPath:'id'}); if(!db.objectStoreNames.contains(STORE.photos)) db.createObjectStore(STORE.photos,{keyPath:'id'});};
   r.onsuccess=()=>resolve(r.result); r.onerror=()=>reject(r.error); });
@@ -67,15 +66,13 @@ async function get(store,key){const db=await withDB();return new Promise((res,re
 async function getAll(store){const db=await withDB();return new Promise((res,rej)=>{const tx=db.transaction(store,'readonly');const q=tx.objectStore(store).getAll();q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error);});}
 async function delRec(store,key){const db=await withDB();return new Promise((res,rej)=>{const tx=db.transaction(store,'readwrite');tx.objectStore(store).delete(key);tx.oncomplete=()=>res(true);tx.onerror=()=>rej(tx.error);});}
 
-
 async function ensureAdminExists(){
   const users = await getAll(STORE.users);
   const hasAdmin = users && users.some(u => (u.role==='admin') && (u.active!==false));
   if (!hasAdmin) {
-    await put(STORE.users, {username:'admin', password:'admin', role:'admin', display:'Administrator', active:true});
+    await put(STORE.users, {username:'admin', password:'admin', role:'admin', display:'Administrator', active:true, mustChange:false});
   }
 }
-
 
 function me(){ try{return JSON.parse(localStorage.getItem('cu')||'null');}catch(e){return null;} }
 function showGuard(show){ document.getElementById('guard').style.display = show?'block':'none'; document.getElementById('createBox').style.display = show?'none':'block'; document.getElementById('listBox').style.display = show?'none':'block'; }
@@ -92,10 +89,11 @@ async function renderUsers(){
     const tdS=document.createElement('td'); const s=document.createElement('span'); s.textContent=(u.active===false?'Inaktiv':'Aktiv'); tdS.appendChild(s);
     const tdA=document.createElement('td');
     const bSave=document.createElement('button'); bSave.textContent='Speichern'; bSave.onclick=async()=>{ await put(STORE.users,Object.assign({},u,{ display:inD.value.trim(), role:selR.value })); await renderUsers(); };
-    const bPwd=document.createElement('button'); bPwd.className='ghost'; bPwd.textContent='Passwort'; bPwd.onclick=async()=>{ const np=prompt('Neues Passwort für '+u.username+':'); if(!np) return; await put(STORE.users,Object.assign({},u,{password:np})); alert('Passwort aktualisiert'); };
+    const bPwd=document.createElement('button'); bPwd.className='ghost'; bPwd.textContent='Passwort'; bPwd.onclick=async()=>{ const np=prompt('Neues Passwort für '+u.username+':'); if(!np) return; await put(STORE.users,Object.assign({},u,{password:np, mustChange:true})); alert('Passwort gesetzt. Nutzer muss es beim nächsten Login ändern.'); };
+    const bForce=document.createElement('button'); bForce.className='ghost'; bForce.textContent='Reset erzwingen'; bForce.onclick=async()=>{ await put(STORE.users,Object.assign({},u,{ mustChange:true })); alert('Beim nächsten Login muss ein neues Passwort gesetzt werden.'); };
     const bToggle=document.createElement('button'); bToggle.className='ghost'; bToggle.textContent=(u.active===false?'Aktivieren':'Deaktivieren'); bToggle.onclick=async()=>{ if(u.role==='admin' && u.active!==false && adminCount<=1){ alert('Letzter aktiver Admin – kann nicht deaktiviert werden.'); return; } await put(STORE.users,Object.assign({},u,{ active: !(u.active===false) })); await renderUsers(); };
     const bDel=document.createElement('button'); bDel.className='ghost'; bDel.textContent='Löschen'; bDel.onclick=async()=>{ if(u.role==='admin' && u.active!==false && adminCount<=1){ alert('Letzter aktiver Admin – kann nicht gelöscht werden.'); return; } if(!confirm('Nutzer löschen?')) return; await delRec(STORE.users,u.username); await renderUsers(); };
-    tdA.appendChild(bSave); tdA.appendChild(bPwd); tdA.appendChild(bToggle); tdA.appendChild(bDel);
+    tdA.appendChild(bSave); tdA.appendChild(bPwd); tdA.appendChild(bForce); tdA.appendChild(bToggle); tdA.appendChild(bDel);
     tr.appendChild(tdU); tr.appendChild(tdD); tr.appendChild(tdR); tr.appendChild(tdS); tr.appendChild(tdA);
     tbody.appendChild(tr);
   }
@@ -111,7 +109,7 @@ window.addEventListener('DOMContentLoaded', async ()=>{
     const nr=document.getElementById('nuRole').value;
     if(!nu || !np) return alert('Benutzername und Passwort sind Pflicht.');
     const exists=await get(STORE.users,nu); if(exists) return alert('Benutzername existiert bereits.');
-    await put(STORE.users,{username:nu, display:(nd||nu), password:np, role:nr, active:true});
+    await put(STORE.users,{username:nu, display:(nd||nu), password:np, role:nr, active:true, mustChange:(nr!=='admin')});
     document.getElementById('nuUser').value=''; document.getElementById('nuDisplay').value=''; document.getElementById('nuPass').value=''; document.getElementById('nuRole').value='worker';
     await renderUsers();
   };
