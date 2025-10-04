@@ -553,36 +553,6 @@ async function exportPDF(){
   }
   const html='<!doctype html><html><head><meta charset="utf-8"><title>Monatsübersicht '+monthVal+' – '+userVal+'</title><style>body{font-family:Arial,sans-serif;margin:24px} table{width:100%;border-collapse:collapse;font-size:12px} th,td{border:1px solid #ddd;padding:6px} th{background:#f3f4f6} .r{text-align:right} tfoot td{font-weight:bold} @media print{@page{size:A4 portrait;margin:12mm}}</style></head><!-- V34-HOTFIX -->
 <body><h1 style="font-size:18px;margin:0 0 8px">Monatsübersicht '+monthVal+' – '+userVal+'</h1><table><thead><tr><th>Datum</th><th>Status</th><th>Von</th><th>Bis</th><th>Projekt</th><th>Kostenstelle</th><th>Pausen (min)</th><th>Arbeitszeit</th><th>Überstunden</th><th>Notiz</th></tr></thead><tbody>'+rows+'</tbody><tfoot><tr><td colspan="7" class="r">Summe</td><td class="r">'+minToHHMM(sumW)+'</td><td class="r">'+minToHHMM(sumO)+'</td><td></td></tr></tfoot></table><script>window.print()<\/script>
-<script>
-(function hideCacheButton(){
-  function kill(){
-    var nodes = Array.prototype.slice.call(document.querySelectorAll('button, a, div, span'));
-    nodes.forEach(function(n){
-      var t = (n.innerText || n.textContent || '').trim().toLowerCase();
-      if (!t) return;
-      if (t === 'cache leeren' || t.includes('cache leeren') || t === 'clear cache' || t.includes('clear cache')) {
-        try { n.style.display = 'none'; n.setAttribute('aria-hidden','true'); } catch(e){}
-      }
-      // defensive: role/data attributes
-      if (n.dataset && (n.dataset.role === 'clear-cache' || n.dataset.action === 'clear-cache')) {
-        try { n.style.display = 'none'; n.setAttribute('aria-hidden','true'); } catch(e){}
-      }
-      // click handlers with clearCache name
-      var onclickAttr = (n.getAttribute && (n.getAttribute('onclick')||'').toLowerCase()) || '';
-      if (onclickAttr.includes('clearcache') || onclickAttr.includes('cache')) {
-        if (t.includes('cache')) { try { n.style.display = 'none'; } catch(e){} }
-      }
-    });
-  }
-  document.addEventListener('DOMContentLoaded', kill);
-  // also observe app frameworks mounting later
-  var obs = new MutationObserver(function(){ kill(); });
-  obs.observe(document.documentElement, {childList:true, subtree:true});
-  // also run periodically just in case
-  setInterval(kill, 2000);
-})();
-</script>
-
 </body></html>';
   const w=window.open('','_blank'); w.document.write(html); w.document.close();
 }
