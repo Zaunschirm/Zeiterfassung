@@ -33,11 +33,11 @@
     .thumbs figure{margin:0}
     .thumbs img{width:110px;height:110px;object-fit:cover;border-radius:8px;border:1px solid #ddd;display:block}
     .thumbs figcaption{font-size:12px;color:#666;text-align:center;margin-top:4px}
-    .pill{display:inline-flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:#fff}
     .cb-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px}
     .cb-item{display:flex;align-items:center;gap:10px;padding:8px;border:1px solid var(--line);border-radius:10px;background:#fff}
     .cb-item input{width:auto}
     .muted{color:var(--muted)}
+    .badge{display:inline-block;padding:2px 6px;border-radius:6px;background:#f3f4f6;border:1px solid #e5e7eb;font-size:12px}
   </style>
   <script>
   async function applyBranding(){
@@ -100,6 +100,14 @@
       </div>
 
       <div class="row">
+        <div><label>Tagesstatus<select id="dayStatus">
+          <option value="work" selected>Arbeit</option>
+          <option value="urlaub">Urlaub</option>
+          <option value="krank">Krank</option>
+        </select></label></div>
+      </div>
+
+      <div class="row">
         <div style="flex:1 1 100%">
           <div class="row" style="align-items:center">
             <output id="startOut">06:45</output>
@@ -142,9 +150,9 @@
       </div>
       <p id="editHint" class="muted" style="margin:0 0 8px"></p>
       <table id="monthTable">
-        <thead><tr><th>Datum</th><th>Von</th><th>Bis</th><th>Projekt</th><th class="right">Kostenstelle</th><th class="right">Pausen</th><th class="right">Arbeitszeit</th><th class="right">Überstunden</th><th>Notiz</th><th>Aktion</th></tr></thead>
+        <thead><tr><th>Datum</th><th>Status</th><th>Von</th><th>Bis</th><th>Projekt</th><th class="right">Kostenstelle</th><th class="right">Pausen</th><th class="right">Arbeitszeit</th><th class="right">Überstunden</th><th>Notiz</th><th>Aktion</th></tr></thead>
         <tbody></tbody>
-        <tfoot><tr><td colspan="6" class="right">Summe</td><td class="right" id="sumWork">00:00</td><td class="right" id="sumOT">00:00</td><td></td><td></td></tr></tfoot>
+        <tfoot><tr><td colspan="7" class="right">Summe</td><td class="right" id="sumWork">00:00</td><td class="right" id="sumOT">00:00</td><td></td><td></td></tr></tfoot>
       </table>
       <div class="row" style="margin-top:8px">
         <button id="btnExportCSV" class="ghost">CSV‑Export</button>
@@ -176,7 +184,7 @@
 
 if (location.protocol.startsWith('http')) { navigator.serviceWorker && navigator.serviceWorker.register('./sw.js'); }
 
-const DB_NAME='zeit-web-pwa', DB_VERSION=8; // bump
+const DB_NAME='zeit-web-pwa', DB_VERSION=9; // bump
 const STORE={ users:'users', projects:'projects', entries:'entries', photos:'photos' };
 function withDB(){return new Promise((resolve,reject)=>{const r=indexedDB.open(DB_NAME,DB_VERSION);
   r.onupgradeneeded=()=>{const db=r.result;
@@ -201,7 +209,6 @@ function minToHHMM(m){ const h=Math.floor(m/60), mm=m%60; return String(h).padSt
 function durationMin(a,b){ return Math.max(0, Math.round((new Date(b)-new Date(a))/60000)); }
 function ixToDateISO(dateISO,ix){ const p=dateISO.split('-'); const y=parseInt(p[0],10), mo=parseInt(p[1],10), d=parseInt(p[2],10); const minutes=ix*15; const h=Math.floor(minutes/60), mm=minutes%60; return new Date(y,mo-1,d,h,mm,0).toISOString(); }
 
-
 async function ensureAdminExists(){
   const users = await getAll(STORE.users);
   const hasAdmin = users && users.some(u => (u.role==='admin') && (u.active!==false));
@@ -210,7 +217,6 @@ async function ensureAdminExists(){
   }
 }
 
-
 function showSection(id){
   document.getElementById('loginView').classList.add('hidden');
   document.getElementById('forcePwView').classList.add('hidden');
@@ -218,9 +224,7 @@ function showSection(id){
   document.getElementById(id).classList.remove('hidden');
 }
 
-function isEditor(){
-  return currentUser && (currentUser.role==='admin' || currentUser.role==='lead');
-}
+function isEditor(){ return currentUser && (currentUser.role==='admin' || currentUser.role==='lead'); }
 
 async function login(u,p){
   await ensureAdminExists();
@@ -231,8 +235,7 @@ async function login(u,p){
   if(user.mustChange===true){
     currentUser=user; localStorage.setItem('cu_pending', JSON.stringify(user)); showSection('forcePwView'); return;
   }
-  currentUser=user; localStorage.setItem('cu', JSON.stringify(user));
-  await enterApp();
+  currentUser=user; localStorage.setItem('cu', JSON.stringify(user)); await enterApp();
 }
 
 async function enterApp(){
@@ -242,11 +245,11 @@ async function enterApp(){
   const admin = (currentUser.role==='admin');
   document.getElementById('adminPanel').style.display = admin ? 'block' : 'none';
   document.getElementById('editHint').textContent = isEditor() ? 'Monatsübersicht ist bearbeitbar (Admin & Teamleiter).' : 'Nur Admin/Teamleiter können Einträge bearbeiten.';
-  // Teamleiter sieht Nutzer-Auswahl wie Admin
   await loadProjects();
   await loadUsersToFilter();
   await renderUserCheckboxes();
   setupRanges();
+  setupDayStatusBehaviour();
   await refreshMonth();
   await refreshPhotoGallery();
 }
@@ -304,19 +307,44 @@ function setupRanges(){
   [s,e,b].forEach(x=>{x.oninput=recalc; x.onchange=recalc;}); recalc();
 }
 
+function setupDayStatusBehaviour(){
+  const sel=document.getElementById('dayStatus');
+  const s=document.getElementById('startRange');
+  const e=document.getElementById('endRange');
+  const b=document.getElementById('breakMin');
+  const note=document.getElementById('noteInput');
+  const w=document.getElementById('workMinPreview');
+  const so=document.getElementById('startOut');
+  const eo=document.getElementById('endOut');
+  function toggle(){
+    const st=sel.value;
+    const disabled = (st!=='work');
+    s.disabled = disabled; e.disabled = disabled; b.disabled = disabled;
+    if(disabled){
+      w.value='00:00 (Ü: 00:00)';
+      note.placeholder = st==='urlaub' ? 'Urlaub' : 'Krank';
+    }else{
+      note.placeholder = 'z. B. Montage, Fahrtzeit';
+    }
+  }
+  sel.onchange=toggle; toggle();
+}
+
 async function addEntryManualForUser(userName){
+  const status=document.getElementById('dayStatus').value; // 'work'|'urlaub'|'krank'
   const dateISO=document.getElementById('manualDate').value||todayISO();
   const sIx=+document.getElementById('startRange').value, eIx=+document.getElementById('endRange').value;
   const breakMin=+document.getElementById('breakMin').value||0; const projectId=document.getElementById('projectSelect').value; const note=document.getElementById('noteInput').value||'';
-  if(!projectId) return alert('Bitte Projekt wählen'); if(eIx<sIx) return alert('Ende darf nicht vor Start liegen');
-  const entry={id:uuid(),user:userName,date:dateISO,projectId:projectId,note:note,start:ixToDateISO(dateISO,sIx),end:ixToDateISO(dateISO,eIx),breaksMin:breakMin};
+  if(status==='work'){
+    if(!projectId) return alert('Bitte Projekt wählen');
+    if(eIx<sIx) return alert('Ende darf nicht vor Start liegen');
+  }
+  const entry={id:uuid(),user:userName,date:dateISO,projectId:(status==='work'?projectId:null),note:note,status:status,
+               start:ixToDateISO(dateISO, sIx),end:ixToDateISO(dateISO, eIx),breaksMin:(status==='work'?breakMin:0)};
   await put(STORE.entries, entry);
 }
 
-async function addEntryManual(){
-  await addEntryManualForUser(currentUser.username);
-  await refreshMonth();
-}
+async function addEntryManual(){ await addEntryManualForUser(currentUser.username); await refreshMonth(); }
 
 function fmt(dt){ if(!dt) return ''; const d=new Date(dt); return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); }
 
@@ -324,7 +352,7 @@ async function loadUsersToFilter(){
   const sel=document.getElementById('userFilter'); sel.innerHTML='';
   const users=(await getAll(STORE.users)).filter(u=>u.active!==false);
   const list=isEditor()?users:users.filter(u=>u.username===currentUser.username);
-  list.forEach(u=>{ const o=document.createElement('option'); o.value=u.username; o.textContent=u.display||u.username; if(currentUser && u.username===currentUser.username) o.selected=true; sel.appendChild(o); });
+  list.forEach(u=>{ const o=document.createElement('option'); o.value=u.username; let t=u.display||u.username; if(u.role==='admin') t+=' (Admin)'; if(u.role==='lead') t+=' (Teamleiter)'; o.textContent=t; if(currentUser && u.username===currentUser.username) o.selected=true; sel.appendChild(o); });
   sel.disabled=!isEditor();
 }
 
@@ -337,11 +365,10 @@ async function renderUserCheckboxes(){
     const div=document.createElement('div'); div.className='cb-item';
     const cb=document.createElement('input'); cb.type='checkbox'; cb.id=id; cb.value=u.username;
     if(currentUser && u.username===currentUser.username) cb.checked=true;
-    const lab=document.createElement('label'); lab.setAttribute('for', id); lab.textContent=(u.display||u.username);
-    if(u.username==='admin') lab.textContent=(u.display||u.username)+' (Admin)';
-    if(u.role==='lead') lab.textContent += ' (Teamleiter)';
-    div.appendChild(cb); div.appendChild(lab);
-    wrap.appendChild(div);
+    const lab=document.createElement('label'); lab.setAttribute('for', id);
+    let label=(u.display||u.username); if(u.role==='admin') label+=' (Admin)'; if(u.role==='lead') label+=' (Teamleiter)';
+    lab.textContent=label;
+    div.appendChild(cb); div.appendChild(lab); wrap.appendChild(div);
   });
 }
 
@@ -363,19 +390,27 @@ async function refreshMonth(){
   tbody.innerHTML=''; let sumWork=0, sumOT=0;
   const canEdit = isEditor();
   for(const e of entries){
-    const work=Math.max(0, durationMin(e.start,e.end)-(e.breaksMin||0)); const ot=Math.max(0, work-540); sumWork+=work; sumOT+=ot;
+    const isWork=(e.status||'work')==='work';
+    const work=isWork?Math.max(0, durationMin(e.start,e.end)-(e.breaksMin||0)):0;
+    const ot=isWork?Math.max(0, work-540):0; sumWork+=work; sumOT+=ot;
     const tr=document.createElement('tr');
+
     const tdDate=document.createElement('td'); tdDate.textContent=e.date;
 
-    const tdFrom=document.createElement('td'); const inFrom=document.createElement('input'); inFrom.className='inline'; inFrom.type='time'; inFrom.step=900; const dFrom=new Date(e.start); inFrom.value=String(dFrom.getHours()).padStart(2,'0')+':'+String(dFrom.getMinutes()).padStart(2,'0'); if(!canEdit) inFrom.disabled=true; tdFrom.appendChild(inFrom);
-    const tdTo=document.createElement('td'); const inTo=document.createElement('input'); inTo.className='inline'; inTo.type='time'; inTo.step=900; const dTo=new Date(e.end); inTo.value=String(dTo.getHours()).padStart(2,'0')+':'+String(dTo.getMinutes()).padStart(2,'0'); if(!canEdit) inTo.disabled=true; tdTo.appendChild(inTo);
+    const tdStatus=document.createElement('td');
+    const selStatus=document.createElement('select'); selStatus.className='inline';
+    ['work','urlaub','krank'].forEach(v=>{ const o=document.createElement('option'); o.value=v; o.textContent=(v==='work'?'Arbeit':(v==='urlaub'?'Urlaub':'Krank')); if((e.status||'work')===v) o.selected=true; selStatus.appendChild(o); });
+    if(!canEdit) selStatus.disabled=true; tdStatus.appendChild(selStatus);
 
-    const tdProj=document.createElement('td'); const selProj=document.createElement('select'); selProj.className='inline'; if(!canEdit) selProj.disabled=true;
+    const tdFrom=document.createElement('td'); const inFrom=document.createElement('input'); inFrom.className='inline'; inFrom.type='time'; inFrom.step=900; const dFrom=new Date(e.start); inFrom.value=String(dFrom.getHours()).padStart(2,'0')+':'+String(dFrom.getMinutes()).padStart(2,'0'); if(!canEdit) inFrom.disabled=true; if(!isWork) inFrom.disabled=true; tdFrom.appendChild(inFrom);
+    const tdTo=document.createElement('td'); const inTo=document.createElement('input'); inTo.className='inline'; inTo.type='time'; inTo.step=900; const dTo=new Date(e.end); inTo.value=String(dTo.getHours()).padStart(2,'0')+':'+String(dTo.getMinutes()).padStart(2,'0'); if(!canEdit) inTo.disabled=true; if(!isWork) inTo.disabled=true; tdTo.appendChild(inTo);
+
+    const tdProj=document.createElement('td'); const selProj=document.createElement('select'); selProj.className='inline'; if(!canEdit||!isWork) selProj.disabled=true;
     projs.filter(p=>!p.archived || p.id===e.projectId).forEach(p=>{ const o=document.createElement('option'); o.value=p.id; o.textContent=p.name; if(p.id===e.projectId) o.selected=true; selProj.appendChild(o); }); tdProj.appendChild(selProj);
 
     const tdCost=document.createElement('td'); tdCost.className='right'; tdCost.textContent=(pm[e.projectId] && pm[e.projectId].costCenter)||'';
 
-    const tdBreak=document.createElement('td'); tdBreak.className='right'; const selBreak=document.createElement('select'); selBreak.className='inline'; [0,15,30,45,60].forEach(v=>{ const o=document.createElement('option'); o.value=String(v); o.textContent=String(v); if((e.breaksMin||0)===v) o.selected=true; selBreak.appendChild(o); }); if(!canEdit) selBreak.disabled=true; tdBreak.appendChild(selBreak);
+    const tdBreak=document.createElement('td'); tdBreak.className='right'; const selBreak=document.createElement('select'); selBreak.className='inline'; [0,15,30,45,60].forEach(v=>{ const o=document.createElement('option'); o.value=String(v); o.textContent=String(v); if((e.breaksMin||0)===v) o.selected=true; selBreak.appendChild(o); }); if(!canEdit||!isWork) selBreak.disabled=true; tdBreak.appendChild(selBreak);
 
     const tdWork=document.createElement('td'); tdWork.className='right'; tdWork.textContent=minToHHMM(work);
     const tdOT=document.createElement('td'); tdOT.className='right'; tdOT.textContent=minToHHMM(ot);
@@ -384,16 +419,20 @@ async function refreshMonth(){
     const tdAct=document.createElement('td');
     if(canEdit){
       const btn=document.createElement('button'); btn.textContent='Speichern'; btn.onclick=async()=>{
-        const t1=inFrom.value.split(':'), t2=inTo.value.split(':');
-        const startISO=new Date(e.date+'T'+t1[0]+':'+t1[1]+':00').toISOString();
-        const endISO=new Date(e.date+'T'+t2[0]+':'+t2[1]+':00').toISOString();
-        const upd=Object.assign({},e,{start:startISO,end:endISO,breaksMin:parseInt(selBreak.value||'0',10),projectId:selProj.value,note:inNote.value});
+        const st=selStatus.value;
+        let startISO=e.start, endISO=e.end, breaks=parseInt(selBreak.value||'0',10), proj=selProj.value;
+        if(st!=='work'){ breaks=0; proj=null; }
+        else {
+          const t1=inFrom.value.split(':'), t2=inTo.value.split(':');
+          startISO=new Date(e.date+'T'+t1[0]+':'+t1[1]+':00').toISOString();
+          endISO=new Date(e.date+'T'+t2[0]+':'+t2[1]+':00').toISOString();
+        }
+        const upd=Object.assign({},e,{status:st,start:startISO,end:endISO,breaksMin:breaks,projectId:proj,note:inNote.value});
         await put(STORE.entries,upd); await refreshMonth();
       }; tdAct.appendChild(btn);
-    } else {
-      tdAct.textContent='-';
-    }
-    tr.appendChild(tdDate); tr.appendChild(tdFrom); tr.appendChild(tdTo); tr.appendChild(tdProj); tr.appendChild(tdCost); tr.appendChild(tdBreak); tr.appendChild(tdWork); tr.appendChild(tdOT); tr.appendChild(tdNote); tr.appendChild(tdAct);
+    } else { tdAct.textContent='-'; }
+
+    tr.appendChild(tdDate); tr.appendChild(tdStatus); tr.appendChild(tdFrom); tr.appendChild(tdTo); tr.appendChild(tdProj); tr.appendChild(tdCost); tr.appendChild(tdBreak); tr.appendChild(tdWork); tr.appendChild(tdOT); tr.appendChild(tdNote); tr.appendChild(tdAct);
     tbody.appendChild(tr);
   }
   sumWorkTd.textContent=minToHHMM(sumWork); sumOtTd.textContent=minToHHMM(sumOT);
@@ -436,7 +475,7 @@ async function addPhotosToProject(){
   const files=await pickFiles('image/*', true);
   for(const f of files){
     const data=await compressImage(f,1600,0.82);
-    const rec={id:uuid(),projectId:pid,filename:f.name,dataUrl:data,createdAt:new Date().toISOString()};
+    const rec={id:uuid(),projectId:pid,filename:f.name,dataUrl=data,createdAt:new Date().toISOString()};
     await put(STORE.photos, rec);
   }
   await refreshPhotoGallery();
@@ -471,6 +510,7 @@ window.addEventListener('DOMContentLoaded', async ()=>{
 
   document.getElementById('btnLogin').onclick=async()=>{ const u=document.getElementById('loginUser').value.trim(); const p=document.getElementById('loginPass').value; try{ await login(u,p); }catch(e){ alert('Login fehlgeschlagen'); } };
   document.getElementById('btnLogout').onclick=()=>{ localStorage.removeItem('cu'); localStorage.removeItem('cu_pending'); location.reload(); };
+  document.getElementById('btnSetPw').onclick=finishPasswordChange;
   document.getElementById('btnAddEntry').onclick=addEntryManual;
   document.getElementById('btnAddBatch').onclick=addBatch;
   document.getElementById('monthPicker').onchange=refreshMonth;
@@ -487,13 +527,13 @@ function csvExport(rows){ return rows.map(r=>r.map(x=> '"'+String(x).replaceAll(
 async function exportCSV(){
   const monthVal=document.getElementById('monthPicker').value||currentMonth();
   const userVal=document.getElementById('userFilter').value||(currentUser&&currentUser.username);
-  const rows=[[ 'Datum','Mitarbeiter','Von','Bis','Projekt','Kostenstelle','Pausen (min)','Arbeitszeit','Überstunden','Notiz' ]];
+  const rows=[[ 'Datum','Status','Mitarbeiter','Von','Bis','Projekt','Kostenstelle','Pausen (min)','Arbeitszeit','Überstunden','Notiz' ]];
   const entries=(await getAll(STORE.entries)).filter(e=>e.user===userVal&&(e.date||'').startsWith(monthVal));
   const projs=await getAll(STORE.projects); const pm={}; projs.forEach(p=>pm[p.id]=p);
   let sumW=0,sumO=0; entries.sort((a,b)=>(a.date||'').localeCompare(b.date||'')||(a.start||'').localeCompare(b.start||''));
-  for(const e of entries){ const w=Math.max(0,durationMin(e.start,e.end)-(e.breaksMin||0)), o=Math.max(0,w-540); sumW+=w; sumO+=o; const p=pm[e.projectId]||{};
-    rows.push([e.date,userVal,fmt(e.start),fmt(e.end),p.name||'',p.costCenter||'',(e.breaksMin||0),minToHHMM(w),minToHHMM(o),e.note||'']); }
-  rows.push([]); rows.push(['','','','','SUMME','','',minToHHMM(sumW),minToHHMM(sumO),'']);
+  for(const e of entries){ const isWork=(e.status||'work')==='work'; const w=isWork?Math.max(0,durationMin(e.start,e.end)-(e.breaksMin||0)):0, o=isWork?Math.max(0,w-540):0; sumW+=w; sumO+=o; const p=pm[e.projectId]||{};
+    rows.push([e.date,(e.status||'work'),' ' + userVal,fmt(e.start),fmt(e.end),p.name||'',p.costCenter||'',(e.breaksMin||0),minToHHMM(w),minToHHMM(o),e.note||'']); }
+  rows.push([]); rows.push(['','','','','','SUMME','','',minToHHMM(sumW),minToHHMM(sumO),'']);
   const blob=new Blob([csvExport(rows)],{type:'text/csv'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='monat_'+monthVal+'_'+userVal+'.csv'; a.click(); URL.revokeObjectURL(a.href);
 }
 
@@ -505,9 +545,12 @@ async function exportPDF(){
   entries.sort((a,b)=>(a.date||'').localeCompare(b.date||'')||(a.start||'').localeCompare(b.start||''));
   let sumW=0,sumO=0, rows='';
   const fmtT=(dt)=>{const d=new Date(dt); return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})};
-  for(const e of entries){ const w=Math.max(0,durationMin(e.start,e.end)-(e.breaksMin||0)), o=Math.max(0,w-540); sumW+=w; sumO+=o; const p=pm[e.projectId]||{};
-    rows+= '<tr><td>'+e.date+'</td><td>'+fmtT(e.start)+'</td><td>'+fmtT(e.end)+'</td><td>'+(p.name||'')+'</td><td class="r">'+(p.costCenter||'')+'</td><td class="r">'+(e.breaksMin||0)+'</td><td class="r">'+minToHHMM(w)+'</td><td class="r">'+minToHHMM(o)+'</td><td>'+(e.note||'')+'</td></tr>'; }
-  const html='<!doctype html><html><head><meta charset="utf-8"><title>Monatsübersicht '+monthVal+' – '+userVal+'</title><style>body{font-family:Arial,sans-serif;margin:24px} table{width:100%;border-collapse:collapse;font-size:12px} th,td{border:1px solid #ddd;padding:6px} th{background:#f3f4f6} .r{text-align:right} tfoot td{font-weight:bold} @media print{@page{size:A4 portrait;margin:12mm}}</style></head><body><h1 style="font-size:18px;margin:0 0 8px">Monatsübersicht '+monthVal+' – '+userVal+'</h1><table><thead><tr><th>Datum</th><th>Von</th><th>Bis</th><th>Projekt</th><th>Kostenstelle</th><th>Pausen (min)</th><th>Arbeitszeit</th><th>Überstunden</th><th>Notiz</th></tr></thead><tbody>'+rows+'</tbody><tfoot><tr><td colspan="6" class="r">Summe</td><td class="r">'+minToHHMM(sumW)+'</td><td class="r">'+minToHHMM(sumO)+'</td><td></td></tr></tfoot></table><script>window.print()<\/script></body></html>';
+  for(const e of entries){
+    const isWork=(e.status||'work')==='work';
+    const w=isWork?Math.max(0,durationMin(e.start,e.end)-(e.breaksMin||0)):0, o=isWork?Math.max(0,w-540):0; sumW+=w; sumO+=o; const p=pm[e.projectId]||{};
+    rows+= '<tr><td>'+e.date+'</td><td>'+(e.status||'work')+'</td><td>'+fmtT(e.start)+'</td><td>'+fmtT(e.end)+'</td><td>'+(p.name||'')+'</td><td class="r">'+(p.costCenter||'')+'</td><td class="r">'+(e.breaksMin||0)+'</td><td class="r">'+minToHHMM(w)+'</td><td class="r">'+minToHHMM(o)+'</td><td>'+(e.note||'')+'</td></tr>';
+  }
+  const html='<!doctype html><html><head><meta charset="utf-8"><title>Monatsübersicht '+monthVal+' – '+userVal+'</title><style>body{font-family:Arial,sans-serif;margin:24px} table{width:100%;border-collapse:collapse;font-size:12px} th,td{border:1px solid #ddd;padding:6px} th{background:#f3f4f6} .r{text-align:right} tfoot td{font-weight:bold} @media print{@page{size:A4 portrait;margin:12mm}}</style></head><body><h1 style="font-size:18px;margin:0 0 8px">Monatsübersicht '+monthVal+' – '+userVal+'</h1><table><thead><tr><th>Datum</th><th>Status</th><th>Von</th><th>Bis</th><th>Projekt</th><th>Kostenstelle</th><th>Pausen (min)</th><th>Arbeitszeit</th><th>Überstunden</th><th>Notiz</th></tr></thead><tbody>'+rows+'</tbody><tfoot><tr><td colspan="7" class="r">Summe</td><td class="r">'+minToHHMM(sumW)+'</td><td class="r">'+minToHHMM(sumO)+'</td><td></td></tr></tfoot></table><script>window.print()<\/script></body></html>';
   const w=window.open('','_blank'); w.document.write(html); w.document.close();
 }
 </script>
