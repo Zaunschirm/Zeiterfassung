@@ -1,5 +1,4 @@
-<!doctype html><html lang="de"><head><title>Zeiterfassung</title>
-<meta charset="utf-8"/>
+<!doctype html><html lang="de"><head><title>Zeiterfassung</title><meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#c9b8a6" id="metaTheme"/>
@@ -48,7 +47,7 @@ async function applyBranding(){try{const r=await fetch('./config.json',{cache:'r
     <strong id="brandTitle">Zeiterfassung</strong>
   </div>
   <div class="row" style="flex:0 0 auto;gap:8px;align-items:center">
-    <a href="./users/" class="ghost" style="text-decoration:none;display:inline-block;width:auto">Mitarbeiterverwaltung</a>
+    <a href="users/" id="linkUsers" class="ghost" style="text-decoration:none;display:inline-block;width:auto">Mitarbeiterverwaltung</a>
     <button id="btnLogout" class="ghost">Logout</button>
   </div>
 </header>
@@ -122,43 +121,52 @@ async function applyBranding(){try{const r=await fetch('./config.json',{cache:'r
 </main>
 
 <script>
+// Robust link to /users/ (works under /Zeiterfassung/ on GitHub Pages)
+(function(){
+  var a = document.getElementById('linkUsers');
+  a.addEventListener('click', function(ev){
+    ev.preventDefault();
+    var p = location.pathname;
+    var base = p.endsWith('/') ? p : p.replace(/[^/]+$/, '');
+    location.href = location.origin + base + 'users/';
+  });
+})();
+
 if (location.protocol.startsWith('http')) { navigator.serviceWorker && navigator.serviceWorker.register('./sw.js'); }
 
 const DB_NAME='zeit-web-pwa', DB_VERSION=1;
 const STORE={ users:'users', projects:'projects', entries:'entries' };
 
-function withDB(){return new Promise((resolve,reject)=>{const r=indexedDB.open(DB_NAME,DB_VERSION);
- r.onupgradeneeded=()=>{const db=r.result;
+function withDB(){return new Promise(function(resolve,reject){var r=indexedDB.open(DB_NAME,DB_VERSION);
+ r.onupgradeneeded=function(){var db=r.result;
   if(!db.objectStoreNames.contains(STORE.users)) db.createObjectStore(STORE.users,{keyPath:'username'});
   if(!db.objectStoreNames.contains(STORE.projects)) db.createObjectStore(STORE.projects,{keyPath:'id'});
   if(!db.objectStoreNames.contains(STORE.entries)) db.createObjectStore(STORE.entries,{keyPath:'id'});
  };
- r.onsuccess=()=>resolve(r.result); r.onerror=()=>reject(r.error); }); }
+ r.onsuccess=function(){resolve(r.result)}; r.onerror=function(){reject(r.error)}; }); }
 
-async function put(store,val){const db=await withDB();return new Promise((res,rej)=>{const tx=db.transaction(store,'readwrite');tx.objectStore(store).put(val);tx.oncomplete=()=>res(val);tx.onerror=()=>rej(tx.error);});}
-async function get(store,key){const db=await withDB();return new Promise((res,rej)=>{const tx=db.transaction(store,'readonly');const q=tx.objectStore(store).get(key);q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error);});}
-async function getAll(store){const db=await withDB();return new Promise((res,rej)=>{const tx=db.transaction(store,'readonly');const q=tx.objectStore(store).getAll();q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error);});}
-async function delRec(store,key){const db=await withDB();return new Promise((res,rej)=>{const tx=db.transaction(store,'readwrite');tx.objectStore(store).delete(key);tx.oncomplete=()=>res(true);tx.onerror=()=>rej(tx.error);});}
+async function put(store,val){var db=await withDB();return new Promise(function(res,rej){var tx=db.transaction(store,'readwrite');tx.objectStore(store).put(val);tx.oncomplete=function(){res(val)};tx.onerror=function(){rej(tx.error)};});}
+async function get(store,key){var db=await withDB();return new Promise(function(res,rej){var tx=db.transaction(store,'readonly');var q=tx.objectStore(store).get(key);q.onsuccess=function(){res(q.result)};q.onerror=function(){rej(q.error)};});}
+async function getAll(store){var db=await withDB();return new Promise(function(res,rej){var tx=db.transaction(store,'readonly');var q=tx.objectStore(store).getAll();q.onsuccess=function(){res(q.result)};q.onerror=function(){rej(q.error)};});}
+async function delRec(store,key){var db=await withDB();return new Promise(function(res,rej){var tx=db.transaction(store,'readwrite');tx.objectStore(store).delete(key);tx.oncomplete=function(){res(true)};tx.onerror=function(){rej(tx.error)};});}
 
-let currentUser=null;
-function uuid(){return'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0,v=c==='x'?r:(r&0x3|0x8);return v.toString(16)})}
-function todayISO(){ const d=new Date(); d.setHours(0,0,0,0); return d.toISOString().slice(0,10); }
-function currentMonth(){ const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; }
-function ixToTime(ix){ const m=ix*15, h=String(Math.floor(m/60)).padStart(2,'0'), mm=m%60; return `${h}:${mm}`; }
-function minToHHMM(m){ const h=Math.floor(m/60), mm=m%60; return `${String(h).padStart(2,'0')}:${String(mm).padStart(2,'0')}`; }
+var currentUser=null;
+function uuid(){return'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,function(c){var r=Math.random()*16|0,v=c==='x'?r:(r&0x3|0x8);return v.toString(16)})}
+function todayISO(){ var d=new Date(); d.setHours(0,0,0,0); return d.toISOString().slice(0,10); }
+function currentMonth(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
+function ixToTime(ix){ var m=ix*15, h=String(Math.floor(m/60)).padStart(2,'0'), mm=String(m%60).padStart(2,'0'); return h+':'+mm; }
+function minToHHMM(m){ var h=Math.floor(m/60), mm=m%60; return String(h).padStart(2,'0')+':'+String(mm).padStart(2,'0'); }
 function durationMin(a,b){ return Math.max(0, Math.round((new Date(b)-new Date(a))/60000)); }
 
 async function ensureFirstAdmin(){
-  const users = await getAll(STORE.users);
+  var users = await getAll(STORE.users);
   if (!users || users.length === 0) {
     await put(STORE.users, {username:'admin', password:'admin', role:'admin', display:'Administrator', active:true});
   }
 }
 
-function renderUserBadge(){ const u=JSON.parse(localStorage.getItem('cu')||'null'); }
-
 async function login(u,p){
-  const user=await get(STORE.users,u);
+  var user=await get(STORE.users,u);
   if(!user){ alert('Nutzer nicht gefunden'); return; }
   if(user.active===false){ alert('Nutzer ist deaktiviert'); return; }
   if(user.password!==p){ alert('Passwort falsch'); return; }
@@ -172,142 +180,102 @@ async function login(u,p){
 }
 
 async function loadProjects(){
-  const sel=document.getElementById('projectSelect'); sel.innerHTML='';
-  const projs=await getAll(STORE.projects);
-  projs.filter(p=>!p.archived).forEach(p=>{ const o=document.createElement('option'); o.value=p.id; o.textContent=p.costCenter?`${p.name} (${p.costCenter})`:p.name; sel.appendChild(o); });
+  var sel=document.getElementById('projectSelect'); sel.innerHTML='';
+  var projs=await getAll(STORE.projects);
+  projs.filter(function(p){return !p.archived;}).forEach(function(p){ var o=document.createElement('option'); o.value=p.id; o.textContent=p.costCenter?(p.name+' ('+p.costCenter+')'):p.name; sel.appendChild(o); });
   renderProjectList(projs);
 }
 
 function renderProjectList(projs){
-  const list=document.getElementById('projectList'); list.innerHTML='';
-  projs.forEach(p=>{
-    const row=document.createElement('div'); row.className='row '+(p.archived?'archived':'');
-    const name=document.createElement('input'); name.value=p.name; name.placeholder='Name';
-    const cost=document.createElement('input'); cost.value=p.costCenter||''; cost.placeholder='Kostenstelle';
-    const actions=document.createElement('div'); actions.style.display='flex'; actions.style.gap='8px';
-    const save=document.createElement('button'); save.textContent='Speichern'; save.onclick=async()=>{
-      await put(STORE.projects,{id:p.id,name:name.value.trim(),costCenter:(cost.value.trim()||null),archived:!!p.archived}); await loadProjects(); await refreshMonth();
-    };
-    const arch=document.createElement('button'); arch.className='secondary'; arch.textContent=p.archived?'Wiederherstellen':'Archivieren'; arch.onclick=async()=>{
-      await put(STORE.projects,{...p,name:name.value.trim()||p.name,costCenter:(cost.value.trim()||p.costCenter||null),archived:!p.archived}); await loadProjects(); await refreshMonth();
-    };
-    const delB=document.createElement('button'); delB.className='ghost'; delB.textContent='Löschen'; delB.onclick=async()=>{ if(!confirm('Projekt wirklich löschen?')) return; await delRec(STORE.projects,p.id); await loadProjects(); await refreshMonth(); };
+  var list=document.getElementById('projectList'); list.innerHTML='';
+  projs.forEach(function(p){
+    var row=document.createElement('div'); row.className='row '+(p.archived?'archived':'');
+    var name=document.createElement('input'); name.value=p.name; name.placeholder='Name';
+    var cost=document.createElement('input'); cost.value=p.costCenter||''; cost.placeholder='Kostenstelle';
+    var actions=document.createElement('div'); actions.style.display='flex'; actions.style.gap='8px';
+    var save=document.createElement('button'); save.textContent='Speichern'; save.onclick=async function(){ await put(STORE.projects,{id:p.id,name:name.value.trim(),costCenter:(cost.value.trim()||null),archived:!!p.archived}); await loadProjects(); await refreshMonth(); };
+    var arch=document.createElement('button'); arch.className='secondary'; arch.textContent=p.archived?'Wiederherstellen':'Archivieren'; arch.onclick=async function(){ await put(STORE.projects,Object.assign({},p,{name:name.value.trim()||p.name,costCenter:(cost.value.trim()||p.costCenter||null),archived:!p.archived})); await loadProjects(); await refreshMonth(); };
+    var delB=document.createElement('button'); delB.className='ghost'; delB.textContent='Löschen'; delB.onclick=async function(){ if(!confirm('Projekt wirklich löschen?')) return; await delRec(STORE.projects,p.id); await loadProjects(); await refreshMonth(); };
     actions.appendChild(save); actions.appendChild(arch); actions.appendChild(delB);
     row.appendChild(name); row.appendChild(cost); row.appendChild(actions);
     list.appendChild(row);
   });
 }
 
-function ixToDateISO(dateISO,ix){ const [y,mo,d]=dateISO.split('-').map(v=>parseInt(v,10)); const m=ix*15, h=Math.floor(m/60), mm=m%60; return new Date(y,mo-1,d,h,mm,0).toISOString(); }
+function ixToDateISO(dateISO,ix){ var parts=dateISO.split('-'); var y=parseInt(parts[0],10), mo=parseInt(parts[1],10), d=parseInt(parts[2],10); var m=ix*15; var h=Math.floor(m/60), mm=m%60; return new Date(y,mo-1,d,h,mm,0).toISOString(); }
+
 function setupRanges(){
-  const s=document.getElementById('startRange'), e=document.getElementById('endRange');
-  const so=document.getElementById('startOut'), eo=document.getElementById('endOut'), b=document.getElementById('breakMin'), w=document.getElementById('workMinPreview');
-  const recalc=()=>{ if(+e.value<+s.value) e.value=s.value; so.textContent=ixToTime(+s.value); eo.textContent=ixToTime(+e.value);
-    const mins=(+e.value-+s.value)*15 - parseInt(b.value||'0',10); const ot=Math.max(0, mins-540); w.value=`${minToHHMM(Math.max(0,mins))} (Ü: ${minToHHMM(ot)})`; };
-  [s,e,b].forEach(x=>{x.oninput=recalc; x.onchange=recalc;}); recalc();
+  var s=document.getElementById('startRange'), e=document.getElementById('endRange');
+  var so=document.getElementById('startOut'), eo=document.getElementById('endOut'), b=document.getElementById('breakMin'), w=document.getElementById('workMinPreview');
+  var recalc=function(){ if(+e.value<+s.value) e.value=s.value; so.textContent=ixToTime(+s.value); eo.textContent=ixToTime(+e.value);
+    var mins=(+e.value-+s.value)*15 - parseInt(b.value||'0',10); var ot=Math.max(0, mins-540); w.value=minToHHMM(Math.max(0,mins))+' (Ü: '+minToHHMM(ot)+')'; };
+  [s,e,b].forEach(function(x){x.oninput=recalc; x.onchange=recalc;}); recalc();
 }
 
 async function addEntryManual(){
-  const dateISO=document.getElementById('manualDate').value||todayISO();
-  const sIx=+document.getElementById('startRange').value, eIx=+document.getElementById('endRange').value;
-  const breakMin=+document.getElementById('breakMin').value||0; const projectId=document.getElementById('projectSelect').value; const note=document.getElementById('noteInput').value||'';
+  var dateISO=document.getElementById('manualDate').value||todayISO();
+  var sIx=+document.getElementById('startRange').value, eIx=+document.getElementById('endRange').value;
+  var breakMin=+document.getElementById('breakMin').value||0; var projectId=document.getElementById('projectSelect').value; var note=document.getElementById('noteInput').value||'';
   if(!projectId) return alert('Bitte Projekt wählen'); if(eIx<sIx) return alert('Ende darf nicht vor Start liegen');
-  const entry={id:uuid(),user:currentUser.username,date:dateISO,projectId,note,start:ixToDateISO(dateISO,sIx),end:ixToDateISO(dateISO,eIx),breaksMin:breakMin};
+  var entry={id:uuid(),user:currentUser.username,date:dateISO,projectId:projectId,note:note,start:ixToDateISO(dateISO,sIx),end:ixToDateISO(dateISO,eIx),breaksMin:breakMin};
   await put(STORE.entries, entry); await refreshMonth();
 }
 
-function fmt(dt){ if(!dt) return ''; const d=new Date(dt); return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); }
+function fmt(dt){ if(!dt) return ''; var d=new Date(dt); return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); }
 
 async function loadUsersToFilter(){
-  const sel=document.getElementById('userFilter'); sel.innerHTML='';
-  const users=(await getAll(STORE.users)).filter(u=>u.active!==false);
-  const isAdmin=(currentUser && currentUser.role==='admin'); const list=isAdmin?users:users.filter(u=>u.username===currentUser.username);
-  list.forEach(u=>{ const o=document.createElement('option'); o.value=u.username; o.textContent=u.display||u.username; if(currentUser && u.username===currentUser.username) o.selected=true; sel.appendChild(o); });
+  var sel=document.getElementById('userFilter'); sel.innerHTML='';
+  var users=(await getAll(STORE.users)).filter(function(u){return u.active!==false;});
+  var isAdmin=(currentUser && currentUser.role==='admin'); var list=isAdmin?users:users.filter(function(u){return u.username===currentUser.username;});
+  list.forEach(function(u){ var o=document.createElement('option'); o.value=u.username; o.textContent=u.display||u.username; if(currentUser && u.username===currentUser.username) o.selected=true; sel.appendChild(o); });
   sel.disabled=!isAdmin;
 }
 
 async function refreshMonth(){
-  const monthVal=document.getElementById('monthPicker').value||currentMonth();
-  const userVal=document.getElementById('userFilter').value||(currentUser&&currentUser.username);
-  const tbody=document.querySelector('#monthTable tbody'); const sumWorkTd=document.getElementById('sumWork'); const sumOtTd=document.getElementById('sumOT');
-  const entries=(await getAll(STORE.entries)).filter(e=>e.user===userVal && (e.date||'').startsWith(monthVal));
-  const projs=await getAll(STORE.projects); const pm=Object.fromEntries(projs.map(p=>[p.id,p]));
-  entries.sort((a,b)=>(a.date||'').localeCompare(b.date||'') || (a.start||'').localeCompare(b.start||''));
-  tbody.innerHTML=''; let sumWork=0, sumOT=0;
-  for(const e of entries){
-    const work=Math.max(0, durationMin(e.start,e.end)-(e.breaksMin||0)); const ot=Math.max(0, work-540); sumWork+=work; sumOT+=ot;
-    const tr=document.createElement('tr');
-    const tdDate=document.createElement('td'); tdDate.textContent=e.date;
-    const tdFrom=document.createElement('td'); const inFrom=document.createElement('input'); inFrom.className='inline'; inFrom.type='time'; inFrom.step=900; const dFrom=new Date(e.start); inFrom.value=`${String(dFrom.getHours()).padStart(2,'0')}:${String(dFrom.getMinutes()).padStart(2,'0')}`; tdFrom.appendChild(inFrom);
-    const tdTo=document.createElement('td'); const inTo=document.createElement('input'); inTo.className='inline'; inTo.type='time'; inTo.step=900; const dTo=new Date(e.end); inTo.value=`${String(dTo.getHours()).padStart(2,'0')}:${String(dTo.getMinutes()).padStart(2,'0')}`; tdTo.appendChild(inTo);
-    const tdProj=document.createElement('td'); const selProj=document.createElement('select'); selProj.className='inline';
-    for(const p of projs.filter(p=>!p.archived || p.id===e.projectId)){ const o=document.createElement('option'); o.value=p.id; o.textContent=p.name; if(p.id===e.projectId) o.selected=true; selProj.appendChild(o); } tdProj.appendChild(selProj);
-    const tdCost=document.createElement('td'); tdCost.className='right'; tdCost.textContent=(pm[e.projectId] && pm[e.projectId].costCenter)||'';
-    const tdBreak=document.createElement('td'); tdBreak.className='right'; const selBreak=document.createElement('select'); selBreak.className='inline'; [0,15,30,45,60].forEach(v=>{ const o=document.createElement('option'); o.value=String(v); o.textContent=String(v); if((e.breaksMin||0)===v) o.selected=true; selBreak.appendChild(o); }); tdBreak.appendChild(selBreak);
-    const tdWork=document.createElement('td'); tdWork.className='right'; tdWork.textContent=minToHHMM(work);
-    const tdOT=document.createElement('td'); tdOT.className='right'; tdOT.textContent=minToHHMM(ot);
-    const tdNote=document.createElement('td'); const inNote=document.createElement('input'); inNote.className='inline'; inNote.value=e.note||''; tdNote.appendChild(inNote);
-    const tdAct=document.createElement('td'); const btn=document.createElement('button'); btn.textContent='Speichern'; btn.onclick=async()=>{
-      const [fh,fm]=inFrom.value.split(':').map(x=>parseInt(x,10)); const [th,tm]=inTo.value.split(':').map(x=>parseInt(x,10));
-      const startISO=new Date(`${e.date}T${String(fh).padStart(2,'0')}:${String(fm).padStart(2,'0')}:00`).toISOString();
-      const endISO=new Date(`${e.date}T${String(th).padStart(2,'0')}:${String(tm).padStart(2,'0')}:00`).toISOString();
-      const upd={...e,start:startISO,end:endISO,breaksMin:parseInt(selBreak.value||'0',10),projectId:selProj.value,note:inNote.value};
-      await put(STORE.entries,upd); await refreshMonth();
-    }; tdAct.appendChild(btn);
+  var monthVal=document.getElementById('monthPicker').value||currentMonth();
+  var userVal=document.getElementById('userFilter').value||(currentUser&&currentUser.username);
+  var tbody=document.querySelector('#monthTable tbody'); var sumWorkTd=document.getElementById('sumWork'); var sumOtTd=document.getElementById('sumOT');
+  var entries=(await getAll(STORE.entries)).filter(function(e){return e.user===userVal && (e.date||'').startsWith(monthVal);});
+  var projs=await getAll(STORE.projects); var pm={}; projs.forEach(function(p){pm[p.id]=p;});
+  entries.sort(function(a,b){return (a.date||'').localeCompare(b.date||'') || (a.start||'').localeCompare(b.start||'');});
+  tbody.innerHTML=''; var sumWork=0, sumOT=0;
+  for(var i=0;i<entries.length;i++){
+    var e=entries[i];
+    var work=Math.max(0, durationMin(e.start,e.end)-(e.breaksMin||0)); var ot=Math.max(0, work-540); sumWork+=work; sumOT+=ot;
+    var tr=document.createElement('tr');
+    var tdDate=document.createElement('td'); tdDate.textContent=e.date;
+    var tdFrom=document.createElement('td'); var inFrom=document.createElement('input'); inFrom.className='inline'; inFrom.type='time'; inFrom.step=900; var dFrom=new Date(e.start); inFrom.value=String(dFrom.getHours()).padStart(2,'0')+':'+String(dFrom.getMinutes()).padStart(2,'0'); tdFrom.appendChild(inFrom);
+    var tdTo=document.createElement('td'); var inTo=document.createElement('input'); inTo.className='inline'; inTo.type='time'; inTo.step=900; var dTo=new Date(e.end); inTo.value=String(dTo.getHours()).padStart(2,'0')+':'+String(dTo.getMinutes()).padStart(2,'0'); tdTo.appendChild(inTo);
+    var tdProj=document.createElement('td'); var selProj=document.createElement('select'); selProj.className='inline';
+    projs.filter(function(p){return !p.archived || p.id===e.projectId;}).forEach(function(p){ var o=document.createElement('option'); o.value=p.id; o.textContent=p.name; if(p.id===e.projectId) o.selected=true; selProj.appendChild(o); }); tdProj.appendChild(selProj);
+    var tdCost=document.createElement('td'); tdCost.className='right'; tdCost.textContent=(pm[e.projectId] && pm[e.projectId].costCenter)||'';
+    var tdBreak=document.createElement('td'); tdBreak.className='right'; var selBreak=document.createElement('select'); selBreak.className='inline'; [0,15,30,45,60].forEach(function(v){ var o=document.createElement('option'); o.value=String(v); o.textContent=String(v); if((e.breaksMin||0)===v) o.selected=true; selBreak.appendChild(o); }); tdBreak.appendChild(selBreak);
+    var tdWork=document.createElement('td'); tdWork.className='right'; tdWork.textContent=minToHHMM(work);
+    var tdOT=document.createElement('td'); tdOT.className='right'; tdOT.textContent=minToHHMM(ot);
+    var tdNote=document.createElement('td'); var inNote=document.createElement('input'); inNote.className='inline'; inNote.value=e.note||''; tdNote.appendChild(inNote);
+    var tdAct=document.createElement('td'); var btn=document.createElement('button'); btn.textContent='Speichern'; btn.onclick=async function(eRef,inF,inT,sb,sp,nt){ return async function(){ var t1=inF.value.split(':'); var t2=inT.value.split(':'); var startISO=new Date(eRef.date+'T'+t1[0]+':'+t1[1]+':00').toISOString(); var endISO=new Date(eRef.date+'T'+t2[0]+':'+t2[1]+':00').toISOString(); var upd=Object.assign({},eRef,{start:startISO,end:endISO,breaksMin:parseInt(sb.value||'0',10),projectId:sp.value,note:nt.value}); await put(STORE.entries,upd); await refreshMonth(); }; }(e,inFrom,inTo,selBreak,selProj,inNote); tdAct.appendChild(btn);
     tr.appendChild(tdDate); tr.appendChild(tdFrom); tr.appendChild(tdTo); tr.appendChild(tdProj); tr.appendChild(tdCost); tr.appendChild(tdBreak); tr.appendChild(tdWork); tr.appendChild(tdOT); tr.appendChild(tdNote); tr.appendChild(tdAct);
     tbody.appendChild(tr);
   }
   sumWorkTd.textContent=minToHHMM(sumWork); sumOtTd.textContent=minToHHMM(sumOT);
 }
 
-function csvExport(rows){
-  return rows.map(r=>r.map(x=>'"'+String(x).replaceAll('"','""')+'"').join(',')).join('\n');
-}
+function csvExport(rows){ return rows.map(function(r){return r.map(function(x){return '"'+String(x).replaceAll('"','""')+'"';}).join(',');}).join('\n'); }
+async function exportCSV(){ var monthVal=document.getElementById('monthPicker').value||currentMonth(); var userVal=document.getElementById('userFilter').value||(currentUser&&currentUser.username); var rows=[[ 'Datum','Mitarbeiter','Von','Bis','Projekt','Kostenstelle','Pausen (min)','Arbeitszeit','Überstunden','Notiz' ]]; var entries=(await getAll(STORE.entries)).filter(function(e){return e.user===userVal&&(e.date||'').startsWith(monthVal);}); var projs=await getAll(STORE.projects); var pm={}; projs.forEach(function(p){pm[p.id]=p;}); var sumW=0,sumO=0; entries.sort(function(a,b){return (a.date||'').localeCompare(b.date||'')||(a.start||'').localeCompare(b.start||'');}); for(var i=0;i<entries.length;i++){ var e=entries[i]; var w=Math.max(0,durationMin(e.start,e.end)-(e.breaksMin||0)), o=Math.max(0,w-540); sumW+=w; sumO+=o; var p=pm[e.projectId]||{}; rows.push([e.date,userVal,fmt(e.start),fmt(e.end),p.name||'',p.costCenter||'',(e.breaksMin||0),minToHHMM(w),minToHHMM(o),e.note||'']); } rows.push([]); rows.push(['','','','','SUMME','','',minToHHMM(sumW),minToHHMM(sumO),'']); var blob=new Blob([csvExport(rows)],{type:'text/csv'}); var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='monat_'+monthVal+'_'+userVal+'.csv'; a.click(); URL.revokeObjectURL(a.href); }
+async function exportPDF(){ var monthVal=document.getElementById('monthPicker').value||currentMonth(); var userVal=document.getElementById('userFilter').value||(currentUser&&currentUser.username); var entries=(await getAll(STORE.entries)).filter(function(e){return e.user===userVal&&(e.date||'').startsWith(monthVal);}); var projs=await getAll(STORE.projects); var pm={}; projs.forEach(function(p){pm[p.id]=p;}); entries.sort(function(a,b){return (a.date||'').localeCompare(b.date||'')||(a.start||'').localeCompare(b.start||'');}); var sumW=0,sumO=0, rows=''; function fmtT(dt){var d=new Date(dt); return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})} for(var i=0;i<entries.length;i++){ var e=entries[i]; var w=Math.max(0,durationMin(e.start,e.end)-(e.breaksMin||0)), o=Math.max(0,w-540); sumW+=w; sumO+=o; var p=pm[e.projectId]||{}; rows+= '<tr><td>'+e.date+'</td><td>'+fmtT(e.start)+'</td><td>'+fmtT(e.end)+'</td><td>'+(p.name||'')+'</td><td class="r">'+(p.costCenter||'')+'</td><td class="r">'+(e.breaksMin||0)+'</td><td class="r">'+minToHHMM(w)+'</td><td class="r">'+minToHHMM(o)+'</td><td>'+(e.note||'')+'</td></tr>'; } var html='<!doctype html><html><head><meta charset="utf-8"><title>Monatsübersicht '+monthVal+' – '+userVal+'</title><style>body{font-family:Arial,sans-serif;margin:24px} table{width:100%;border-collapse:collapse;font-size:12px} th,td{border:1px solid #ddd;padding:6px} th{background:#f3f4f6} .r{text-align:right} tfoot td{font-weight:bold} @media print{@page{size:A4 portrait;margin:12mm}}</style></head><body><h1 style="font-size:18px;margin:0 0 8px">Monatsübersicht '+monthVal+' – '+userVal+'</h1><table><thead><tr><th>Datum</th><th>Von</th><th>Bis</th><th>Projekt</th><th>Kostenstelle</th><th>Pausen (min)</th><th>Arbeitszeit</th><th>Überstunden</th><th>Notiz</th></tr></thead><tbody>'+rows+'</tbody><tfoot><tr><td colspan="6" class="r">Summe</td><td class="r">'+minToHHMM(sumW)+'</td><td class="r">'+minToHHMM(sumO)+'</td><td></td></tr></tfoot></table><script>window.print()<\/script></body></html>'; var w=window.open('','_blank'); w.document.write(html); w.document.close(); }
 
-async function exportCSV(){
-  const monthVal=document.getElementById('monthPicker').value||currentMonth();
-  const userVal=document.getElementById('userFilter').value||(currentUser&&currentUser.username);
-  const rows=[[ 'Datum','Mitarbeiter','Von','Bis','Projekt','Kostenstelle','Pausen (min)','Arbeitszeit','Überstunden','Notiz' ]];
-  const entries=(await getAll(STORE.entries)).filter(e=>e.user===userVal&&(e.date||'').startsWith(monthVal));
-  const projs=await getAll(STORE.projects); const pm=Object.fromEntries(projs.map(p=>[p.id,p]));
-  let sumW=0,sumO=0; entries.sort((a,b)=>(a.date||'').localeCompare(b.date||'')||(a.start||'').localeCompare(b.start||''));
-  for(const e of entries){ const w=Math.max(0,durationMin(e.start,e.end)-(e.breaksMin||0)), o=Math.max(0,w-540); sumW+=w; sumO+=o; const p=pm[e.projectId]||{};
-    rows.push([e.date,userVal,fmt(e.start),fmt(e.end),p.name||'',p.costCenter||'',(e.breaksMin||0),minToHHMM(w),minToHHMM(o),e.note||'']); }
-  rows.push([]); rows.push(['','','','','SUMME','','',minToHHMM(sumW),minToHHMM(sumO),'']);
-  const blob=new Blob([csvExport(rows)],{type:'text/csv'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`monat_${monthVal}_${userVal}.csv`; a.click(); URL.revokeObjectURL(a.href);
-}
-
-async function exportPDF(){
-  const monthVal=document.getElementById('monthPicker').value||currentMonth();
-  const userVal=document.getElementById('userFilter').value||(currentUser&&currentUser.username);
-  const entries=(await getAll(STORE.entries)).filter(e=>e.user===userVal&&(e.date||'').startsWith(monthVal));
-  const projs=await getAll(STORE.projects); const pm=Object.fromEntries(projs.map(p=>[p.id,p]));
-  entries.sort((a,b)=>(a.date||'').localeCompare(b.date||'')||(a.start||'').localeCompare(b.start||''));
-  let sumW=0,sumO=0, rows='';
-  const fmtT=(dt)=>{const d=new Date(dt); return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})};
-  for(const e of entries){ const w=Math.max(0,durationMin(e.start,e.end)-(e.breaksMin||0)), o=Math.max(0,w-540); sumW+=w; sumO+=o; const p=pm[e.projectId]||{};
-    rows+=`<tr><td>${e.date}</td><td>${fmtT(e.start)}</td><td>${fmtT(e.end)}</td><td>${p.name||''}</td><td class="r">${p.costCenter||''}</td><td class="r">${e.breaksMin||0}</td><td class="r">${minToHHMM(w)}</td><td class="r">${minToHHMM(o)}</td><td>${e.note||''}</td></tr>`; }
-  const html=`<!doctype html><html><head><meta charset="utf-8"><title>Monatsübersicht ${monthVal} – ${userVal}</title>
-  <style>body{font-family:Arial,sans-serif;margin:24px} table{width:100%;border-collapse:collapse;font-size:12px} th,td{border:1px solid #ddd;padding:6px} th{background:#f3f4f6} .r{text-align:right} tfoot td{font-weight:bold} @media print{@page{size:A4 portrait;margin:12mm}}</style>
-  </head><body><h1 style="font-size:18px;margin:0 0 8px">Monatsübersicht ${monthVal} – ${userVal}</h1>
-  <table><thead><tr><th>Datum</th><th>Von</th><th>Bis</th><th>Projekt</th><th>Kostenstelle</th><th>Pausen (min)</th><th>Arbeitszeit</th><th>Überstunden</th><th>Notiz</th></tr></thead>
-  <tbody>${rows}</tbody><tfoot><tr><td colspan="6" class="r">Summe</td><td class="r">${minToHHMM(sumW)}</td><td class="r">${minToHHMM(sumO)}</td><td></td></tr></tfoot></table>
-  <script>window.print()<\/script></body></html>`;
-  const w=window.open('', '_blank'); w.document.write(html); w.document.close();
-}
-
-window.addEventListener('DOMContentLoaded', async ()=>{
+window.addEventListener('DOMContentLoaded', async function(){
   await ensureFirstAdmin();
-  const cu=localStorage.getItem('cu');
+  var cu=localStorage.getItem('cu');
   if(cu){ currentUser=JSON.parse(cu); document.getElementById('loginView').classList.add('hidden'); document.getElementById('appView').classList.remove('hidden'); document.getElementById('manualDate').value=todayISO(); document.getElementById('monthPicker').value=currentMonth(); document.getElementById('adminPanel').style.display = (currentUser.role==='admin') ? 'block' : 'none'; await loadProjects(); await loadUsersToFilter(); setupRanges(); await refreshMonth(); }
-  document.getElementById('btnLogin').onclick=async()=>{ const u=document.getElementById('loginUser').value.trim(); const p=document.getElementById('loginPass').value; try{ await login(u,p); }catch(e){ alert('Login fehlgeschlagen'); } };
-  document.getElementById('btnLogout').onclick=()=>{ localStorage.removeItem('cu'); location.reload(); };
+  document.getElementById('btnLogin').onclick=async function(){ var u=document.getElementById('loginUser').value.trim(); var p=document.getElementById('loginPass').value; try{ await login(u,p); }catch(e){ alert('Login fehlgeschlagen'); } };
+  document.getElementById('btnLogout').onclick=function(){ localStorage.removeItem('cu'); location.reload(); };
   document.getElementById('btnAddEntry').onclick=addEntryManual;
   document.getElementById('monthPicker').onchange=refreshMonth;
   document.getElementById('userFilter').onchange=refreshMonth;
   document.getElementById('btnExportCSV').onclick=exportCSV;
   document.getElementById('btnExportPDF').onclick=exportPDF;
-  document.getElementById('btnAddProject').onclick=async()=>{ const name=(document.getElementById('newProjectName').value||'').trim(); const cost=(document.getElementById('newProjectCost').value||'').trim(); if(!name) return alert('Bitte Projektname angeben'); await put(STORE.projects,{id:uuid(),name,costCenter:(cost||null),archived:false}); document.getElementById('newProjectName').value=''; document.getElementById('newProjectCost').value=''; await loadProjects(); await refreshMonth(); };
+  document.getElementById('btnAddProject').onclick=async function(){ var name=(document.getElementById('newProjectName').value||'').trim(); var cost=(document.getElementById('newProjectCost').value||'').trim(); if(!name) return alert('Bitte Projektname angeben'); await put(STORE.projects,{id:uuid(),name:name,costCenter:(cost||null),archived:false}); document.getElementById('newProjectName').value=''; document.getElementById('newProjectCost').value=''; await loadProjects(); await refreshMonth(); };
 });
 </script>
 </body></html>
