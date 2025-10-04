@@ -518,8 +518,8 @@ window.addEventListener('DOMContentLoaded', async ()=>{
   document.getElementById('btnExportCSV').onclick=exportCSV;
   document.getElementById('btnExportPDF').onclick=exportPDF;
   document.getElementById('btnAddProject').onclick=async()=>{ const name=(document.getElementById('newProjectName').value||'').trim(); const cost=(document.getElementById('newProjectCost').value||'').trim(); if(!name) return alert('Bitte Projektname angeben'); await put(STORE.projects,{id:uuid(),name:name,costCenter:(cost||null),archived:false}); document.getElementById('newProjectName').value=''; document.getElementById('newProjectCost').value=''; await loadProjects(); await refreshMonth(); };
-  document.getElementById('btnAddPhotos').onclick=addPhotosToProject;
-  document.getElementById('projectSelect').onchange=refreshPhotoGallery;
+  // btnAddPhotos disabled
+  // projectSelect refresh disabled
 });
 
 // exports
