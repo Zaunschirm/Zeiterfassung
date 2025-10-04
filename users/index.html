@@ -1,171 +1,234 @@
+
 <!doctype html>
 <html lang="de">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Mitarbeiterverwaltung</title>
-  <link rel="manifest" href="../manifest.json">
-  <link rel="icon" href="../icons/icon-192.png">
+  <link rel="icon" href="/Zeiterfassung/assets/logo.png">
   <style>
-    :root{--bg:#faf8f6;--card:#fff;--ink:#2b261f;--primary:#c9b8a6;--button:#8c7b6a;--line:#e5e7eb}
-    *{box-sizing:border-box}
-    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink)}
-    header{background:var(--primary);color:#2b261f;padding:10px 14px;display:flex;justify-content:space-between;align-items:center}
-    .brand{display:flex;gap:10px;align-items:center}
-    .brand img{height:34px}
-    main{max-width:1100px;margin:0 auto;padding:16px}
-    .card{background:#fff;border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,.06);padding:16px;margin:12px 0}
-    input,select,button{width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;font:inherit}
-    button{background:var(--button);color:#fff;cursor:pointer}
-    button.ghost{background:#fff;color:#2b261f;border:1px solid #d1d5db}
-    .row{display:flex;gap:12px;flex-wrap:wrap}
-    .row>*{flex:1 1 220px}
+    :root{--bg:#faf6f6;--ink:#1d1d1d;--card:#fff;--line:#ddd;--btn:#8c7b6a;--muted:#8587e5}
+    *{box-sizing:border-box} body{margin:0;font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink)}
+    header{background:#d9c9b9;color:#2b261f;padding:10px 14px;display:flex;justify-content:space-between;align-items:center}
+    .wrap{max-width:1080px;margin:16px auto;padding:0 12px}
+    .card{background:var(--card);border-radius:10px;box-shadow:0 6px 20px rgba(0,0,0,.06);padding:16px;margin:12px 0}
+    label{display:block;font-size:12px;margin-bottom:4px;color:#555}
+    input,select{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;font:inherit}
+    button{background:var(--btn);color:#fff;border:0;padding:10px 16px;border-radius:10px;font:inherit;cursor:pointer}
+    button.ghost{background:#fff;color:var(--ink);border:1px solid var(--line)}
+    table{width:100%;border-collapse:collapse;margin-top:6px}
+    th,td{border-bottom:1px solid var(--line);text-align:left;padding:10px}
+    th{font-weight:600}
+    .row{display:grid;grid-template-columns:repeat(4,1fr) 130px;gap:10px;align-items:end}
+    .back{color:#2b261f;text-decoration:none}
+    .tag{font-size:11px;border-radius:8px;padding:2px 8px;border:1px solid var(--line);background:#fff}
+    .actions{display:flex;gap:8px;flex-wrap:wrap}
+    .muted{color:#666}
+    .ok{color:#0a7d2c}
+    .warn{color:#9a2f2f}
   </style>
 </head>
-<!-- V34-HOTFIX -->
-<!-- V35-FIX -->
-<!-- V42-LINKFIX -->
-<!-- V43-USERFIX -->
-<!-- V45-USERBLOCK-OK -->
-<!-- V48-DBSYNC-USERS -->
 <body>
-<header>
-  <div class="brand"><img src="../assets/logo.png" alt="Logo"><strong>Zeiterfassung</strong></div>
-  <div class="row" style="flex:0 0 auto;gap:8px;align-items:center"><a href="/Zeiterfassung/" class="ghost" style="text-decoration:none;display:inline-block;width:auto">&larr; Zurück</a></div>
-</header>
-<main>
-  <section class="card" id="guard" style="display:none">
-    <p>Kein Zugriff – bitte als Admin anmelden.</p>
-    <p><a href="/Zeiterfassung/" class="ghost" style="text-decoration:none;display:inline-block;width:auto">Zur Login-Seite</a></p>
-  </section>
+  <header>
+    <a class="back" href="/Zeiterfassung/">← Zurück</a>
+    <strong>Zeiterfassung – Mitarbeiterverwaltung</strong>
+    <span></span>
+  </header>
 
-  <section class="card" id="createBox">
-    <h2>Neuen Mitarbeiter anlegen</h2>
-    <div class="row">
-      <div><label>Benutzername<input id="nuUser"></label></div>
-      <div><label>Anzeigename<input id="nuDisplay"></label></div>
-      <div><label>Passwort<input id="nuPass" type="password"></label></div>
-      <div><label>Rolle<select id="nuRole"><option value="worker">Mitarbeiter</option><option value="lead">Teamleiter</option><option value="admin">Admin</option></select></label></div>
-      <div style="align-self:end"><button id="btnCreateUser">Anlegen</button></div>
-    </div>
-  </section>
+  <main class="wrap">
+    <section class="card">
+      <h3>Neuen Mitarbeiter anlegen</h3>
+      <div class="row">
+        <div>
+          <label>Benutzername</label>
+          <input id="nuUser" autocomplete="off" placeholder="z. B. stefan">
+        </div>
+        <div>
+          <label>Anzeigename</label>
+          <input id="nuDisplay" autocomplete="off" placeholder="z. B. Stefan H.">
+        </div>
+        <div>
+          <label>Passwort</label>
+          <input id="nuPass" autocomplete="new-password" placeholder="mind. 4 Zeichen">
+        </div>
+        <div>
+          <label>Rolle</label>
+          <select id="nuRole">
+            <option value="mitarbeiter">Mitarbeiter</option>
+            <option value="teamleiter">Teamleiter</option>
+            <option value="admin">Admin</option>
+          </select>
+        </div>
+        <div>
+          <button id="btnCreateUser">Anlegen</button>
+        </div>
+      </div>
+      <p class="muted" style="margin-top:8px">Hinweis: Admin kann Nutzer anlegen/löschen, Teamleiter darf Monatsdaten bearbeiten.</p>
+    </section>
 
-  <section class="card" id="listBox">
-    <h2>Nutzerliste</h2>
-    <table style="width:100%;border-collapse:collapse">
-      <thead><tr><th>Benutzername</th><th>Anzeigename</th><th>Rolle</th><th>Status</th><th>Aktion</th></tr></thead>
-      <tbody id="userBody"></tbody>
-    </table>
-  </section>
-</main>
+    <section class="card">
+      <h3>Nutzerliste</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Benutzername</th>
+            <th>Anzeigename</th>
+            <th>Rolle</th>
+            <th>Status</th>
+            <th>Aktion</th>
+          </tr>
+        </thead>
+        <tbody id="tblBody"></tbody>
+      </table>
+    </section>
+  </main>
 
 <script>
-if (location.protocol.startsWith('http')) { navigator.serviceWorker && navigator.serviceWorker.register('../sw.js'); }
+/* === Datenbank & Helpers ================================================ */
+const DB_NAME='zeit-web-pwa';                    // identisch wie Hauptapp
+const STORE={users:'users'};                     // Objektstore-Name
 
-const DB_NAME='zeit-web-pwa', DB_VERSION=15; const STORE={ users:'users', projects:'projects', entries:'entries', photos:'photos' };
-function withDB(){return new Promise((resolve,reject)=>{const r=indexedDB.open(DB_NAME,DB_VERSION);
-  r.onupgradeneeded=()=>{const db=r.result; if(!db.objectStoreNames.contains(STORE.users)) db.createObjectStore(STORE.users,{keyPath:'username'}); if(!db.objectStoreNames.contains(STORE.projects)) db.createObjectStore(STORE.projects,{keyPath:'id'}); if(!db.objectStoreNames.contains(STORE.entries)) db.createObjectStore(STORE.entries,{keyPath:'id'}); if(!db.objectStoreNames.contains(STORE.photos)) db.createObjectStore(STORE.photos,{keyPath:'id'});};
-  r.onsuccess=()=>resolve(r.result); r.onerror=()=>reject(r.error); });
+function openDB(){
+  return new Promise((resolve,reject)=>{
+    // OHNE Versionsangabe -> verwendet vorhandene Version, keine VersionError mehr
+    const req = indexedDB.open(DB_NAME);
+    req.onerror = ()=>reject(req.error);
+    req.onsuccess= ()=>resolve(req.result);
+    // Falls DB noch nicht existiert, onupgradeneeded initialisieren
+    req.onupgradeneeded = (ev)=>{
+      const db = ev.target.result;
+      if(!db.objectStoreNames.contains(STORE.users)){
+        const s = db.createObjectStore(STORE.users, { keyPath:'username' });
+        s.createIndex('role','role',{unique:false});
+        s.createIndex('status','status',{unique:false});
+      }
+    };
+  });
 }
-async function put(store,val){const db=await withDB();return new Promise((res,rej)=>{const tx=db.transaction(store,'readwrite');tx.objectStore(store).put(val);tx.oncomplete=()=>res(val);tx.onerror=()=>rej(tx.error);});}
-async function get(store,key){const db=await withDB();return new Promise((res,rej)=>{const tx=db.transaction(store,'readonly');const q=tx.objectStore(store).get(key);q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error);});}
-async function getAll(store){const db=await withDB();return new Promise((res,rej)=>{const tx=db.transaction(store,'readonly');const q=tx.objectStore(store).getAll();q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error);});}
-async function delRec(store,key){const db=await withDB();return new Promise((res,rej)=>{const tx=db.transaction(store,'readwrite');tx.objectStore(store).delete(key);tx.oncomplete=()=>res(true);tx.onerror=()=>rej(tx.error);});}
+
+function idb(db, store, mode='readonly'){ return db.transaction(store, mode).objectStore(store); }
+
+async function getAllUsers(){
+  const db = await openDB();
+  const os = idb(db, STORE.users);
+  return await new Promise((resolve,reject)=>{
+    const out=[]; const req=os.openCursor();
+    req.onsuccess= e=>{ const c=e.target.result; if(c){ out.push(c.value); c.continue(); } else resolve(out); };
+    req.onerror = ()=>reject(req.error);
+  });
+}
+
+async function getUser(username){
+  const db = await openDB(); const os=idb(db, STORE.users);
+  return await new Promise((resolve,reject)=>{
+    const r=os.get(username); r.onsuccess=()=>resolve(r.result||null); r.onerror=()=>reject(r.error);
+  });
+}
+
+async function putUser(u){
+  const db = await openDB(); const os=idb(db, STORE.users, 'readwrite');
+  return await new Promise((resolve,reject)=>{
+    const r=os.put(u); r.onsuccess=()=>resolve(); r.onerror=()=>reject(r.error);
+  });
+}
+
+async function delUser(username){
+  const db = await openDB(); const os=idb(db, STORE.users, 'readwrite');
+  return await new Promise((resolve,reject)=>{
+    const r=os.delete(username); r.onsuccess=()=>resolve(); r.onerror=()=>reject(r.error);
+  });
+}
+
+/* === Admin-Schutz & Bootstrap =========================================== */
+function me(){
+  try{ return JSON.parse(localStorage.getItem('cu')||'null'); }catch(e){ return null;}
+}
 
 async function ensureAdminExists(){
-  const users = await getAll(STORE.users);
-  const hasAdmin = users && users.some(u => (u.role==='admin') && (u.active!==false));
-  if (!hasAdmin) {
-    await put(STORE.users, {username:'admin', password:'admin', role:'admin', display:'Administrator', active:true, mustChange:false});
+  // legt einen Default-Admin an, wenn keine Nutzer vorhanden
+  const all = await getAllUsers();
+  if(all.length===0){
+    await putUser({username:'admin',display:'Admin',pass:'admin',role:'admin',status:'active',createdAt:new Date().toISOString()});
   }
 }
 
-function me(){ try{return JSON.parse(localStorage.getItem('cu')||'null');}catch(e){return null;} }
-function showGuard(show){ document.getElementById('guard').style.display = show?'block':'none'; document.getElementById('createBox').style.display = show?'none':'block'; document.getElementById('listBox').style.display = show?'none':'block'; }
+function requireAdmin(){
+  const u = me();
+  return u && u.role==='admin';
+}
+
+/* === Rendering =========================================================== */
+function td(text){ const d=document.createElement('td'); d.textContent=text; return d; }
+
+function userRow(u){
+  const tr=document.createElement('tr');
+  tr.appendChild(td(u.username));
+  tr.appendChild(td(u.display||''));
+  tr.appendChild(td(u.role));
+  tr.appendChild(td(u.status||'active'));
+  const act=document.createElement('td'); act.className='actions';
+
+  const btnDel=document.createElement('button'); btnDel.className='ghost'; btnDel.textContent='Löschen';
+  btnDel.onclick=async()=>{
+    if(!confirm('Nutzer löschen?')) return;
+    await delUser(u.username);
+    await renderUsers();
+  };
+
+  const btnToggle=document.createElement('button'); btnToggle.className='ghost'; btnToggle.textContent=(u.status==='active'?'Deaktivieren':'Aktivieren');
+  btnToggle.onclick=async()=>{
+    u.status = (u.status==='active'?'inactive':'active');
+    await putUser(u); await renderUsers();
+  };
+
+  const btnReset=document.createElement('button'); btnReset.className='ghost'; btnReset.textContent='PW zurücksetzen';
+  btnReset.onclick=async()=>{
+    const np = prompt('Neues Passwort für '+u.username+':');
+    if(np && np.trim().length>=4){ u.pass=np.trim(); await putUser(u); alert('Passwort gesetzt.'); }
+  };
+
+  act.appendChild(btnToggle);
+  act.appendChild(btnReset);
+  act.appendChild(btnDel);
+  tr.appendChild(act);
+  return tr;
+}
 
 async function renderUsers(){
-  const tbody=document.getElementById('userBody'); tbody.innerHTML='';
-  const users=await getAll(STORE.users);
-  const adminCount=users.filter(u=>u.role==='admin' && u.active!==false).length;
-  for(const u of users){
-    const tr=document.createElement('tr');
-    const tdU=document.createElement('td'); tdU.textContent=u.username;
-    const tdD=document.createElement('td'); const inD=document.createElement('input'); inD.value=u.display||''; inD.style.width='100%'; tdD.appendChild(inD);
-    const tdR=document.createElement('td'); const selR=document.createElement('select'); ['worker','lead','admin'].forEach(r=>{ const o=document.createElement('option'); o.value=r; o.textContent=(r==='admin'?'Admin':(r==='lead'?'Teamleiter':'Mitarbeiter')); if(u.role===r)o.selected=true; selR.appendChild(o); }); tdR.appendChild(selR);
-    const tdS=document.createElement('td'); const s=document.createElement('span'); s.textContent=(u.active===false?'Inaktiv':'Aktiv'); tdS.appendChild(s);
-    const tdA=document.createElement('td');
-    const bSave=document.createElement('button'); bSave.textContent='Speichern'; bSave.onclick=async()=>{ await put(STORE.users,Object.assign({},u,{ display:inD.value.trim(), role:selR.value })); await renderUsers(); };
-    const bPwd=document.createElement('button'); bPwd.className='ghost'; bPwd.textContent='Passwort'; bPwd.onclick=async()=>{ const np=prompt('Neues Passwort für '+u.username+':'); if(!np) return; await put(STORE.users,Object.assign({},u,{password:np, mustChange:true})); alert('Passwort gesetzt. Nutzer muss es beim nächsten Login ändern.'); };
-    const bForce=document.createElement('button'); bForce.className='ghost'; bForce.textContent='Reset erzwingen'; bForce.onclick=async()=>{ await put(STORE.users,Object.assign({},u,{ mustChange:true })); alert('Beim nächsten Login muss ein neues Passwort gesetzt werden.'); };
-    const bToggle=document.createElement('button'); bToggle.className='ghost'; bToggle.textContent=(u.active===false?'Aktivieren':'Deaktivieren'); bToggle.onclick=async()=>{ if(u.role==='admin' && u.active!==false && adminCount<=1){ alert('Letzter aktiver Admin – kann nicht deaktiviert werden.'); return; } await put(STORE.users,Object.assign({},u,{ active: !(u.active===false) })); await renderUsers(); };
-    const bDel=document.createElement('button'); bDel.className='ghost'; bDel.textContent='Löschen'; bDel.onclick=async()=>{ if(u.role==='admin' && u.active!==false && adminCount<=1){ alert('Letzter aktiver Admin – kann nicht gelöscht werden.'); return; } if(!confirm('Nutzer löschen?')) return; await delRec(STORE.users,u.username); await renderUsers(); };
-    tdA.appendChild(bSave); tdA.appendChild(bPwd); tdA.appendChild(bForce); tdA.appendChild(bToggle); tdA.appendChild(bDel);
-    tr.appendChild(tdU); tr.appendChild(tdD); tr.appendChild(tdR); tr.appendChild(tdS); tr.appendChild(tdA);
-    tbody.appendChild(tr);
-  }
+  const body=document.getElementById('tblBody');
+  body.innerHTML='';
+  const data=await getAllUsers();
+  data.sort((a,b)=>a.username.localeCompare(b.username));
+  for(const u of data){ body.appendChild(userRow(u)); }
 }
+
+/* === Events ============================================================= */
 window.addEventListener('DOMContentLoaded', async () => {
   await ensureAdminExists();
 
-  const u = me();
-  if (!u || u.role !== 'admin') { showGuard(true); return; }
-  showGuard(false);
+  if(!requireAdmin()){
+    alert('Nur Admin darf diese Seite verwenden.');
+    location.href='/Zeiterfassung/';
+    return;
+  }
 
-  const btn = document.getElementById('btnCreateUser');
-  if (btn) btn.onclick = async () => {
-    const nu = document.getElementById('nuUser').value.trim();
-    const nd = document.getElementById('nuDisplay').value.trim();
-    const np = document.getElementById('nuPass').value;
-    const nr = document.getElementById('nuRole').value;
-
-    if (!nu || !np) { alert('Benutzername und Passwort sind Pflicht.'); return; }
-
-    const exists = await get(STORE.users, nu);
-    if (exists) { alert('Benutzername existiert bereits.'); return; }
-
-    await put(STORE.users, { username: nu, display: (nd||nu), password: np, role: nr, active: true, mustChange: (nr!=='admin') });
-
-    document.getElementById('nuUser').value = '';
-    document.getElementById('nuDisplay').value = '';
-    document.getElementById('nuPass').value = '';
-    document.getElementById('nuRole').value = 'worker';
-
+  const btn=document.getElementById('btnCreateUser');
+  btn.onclick = async () => {
+    const nu=document.getElementById('nuUser').value.trim();
+    const nd=document.getElementById('nuDisplay').value.trim();
+    const np=document.getElementById('nuPass').value.trim();
+    const nr=document.getElementById('nuRole').value;
+    if(!nu || !np){ alert('Benutzername und Passwort erforderlich.'); return; }
+    if(await getUser(nu)){ alert('Benutzer existiert bereits.'); return; }
+    await putUser({username:nu,display:nd||nu,pass:np,role:nr,status:'active',createdAt:new Date().toISOString()});
+    document.getElementById('nuUser').value='';
+    document.getElementById('nuDisplay').value='';
+    document.getElementById('nuPass').value='';
     await renderUsers();
   };
 
   await renderUsers();
 });
 </script>
-
-<script>
-(function hideCacheButton(){
-  function kill(){
-    var nodes = Array.prototype.slice.call(document.querySelectorAll('button, a, div, span'));
-    nodes.forEach(function(n){
-      var t = (n.innerText || n.textContent || '').trim().toLowerCase();
-      if (!t) return;
-      if (t === 'cache leeren' || t.includes('cache leeren') || t === 'clear cache' || t.includes('clear cache')) {
-        try { n.style.display = 'none'; n.setAttribute('aria-hidden','true'); } catch(e){}
-      }
-      // defensive: role/data attributes
-      if (n.dataset && (n.dataset.role === 'clear-cache' || n.dataset.action === 'clear-cache')) {
-        try { n.style.display = 'none'; n.setAttribute('aria-hidden','true'); } catch(e){}
-      }
-      // click handlers with clearCache name
-      var onclickAttr = (n.getAttribute && (n.getAttribute('onclick')||'').toLowerCase()) || '';
-      if (onclickAttr.includes('clearcache') || onclickAttr.includes('cache')) {
-        if (t.includes('cache')) { try { n.style.display = 'none'; } catch(e){} }
-      }
-    });
-  }
-  document.addEventListener('DOMContentLoaded', kill);
-  // also observe app frameworks mounting later
-  var obs = new MutationObserver(function(){ kill(); });
-  obs.observe(document.documentElement, {childList:true, subtree:true});
-  // also run periodically just in case
-  setInterval(kill, 2000);
-})();
-</script>
-
 </body>
 </html>
