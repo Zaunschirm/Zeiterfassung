@@ -1,0 +1,10 @@
+{
+  "appName": "Zeiterfassung",
+  "primary": "#c9b8a6",
+  "primaryText": "#2b261f",
+  "accent": "#8c7b6a",
+  "bg": "#faf8f6",
+  "card": "#ffffff",
+  "muted": "#8b857e",
+  "logoPath": "assets/logo.png"
+}
