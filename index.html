@@ -1,3 +1,4 @@
+
 <!doctype html>
 <html lang="de">
 <head>
@@ -69,7 +70,6 @@
       <div><label>Passwort<input id="loginPass" type="password" autocomplete="current-password"></label></div>
     </div>
     <div class="row"><button id="btnLogin">Login</button></div>
-    <p class="muted">Erststart: admin/admin</p>
   </section>
 
   <section id="appView" class="hidden">
@@ -82,28 +82,23 @@
         </select></label></div>
         <div><label>Bemerkung<input id="noteInput" placeholder="z. B. Montage, Fahrtzeit"></label></div>
       </div>
-
       <div class="row">
         <div style="flex:1 1 100%">
           <div class="row" style="align-items:center">
             <output id="startOut">06:45</output>
-            <input id="startRange" type="range" min="16" max="80" step="1" value="27">
-            <span>Start</span>
+            <input id="startRange" type="range" min="16" max="80" step="1" value="27"><span>Start</span>
           </div>
           <div class="row" style="align-items:center">
             <output id="endOut">16:30</output>
-            <input id="endRange" type="range" min="16" max="80" step="1" value="66">
-            <span>Ende</span>
+            <input id="endRange" type="range" min="16" max="80" step="1" value="66"><span>Ende</span>
           </div>
         </div>
       </div>
-
       <div class="row">
         <div><label>Datum<input type="date" id="manualDate"></label></div>
         <div><label>Arbeitszeit (HH:MM)<input id="workMinPreview" readonly></label></div>
         <div style="align-self:end"><button id="btnAddEntry">Speichern</button></div>
       </div>
-
       <div class="row">
         <div><button id="btnAddPhotos" class="ghost">📷 Projekt‑Fotos hinzufügen</button></div>
       </div>
@@ -143,13 +138,11 @@
 </main>
 
 <script>
-// Safe link to /users/ under GitHub Pages subpath
 (function(){
   const a=document.getElementById('linkUsers');
   a.addEventListener('click',function(ev){
     ev.preventDefault();
-    const p=location.pathname;
-    const base=p.endsWith('/')?p:p.replace(/[^/]+$/,'');
+    const p=location.pathname; const base=p.endsWith('/')?p:p.replace(/[^/]+$/,'');
     location.href=location.origin+base+'users/';
   });
 })();
@@ -158,11 +151,8 @@ if (location.protocol.startsWith('http')) { navigator.serviceWorker && navigator
 
 const DB_NAME='zeit-web-pwa', DB_VERSION=2;
 const STORE={ users:'users', projects:'projects', entries:'entries', photos:'photos' };
-
-function withDB(){return new Promise((resolve,reject)=>{
-  const r=indexedDB.open(DB_NAME,DB_VERSION);
-  r.onupgradeneeded=()=>{
-    const db=r.result;
+function withDB(){return new Promise((resolve,reject)=>{const r=indexedDB.open(DB_NAME,DB_VERSION);
+  r.onupgradeneeded=()=>{const db=r.result;
     if(!db.objectStoreNames.contains(STORE.users)) db.createObjectStore(STORE.users,{keyPath:'username'});
     if(!db.objectStoreNames.contains(STORE.projects)) db.createObjectStore(STORE.projects,{keyPath:'id'});
     if(!db.objectStoreNames.contains(STORE.entries)) db.createObjectStore(STORE.entries,{keyPath:'id'});
@@ -170,7 +160,6 @@ function withDB(){return new Promise((resolve,reject)=>{
   };
   r.onsuccess=()=>resolve(r.result); r.onerror=()=>reject(r.error);
 });}
-
 async function put(store,val){const db=await withDB();return new Promise((res,rej)=>{const tx=db.transaction(store,'readwrite');tx.objectStore(store).put(val);tx.oncomplete=()=>res(val);tx.onerror=()=>rej(tx.error);});}
 async function get(store,key){const db=await withDB();return new Promise((res,rej)=>{const tx=db.transaction(store,'readonly');const q=tx.objectStore(store).get(key);q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error);});}
 async function getAll(store){const db=await withDB();return new Promise((res,rej)=>{const tx=db.transaction(store,'readonly');const q=tx.objectStore(store).getAll();q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error);});}
@@ -185,14 +174,18 @@ function minToHHMM(m){ const h=Math.floor(m/60), mm=m%60; return String(h).padSt
 function durationMin(a,b){ return Math.max(0, Math.round((new Date(b)-new Date(a))/60000)); }
 function ixToDateISO(dateISO,ix){ const p=dateISO.split('-'); const y=parseInt(p[0],10), mo=parseInt(p[1],10), d=parseInt(p[2],10); const minutes=ix*15; const h=Math.floor(minutes/60), mm=minutes%60; return new Date(y,mo-1,d,h,mm,0).toISOString(); }
 
-async function ensureFirstAdmin(){
+
+async function ensureAdminExists(){
   const users = await getAll(STORE.users);
-  if (!users || users.length === 0) {
+  const hasAdmin = users && users.some(u => (u.role==='admin') && (u.active!==false));
+  if (!hasAdmin) {
     await put(STORE.users, {username:'admin', password:'admin', role:'admin', display:'Administrator', active:true});
   }
 }
 
+
 async function login(u,p){
+  await ensureAdminExists();
   const user=await get(STORE.users,u);
   if(!user){ alert('Nutzer nicht gefunden'); return; }
   if(user.active===false){ alert('Nutzer ist deaktiviert'); return; }
@@ -299,7 +292,7 @@ async function refreshMonth(){
   sumWorkTd.textContent=minToHHMM(sumWork); sumOtTd.textContent=minToHHMM(sumOT);
 }
 
-// ===== Projektfotos + Komprimierung =====
+// Photos + compression
 function pickFiles(accept='image/*', multiple=true){
   return new Promise(resolve=>{
     const input=document.createElement('input');
@@ -308,16 +301,14 @@ function pickFiles(accept='image/*', multiple=true){
     input.click();
   });
 }
-
 function compressImage(file, maxDim=1600, quality=0.82){
   return new Promise((resolve,reject)=>{
     const reader=new FileReader();
     reader.onload=()=>{
       const img=new Image();
       img.onload=()=>{
-        let {width, height}=img;
-        const scale=Math.min(1, maxDim/Math.max(width,height));
-        const w=Math.round(width*scale), h=Math.round(height*scale);
+        const scale=Math.min(1, maxDim/Math.max(img.width,img.height));
+        const w=Math.round(img.width*scale), h=Math.round(img.height*scale);
         const canvas=document.createElement('canvas');
         canvas.width=w; canvas.height=h;
         const ctx=canvas.getContext('2d');
@@ -332,19 +323,17 @@ function compressImage(file, maxDim=1600, quality=0.82){
     reader.readAsDataURL(file);
   });
 }
-
 async function addPhotosToProject(){
   const pid=document.getElementById('projectSelect').value;
   if(!pid) return alert('Bitte zuerst ein Projekt wählen');
   const files=await pickFiles('image/*', true);
   for(const f of files){
-    const data=await compressImage(f, 1600, 0.82);
-    const rec={id:uuid(), projectId:pid, filename:f.name, dataUrl:data, createdAt:new Date().toISOString()};
+    const data=await compressImage(f,1600,0.82);
+    const rec={id:uuid(),projectId:pid,filename:f.name,dataUrl:data,createdAt:new Date().toISOString()};
     await put(STORE.photos, rec);
   }
   await refreshPhotoGallery();
 }
-
 async function refreshPhotoGallery(){
   const pid=document.getElementById('projectSelect').value;
   const wrap=document.getElementById('photoWrap'); const gal=document.getElementById('photoGallery');
@@ -364,7 +353,7 @@ async function refreshPhotoGallery(){
 
 // events
 window.addEventListener('DOMContentLoaded', async ()=>{
-  await ensureFirstAdmin();
+  await ensureAdminExists();
   const cu=localStorage.getItem('cu');
   if(cu){ currentUser=JSON.parse(cu); document.getElementById('loginView').classList.add('hidden'); document.getElementById('appView').classList.remove('hidden'); document.getElementById('manualDate').value=todayISO(); document.getElementById('monthPicker').value=currentMonth(); document.getElementById('adminPanel').style.display = (currentUser.role==='admin') ? 'block' : 'none'; await loadProjects(); await loadUsersToFilter(); setupRanges(); await refreshMonth(); await refreshPhotoGallery(); }
   document.getElementById('btnLogin').onclick=async()=>{ const u=document.getElementById('loginUser').value.trim(); const p=document.getElementById('loginPass').value; try{ await login(u,p); }catch(e){ alert('Login fehlgeschlagen'); } };

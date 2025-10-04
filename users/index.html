@@ -1,3 +1,4 @@
+
 <!doctype html>
 <html lang="de">
 <head>
@@ -66,6 +67,16 @@ async function get(store,key){const db=await withDB();return new Promise((res,re
 async function getAll(store){const db=await withDB();return new Promise((res,rej)=>{const tx=db.transaction(store,'readonly');const q=tx.objectStore(store).getAll();q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error);});}
 async function delRec(store,key){const db=await withDB();return new Promise((res,rej)=>{const tx=db.transaction(store,'readwrite');tx.objectStore(store).delete(key);tx.oncomplete=()=>res(true);tx.onerror=()=>rej(tx.error);});}
 
+
+async function ensureAdminExists(){
+  const users = await getAll(STORE.users);
+  const hasAdmin = users && users.some(u => (u.role==='admin') && (u.active!==false));
+  if (!hasAdmin) {
+    await put(STORE.users, {username:'admin', password:'admin', role:'admin', display:'Administrator', active:true});
+  }
+}
+
+
 function me(){ try{return JSON.parse(localStorage.getItem('cu')||'null');}catch(e){return null;} }
 function showGuard(show){ document.getElementById('guard').style.display = show?'block':'none'; document.getElementById('createBox').style.display = show?'none':'block'; document.getElementById('listBox').style.display = show?'none':'block'; }
 
@@ -91,6 +102,7 @@ async function renderUsers(){
 }
 
 window.addEventListener('DOMContentLoaded', async ()=>{
+  await ensureAdminExists();
   const u=me(); if(!u || u.role!=='admin'){ showGuard(true); return; } showGuard(false);
   document.getElementById('btnCreateUser').onclick=async()=>{
     const nu=document.getElementById('nuUser').value.trim();
