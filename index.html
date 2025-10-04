@@ -37,6 +37,7 @@
     .cb-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px}
     .cb-item{display:flex;align-items:center;gap:10px;padding:8px;border:1px solid var(--line);border-radius:10px;background:#fff}
     .cb-item input{width:auto}
+    .muted{color:var(--muted)}
   </style>
   <script>
   async function applyBranding(){
@@ -139,6 +140,7 @@
         <div><label>Monat<input type="month" id="monthPicker"></label></div>
         <div><label>Nutzer<select id="userFilter"></select></label></div>
       </div>
+      <p id="editHint" class="muted" style="margin:0 0 8px"></p>
       <table id="monthTable">
         <thead><tr><th>Datum</th><th>Von</th><th>Bis</th><th>Projekt</th><th class="right">Kostenstelle</th><th class="right">Pausen</th><th class="right">Arbeitszeit</th><th class="right">Überstunden</th><th>Notiz</th><th>Aktion</th></tr></thead>
         <tbody></tbody>
@@ -174,7 +176,7 @@
 
 if (location.protocol.startsWith('http')) { navigator.serviceWorker && navigator.serviceWorker.register('./sw.js'); }
 
-const DB_NAME='zeit-web-pwa', DB_VERSION=6;
+const DB_NAME='zeit-web-pwa', DB_VERSION=7;
 const STORE={ users:'users', projects:'projects', entries:'entries', photos:'photos' };
 function withDB(){return new Promise((resolve,reject)=>{const r=indexedDB.open(DB_NAME,DB_VERSION);
   r.onupgradeneeded=()=>{const db=r.result;
@@ -199,6 +201,7 @@ function minToHHMM(m){ const h=Math.floor(m/60), mm=m%60; return String(h).padSt
 function durationMin(a,b){ return Math.max(0, Math.round((new Date(b)-new Date(a))/60000)); }
 function ixToDateISO(dateISO,ix){ const p=dateISO.split('-'); const y=parseInt(p[0],10), mo=parseInt(p[1],10), d=parseInt(p[2],10); const minutes=ix*15; const h=Math.floor(minutes/60), mm=minutes%60; return new Date(y,mo-1,d,h,mm,0).toISOString(); }
 
+
 async function ensureAdminExists(){
   const users = await getAll(STORE.users);
   const hasAdmin = users && users.some(u => (u.role==='admin') && (u.active!==false));
@@ -206,6 +209,7 @@ async function ensureAdminExists(){
     await put(STORE.users, {username:'admin', password:'admin', role:'admin', display:'Administrator', active:true, mustChange:false});
   }
 }
+
 
 function showSection(id){
   document.getElementById('loginView').classList.add('hidden');
@@ -231,7 +235,9 @@ async function enterApp(){
   showSection('appView');
   document.getElementById('manualDate').value=todayISO();
   document.getElementById('monthPicker').value=currentMonth();
-  document.getElementById('adminPanel').style.display = (currentUser.role==='admin') ? 'block' : 'none';
+  const isAdmin = (currentUser.role==='admin');
+  document.getElementById('adminPanel').style.display = isAdmin ? 'block' : 'none';
+  document.getElementById('editHint').textContent = isAdmin ? 'Monatsübersicht ist bearbeitbar (nur Admin).' : 'Nur Admin kann Einträge in der Monatsübersicht bearbeiten.';
   await loadProjects();
   await loadUsersToFilter();
   await renderUserCheckboxes();
@@ -349,26 +355,32 @@ async function refreshMonth(){
   const projs=await getAll(STORE.projects); const pm={}; projs.forEach(p=>pm[p.id]=p);
   entries.sort((a,b)=>(a.date||'').localeCompare(b.date||'') || (a.start||'').localeCompare(b.start||''));
   tbody.innerHTML=''; let sumWork=0, sumOT=0;
+  const isAdmin = (currentUser && currentUser.role==='admin');
   for(const e of entries){
     const work=Math.max(0, durationMin(e.start,e.end)-(e.breaksMin||0)); const ot=Math.max(0, work-540); sumWork+=work; sumOT+=ot;
     const tr=document.createElement('tr');
     const tdDate=document.createElement('td'); tdDate.textContent=e.date;
-    const tdFrom=document.createElement('td'); const inFrom=document.createElement('input'); inFrom.className='inline'; inFrom.type='time'; inFrom.step=900; const dFrom=new Date(e.start); inFrom.value=String(dFrom.getHours()).padStart(2,'0')+':'+String(dFrom.getMinutes()).padStart(2,'0'); tdFrom.appendChild(inFrom);
-    const tdTo=document.createElement('td'); const inTo=document.createElement('input'); inTo.className='inline'; inTo.type='time'; inTo.step=900; const dTo=new Date(e.end); inTo.value=String(dTo.getHours()).padStart(2,'0')+':'+String(dTo.getMinutes()).padStart(2,'0'); tdTo.appendChild(inTo);
-    const tdProj=document.createElement('td'); const selProj=document.createElement('select'); selProj.className='inline';
+    const tdFrom=document.createElement('td'); const inFrom=document.createElement('input'); inFrom.className='inline'; inFrom.type='time'; inFrom.step=900; const dFrom=new Date(e.start); inFrom.value=String(dFrom.getHours()).padStart(2,'0')+':'+String(dFrom.getMinutes()).padStart(2,'0'); if(!isAdmin) inFrom.disabled=true; tdFrom.appendChild(inFrom);
+    const tdTo=document.createElement('td'); const inTo=document.createElement('input'); inTo.className='inline'; inTo.type='time'; inTo.step=900; const dTo=new Date(e.end); inTo.value=String(dTo.getHours()).padStart(2,'0')+':'+String(dTo.getMinutes()).padStart(2,'0'); if(!isAdmin) inTo.disabled=true; tdTo.appendChild(inTo);
+    const tdProj=document.createElement('td'); const selProj=document.createElement('select'); selProj.className='inline'; if(!isAdmin) selProj.disabled=true;
     projs.filter(p=>!p.archived || p.id===e.projectId).forEach(p=>{ const o=document.createElement('option'); o.value=p.id; o.textContent=p.name; if(p.id===e.projectId) o.selected=true; selProj.appendChild(o); }); tdProj.appendChild(selProj);
     const tdCost=document.createElement('td'); tdCost.className='right'; tdCost.textContent=(pm[e.projectId] && pm[e.projectId].costCenter)||'';
-    const tdBreak=document.createElement('td'); tdBreak.className='right'; const selBreak=document.createElement('select'); selBreak.className='inline'; [0,15,30,45,60].forEach(v=>{ const o=document.createElement('option'); o.value=String(v); o.textContent=String(v); if((e.breaksMin||0)===v) o.selected=true; selBreak.appendChild(o); }); tdBreak.appendChild(selBreak);
+    const tdBreak=document.createElement('td'); tdBreak.className='right'; const selBreak=document.createElement('select'); selBreak.className='inline'; [0,15,30,45,60].forEach(v=>{ const o=document.createElement('option'); o.value=String(v); o.textContent=String(v); if((e.breaksMin||0)===v) o.selected=true; selBreak.appendChild(o); }); if(!isAdmin) selBreak.disabled=true; tdBreak.appendChild(selBreak);
     const tdWork=document.createElement('td'); tdWork.className='right'; tdWork.textContent=minToHHMM(work);
     const tdOT=document.createElement('td'); tdOT.className='right'; tdOT.textContent=minToHHMM(ot);
-    const tdNote=document.createElement('td'); const inNote=document.createElement('input'); inNote.className='inline'; inNote.value=e.note||''; tdNote.appendChild(inNote);
-    const tdAct=document.createElement('td'); const btn=document.createElement('button'); btn.textContent='Speichern'; btn.onclick=async()=>{
-      const t1=inFrom.value.split(':'), t2=inTo.value.split(':');
-      const startISO=new Date(e.date+'T'+t1[0]+':'+t1[1]+':00').toISOString();
-      const endISO=new Date(e.date+'T'+t2[0]+':'+t2[1]+':00').toISOString();
-      const upd=Object.assign({},e,{start:startISO,end:endISO,breaksMin:parseInt(selBreak.value||'0',10),projectId:selProj.value,note:inNote.value});
-      await put(STORE.entries,upd); await refreshMonth();
-    }; tdAct.appendChild(btn);
+    const tdNote=document.createElement('td'); const inNote=document.createElement('input'); inNote.className='inline'; inNote.value=e.note||''; if(!isAdmin) inNote.disabled=true; tdNote.appendChild(inNote);
+    const tdAct=document.createElement('td');
+    if(isAdmin){
+      const btn=document.createElement('button'); btn.textContent='Speichern'; btn.onclick=async()=>{
+        const t1=inFrom.value.split(':'), t2=inTo.value.split(':');
+        const startISO=new Date(e.date+'T'+t1[0]+':'+t1[1]+':00').toISOString();
+        const endISO=new Date(e.date+'T'+t2[0]+':'+t2[1]+':00').toISOString();
+        const upd=Object.assign({},e,{start:startISO,end:endISO,breaksMin:parseInt(selBreak.value||'0',10),projectId:selProj.value,note:inNote.value});
+        await put(STORE.entries,upd); await refreshMonth();
+      }; tdAct.appendChild(btn);
+    } else {
+      tdAct.textContent='-';
+    }
     tr.appendChild(tdDate); tr.appendChild(tdFrom); tr.appendChild(tdTo); tr.appendChild(tdProj); tr.appendChild(tdCost); tr.appendChild(tdBreak); tr.appendChild(tdWork); tr.appendChild(tdOT); tr.appendChild(tdNote); tr.appendChild(tdAct);
     tbody.appendChild(tr);
   }
