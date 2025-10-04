@@ -104,20 +104,36 @@ async function renderUsers(){
   }
 }
 
+<script>
 window.addEventListener('DOMContentLoaded', async () => {
-await ensureAdminExists();
-  const u=me(); if(!u || u.role!=='admin'){ showGuard(true); return; } showGuard(false);
-  document.getElementById('btnCreateUser').onclick=async()=>{
-    const nu=document.getElementById('nuUser').value.trim();
-    const nd=document.getElementById('nuDisplay').value.trim();
-    const np=document.getElementById('nuPass').value;
-    const nr=document.getElementById('nuRole').value;
-    if(!nu || !np) return alert('Benutzername und Passwort sind Pflicht.');
-    const exists=await get(STORE.users,nu); if(exists) return alert('Benutzername existiert bereits.');
-    await put(STORE.users,{username:nu, display:(nd||nu), password:np, role:nr, active:true, mustChange:(nr!=='admin')});
-    document.getElementById('nuUser').value=''; document.getElementById('nuDisplay').value=''; document.getElementById('nuPass').value=''; document.getElementById('nuRole').value='worker';
+  await ensureAdminExists();
+
+  const u = me();
+  if (!u || u.role !== 'admin') { showGuard(true); return; }
+  showGuard(false);
+
+  const btn = document.getElementById('btnCreateUser');
+  if (btn) btn.onclick = async () => {
+    const nu = document.getElementById('nuUser').value.trim();
+    const nd = document.getElementById('nuDisplay').value.trim();
+    const np = document.getElementById('nuPass').value;
+    const nr = document.getElementById('nuRole').value;
+
+    if (!nu || !np) { alert('Benutzername und Passwort sind Pflicht.'); return; }
+
+    const exists = await get(STORE.users, nu);
+    if (exists) { alert('Benutzername existiert bereits.'); return; }
+
+    await put(STORE.users, { username: nu, display: (nd||nu), password: np, role: nr, active: true, mustChange: (nr!=='admin') });
+
+    document.getElementById('nuUser').value = '';
+    document.getElementById('nuDisplay').value = '';
+    document.getElementById('nuPass').value = '';
+    document.getElementById('nuRole').value = 'worker';
+
     await renderUsers();
-  
+  };
+
   await renderUsers();
 });
 </script>
