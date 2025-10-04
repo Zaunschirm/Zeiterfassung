@@ -189,9 +189,9 @@
   });
 })();
 
-if (location.protocol.startsWith('http')) { navigator.serviceWorker && navigator.serviceWorker.register('./sw.js?v=31a'); }
+if (location.protocol.startsWith('http')) { navigator.serviceWorker && navigator.serviceWorker.register('./sw.js'); }
 
-const DB_NAME='zeit-web-pwa', DB_VERSION=12; // v31a
+const DB_NAME='zeit-web-pwa', DB_VERSION=11; // v31
 const STORE={ users:'users', projects:'projects', entries:'entries', photos:'photos' };
 function withDB(){return new Promise((resolve,reject)=>{const r=indexedDB.open(DB_NAME,DB_VERSION);
   r.onupgradeneeded=()=>{const db=r.result;
@@ -224,7 +224,13 @@ async function ensureAdminExists(){
   }
 }
 
-function showSection(id){['loginView','forcePwView','appView'].forEach(x=>document.getElementById(x).classList.add('hidden'));document.getElementById(id).classList.remove('hidden');}
+function showSection(id){
+  document.getElementById('loginView').classList.add('hidden');
+  document.getElementById('forcePwView').classList.add('hidden');
+  document.getElementById('appView').classList.add('hidden');
+  document.getElementById(id).classList.remove('hidden');
+}
+
 function isEditor(){ return currentUser && (currentUser.role==='admin' || currentUser.role==='lead'); }
 
 async function login(u,p){
@@ -233,9 +239,12 @@ async function login(u,p){
   if(!user){ alert('Nutzer nicht gefunden'); return; }
   if(user.active===false){ alert('Nutzer ist deaktiviert'); return; }
   if(user.password!==p){ alert('Passwort falsch'); return; }
-  if(user.mustChange===true){ currentUser=user; localStorage.setItem('cu_pending', JSON.stringify(user)); showSection('forcePwView'); return; }
+  if(user.mustChange===true){
+    currentUser=user; localStorage.setItem('cu_pending', JSON.stringify(user)); showSection('forcePwView'); return;
+  }
   currentUser=user; localStorage.setItem('cu', JSON.stringify(user)); await enterApp();
 }
+
 async function enterApp(){
   showSection('appView');
   document.getElementById('manualDate').value=todayISO();
@@ -243,17 +252,26 @@ async function enterApp(){
   const admin = (currentUser.role==='admin');
   document.getElementById('adminPanel').style.display = admin ? 'block' : 'none';
   document.getElementById('editHint').textContent = isEditor() ? 'Monatsübersicht ist bearbeitbar (Admin & Teamleiter).' : 'Nur Admin/Teamleiter können Einträge bearbeiten.';
-  await loadProjects(); await loadUsersToFilter(); await renderUserCheckboxes();
-  setupRanges(); setupDayStatusBehaviour();
-  await refreshMonth(); await refreshPhotoGallery();
+  await loadProjects();
+  await loadUsersToFilter();
+  await renderUserCheckboxes();
+  setupRanges();
+  setupDayStatusBehaviour();
+  await refreshMonth();
+  await refreshPhotoGallery();
 }
+
 async function finishPasswordChange(){
-  const np=document.getElementById('pwNew').value, np2=document.getElementById('pwNew2').value;
-  if(np.length<6) return alert('Das Passwort muss mindestens 6 Zeichen haben.');
-  if(np!==np2) return alert('Passwörter stimmen nicht überein.');
-  const pending = JSON.parse(localStorage.getItem('cu_pending')||'null'); if(!pending) return alert('Kein Nutzer geladen.');
-  await put(STORE.users, Object.assign({}, pending, {password:np, mustChange:false}));
-  localStorage.removeItem('cu_pending'); await login(pending.username, np);
+  const np=document.getElementById('pwNew').value;
+  const np2=document.getElementById('pwNew2').value;
+  if(np.length<6){ alert('Das Passwort muss mindestens 6 Zeichen haben.'); return; }
+  if(np!==np2){ alert('Passwörter stimmen nicht überein.'); return; }
+  const pending = JSON.parse(localStorage.getItem('cu_pending')||'null');
+  if(!pending){ alert('Kein Nutzer geladen.'); return; }
+  const upd = Object.assign({}, pending, {password:np, mustChange:false});
+  await put(STORE.users, upd);
+  localStorage.removeItem('cu_pending');
+  await login(upd.username, np);
 }
 
 async function loadProjects(){
@@ -416,7 +434,10 @@ async function refreshMonth(){
 // Photos
 function pickFiles(accept='image/*', multiple=true){
   return new Promise(resolve=>{
-    const input=document.createElement('input'); input.type='file'; input.accept=accept; input.multiple=multiple; input.onchange=()=>resolve(Array.from(input.files||[])); input.click();
+    const input=document.createElement('input');
+    input.type='file'; input.accept=accept; input.multiple=multiple;
+    input.onchange=()=>resolve(Array.from(input.files||[]));
+    input.click();
   });
 }
 function compressImage(file, maxDim=1600, quality=0.82){
@@ -427,14 +448,18 @@ function compressImage(file, maxDim=1600, quality=0.82){
       img.onload=()=>{
         const scale=Math.min(1, maxDim/Math.max(img.width,img.height));
         const w=Math.round(img.width*scale), h=Math.round(img.height*scale);
-        const canvas=document.createElement('canvas'); canvas.width=w; canvas.height=h;
-        const ctx=canvas.getContext('2d'); ctx.drawImage(img,0,0,w,h);
+        const canvas=document.createElement('canvas');
+        canvas.width=w; canvas.height=h;
+        const ctx=canvas.getContext('2d');
+        ctx.drawImage(img,0,0,w,h);
         const dataUrl=canvas.toDataURL('image/jpeg', quality);
         resolve(dataUrl);
       };
-      img.onerror=reject; img.src=reader.result;
+      img.onerror=reject;
+      img.src=reader.result;
     };
-    reader.onerror=reject; reader.readAsDataURL(file);
+    reader.onerror=reject;
+    reader.readAsDataURL(file);
   });
 }
 async function addPhotosToProject(){
