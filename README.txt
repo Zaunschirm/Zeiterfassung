@@ -1,10 +1,14 @@
-Zeiterfassung PWA – v29 (Komplettpaket)
+Zeiterfassung PWA – v31 (Komplettpaket)
 ----------------------------------------
-Neu:
-- Tagesstatus je Eintrag: Arbeit / Urlaub / Krank
-  • In Zeiteingabe auswählbar
-  • In Monatsübersicht sichtbar & (für Admin / Teamleiter) editierbar
-  • CSV / PDF Export enthält 'Status'
-- Teamleiter-Rolle & Monatsbearbeitung für Admin + Teamleiter
-- Passwort-Änderung beim ersten Login (mustChange)
-- Cache-ID: zeit-pwa-v29, DB-Version 9
+iPhone/Chrome Login-Fix:
+- Username-Feld mit autocapitalize=none, autocorrect=off, spellcheck=off
+- Button 'Cache leeren' (löscht Service Worker Cache, LocalStorage und IndexedDB)
+- Cache-ID: zeit-pwa-v31, DB-Version: 11
+
+Features:
+- Teamleiter-Rolle (Monatsübersicht editierbar für Admin & Teamleiter)
+- Passwort-Änderung beim ersten Login (mustChange außer bei Admin)
+- Tagesstatus pro Eintrag: Arbeit / Urlaub / Krank
+- Mehrfachauswahl Mitarbeiter, Projekte mit Kostenstelle, Archiv, Löschbar
+- Projektfotos inkl. Komprimierung
+- CSV & PDF Export
