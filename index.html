@@ -55,6 +55,7 @@
   </script>
 </head>
 <!-- V34-HOTFIX -->
+<!-- V35-FIX -->
 <body onload="applyBranding()">
 <header>
   <div class="brand">
@@ -552,6 +553,7 @@ async function exportPDF(){
     rows+= '<tr><td>'+e.date+'</td><td>'+(e.status||'work')+'</td><td>'+fmtT(e.start)+'</td><td>'+fmtT(e.end)+'</td><td>'+(p.name||'')+'</td><td class="r">'+(p.costCenter||'')+'</td><td class="r">'+(e.breaksMin||0)+'</td><td class="r">'+minToHHMM(w)+'</td><td class="r">'+minToHHMM(o)+'</td><td>'+(e.note||'')+'</td></tr>';
   }
   const html='<!doctype html><html><head><meta charset="utf-8"><title>Monatsübersicht '+monthVal+' – '+userVal+'</title><style>body{font-family:Arial,sans-serif;margin:24px} table{width:100%;border-collapse:collapse;font-size:12px} th,td{border:1px solid #ddd;padding:6px} th{background:#f3f4f6} .r{text-align:right} tfoot td{font-weight:bold} @media print{@page{size:A4 portrait;margin:12mm}}</style></head><!-- V34-HOTFIX -->
+<!-- V35-FIX -->
 <body><h1 style="font-size:18px;margin:0 0 8px">Monatsübersicht '+monthVal+' – '+userVal+'</h1><table><thead><tr><th>Datum</th><th>Status</th><th>Von</th><th>Bis</th><th>Projekt</th><th>Kostenstelle</th><th>Pausen (min)</th><th>Arbeitszeit</th><th>Überstunden</th><th>Notiz</th></tr></thead><tbody>'+rows+'</tbody><tfoot><tr><td colspan="7" class="r">Summe</td><td class="r">'+minToHHMM(sumW)+'</td><td class="r">'+minToHHMM(sumO)+'</td><td></td></tr></tfoot></table><script>window.print()<\/script>
 </body></html>';
   const w=window.open('','_blank'); w.document.write(html); w.document.close();
