@@ -1,8 +1,8 @@
 {
   "name": "Zeiterfassung",
   "short_name": "Zeiterf.",
-  "start_url": ".",
-  "scope": ".",
+  "start_url": "./",
+  "scope": "./",
   "display": "standalone",
   "background_color": "#faf8f6",
   "theme_color": "#c9b8a6",
