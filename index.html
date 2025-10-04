@@ -41,6 +41,9 @@
   
 /* v38: hide photo UI */
 #photoWrap, #photoGallery, #btnAddPhotos, #projectSelect { display: none !important; }
+
+/* v39: strict remove photo UI */
+#photoWrap, #photoGallery, #btnAddPhotos, #projectSelect { display: none !important; }
 </style>
   <script>
   async function applyBranding(){
@@ -63,6 +66,7 @@
 <!-- V36.1-FIX -->
 <!-- V37-FIX -->
 <!-- V38-NOPHOTO -->
+<!-- V39-STRIP-NOPHOTO -->
 <body onload="applyBranding()">
 <header>
   <div class="brand">
@@ -260,8 +264,7 @@ async function enterApp(){
   setupRanges();
   setupDayStatusBehaviour();
   await refreshMonth();
-  await refreshPhotoGallery();
-}
+  }
 
 async function finishPasswordChange(){
   const np=document.getElementById('pwNew').value;
@@ -484,11 +487,10 @@ async function addPhotosToProject(){
   const files=await pickFiles('image/*', true);
   for(const f of files){
     const data=await compressImage(f,1600,0.82);
-    const rec={id:uuid(),projectId:pid,filename:f.name,dataUrl=data,createdAt:new Date().toISOString()};
+    // removed rec v39;
     await put(STORE.photos, rec);
   }
-  await refreshPhotoGallery();
-}
+  }
 async function refreshPhotoGallery(){
   const pid=document.getElementById('projectSelect').value;
   const wrap=document.getElementById('photoWrap'); const gal=document.getElementById('photoGallery');
@@ -499,7 +501,7 @@ async function refreshPhotoGallery(){
     const fig=document.createElement('figure');
     const img=document.createElement('img'); img.src=p.dataUrl; img.alt=p.filename||'';
     const cap=document.createElement('figcaption');
-    const del=document.createElement('button'); del.className='ghost'; del.textContent='Löschen'; del.onclick=async()=>{ if(!confirm('Foto löschen?')) return; await delRec(STORE.photos,p.id); await refreshPhotoGallery(); };
+    const del=document.createElement('button'); del.className='ghost'; del.textContent='Löschen'; del.onclick=async()=>{ if(!confirm('Foto löschen?')) return; await delRec(STORE.photos,p.id); };
     cap.appendChild(del);
     fig.appendChild(img); fig.appendChild(cap);
     gal.appendChild(fig);
@@ -561,6 +563,9 @@ async function exportPDF(){
   }
   const html='<!doctype html><html><head><meta charset="utf-8"><title>Monatsübersicht '+monthVal+' – '+userVal+'</title><style>body{font-family:Arial,sans-serif;margin:24px} table{width:100%;border-collapse:collapse;font-size:12px} th,td{border:1px solid #ddd;padding:6px} th{background:#f3f4f6} .r{text-align:right} tfoot td{font-weight:bold} @media print{@page{size:A4 portrait;margin:12mm}}
 /* v38: hide photo UI */
+#photoWrap, #photoGallery, #btnAddPhotos, #projectSelect { display: none !important; }
+
+/* v39: strict remove photo UI */
 #photoWrap, #photoGallery, #btnAddPhotos, #projectSelect { display: none !important; }
 </style></head><!-- V34-HOTFIX -->
 <!-- V35-FIX -->
