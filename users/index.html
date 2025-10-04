@@ -116,5 +116,36 @@ window.addEventListener('DOMContentLoaded', async ()=>{
   await renderUsers();
 });
 </script>
+
+<script>
+(function hideCacheButton(){
+  function kill(){
+    var nodes = Array.prototype.slice.call(document.querySelectorAll('button, a, div, span'));
+    nodes.forEach(function(n){
+      var t = (n.innerText || n.textContent || '').trim().toLowerCase();
+      if (!t) return;
+      if (t === 'cache leeren' || t.includes('cache leeren') || t === 'clear cache' || t.includes('clear cache')) {
+        try { n.style.display = 'none'; n.setAttribute('aria-hidden','true'); } catch(e){}
+      }
+      // defensive: role/data attributes
+      if (n.dataset && (n.dataset.role === 'clear-cache' || n.dataset.action === 'clear-cache')) {
+        try { n.style.display = 'none'; n.setAttribute('aria-hidden','true'); } catch(e){}
+      }
+      // click handlers with clearCache name
+      var onclickAttr = (n.getAttribute && (n.getAttribute('onclick')||'').toLowerCase()) || '';
+      if (onclickAttr.includes('clearcache') || onclickAttr.includes('cache')) {
+        if (t.includes('cache')) { try { n.style.display = 'none'; } catch(e){} }
+      }
+    });
+  }
+  document.addEventListener('DOMContentLoaded', kill);
+  // also observe app frameworks mounting later
+  var obs = new MutationObserver(function(){ kill(); });
+  obs.observe(document.documentElement, {childList:true, subtree:true});
+  // also run periodically just in case
+  setInterval(kill, 2000);
+})();
+</script>
+
 </body>
 </html>
