@@ -1,14 +1,5 @@
-Zeiterfassung PWA – v31 (Komplettpaket)
+Zeiterfassung PWA – v31a (Komplettpaket, Fix)
 ----------------------------------------
-iPhone/Chrome Login-Fix:
-- Username-Feld mit autocapitalize=none, autocorrect=off, spellcheck=off
-- Button 'Cache leeren' (löscht Service Worker Cache, LocalStorage und IndexedDB)
-- Cache-ID: zeit-pwa-v31, DB-Version: 11
-
-Features:
-- Teamleiter-Rolle (Monatsübersicht editierbar für Admin & Teamleiter)
-- Passwort-Änderung beim ersten Login (mustChange außer bei Admin)
-- Tagesstatus pro Eintrag: Arbeit / Urlaub / Krank
-- Mehrfachauswahl Mitarbeiter, Projekte mit Kostenstelle, Archiv, Löschbar
-- Projektfotos inkl. Komprimierung
-- CSV & PDF Export
+- Gültige PNG-Icons (1x1) im Ordner /icons und /assets
+- Service-Worker: CACHE 'zeit-pwa-v31a', Registrierung 'sw.js?v=31a'
+- DB-Version: 12  (erzwingt neues IndexedDB Schema)
