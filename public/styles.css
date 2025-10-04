@@ -1,5 +1,0 @@
-body { font-family: system-ui, sans-serif; margin:0; background:#f7f7fb; color:#111; }
-.row { display:flex; gap:8px; flex-wrap:wrap; }
-input,select,button { padding:8px 10px; border-radius:8px; border:1px solid #ccc; }
-table { width:100%; border-collapse:collapse; }
-th,td { padding:8px; border-bottom:1px solid #eee; text-align:left; }
