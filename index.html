@@ -477,7 +477,14 @@ async function addPhotosToProject(){
   const files=await pickFiles('image/*', true);
   for(const f of files){
     const data=await compressImage(f,1600,0.82);
-   const rec={id:uuid(),projectId:pid,filename:f.name,dataUrl:data,createdAt:new Date().toISOString()};
+   const rec = {
+  id: uuid(),
+  projectId: pid,
+  filename: f.name,
+  dataUrl: data,
+  createdAt: new Date().toISOString()
+};
+
     await put(STORE.photos, rec);
   }
   await refreshPhotoGallery();
