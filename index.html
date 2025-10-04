@@ -1,25 +1,281 @@
-<!doctype html><html lang="de"><head><title>Mitarbeiterverwaltung</title>
-<meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
-<link rel="manifest" href="../manifest.json"><link rel="icon" href="../icons/icon-192.png">
-<style>:root{--bg:#faf8f6;--card:#fff;--ink:#2b261f;--primary:#c9b8a6;--button:#8c7b6a;--line:#e5e7eb}*{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink)}header{background:var(--primary);color:#2b261f;padding:10px 14px;display:flex;justify-content:space-between;align-items:center}.brand{display:flex;gap:10px;align-items:center}.brand img{height:34px}main{max-width:1100px;margin:0 auto;padding:16px}.card{background:#fff;border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,.06);padding:16px;margin:12px 0}input,select,button{width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;font:inherit}button{background:var(--button);color:#fff;cursor:pointer}button.ghost{background:#fff;color:#2b261f;border:1px solid #d1d5db}.row{display:flex;gap:12px;flex-wrap:wrap}.row>*{flex:1 1 220px}</style>
-</head><body>
-<header><div class="brand"><img src="../assets/logo.png" alt="Logo"><strong>Zeiterfassung</strong></div><div class="row" style="flex:0 0 auto;gap:8px;align-items:center"><a href="../" class="ghost" style="text-decoration:none;display:inline-block;width:auto">&larr; Zurueck</a></div></header>
-<main>
-<section class="card" id="guard" style="display:none"><p>Kein Zugriff - bitte als Admin anmelden.</p><p><a href="../" class="ghost" style="text-decoration:none;display:inline-block;width:auto">Zur Login-Seite</a></p></section>
-<section class="card" id="createBox"><h2>Neuen Mitarbeiter anlegen</h2><div class="row"><div><label>Benutzername<input id="nuUser"></label></div><div><label>Anzeigename<input id="nuDisplay"></label></div><div><label>Passwort<input id="nuPass" type="password"></label></div><div><label>Rolle<select id="nuRole"><option value="worker">Mitarbeiter</option><option value="admin">Admin</option></select></label></div><div style="align-self:end"><button id="btnCreateUser">Anlegen</button></div></div></section>
-<section class="card" id="listBox"><h2>Nutzerliste</h2><table style="width:100%;border-collapse:collapse"><thead><tr><th>Benutzername</th><th>Anzeigename</th><th>Rolle</th><th>Status</th><th>Aktion</th></tr></thead><tbody id="userBody"></tbody></table></section>
-</main>
+<!doctype html><html lang="de"><head><title>Zeiterfassung</title><meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#c9b8a6" id="metaTheme"/>
+<link rel="icon" href="icons/icon-192.png">
+<style>
+  :root{--bg:#faf8f6;--card:#fff;--ink:#2b261f;--muted:#8b857e;--primary:#c9b8a6;--primaryText:#2b261f;--button:#8c7b6a;--line:#e5e7eb}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink)}
+  header{background:var(--primary);color:var(--primaryText);padding:10px 14px;display:flex;justify-content:space-between;align-items:center}
+  .brand{display:flex;gap:10px;align-items:center}
+  .brand img{height:34px;width:auto;object-fit:contain}
+  main{max-width:1200px;margin:0 auto;padding:16px}
+  .card{background:var(--card);border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,.06);padding:16px;margin:12px 0}
+  label{display:block;font-size:14px;margin:8px 0 4px}
+  input,select,button{width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;font:inherit}
+  input.inline,select.inline{padding:6px 8px}
+  button{background:var(--button);color:#fff;cursor:pointer}
+  button.ghost{background:#fff;color:var(--ink);border:1px solid #d1d5db}
+  button.secondary{background:#6b7280}
+  .row{display:flex;gap:12px;flex-wrap:wrap}
+  .row>*{flex:1 1 220px}
+  .hidden{display:none}
+  table{width:100%;border-collapse:collapse}
+  th,td{padding:8px;border-bottom:1px solid #eee;font-size:14px;text-align:left}
+  th.right,td.right{text-align:right}
+  tfoot td{font-weight:600}
+</style>
 <script>
-if (location.protocol.startsWith('http')) { navigator.serviceWorker && navigator.serviceWorker.register('../sw.js'); }
-const DB_NAME='zeit-web-pwa', DB_VERSION=1; const STORE={ users:'users', projects:'projects', entries:'entries' };
-function withDB(){return new Promise(function(resolve,reject){var r=indexedDB.open(DB_NAME,DB_VERSION); r.onupgradeneeded=function(){var db=r.result; if(!db.objectStoreNames.contains(STORE.users)) db.createObjectStore(STORE.users,{keyPath:'username'}); if(!db.objectStoreNames.contains(STORE.projects)) db.createObjectStore(STORE.projects,{keyPath:'id'}); if(!db.objectStoreNames.contains(STORE.entries)) db.createObjectStore(STORE.entries,{keyPath:'id'});}; r.onsuccess=function(){resolve(r.result)}; r.onerror=function(){reject(r.error)}; }); }
+async function applyBranding(){try{const r=await fetch('./config.json',{cache:'reload'});const c=await r.json();
+ if(c.bg)document.documentElement.style.setProperty('--bg',c.bg);
+ if(c.card)document.documentElement.style.setProperty('--card',c.card);
+ if(c.primary)document.documentElement.style.setProperty('--primary',c.primary);
+ if(c.primaryText)document.documentElement.style.setProperty('--primaryText',c.primaryText);
+ if(c.accent)document.documentElement.style.setProperty('--button',c.accent);
+ if(c.muted)document.documentElement.style.setProperty('--muted',c.muted);
+ if(c.appName){document.title=c.appName; const t=document.getElementById('brandTitle'); if(t)t.textContent=c.appName;}
+ if(c.logoPath){const i=document.getElementById('brandLogo'); if(i)i.src=c.logoPath;}
+ const meta=document.getElementById('metaTheme'); if(meta&&c.primary)meta.setAttribute('content',c.primary);
+}catch(e){}}
+</script>
+</head>
+<body onload="applyBranding()">
+<header>
+  <div class="brand">
+    <img id="brandLogo" src="./assets/logo.png" alt="Logo">
+    <strong id="brandTitle">Zeiterfassung</strong>
+  </div>
+  <div class="row" style="flex:0 0 auto;gap:8px;align-items:center">
+    <a href="users/" id="linkUsers" class="ghost" style="text-decoration:none;display:inline-block;width:auto">Mitarbeiterverwaltung</a>
+    <button id="btnLogout" class="ghost">Logout</button>
+  </div>
+</header>
+<main>
+  <section id="loginView" class="card">
+    <h2>Anmelden</h2>
+    <div class="row">
+      <div><label>Nutzername<input id="loginUser" autocomplete="username"></label></div>
+      <div><label>Passwort<input id="loginPass" type="password" autocomplete="current-password"></label></div>
+    </div>
+    <div class="row"><button id="btnLogin">Login</button></div>
+    <p class="muted">Hinweis: Beim ersten Start wird automatisch ein Admin (admin/admin) erzeugt.</p>
+  </section>
+
+  <section id="appView" class="hidden">
+    <div class="card">
+      <h2>Zeiteingabe</h2>
+      <div class="row">
+        <div><label>Projekt<select id="projectSelect"></select></label></div>
+        <div><label>Pausen (Minuten)<select id="breakMin"><option>0</option><option>15</option><option selected>30</option><option>45</option><option>60</option></select></label></div>
+        <div><label>Bemerkung<input id="noteInput" placeholder="z. B. Montage, Fahrtzeit"></label></div>
+      </div>
+      <div class="row">
+        <div style="flex:1 1 100%">
+          <div class="row" style="align-items:center">
+            <output id="startOut">06:45</output>
+            <input id="startRange" type="range" min="16" max="80" step="1" value="27">
+            <span>Start</span>
+          </div>
+          <div class="row" style="align-items:center">
+            <output id="endOut">16:30</output>
+            <input id="endRange" type="range" min="16" max="80" step="1" value="66">
+            <span>Ende</span>
+          </div>
+        </div>
+      </div>
+      <div class="row">
+        <div><label>Datum<input type="date" id="manualDate"></label></div>
+        <div><label>Arbeitszeit (HH:MM)<input id="workMinPreview" readonly></label></div>
+        <div style="align-self:end"><button id="btnAddEntry">Speichern</button></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="row" style="align-items:flex-end">
+        <h3 style="flex:1 1 200px">Übersicht Monat</h3>
+        <div><label>Monat<input type="month" id="monthPicker"></label></div>
+        <div><label>Nutzer<select id="userFilter"></select></label></div>
+      </div>
+      <table id="monthTable">
+        <thead><tr><th>Datum</th><th>Von</th><th>Bis</th><th>Projekt</th><th class="right">Kostenstelle</th><th class="right">Pausen</th><th class="right">Arbeitszeit</th><th class="right">Überstunden</th><th>Notiz</th><th>Aktion</th></tr></thead>
+        <tbody></tbody>
+        <tfoot><tr><td colspan="6" class="right">Summe</td><td class="right" id="sumWork">00:00</td><td class="right" id="sumOT">00:00</td><td></td><td></td></tr></tfoot>
+      </table>
+      <div class="row" style="margin-top:8px">
+        <button id="btnExportCSV" class="ghost">CSV‑Export</button>
+        <button id="btnExportPDF" class="ghost">PDF‑Export</button>
+      </div>
+    </div>
+
+    <div class="card" id="adminPanel">
+      <h3>Projekte (Admin)</h3>
+      <div class="row">
+        <div><label>Name<input id="newProjectName"></label></div>
+        <div><label>Kostenstelle<input id="newProjectCost"></label></div>
+        <div style="align-self:end"><button id="btnAddProject">Hinzufügen</button></div>
+      </div>
+      <div id="projectList" style="margin-top:10px"></div>
+    </div>
+  </section>
+</main>
+
+<script>
+// Robust link to /users/ (works under /Zeiterfassung/ on GitHub Pages)
+(function(){
+  var a = document.getElementById('linkUsers');
+  a.addEventListener('click', function(ev){
+    ev.preventDefault();
+    var p = location.pathname;
+    var base = p.endsWith('/') ? p : p.replace(/[^/]+$/, '');
+    location.href = location.origin + base + 'users/';
+  });
+})();
+
+if (location.protocol.startsWith('http')) { navigator.serviceWorker && navigator.serviceWorker.register('./sw.js'); }
+
+const DB_NAME='zeit-web-pwa', DB_VERSION=1;
+const STORE={ users:'users', projects:'projects', entries:'entries' };
+
+function withDB(){return new Promise(function(resolve,reject){var r=indexedDB.open(DB_NAME,DB_VERSION);
+ r.onupgradeneeded=function(){var db=r.result;
+  if(!db.objectStoreNames.contains(STORE.users)) db.createObjectStore(STORE.users,{keyPath:'username'});
+  if(!db.objectStoreNames.contains(STORE.projects)) db.createObjectStore(STORE.projects,{keyPath:'id'});
+  if(!db.objectStoreNames.contains(STORE.entries)) db.createObjectStore(STORE.entries,{keyPath:'id'});
+ };
+ r.onsuccess=function(){resolve(r.result)}; r.onerror=function(){reject(r.error)}; }); }
+
 async function put(store,val){var db=await withDB();return new Promise(function(res,rej){var tx=db.transaction(store,'readwrite');tx.objectStore(store).put(val);tx.oncomplete=function(){res(val)};tx.onerror=function(){rej(tx.error)};});}
 async function get(store,key){var db=await withDB();return new Promise(function(res,rej){var tx=db.transaction(store,'readonly');var q=tx.objectStore(store).get(key);q.onsuccess=function(){res(q.result)};q.onerror=function(){rej(q.error)};});}
 async function getAll(store){var db=await withDB();return new Promise(function(res,rej){var tx=db.transaction(store,'readonly');var q=tx.objectStore(store).getAll();q.onsuccess=function(){res(q.result)};q.onerror=function(){rej(q.error)};});}
 async function delRec(store,key){var db=await withDB();return new Promise(function(res,rej){var tx=db.transaction(store,'readwrite');tx.objectStore(store).delete(key);tx.oncomplete=function(){res(true)};tx.onerror=function(){rej(tx.error)};});}
-function me(){ try{return JSON.parse(localStorage.getItem('cu')||'null');}catch(e){return null;} }
-function showGuard(show){ document.getElementById('guard').style.display = show?'block':'none'; document.getElementById('createBox').style.display = show?'none':'block'; document.getElementById('listBox').style.display = show?'none':'block'; }
-async function renderUsers(){ var tbody=document.getElementById('userBody'); tbody.innerHTML=''; var users=await getAll(STORE.users); var adminCount=users.filter(function(u){return u.role==='admin' && u.active!==false;}).length; for(var i=0;i<users.length;i++){ var u=users[i]; var tr=document.createElement('tr'); var tdU=document.createElement('td'); tdU.textContent=u.username; var tdD=document.createElement('td'); var inD=document.createElement('input'); inD.value=u.display||''; inD.style.width='100%'; tdD.appendChild(inD); var tdR=document.createElement('td'); var selR=document.createElement('select'); ['worker','admin'].forEach(function(r){ var o=document.createElement('option'); o.value=r; o.textContent=(r==='admin'?'Admin':'Mitarbeiter'); if(u.role===r)o.selected=true; selR.appendChild(o); }); tdR.appendChild(selR); var tdS=document.createElement('td'); var s=document.createElement('span'); s.textContent=(u.active===false?'Inaktiv':'Aktiv'); tdS.appendChild(s); var tdA=document.createElement('td'); var bSave=document.createElement('button'); bSave.textContent='Speichern'; bSave.onclick=async function(uRef,inRef,selRef){ return async function(){ await put(STORE.users,Object.assign({},uRef,{ display:inRef.value.trim(), role:selRef.value })); await renderUsers(); }; }(u,inD,selR); var bPwd=document.createElement('button'); bPwd.className='ghost'; bPwd.textContent='Passwort'; bPwd.onclick=async function(uRef){ return async function(){ var np=prompt('Neues Passwort fuer '+uRef.username+':'); if(!np) return; await put(STORE.users,Object.assign({},uRef,{password:np})); alert('Passwort aktualisiert'); }; }(u); var bToggle=document.createElement('button'); bToggle.className='ghost'; bToggle.textContent=(u.active===false?'Aktivieren':'Deaktivieren'); bToggle.onclick=async function(uRef){ return async function(){ if(uRef.role==='admin' && uRef.active!==false && adminCount<=1){ alert('Letzter aktiver Admin – kann nicht deaktiviert werden.'); return; } await put(STORE.users,Object.assign({},uRef,{ active: !(uRef.active===false) })); await renderUsers(); }; }(u); var bDel=document.createElement('button'); bDel.className='ghost'; bDel.textContent='Loeschen'; bDel.onclick=async function(uRef){ return async function(){ if(uRef.role==='admin' && uRef.active!==false && adminCount<=1){ alert('Letzter aktiver Admin – kann nicht geloescht werden.'); return; } if(!confirm('Nutzer loeschen?')) return; await delRec(STORE.users,uRef.username); await renderUsers(); }; }(u); tdA.appendChild(bSave); tdA.appendChild(bPwd); tdA.appendChild(bToggle); tdA.appendChild(bDel); tr.appendChild(tdU); tr.appendChild(tdD); tr.appendChild(tdR); tr.appendChild(tdS); tr.appendChild(tdA); tbody.appendChild(tr); } }
-window.addEventListener('DOMContentLoaded', async function(){ var u=me(); if(!u || u.role!=='admin'){ showGuard(true); return; } showGuard(false); document.getElementById('btnCreateUser').onclick=async function(){ var nu=document.getElementById('nuUser').value.trim(); var nd=document.getElementById('nuDisplay').value.trim(); var np=document.getElementById('nuPass').value; var nr=document.getElementById('nuRole').value; if(!nu || !np) return alert('Benutzername und Passwort sind Pflicht.'); var exists=await get(STORE.users, nu); if(exists) return alert('Benutzername existiert bereits.'); await put(STORE.users, {username:nu, display:(nd||nu), password:np, role:nr, active:true}); document.getElementById('nuUser').value=''; document.getElementById('nuDisplay').value=''; document.getElementById('nuPass').value=''; document.getElementById('nuRole').value='worker'; await renderUsers(); }; await renderUsers(); });
+
+var currentUser=null;
+function uuid(){return'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,function(c){var r=Math.random()*16|0,v=c==='x'?r:(r&0x3|0x8);return v.toString(16)})}
+function todayISO(){ var d=new Date(); d.setHours(0,0,0,0); return d.toISOString().slice(0,10); }
+function currentMonth(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
+function ixToTime(ix){ var m=ix*15, h=String(Math.floor(m/60)).padStart(2,'0'), mm=String(m%60).padStart(2,'0'); return h+':'+mm; }
+function minToHHMM(m){ var h=Math.floor(m/60), mm=m%60; return String(h).padStart(2,'0')+':'+String(mm).padStart(2,'0'); }
+function durationMin(a,b){ return Math.max(0, Math.round((new Date(b)-new Date(a))/60000)); }
+
+async function ensureFirstAdmin(){
+  var users = await getAll(STORE.users);
+  if (!users || users.length === 0) {
+    await put(STORE.users, {username:'admin', password:'admin', role:'admin', display:'Administrator', active:true});
+  }
+}
+
+async function login(u,p){
+  var user=await get(STORE.users,u);
+  if(!user){ alert('Nutzer nicht gefunden'); return; }
+  if(user.active===false){ alert('Nutzer ist deaktiviert'); return; }
+  if(user.password!==p){ alert('Passwort falsch'); return; }
+  currentUser=user; localStorage.setItem('cu', JSON.stringify(user));
+  document.getElementById('loginView').classList.add('hidden');
+  document.getElementById('appView').classList.remove('hidden');
+  document.getElementById('manualDate').value=todayISO();
+  document.getElementById('monthPicker').value=currentMonth();
+  document.getElementById('adminPanel').style.display = (user.role==='admin') ? 'block' : 'none';
+  await loadProjects(); await loadUsersToFilter(); setupRanges(); await refreshMonth();
+}
+
+async function loadProjects(){
+  var sel=document.getElementById('projectSelect'); sel.innerHTML='';
+  var projs=await getAll(STORE.projects);
+  projs.filter(function(p){return !p.archived;}).forEach(function(p){ var o=document.createElement('option'); o.value=p.id; o.textContent=p.costCenter?(p.name+' ('+p.costCenter+')'):p.name; sel.appendChild(o); });
+  renderProjectList(projs);
+}
+
+function renderProjectList(projs){
+  var list=document.getElementById('projectList'); list.innerHTML='';
+  projs.forEach(function(p){
+    var row=document.createElement('div'); row.className='row '+(p.archived?'archived':'');
+    var name=document.createElement('input'); name.value=p.name; name.placeholder='Name';
+    var cost=document.createElement('input'); cost.value=p.costCenter||''; cost.placeholder='Kostenstelle';
+    var actions=document.createElement('div'); actions.style.display='flex'; actions.style.gap='8px';
+    var save=document.createElement('button'); save.textContent='Speichern'; save.onclick=async function(){ await put(STORE.projects,{id:p.id,name:name.value.trim(),costCenter:(cost.value.trim()||null),archived:!!p.archived}); await loadProjects(); await refreshMonth(); };
+    var arch=document.createElement('button'); arch.className='secondary'; arch.textContent=p.archived?'Wiederherstellen':'Archivieren'; arch.onclick=async function(){ await put(STORE.projects,Object.assign({},p,{name:name.value.trim()||p.name,costCenter:(cost.value.trim()||p.costCenter||null),archived:!p.archived})); await loadProjects(); await refreshMonth(); };
+    var delB=document.createElement('button'); delB.className='ghost'; delB.textContent='Löschen'; delB.onclick=async function(){ if(!confirm('Projekt wirklich löschen?')) return; await delRec(STORE.projects,p.id); await loadProjects(); await refreshMonth(); };
+    actions.appendChild(save); actions.appendChild(arch); actions.appendChild(delB);
+    row.appendChild(name); row.appendChild(cost); row.appendChild(actions);
+    list.appendChild(row);
+  });
+}
+
+function ixToDateISO(dateISO,ix){ var parts=dateISO.split('-'); var y=parseInt(parts[0],10), mo=parseInt(parts[1],10), d=parseInt(parts[2],10); var m=ix*15; var h=Math.floor(m/60), mm=m%60; return new Date(y,mo-1,d,h,mm,0).toISOString(); }
+
+function setupRanges(){
+  var s=document.getElementById('startRange'), e=document.getElementById('endRange');
+  var so=document.getElementById('startOut'), eo=document.getElementById('endOut'), b=document.getElementById('breakMin'), w=document.getElementById('workMinPreview');
+  var recalc=function(){ if(+e.value<+s.value) e.value=s.value; so.textContent=ixToTime(+s.value); eo.textContent=ixToTime(+e.value);
+    var mins=(+e.value-+s.value)*15 - parseInt(b.value||'0',10); var ot=Math.max(0, mins-540); w.value=minToHHMM(Math.max(0,mins))+' (Ü: '+minToHHMM(ot)+')'; };
+  [s,e,b].forEach(function(x){x.oninput=recalc; x.onchange=recalc;}); recalc();
+}
+
+async function addEntryManual(){
+  var dateISO=document.getElementById('manualDate').value||todayISO();
+  var sIx=+document.getElementById('startRange').value, eIx=+document.getElementById('endRange').value;
+  var breakMin=+document.getElementById('breakMin').value||0; var projectId=document.getElementById('projectSelect').value; var note=document.getElementById('noteInput').value||'';
+  if(!projectId) return alert('Bitte Projekt wählen'); if(eIx<sIx) return alert('Ende darf nicht vor Start liegen');
+  var entry={id:uuid(),user:currentUser.username,date:dateISO,projectId:projectId,note:note,start:ixToDateISO(dateISO,sIx),end:ixToDateISO(dateISO,eIx),breaksMin:breakMin};
+  await put(STORE.entries, entry); await refreshMonth();
+}
+
+function fmt(dt){ if(!dt) return ''; var d=new Date(dt); return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); }
+
+async function loadUsersToFilter(){
+  var sel=document.getElementById('userFilter'); sel.innerHTML='';
+  var users=(await getAll(STORE.users)).filter(function(u){return u.active!==false;});
+  var isAdmin=(currentUser && currentUser.role==='admin'); var list=isAdmin?users:users.filter(function(u){return u.username===currentUser.username;});
+  list.forEach(function(u){ var o=document.createElement('option'); o.value=u.username; o.textContent=u.display||u.username; if(currentUser && u.username===currentUser.username) o.selected=true; sel.appendChild(o); });
+  sel.disabled=!isAdmin;
+}
+
+async function refreshMonth(){
+  var monthVal=document.getElementById('monthPicker').value||currentMonth();
+  var userVal=document.getElementById('userFilter').value||(currentUser&&currentUser.username);
+  var tbody=document.querySelector('#monthTable tbody'); var sumWorkTd=document.getElementById('sumWork'); var sumOtTd=document.getElementById('sumOT');
+  var entries=(await getAll(STORE.entries)).filter(function(e){return e.user===userVal && (e.date||'').startsWith(monthVal);});
+  var projs=await getAll(STORE.projects); var pm={}; projs.forEach(function(p){pm[p.id]=p;});
+  entries.sort(function(a,b){return (a.date||'').localeCompare(b.date||'') || (a.start||'').localeCompare(b.start||'');});
+  tbody.innerHTML=''; var sumWork=0, sumOT=0;
+  for(var i=0;i<entries.length;i++){
+    var e=entries[i];
+    var work=Math.max(0, durationMin(e.start,e.end)-(e.breaksMin||0)); var ot=Math.max(0, work-540); sumWork+=work; sumOT+=ot;
+    var tr=document.createElement('tr');
+    var tdDate=document.createElement('td'); tdDate.textContent=e.date;
+    var tdFrom=document.createElement('td'); var inFrom=document.createElement('input'); inFrom.className='inline'; inFrom.type='time'; inFrom.step=900; var dFrom=new Date(e.start); inFrom.value=String(dFrom.getHours()).padStart(2,'0')+':'+String(dFrom.getMinutes()).padStart(2,'0'); tdFrom.appendChild(inFrom);
+    var tdTo=document.createElement('td'); var inTo=document.createElement('input'); inTo.className='inline'; inTo.type='time'; inTo.step=900; var dTo=new Date(e.end); inTo.value=String(dTo.getHours()).padStart(2,'0')+':'+String(dTo.getMinutes()).padStart(2,'0'); tdTo.appendChild(inTo);
+    var tdProj=document.createElement('td'); var selProj=document.createElement('select'); selProj.className='inline';
+    projs.filter(function(p){return !p.archived || p.id===e.projectId;}).forEach(function(p){ var o=document.createElement('option'); o.value=p.id; o.textContent=p.name; if(p.id===e.projectId) o.selected=true; selProj.appendChild(o); }); tdProj.appendChild(selProj);
+    var tdCost=document.createElement('td'); tdCost.className='right'; tdCost.textContent=(pm[e.projectId] && pm[e.projectId].costCenter)||'';
+    var tdBreak=document.createElement('td'); tdBreak.className='right'; var selBreak=document.createElement('select'); selBreak.className='inline'; [0,15,30,45,60].forEach(function(v){ var o=document.createElement('option'); o.value=String(v); o.textContent=String(v); if((e.breaksMin||0)===v) o.selected=true; selBreak.appendChild(o); }); tdBreak.appendChild(selBreak);
+    var tdWork=document.createElement('td'); tdWork.className='right'; tdWork.textContent=minToHHMM(work);
+    var tdOT=document.createElement('td'); tdOT.className='right'; tdOT.textContent=minToHHMM(ot);
+    var tdNote=document.createElement('td'); var inNote=document.createElement('input'); inNote.className='inline'; inNote.value=e.note||''; tdNote.appendChild(inNote);
+    var tdAct=document.createElement('td'); var btn=document.createElement('button'); btn.textContent='Speichern'; btn.onclick=async function(eRef,inF,inT,sb,sp,nt){ return async function(){ var t1=inF.value.split(':'); var t2=inT.value.split(':'); var startISO=new Date(eRef.date+'T'+t1[0]+':'+t1[1]+':00').toISOString(); var endISO=new Date(eRef.date+'T'+t2[0]+':'+t2[1]+':00').toISOString(); var upd=Object.assign({},eRef,{start:startISO,end:endISO,breaksMin:parseInt(sb.value||'0',10),projectId:sp.value,note:nt.value}); await put(STORE.entries,upd); await refreshMonth(); }; }(e,inFrom,inTo,selBreak,selProj,inNote); tdAct.appendChild(btn);
+    tr.appendChild(tdDate); tr.appendChild(tdFrom); tr.appendChild(tdTo); tr.appendChild(tdProj); tr.appendChild(tdCost); tr.appendChild(tdBreak); tr.appendChild(tdWork); tr.appendChild(tdOT); tr.appendChild(tdNote); tr.appendChild(tdAct);
+    tbody.appendChild(tr);
+  }
+  sumWorkTd.textContent=minToHHMM(sumWork); sumOtTd.textContent=minToHHMM(sumOT);
+}
+
+function csvExport(rows){ return rows.map(function(r){return r.map(function(x){return '"'+String(x).replaceAll('"','""')+'"';}).join(',');}).join('\n'); }
+async function exportCSV(){ var monthVal=document.getElementById('monthPicker').value||currentMonth(); var userVal=document.getElementById('userFilter').value||(currentUser&&currentUser.username); var rows=[[ 'Datum','Mitarbeiter','Von','Bis','Projekt','Kostenstelle','Pausen (min)','Arbeitszeit','Überstunden','Notiz' ]]; var entries=(await getAll(STORE.entries)).filter(function(e){return e.user===userVal&&(e.date||'').startsWith(monthVal);}); var projs=await getAll(STORE.projects); var pm={}; projs.forEach(function(p){pm[p.id]=p;}); var sumW=0,sumO=0; entries.sort(function(a,b){return (a.date||'').localeCompare(b.date||'')||(a.start||'').localeCompare(b.start||'');}); for(var i=0;i<entries.length;i++){ var e=entries[i]; var w=Math.max(0,durationMin(e.start,e.end)-(e.breaksMin||0)), o=Math.max(0,w-540); sumW+=w; sumO+=o; var p=pm[e.projectId]||{}; rows.push([e.date,userVal,fmt(e.start),fmt(e.end),p.name||'',p.costCenter||'',(e.breaksMin||0),minToHHMM(w),minToHHMM(o),e.note||'']); } rows.push([]); rows.push(['','','','','SUMME','','',minToHHMM(sumW),minToHHMM(sumO),'']); var blob=new Blob([csvExport(rows)],{type:'text/csv'}); var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='monat_'+monthVal+'_'+userVal+'.csv'; a.click(); URL.revokeObjectURL(a.href); }
+async function exportPDF(){ var monthVal=document.getElementById('monthPicker').value||currentMonth(); var userVal=document.getElementById('userFilter').value||(currentUser&&currentUser.username); var entries=(await getAll(STORE.entries)).filter(function(e){return e.user===userVal&&(e.date||'').startsWith(monthVal);}); var projs=await getAll(STORE.projects); var pm={}; projs.forEach(function(p){pm[p.id]=p;}); entries.sort(function(a,b){return (a.date||'').localeCompare(b.date||'')||(a.start||'').localeCompare(b.start||'');}); var sumW=0,sumO=0, rows=''; function fmtT(dt){var d=new Date(dt); return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})} for(var i=0;i<entries.length;i++){ var e=entries[i]; var w=Math.max(0,durationMin(e.start,e.end)-(e.breaksMin||0)), o=Math.max(0,w-540); sumW+=w; sumO+=o; var p=pm[e.projectId]||{}; rows+= '<tr><td>'+e.date+'</td><td>'+fmtT(e.start)+'</td><td>'+fmtT(e.end)+'</td><td>'+(p.name||'')+'</td><td class="r">'+(p.costCenter||'')+'</td><td class="r">'+(e.breaksMin||0)+'</td><td class="r">'+minToHHMM(w)+'</td><td class="r">'+minToHHMM(o)+'</td><td>'+(e.note||'')+'</td></tr>'; } var html='<!doctype html><html><head><meta charset="utf-8"><title>Monatsübersicht '+monthVal+' – '+userVal+'</title><style>body{font-family:Arial,sans-serif;margin:24px} table{width:100%;border-collapse:collapse;font-size:12px} th,td{border:1px solid #ddd;padding:6px} th{background:#f3f4f6} .r{text-align:right} tfoot td{font-weight:bold} @media print{@page{size:A4 portrait;margin:12mm}}</style></head><body><h1 style="font-size:18px;margin:0 0 8px">Monatsübersicht '+monthVal+' – '+userVal+'</h1><table><thead><tr><th>Datum</th><th>Von</th><th>Bis</th><th>Projekt</th><th>Kostenstelle</th><th>Pausen (min)</th><th>Arbeitszeit</th><th>Überstunden</th><th>Notiz</th></tr></thead><tbody>'+rows+'</tbody><tfoot><tr><td colspan="6" class="r">Summe</td><td class="r">'+minToHHMM(sumW)+'</td><td class="r">'+minToHHMM(sumO)+'</td><td></td></tr></tfoot></table><script>window.print()<\/script></body></html>'; var w=window.open('','_blank'); w.document.write(html); w.document.close(); }
+
+window.addEventListener('DOMContentLoaded', async function(){
+  await ensureFirstAdmin();
+  var cu=localStorage.getItem('cu');
+  if(cu){ currentUser=JSON.parse(cu); document.getElementById('loginView').classList.add('hidden'); document.getElementById('appView').classList.remove('hidden'); document.getElementById('manualDate').value=todayISO(); document.getElementById('monthPicker').value=currentMonth(); document.getElementById('adminPanel').style.display = (currentUser.role==='admin') ? 'block' : 'none'; await loadProjects(); await loadUsersToFilter(); setupRanges(); await refreshMonth(); }
+  document.getElementById('btnLogin').onclick=async function(){ var u=document.getElementById('loginUser').value.trim(); var p=document.getElementById('loginPass').value; try{ await login(u,p); }catch(e){ alert('Login fehlgeschlagen'); } };
+  document.getElementById('btnLogout').onclick=function(){ localStorage.removeItem('cu'); location.reload(); };
+  document.getElementById('btnAddEntry').onclick=addEntryManual;
+  document.getElementById('monthPicker').onchange=refreshMonth;
+  document.getElementById('userFilter').onchange=refreshMonth;
+  document.getElementById('btnExportCSV').onclick=exportCSV;
+  document.getElementById('btnExportPDF').onclick=exportPDF;
+  document.getElementById('btnAddProject').onclick=async function(){ var name=(document.getElementById('newProjectName').value||'').trim(); var cost=(document.getElementById('newProjectCost').value||'').trim(); if(!name) return alert('Bitte Projektname angeben'); await put(STORE.projects,{id:uuid(),name:name,costCenter:(cost||null),archived:false}); document.getElementById('newProjectName').value=''; document.getElementById('newProjectCost').value=''; await loadProjects(); await refreshMonth(); };
+});
 </script>
 </body></html>
