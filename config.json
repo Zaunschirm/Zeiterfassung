@@ -1,9 +1,1 @@
-{
-  "appName": "Holzbau Zaunschirm Zeiterfassung",
-  "themeColor": "#795548",
-  "headerColor": "#5D4037",
-  "textColor": "#FFFFFF",
-  "buttonColor": "#8D6E63",
-  "backgroundColor": "#EFEBE9",
-  "logo": "./assets/logo.png"
-}
+{"appName": "Zeiterfassung PWA v25"}

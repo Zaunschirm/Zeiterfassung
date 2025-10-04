@@ -1,12 +1,1 @@
-{
-  "name": "Zeiterfassung v24",
-  "short_name": "Zeiterfassung",
-  "start_url": "./index.html",
-  "display": "standalone",
-  "background_color": "#ffffff",
-  "description": "Zeiterfassung mit Mehrfachauswahl Mitarbeiter (Checkboxen) und Sammelerfassung-Export.",
-  "icons": [
-    { "src": "./icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "./icons/icon-512.png", "sizes": "512x512", "type": "image/png" }
-  ]
-}
+{"name": "Zeiterfassung v25", "start_url": ".", "display": "standalone"}
