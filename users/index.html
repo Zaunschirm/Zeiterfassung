@@ -39,7 +39,7 @@
       <div><label>Benutzername<input id="nuUser"></label></div>
       <div><label>Anzeigename<input id="nuDisplay"></label></div>
       <div><label>Passwort<input id="nuPass" type="password"></label></div>
-      <div><label>Rolle<select id="nuRole"><option value="worker">Mitarbeiter</option><option value="admin">Admin</option></select></label></div>
+      <div><label>Rolle<select id="nuRole"><option value="worker">Mitarbeiter</option><option value="lead">Teamleiter</option><option value="admin">Admin</option></select></label></div>
       <div style="align-self:end"><button id="btnCreateUser">Anlegen</button></div>
     </div>
   </section>
@@ -56,7 +56,7 @@
 <script>
 if (location.protocol.startsWith('http')) { navigator.serviceWorker && navigator.serviceWorker.register('../sw.js'); }
 
-const DB_NAME='zeit-web-pwa', DB_VERSION=7; const STORE={ users:'users', projects:'projects', entries:'entries', photos:'photos' };
+const DB_NAME='zeit-web-pwa', DB_VERSION=8; const STORE={ users:'users', projects:'projects', entries:'entries', photos:'photos' };
 function withDB(){return new Promise((resolve,reject)=>{const r=indexedDB.open(DB_NAME,DB_VERSION);
   r.onupgradeneeded=()=>{const db=r.result; if(!db.objectStoreNames.contains(STORE.users)) db.createObjectStore(STORE.users,{keyPath:'username'}); if(!db.objectStoreNames.contains(STORE.projects)) db.createObjectStore(STORE.projects,{keyPath:'id'}); if(!db.objectStoreNames.contains(STORE.entries)) db.createObjectStore(STORE.entries,{keyPath:'id'}); if(!db.objectStoreNames.contains(STORE.photos)) db.createObjectStore(STORE.photos,{keyPath:'id'});};
   r.onsuccess=()=>resolve(r.result); r.onerror=()=>reject(r.error); });
@@ -85,7 +85,7 @@ async function renderUsers(){
     const tr=document.createElement('tr');
     const tdU=document.createElement('td'); tdU.textContent=u.username;
     const tdD=document.createElement('td'); const inD=document.createElement('input'); inD.value=u.display||''; inD.style.width='100%'; tdD.appendChild(inD);
-    const tdR=document.createElement('td'); const selR=document.createElement('select'); ['worker','admin'].forEach(r=>{ const o=document.createElement('option'); o.value=r; o.textContent=(r==='admin'?'Admin':'Mitarbeiter'); if(u.role===r)o.selected=true; selR.appendChild(o); }); tdR.appendChild(selR);
+    const tdR=document.createElement('td'); const selR=document.createElement('select'); ['worker','lead','admin'].forEach(r=>{ const o=document.createElement('option'); o.value=r; o.textContent=(r==='admin'?'Admin':(r==='lead'?'Teamleiter':'Mitarbeiter')); if(u.role===r)o.selected=true; selR.appendChild(o); }); tdR.appendChild(selR);
     const tdS=document.createElement('td'); const s=document.createElement('span'); s.textContent=(u.active===false?'Inaktiv':'Aktiv'); tdS.appendChild(s);
     const tdA=document.createElement('td');
     const bSave=document.createElement('button'); bSave.textContent='Speichern'; bSave.onclick=async()=>{ await put(STORE.users,Object.assign({},u,{ display:inD.value.trim(), role:selR.value })); await renderUsers(); };

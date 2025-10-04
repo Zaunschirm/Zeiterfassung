@@ -176,7 +176,7 @@
 
 if (location.protocol.startsWith('http')) { navigator.serviceWorker && navigator.serviceWorker.register('./sw.js'); }
 
-const DB_NAME='zeit-web-pwa', DB_VERSION=7;
+const DB_NAME='zeit-web-pwa', DB_VERSION=8; // bump
 const STORE={ users:'users', projects:'projects', entries:'entries', photos:'photos' };
 function withDB(){return new Promise((resolve,reject)=>{const r=indexedDB.open(DB_NAME,DB_VERSION);
   r.onupgradeneeded=()=>{const db=r.result;
@@ -218,6 +218,10 @@ function showSection(id){
   document.getElementById(id).classList.remove('hidden');
 }
 
+function isEditor(){
+  return currentUser && (currentUser.role==='admin' || currentUser.role==='lead');
+}
+
 async function login(u,p){
   await ensureAdminExists();
   const user=await get(STORE.users,u);
@@ -235,9 +239,10 @@ async function enterApp(){
   showSection('appView');
   document.getElementById('manualDate').value=todayISO();
   document.getElementById('monthPicker').value=currentMonth();
-  const isAdmin = (currentUser.role==='admin');
-  document.getElementById('adminPanel').style.display = isAdmin ? 'block' : 'none';
-  document.getElementById('editHint').textContent = isAdmin ? 'Monatsübersicht ist bearbeitbar (nur Admin).' : 'Nur Admin kann Einträge in der Monatsübersicht bearbeiten.';
+  const admin = (currentUser.role==='admin');
+  document.getElementById('adminPanel').style.display = admin ? 'block' : 'none';
+  document.getElementById('editHint').textContent = isEditor() ? 'Monatsübersicht ist bearbeitbar (Admin & Teamleiter).' : 'Nur Admin/Teamleiter können Einträge bearbeiten.';
+  // Teamleiter sieht Nutzer-Auswahl wie Admin
   await loadProjects();
   await loadUsersToFilter();
   await renderUserCheckboxes();
@@ -318,9 +323,9 @@ function fmt(dt){ if(!dt) return ''; const d=new Date(dt); return d.toLocaleTime
 async function loadUsersToFilter(){
   const sel=document.getElementById('userFilter'); sel.innerHTML='';
   const users=(await getAll(STORE.users)).filter(u=>u.active!==false);
-  const isAdmin=(currentUser && currentUser.role==='admin'); const list=isAdmin?users:users.filter(u=>u.username===currentUser.username);
+  const list=isEditor()?users:users.filter(u=>u.username===currentUser.username);
   list.forEach(u=>{ const o=document.createElement('option'); o.value=u.username; o.textContent=u.display||u.username; if(currentUser && u.username===currentUser.username) o.selected=true; sel.appendChild(o); });
-  sel.disabled=!isAdmin;
+  sel.disabled=!isEditor();
 }
 
 async function renderUserCheckboxes(){
@@ -334,6 +339,7 @@ async function renderUserCheckboxes(){
     if(currentUser && u.username===currentUser.username) cb.checked=true;
     const lab=document.createElement('label'); lab.setAttribute('for', id); lab.textContent=(u.display||u.username);
     if(u.username==='admin') lab.textContent=(u.display||u.username)+' (Admin)';
+    if(u.role==='lead') lab.textContent += ' (Teamleiter)';
     div.appendChild(cb); div.appendChild(lab);
     wrap.appendChild(div);
   });
@@ -355,22 +361,28 @@ async function refreshMonth(){
   const projs=await getAll(STORE.projects); const pm={}; projs.forEach(p=>pm[p.id]=p);
   entries.sort((a,b)=>(a.date||'').localeCompare(b.date||'') || (a.start||'').localeCompare(b.start||''));
   tbody.innerHTML=''; let sumWork=0, sumOT=0;
-  const isAdmin = (currentUser && currentUser.role==='admin');
+  const canEdit = isEditor();
   for(const e of entries){
     const work=Math.max(0, durationMin(e.start,e.end)-(e.breaksMin||0)); const ot=Math.max(0, work-540); sumWork+=work; sumOT+=ot;
     const tr=document.createElement('tr');
     const tdDate=document.createElement('td'); tdDate.textContent=e.date;
-    const tdFrom=document.createElement('td'); const inFrom=document.createElement('input'); inFrom.className='inline'; inFrom.type='time'; inFrom.step=900; const dFrom=new Date(e.start); inFrom.value=String(dFrom.getHours()).padStart(2,'0')+':'+String(dFrom.getMinutes()).padStart(2,'0'); if(!isAdmin) inFrom.disabled=true; tdFrom.appendChild(inFrom);
-    const tdTo=document.createElement('td'); const inTo=document.createElement('input'); inTo.className='inline'; inTo.type='time'; inTo.step=900; const dTo=new Date(e.end); inTo.value=String(dTo.getHours()).padStart(2,'0')+':'+String(dTo.getMinutes()).padStart(2,'0'); if(!isAdmin) inTo.disabled=true; tdTo.appendChild(inTo);
-    const tdProj=document.createElement('td'); const selProj=document.createElement('select'); selProj.className='inline'; if(!isAdmin) selProj.disabled=true;
+
+    const tdFrom=document.createElement('td'); const inFrom=document.createElement('input'); inFrom.className='inline'; inFrom.type='time'; inFrom.step=900; const dFrom=new Date(e.start); inFrom.value=String(dFrom.getHours()).padStart(2,'0')+':'+String(dFrom.getMinutes()).padStart(2,'0'); if(!canEdit) inFrom.disabled=true; tdFrom.appendChild(inFrom);
+    const tdTo=document.createElement('td'); const inTo=document.createElement('input'); inTo.className='inline'; inTo.type='time'; inTo.step=900; const dTo=new Date(e.end); inTo.value=String(dTo.getHours()).padStart(2,'0')+':'+String(dTo.getMinutes()).padStart(2,'0'); if(!canEdit) inTo.disabled=true; tdTo.appendChild(inTo);
+
+    const tdProj=document.createElement('td'); const selProj=document.createElement('select'); selProj.className='inline'; if(!canEdit) selProj.disabled=true;
     projs.filter(p=>!p.archived || p.id===e.projectId).forEach(p=>{ const o=document.createElement('option'); o.value=p.id; o.textContent=p.name; if(p.id===e.projectId) o.selected=true; selProj.appendChild(o); }); tdProj.appendChild(selProj);
+
     const tdCost=document.createElement('td'); tdCost.className='right'; tdCost.textContent=(pm[e.projectId] && pm[e.projectId].costCenter)||'';
-    const tdBreak=document.createElement('td'); tdBreak.className='right'; const selBreak=document.createElement('select'); selBreak.className='inline'; [0,15,30,45,60].forEach(v=>{ const o=document.createElement('option'); o.value=String(v); o.textContent=String(v); if((e.breaksMin||0)===v) o.selected=true; selBreak.appendChild(o); }); if(!isAdmin) selBreak.disabled=true; tdBreak.appendChild(selBreak);
+
+    const tdBreak=document.createElement('td'); tdBreak.className='right'; const selBreak=document.createElement('select'); selBreak.className='inline'; [0,15,30,45,60].forEach(v=>{ const o=document.createElement('option'); o.value=String(v); o.textContent=String(v); if((e.breaksMin||0)===v) o.selected=true; selBreak.appendChild(o); }); if(!canEdit) selBreak.disabled=true; tdBreak.appendChild(selBreak);
+
     const tdWork=document.createElement('td'); tdWork.className='right'; tdWork.textContent=minToHHMM(work);
     const tdOT=document.createElement('td'); tdOT.className='right'; tdOT.textContent=minToHHMM(ot);
-    const tdNote=document.createElement('td'); const inNote=document.createElement('input'); inNote.className='inline'; inNote.value=e.note||''; if(!isAdmin) inNote.disabled=true; tdNote.appendChild(inNote);
+    const tdNote=document.createElement('td'); const inNote=document.createElement('input'); inNote.className='inline'; inNote.value=e.note||''; if(!canEdit) inNote.disabled=true; tdNote.appendChild(inNote);
+
     const tdAct=document.createElement('td');
-    if(isAdmin){
+    if(canEdit){
       const btn=document.createElement('button'); btn.textContent='Speichern'; btn.onclick=async()=>{
         const t1=inFrom.value.split(':'), t2=inTo.value.split(':');
         const startISO=new Date(e.date+'T'+t1[0]+':'+t1[1]+':00').toISOString();
@@ -468,8 +480,6 @@ window.addEventListener('DOMContentLoaded', async ()=>{
   document.getElementById('btnAddProject').onclick=async()=>{ const name=(document.getElementById('newProjectName').value||'').trim(); const cost=(document.getElementById('newProjectCost').value||'').trim(); if(!name) return alert('Bitte Projektname angeben'); await put(STORE.projects,{id:uuid(),name:name,costCenter:(cost||null),archived:false}); document.getElementById('newProjectName').value=''; document.getElementById('newProjectCost').value=''; await loadProjects(); await refreshMonth(); };
   document.getElementById('btnAddPhotos').onclick=addPhotosToProject;
   document.getElementById('projectSelect').onchange=refreshPhotoGallery;
-
-  document.getElementById('btnSetPw').onclick=finishPasswordChange;
 });
 
 // exports
