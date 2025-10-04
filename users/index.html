@@ -25,6 +25,7 @@
 <!-- V34-HOTFIX -->
 <!-- V35-FIX -->
 <!-- V42-LINKFIX -->
+<!-- V43-USERFIX -->
 <body>
 <header>
   <div class="brand"><img src="../assets/logo.png" alt="Logo"><strong>Zeiterfassung</strong></div>
@@ -102,8 +103,8 @@ async function renderUsers(){
   }
 }
 
-window.addEventListener('DOMContentLoaded', async ()=>{
-  await ensureAdminExists();
+window.addEventListener('DOMContentLoaded', async () => {
+await ensureAdminExists();
   const u=me(); if(!u || u.role!=='admin'){ showGuard(true); return; } showGuard(false);
   document.getElementById('btnCreateUser').onclick=async()=>{
     const nu=document.getElementById('nuUser').value.trim();
@@ -115,7 +116,7 @@ window.addEventListener('DOMContentLoaded', async ()=>{
     await put(STORE.users,{username:nu, display:(nd||nu), password:np, role:nr, active:true, mustChange:(nr!=='admin')});
     document.getElementById('nuUser').value=''; document.getElementById('nuDisplay').value=''; document.getElementById('nuPass').value=''; document.getElementById('nuRole').value='worker';
     await renderUsers();
-  };
+  
   await renderUsers();
 });
 </script>

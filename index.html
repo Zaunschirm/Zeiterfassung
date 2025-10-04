@@ -40,10 +40,10 @@
     .badge{display:inline-block;padding:2px 6px;border-radius:6px;background:#f3f4f6;border:1px solid #e5e7eb;font-size:12px}
   
 /* v38: hide photo UI */
-#photoWrap, #photoGallery, #btnAddPhotos, #projectSelect { display: none !important; }
+#photoWrap, #photoGallery, #btnAddPhotos { display: none !important; }
 
 /* v39: strict remove photo UI */
-#photoWrap, #photoGallery, #btnAddPhotos, #projectSelect { display: none !important; }
+#photoWrap, #photoGallery, #btnAddPhotos { display: none !important; }
 </style>
   <script>
   async function applyBranding(){
@@ -70,6 +70,7 @@
 <!-- V40-PDFFIX -->
 <!-- V41-DBUP -->
 <!-- V42-LINKFIX -->
+<!-- V44-PROJECTSELECT-FIX -->
 <body onload="applyBranding()">
 <header>
   <div class="brand">
@@ -564,7 +565,7 @@ async function exportPDF(){
     const w=isWork?Math.max(0,durationMin(e.start,e.end)-(e.breaksMin||0)):0, o=isWork?Math.max(0,w-540):0; sumW+=w; sumO+=o; const p=pm[e.projectId]||{};
     rows+= '<tr><td>'+e.date+'</td><td>'+(e.status||'work')+'</td><td>'+fmtT(e.start)+'</td><td>'+fmtT(e.end)+'</td><td>'+(p.name||'')+'</td><td class="r">'+(p.costCenter||'')+'</td><td class="r">'+(e.breaksMin||0)+'</td><td class="r">'+minToHHMM(w)+'</td><td class="r">'+minToHHMM(o)+'</td><td>'+(e.note||'')+'</td></tr>';
   }
-  const html='<!doctype html><html><head><meta charset="utf-8">' + '<title>Monatsübersicht ' + monthVal + ' - ' + userVal + '</title>' + '<style>body{font-family:Arial,sans-serif;margin:24px}table{width:100%;border-collapse:collapse}td,th{border:1px solid #ccc;padding:4px;text-align:left}#photoWrap,#photoGallery,#btnAddPhotos,#projectSelect{display:none!important}</style></head>' + '<body onload="window.print()">' + '<h1 style="font-size:18px;margin:0 0 8px">Monatsübersicht ' + monthVal + ' - ' + userVal + '</h1>' + '<table><thead><tr><th>Datum</th><th>Status</th><th>Von</th><th>Bis</th><th>Projekt</th></tr></thead><tbody>' + rows + '</tbody></table></body></html>';
+  const html='<!doctype html><html><head><meta charset="utf-8">' + '<title>Monatsübersicht ' + monthVal + ' - ' + userVal + '</title>' + '<style>body{font-family:Arial,sans-serif;margin:24px}table{width:100%;border-collapse:collapse}td,th{border:1px solid #ccc;padding:4px;text-align:left}#photoWrap,#photoGallery,#btnAddPhotos{display:none!important}</style></head>' + '<body onload="window.print()">' + '<h1 style="font-size:18px;margin:0 0 8px">Monatsübersicht ' + monthVal + ' - ' + userVal + '</h1>' + '<table><thead><tr><th>Datum</th><th>Status</th><th>Von</th><th>Bis</th><th>Projekt</th></tr></thead><tbody>' + rows + '</tbody></table></body></html>';
   const w=window.open('','_blank'); w.document.write(html); w.document.close();
 }
 </script>
