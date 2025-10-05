@@ -5,3 +5,4 @@ self.addEventListener('install', e=>{ self.skipWaiting(); }); self.addEventListe
 // V02e backup page added 2025-10-05T17:38:12.139831Z
 // V03 cloud sync added 2025-10-05T17:42:19.419898Z
 // V03a logout/protectPage safe bind 2025-10-05T17:47:40.218881Z
+// V03b guarded auth exports 2025-10-05T17:53:08.949066Z
