@@ -15,7 +15,7 @@
 </head>
 <body>
 <header class="topbar">
-  <div class="brand"><span class="logo-dot"></span><span class="brand-text">Arbeitseinteilung und Zeiterfassung Holzbau Zaunschirm</span></div>
+  <div class="brand"><span class="logo-dot"></span><img src="icon-192.png" alt="" style="width:22px;height:22px;border-radius:4px;object-fit:cover; margin-left:6px;"><span class="brand-text">Arbeitseinteilung und Zeiterfassung Holzbau Zaunschirm</span></div>
   <nav class="nav">
     <a href="dashboard.html">Übersicht</a>
     <a href="mitarbeiter.html" class="require-role-admin">Mitarbeiter</a>
@@ -26,25 +26,56 @@
 </header>
 <main class="container">
 
-<section class="card">
-  <h2>Übersicht</h2>
-  <ul class="list">
-    <li><a class="btn" href="zeiterfassung.html">⏱️ Zeiterfassung</a></li>
-    <li><a class="btn require-role-lead" href="plan.html">📅 Wocheneinteilung</a></li>
-    <li><a class="btn require-role-admin" href="mitarbeiter.html">👥 Mitarbeiter</a></li>
-  </ul>
-  <div id="pwChange" class="alert hidden">
+<section class="card landing">
+  <h1>Übersicht</h1>
+
+  <div class="quick-links">
+    <a class="ql-card" href="zeiterfassung.html">
+      <div class="ql-icon">⏱️</div>
+      <div>
+        <div class="ql-title">Zeiterfassung</div>
+        <div class="ql-sub">Zeitbalken, Summen &amp; Überstunden</div>
+      </div>
+    </a>
+
+    <a class="ql-card require-role-lead" href="plan.html">
+      <div class="ql-icon">📅</div>
+      <div>
+        <div class="ql-title">Wocheneinteilung</div>
+        <div class="ql-sub">Mitarbeiter per Drag &amp; Drop auf Projekte</div>
+      </div>
+    </a>
+
+    <a class="ql-card require-role-admin" href="mitarbeiter.html">
+      <div class="ql-icon">👥</div>
+      <div>
+        <div class="ql-title">Mitarbeiter</div>
+        <div class="ql-sub">Anlegen, Rollen, Foto</div>
+      </div>
+    </a>
+  </div>
+
+  <div id="pwChange" class="alert hidden" style="margin-top:18px">
     <strong>Bitte neues Passwort setzen.</strong>
     <label>Neues Passwort <input id="newPw" type="password"></label>
     <button class="btn-primary" id="saveNewPw">Speichern</button>
   </div>
 </section>
+
 <script>
 document.addEventListener('DOMContentLoaded', ()=>{
   protectPage(); renderNavByRole();
   const me = currentUser();
-  if(sessionStorage.getItem('mustChangePassword')==='1' || me?.mustChangePassword){ pwChange.classList.remove('hidden'); }
-  saveNewPw.addEventListener('click', ()=>{{ if(changeOwnPassword(newPw.value)){{ pwChange.classList.add('hidden'); sessionStorage.removeItem('mustChangePassword'); alert('Passwort aktualisiert.'); }} }});
+  if(sessionStorage.getItem('mustChangePassword')==='1' || me?.mustChangePassword){
+    pwChange.classList.remove('hidden');
+  }
+  saveNewPw.addEventListener('click', ()=>{
+    if(changeOwnPassword(newPw.value)){
+      pwChange.classList.add('hidden');
+      sessionStorage.removeItem('mustChangePassword');
+      alert('Passwort aktualisiert.');
+    }
+  });
 });
 </script>
 
