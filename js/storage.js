@@ -1,4 +1,6 @@
 
+// Cloud-aware storage wrapper (uses cloud.js if enabled, else falls back to local/session storage)
+
 // Safe storage (localStorage fallback)
 function bestStorage(){
   try{
@@ -33,3 +35,27 @@ const readPlan = ()=> __read(DB.planKey, {});
 const writePlan = (o)=> __write(DB.planKey, o);
 const readProjects = ()=> __read(DB.projectsKey, []);
 const writeProjects = (a)=> __write(DB.projectsKey, a);
+
+// high-level helpers to get/set full state for cloud
+function __getFullState(){ return { users: readUsers(), times: readTimes(), plan: readPlan(), projects: readProjects() }; }
+function __applyFullState(state){
+  if(!state) return;
+  writeUsers(state.users||[]);
+  writeTimes(state.times||{});
+  writePlan(state.plan||{});
+  writeProjects(state.projects||[]);
+}
+// If cloud enabled, subscribe and keep local in sync
+(function(){
+  try{
+    if(window.CLOUD && window.CLOUD.enabled){
+      cloudSubscribe((data)=>{ __applyFullState(data); console.log('Cloud -> Local aktualisiert'); });
+      // Patch writers to also push to cloud
+      const _wu=writeUsers, _wt=writeTimes, _wp=writePlan, _wpr=writeProjects;
+      writeUsers = (a)=>{ _wu(a); if(window.CLOUD.enabled) cloudSaveFull(__getFullState()); };
+      writeTimes = (o)=>{ _wt(o); if(window.CLOUD.enabled) cloudSaveFull(__getFullState()); };
+      writePlan = (o)=>{ _wp(o); if(window.CLOUD.enabled) cloudSaveFull(__getFullState()); };
+      writeProjects = (a)=>{ _wpr(a); if(window.CLOUD.enabled) cloudSaveFull(__getFullState()); };
+    }
+  }catch(e){ console.warn('Cloud storage init error', e); }
+})();
