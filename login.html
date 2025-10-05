@@ -3,13 +3,12 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Anmelden – Arbeitseinteilung und Zeiterfassung Holzbau Zaunschirm</title>
+  <title>Arbeitseinteilung und Zeiterfassung Holzbau Zaunschirm – Login</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <link rel="icon" href="favicon.ico">
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png">
-  <link rel="icon" href="favicon.ico">
   <link rel="stylesheet" href="assets/css/style.css">
   <meta name="theme-color" content="#2F3438">
 </head>
@@ -22,32 +21,33 @@
       <label>Passwort <input id="password" type="password" autocomplete="current-password" placeholder="••••••••"></label>
       <div class="row">
         <button id="loginBtn" class="btn-primary">Login</button>
-        <button id="clearBtn" class="btn">Abbrechen</button>
+        <button id="clearBtn" class="btn" type="button">Abbrechen</button>
       </div>
       <p class="hint">Erststart: <code>admin / admin</code></p>
+      <p class="hint">Teamleiter: <code>lead / lead</code> • Mitarbeiter: <code>user / user</code></p>
       <p id="msg" class="msg"></p>
     </section>
   </main>
   <script defer src="js/storage.js"></script>
-<script defer src="js/auth.js"></script>
-<script>
-  document.addEventListener("DOMContentLoaded", function(){
-    try {
-      if (typeof ensureSeedAdmin === "function") ensureSeedAdmin();
-      const username = document.getElementById("username");
-      const password = document.getElementById("password");
-      const msg = document.getElementById("msg");
-      const clearBtn = document.getElementById("clearBtn");
-      const loginBtn = document.getElementById("loginBtn");
-      clearBtn.addEventListener("click", ()=>{ username.value=""; password.value=""; msg.textContent=""; });
-      loginBtn.addEventListener("click", async ()=>{
-        const res = await login(username.value.trim(), password.value);
-        if (res.ok){ if(res.mustChangePassword) sessionStorage.setItem("mustChangePassword","1"); location.replace("dashboard.html"); }
-        else { msg.textContent = res.error || "Login fehlgeschlagen"; msg.classList.add("error"); }
-      });
-      document.addEventListener("keydown", e=>{ if(e.key==="Enter") loginBtn.click(); });
-    } catch(e){ console.error(e); }
-  });
-</script>
+  <script defer src="js/auth.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function(){
+      try {
+        if (typeof ensureSeedAdmin === "function") ensureSeedAdmin();
+        const username = document.getElementById("username");
+        const password = document.getElementById("password");
+        const msg = document.getElementById("msg");
+        const clearBtn = document.getElementById("clearBtn");
+        const loginBtn = document.getElementById("loginBtn");
+        clearBtn.addEventListener("click", ()=>{ username.value=""; password.value=""; msg.textContent=""; });
+        loginBtn.addEventListener("click", async ()=>{
+          const res = await login(username.value.trim(), password.value);
+          if (res.ok){ if(res.mustChangePassword) sessionStorage.setItem("mustChangePassword","1"); location.replace("dashboard.html"); }
+          else { msg.textContent = res.error || "Login fehlgeschlagen"; msg.classList.add("error"); }
+        });
+        document.addEventListener("keydown", e=>{ if(e.key==="Enter") loginBtn.click(); });
+      } catch(e){ console.error(e); }
+    });
+  </script>
 </body>
 </html>

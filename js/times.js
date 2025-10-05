@@ -6,14 +6,29 @@ function initTimesPage(){
   const me = currentUser();
   const sel = document.getElementById('userSelect');
   const users = readUsers();
-  const options = (me.role==='admin' || me.role==='lead') ? users : users.filter(u=>u.id===me.id);
-  sel.innerHTML = options.map(u=>`<option value="${u.id}">${u.name||u.username}</option>`).join('');
-  sel.value = (me.role==='admin'||me.role==='lead') ? sel.value : me.id;
+
+  const isLeadOrAdmin = (me.role==='admin' || me.role==='lead');
+  const list = isLeadOrAdmin ? users : users.filter(u=>u.id===me.id);
+  sel.innerHTML = list.map(u=>`<option value="${u.id}">${u.name||u.username}</option>`).join('');
+
+  if(isLeadOrAdmin){
+    document.getElementById('multiHint').style.display = 'block';
+    sel.multiple = true;
+    sel.size = Math.min(6, Math.max(3, list.length));
+  } else {
+    document.getElementById('multiHint').style.display = 'none';
+    sel.multiple = false;
+    sel.size = 1;
+    sel.value = me.id;
+  }
+
   document.getElementById('dateInput').valueAsDate = new Date();
   document.getElementById('pauseDropdown').value = '30';
 
   buildTimeline();
   document.getElementById('bookBtn').addEventListener('click', bookFromGrid);
+  document.getElementById('dayStatus').addEventListener('change', handleDayStatusLock);
+  handleDayStatusLock();
   renderTimes();
 }
 
@@ -74,19 +89,42 @@ function updateOutputs(){
   durOut.textContent = d;
 }
 
+function selectedUserIds(){
+  const sel = document.getElementById('userSelect');
+  if(sel.multiple){
+    return Array.from(sel.selectedOptions).map(o=>o.value);
+  }
+  return [ sel.value ];
+}
+
 function bookFromGrid(){
-  if(gridSelection.start==null){ alert('Bitte Zeitbereich wählen.'); return; }
-  const userId = document.getElementById('userSelect').value;
+  const status = document.getElementById('dayStatus').value;
   const dateStr = document.getElementById('dateInput').value;
   const pauseMin = parseInt(document.getElementById('pauseDropdown').value||'0',10);
-  const status = document.getElementById('dayStatus').value;
+  const ids = selectedUserIds();
+  if(!ids.length){ alert('Bitte Mitarbeiter auswählen.'); return; }
+
+  if(status==='vacation' || status==='sick'){
+    ids.forEach(userId=>{
+      const base = readTimes(); if(!base[userId]) base[userId]={}; if(!base[userId][dateStr]) base[userId][dateStr]=[];
+      base[userId][dateStr].push({from: null, to: null, durMin: 0, pauseMin: 0, status});
+      writeTimes(base);
+    });
+    renderTimes();
+    return;
+  }
+
+  if(gridSelection.start==null){ alert('Bitte Zeitbereich wählen.'); return; }
   const photoFile = document.getElementById('photoInput').files[0];
   const fromStr = idxToTime(gridSelection.start); const toStr = idxToTime(gridSelection.end+1);
   const fromMs = toDateTimeMs(dateStr, fromStr); const toMs = toDateTimeMs(dateStr, toStr);
   const duration = Math.max(0, Math.round((toMs - fromMs)/60000) - pauseMin);
   const finalize = (photo)=>{
-    const rec = {from: fromMs, to: toMs, durMin: duration, pauseMin, status, photo: photo||null};
-    const base = readTimes(); if(!base[userId]) base[userId]={}; if(!base[userId][dateStr]) base[userId][dateStr]=[]; base[userId][dateStr].push(rec); writeTimes(base);
+    ids.forEach(userId=>{
+      const base = readTimes(); if(!base[userId]) base[userId]={}; if(!base[userId][dateStr]) base[userId][dateStr]=[];
+      base[userId][dateStr].push({from: fromMs, to: toMs, durMin: duration, pauseMin, status, photo: photo||null});
+      writeTimes(base);
+    });
     document.getElementById('photoInput').value=''; renderTimes();
   };
   if(photoFile){ const r=new FileReader(); r.onload=()=>finalize(r.result); r.readAsDataURL(photoFile); } else finalize(null);
@@ -97,12 +135,14 @@ function toDateTimeMs(dateStr, hhmm){ const [H,M]=hhmm.split(':').map(Number); c
 function minToHHMM(min){ const sign=min<0?'-':''; const m=Math.abs(min); const h=Math.floor(m/60); const mm=m%60; return sign+String(h).padStart(2,'0')+':'+String(mm).padStart(2,'0'); }
 
 function renderTimes(){
-  const userId = document.getElementById('userSelect').value || currentUser()?.id;
+  const sel = document.getElementById('userSelect');
+  const me = currentUser();
+  const userId = (sel.multiple ? (sel.selectedOptions[0]?.value || me?.id) : (sel.value || me?.id));
   const dateStr = document.getElementById('dateInput').value;
   if(!userId || !dateStr) return;
   const base = readTimes(); const list = (base[userId] && base[userId][dateStr]) ? base[userId][dateStr] : [];
   const tbody = document.querySelector('#timeTable tbody'); const fmt=(ms)=> new Date(ms).toLocaleTimeString('de-AT',{hour:'2-digit',minute:'2-digit'});
-  tbody.innerHTML = list.map(r=>`<tr><td>${fmt(r.from)}</td><td>${fmt(r.to)}</td><td>${r.durMin}</td><td>${r.pauseMin}</td><td>${r.status}</td><td>${r.photo?'<a target="_blank" href="'+r.photo+'">Foto</a>':'—'}</td></tr>`).join('');
+  tbody.innerHTML = list.map(r=>{ const f = r.from? fmt(r.from) : '—'; const t = r.to? fmt(r.to) : '—'; return `<tr><td>${f}</td><td>${t}</td><td>${r.durMin}</td><td>${r.pauseMin}</td><td>${r.status}</td><td>${r.photo?'<a target="_blank" href="'+r.photo+'">Foto</a>':'—'}</td></tr>`; }).join('');
   computeTotalsForDay(userId, dateStr);
 }
 
@@ -112,6 +152,23 @@ function computeTotalsForDay(userId, dateStr){
   const overtime = Math.max(0, sum - 9*60);
   const tEl = document.getElementById('totalsToday'); const oEl = document.getElementById('overtimeToday');
   if(tEl) tEl.textContent = minToHHMM(sum); if(oEl) oEl.textContent = minToHHMM(overtime);
+}
+
+function handleDayStatusLock(){
+  const status = document.getElementById('dayStatus').value;
+  const pauseSel = document.getElementById('pauseDropdown');
+  const grid = document.getElementById('timelineGrid');
+  if(status==='vacation' || status==='sick'){
+    pauseSel.value = '0'; pauseSel.disabled = true;
+    setSelection(0, 59);
+    grid.style.pointerEvents = 'none';
+  } else {
+    pauseSel.disabled = false;
+    grid.style.pointerEvents = 'auto';
+    if(gridSelection.start===0 && gridSelection.end===59){
+      setSelection(7,46);
+    }
+  }
 }
 
 window.initTimesPage = initTimesPage;

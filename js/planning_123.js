@@ -1,13 +1,17 @@
 
 function initPlanning123(){
+  const me=currentUser();
+  const canEdit = (me && me.role==='admin');
+  window.__canEditPlanning = canEdit;
+
   const today=new Date(); weekPicker.value = isoWeekString(today);
   prevWeek.addEventListener('click', ()=> shiftWeek(-1));
   nextWeek.addEventListener('click', ()=> shiftWeek(1));
   weekPicker.addEventListener('change', renderBoard);
-  copyPrev.addEventListener('click', copyPreviousWeek);
-  clearWeek.addEventListener('click', ()=>{ if(confirm('Woche wirklich leeren?')){ const all=readPlan(); all[weekPicker.value]={}; writePlan(all); renderBoard(); }});
+  if(window.__canEditPlanning) copyPrev.addEventListener('click', copyPreviousWeek);
+  if(window.__canEditPlanning) clearWeek.addEventListener('click', ()=>{ if(confirm('Woche wirklich leeren?')){ const all=readPlan(); all[weekPicker.value]={}; writePlan(all); renderBoard(); }});
   exportCsv.addEventListener('click', exportPlanningCsv);
-  addProject.addEventListener('click', ()=>{ const name=(projName.value||'').trim(); const color=projColor.value||'#C8A86B'; if(!name) return; const ps=readProjects(); ps.push({id:'p'+Math.random().toString(36).slice(2,9), name, color}); writeProjects(ps); projName.value=''; renderBoard(); });
+  if(window.__canEditPlanning) addProject.addEventListener('click', ()=>{ const name=(projName.value||'').trim(); const color=projColor.value||'#C8A86B'; if(!name) return; const ps=readProjects(); ps.push({id:'p'+Math.random().toString(36).slice(2,9), name, color}); writeProjects(ps); projName.value=''; renderBoard(); });
   renderBoard();
 }
 function isoWeekString(d){ const dt=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate())); const dayNum=(dt.getUTCDay()+6)%7; dt.setUTCDate(dt.getUTCDate()-dayNum+3); const firstThursday=new Date(Date.UTC(dt.getUTCFullYear(),0,4)); const weekNo=1+Math.round(((dt-firstThursday)/86400000-3+((firstThursday.getUTCDay()+6)%7))/7); const year=dt.getUTCFullYear(); return year+'-W'+String(weekNo).padStart(2,'0'); }
@@ -19,11 +23,15 @@ function renderBoard(){
   const users = readUsers(); const term=(empSearch.value||'').toLowerCase();
   const emps = users.filter(u=> (u.name||'').toLowerCase().includes(term) || (u.username||'').toLowerCase().includes(term));
   empList.innerHTML = emps.map(u=>`<span class="empchip" draggable="true" data-uid="${u.id}">${escapeHtml(u.name||u.username)}</span>`).join('');
-  empList.querySelectorAll('.empchip').forEach(chip=> chip.addEventListener('dragstart', e=>{ e.dataTransfer.setData('text/plain', JSON.stringify({type:'emp', uid:chip.dataset.uid})); e.dataTransfer.effectAllowed='copy'; }));
+  if(window.__canEditPlanning){
+    empList.querySelectorAll('.empchip').forEach(chip=> chip.addEventListener('dragstart', e=>{ e.dataTransfer.setData('text/plain', JSON.stringify({type:'emp', uid:chip.dataset.uid})); e.dataTransfer.effectAllowed='copy'; }));
+  }
 
   const projs = readProjects();
-  projList.innerHTML = projs.map(p=>`<span class="projchip" data-pid="${p.id}"><span class="color" style="background:${p.color}"></span>${escapeHtml(p.name)} <button class="remove" title="Löschen">×</button></span>`).join('');
-  projList.querySelectorAll('.remove').forEach(btn=> btn.addEventListener('click', ()=>{ const pid=btn.parentElement.getAttribute('data-pid'); writeProjects(readProjects().filter(x=>x.id!==pid)); renderBoard(); }));
+  projList.innerHTML = projs.map(p=>`<span class="projchip" data-pid="${p.id}"><span class="color" style="background:${p.color}"></span>${escapeHtml(p.name)} ${window.__canEditPlanning?'<button class="remove" title="Löschen">×</button>':''}</span>`).join('');
+  if(window.__canEditPlanning){
+    projList.querySelectorAll('.remove').forEach(btn=> btn.addEventListener('click', ()=>{ const pid=btn.parentElement.getAttribute('data-pid'); writeProjects(readProjects().filter(x=>x.id!==pid)); renderBoard(); }));
+  }
 
   const days = daysOfWeek(weekPicker.value);
   const all = readPlan()[weekPicker.value] || {};
@@ -40,21 +48,23 @@ function renderBoard(){
     return `<div class="daycol" data-date="${dk}"><div class="dayhead">${head}</div>${lanes||'<div style="padding:10px; color:#777">Keine Projekte – oben anlegen.</div>'}</div>`;
   }).join('');
 
-  document.querySelectorAll('.projdrop').forEach(zone=>{
-    zone.addEventListener('dragover', e=>{ e.preventDefault(); zone.classList.add('highlight'); });
-    zone.addEventListener('dragleave', ()=> zone.classList.remove('highlight'));
-    zone.addEventListener('drop', e=>{
-      e.preventDefault(); zone.classList.remove('highlight');
-      const data = JSON.parse(e.dataTransfer.getData('text/plain'));
-      if(data.type==='emp') addAssign(zone.dataset.date, zone.dataset.pid, data.uid);
-      else if(data.type==='move') moveAssign(data.uid, data.fromDate, data.fromPid, zone.dataset.date, zone.dataset.pid);
+  if(window.__canEditPlanning){
+    document.querySelectorAll('.projdrop').forEach(zone=>{
+      zone.addEventListener('dragover', e=>{ e.preventDefault(); zone.classList.add('highlight'); });
+      zone.addEventListener('dragleave', ()=> zone.classList.remove('highlight'));
+      zone.addEventListener('drop', e=>{
+        e.preventDefault(); zone.classList.remove('highlight');
+        const data = JSON.parse(e.dataTransfer.getData('text/plain'));
+        if(data.type==='emp') addAssign(zone.dataset.date, zone.dataset.pid, data.uid);
+        else if(data.type==='move') moveAssign(data.uid, data.fromDate, data.fromPid, zone.dataset.date, zone.dataset.pid);
+      });
     });
-  });
 
-  document.querySelectorAll('.assignment').forEach(chip=> chip.addEventListener('dragstart', e=>{
-    const from = chip.closest('.projdrop'); const payload={type:'move', uid:chip.dataset.uid, fromDate:from.dataset.date, fromPid:from.dataset.pid};
-    e.dataTransfer.setData('text/plain', JSON.stringify(payload)); e.dataTransfer.effectAllowed='move';
-  }));
+    document.querySelectorAll('.assignment').forEach(chip=> chip.addEventListener('dragstart', e=>{
+      const from = chip.closest('.projdrop'); const payload={type:'move', uid:chip.dataset.uid, fromDate:from.dataset.date, fromPid:from.dataset.pid};
+      e.dataTransfer.setData('text/plain', JSON.stringify(payload)); e.dataTransfer.effectAllowed='move';
+    }));
+  }
 }
 
 function renderAssignmentChip(uid){ const u=readUsers().find(x=>x.id===uid); if(!u) return ''; return `<span class="assignment" draggable="true" data-uid="${u.id}">${escapeHtml(u.name||u.username)}</span>`; }
@@ -62,5 +72,4 @@ function addAssign(date,pid,uid){ const all=readPlan(); const w=weekPicker.value
 function moveAssign(uid,fd,fp,td,tp){ if(fd===td && fp===tp) return; const all=readPlan(); const w=weekPicker.value; const arr=(((all[w]||{})[fd]||{})[fp]||[]); const idx=arr.findIndex(x=>x.uid===uid); if(idx<0) return; const item=arr.splice(idx,1)[0]; if(!all[w][td]) all[w][td]={}; if(!all[w][td][tp]) all[w][td][tp]=[]; if(!all[w][td][tp].some(x=>x.uid===uid)) all[w][td][tp].push(item); writePlan(all); renderBoard(); }
 function copyPreviousWeek(){ const cur=weekPicker.value; const d=weekInputToDate(cur); d.setDate(d.getDate()-7); const prev=isoWeekString(d); const all=readPlan(); if(!all[prev]){ alert('Keine Vorwoche vorhanden.'); return; } all[cur]=JSON.parse(JSON.stringify(all[prev])); writePlan(all); renderBoard(); }
 function exportPlanningCsv(){ const w=weekPicker.value; const days=daysOfWeek(w); const users=readUsers(); const projs=readProjects(); const data=readPlan()[w]||{}; const header=['Mitarbeiter', ...days.map(d=>d.toLocaleDateString('de-AT',{weekday:'short',day:'2-digit',month:'2-digit'}))]; const rows=[header]; users.forEach(u=>{ const row=[u.name||u.username]; days.forEach(d=>{ const dk=dateKey(d); const entries=projs.map(p=>{ const list=(((data[dk]||{})[p.id])||[]).filter(x=>x.uid===u.id); return list.length?p.name:''; }).filter(Boolean); row.push(entries.join(', ')); }); rows.push(row); }); const csv=rows.map(r=>r.join(';')).join('\n'); const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='Wocheneinteilung_'+w+'.csv'; a.click(); URL.revokeObjectURL(url); }
-function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
-window.initPlanning123 = initPlanning123;
+function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;' }[c])); }

@@ -3,13 +3,12 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Wocheneinteilung – Arbeitseinteilung und Zeiterfassung Holzbau Zaunschirm</title>
+  <title>Arbeitseinteilung und Zeiterfassung Holzbau Zaunschirm – Wocheneinteilung</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <link rel="icon" href="favicon.ico">
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png">
-  <link rel="icon" href="favicon.ico">
   <link rel="stylesheet" href="assets/css/style.css">
   <meta name="theme-color" content="#2F3438">
 </head>
@@ -28,6 +27,7 @@
 
 <section class="card">
   <h2>Wocheneinteilung (Drag & Drop)</h2>
+  <div id="readonlyNotice" class="alert hidden">Nur Admin kann Änderungen vornehmen. Ansicht ist schreibgeschützt.</div>
   <div class="row wrap">
     <label>Woche (ISO) <input type="week" id="weekPicker"></label>
     <button class="btn" id="prevWeek">← Vorherige Woche</button>
@@ -61,7 +61,7 @@
 </section>
 
 </main>
-<footer class="footer"><small>© 2025 Holzbau Zaunschirm • V01a</small></footer>
+<footer class="footer"><small>© 2025 Holzbau Zaunschirm • V01g</small></footer>
 <script defer src="js/storage.js"></script>
 <script defer src="js/auth.js"></script>
 <script defer src="js/app.js"></script>
@@ -69,7 +69,7 @@
 <script defer src="js/planning_123.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', ()=>{
-  try{ protectPage(['admin','lead']); renderNavByRole(); if(typeof initPlanning123==='function') initPlanning123(); }catch(e){ console.error(e); }
+  try{ protectPage(['admin','lead']); renderNavByRole(); if(typeof initPlanning123==='function') initPlanning123(); const me=currentUser(); if(me && me.role!=='admin'){ readonlyNotice.classList.remove('hidden'); } }catch(e){ console.error(e); }
 });
 </script>
 

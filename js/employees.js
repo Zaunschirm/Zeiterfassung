@@ -55,9 +55,12 @@
   }
   function initEmployeePage(){
     const me = currentUser(); if(me?.role!=='admin' && me?.role!=='lead'){ alert('Keine Berechtigung'); location.replace('dashboard.html'); return; }
-    const el=E(); el.cancel?.setAttribute('type','button');
+    const el=E(); 
+    el.cancel?.setAttribute('type','button');
+    const closeHandler = (ev)=>{ ev?.stopPropagation?.(); closeModal(); };
+    el.cancel?.addEventListener('click', closeHandler);
+    el.cancel?.addEventListener('pointerup', closeHandler);
     el.add?.addEventListener('click', ()=>openModal());
-    el.cancel?.addEventListener('click', (e)=>{ e.preventDefault(); closeModal(); });
     el.save?.addEventListener('click', saveEmp);
     el.search?.addEventListener('input', renderTable);
     el.modal?.addEventListener('click', ev=>{ if(ev.target===el.modal) closeModal(); });
