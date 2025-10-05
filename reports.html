@@ -5,26 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Arbeitseinteilung und Zeiterfassung Holzbau Zaunschirm – Berichte</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="apple-touch-icon" href="apple-touch-icon.png">
-  <link rel="icon" href="favicon.ico">
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <link rel="stylesheet" href="assets/css/style.css">
   <meta name="theme-color" content="#2F3438">
-  <style>
-    @media print{
-      .topbar, .controls, .btn, .nav, .no-print{ display:none !important; }
-      .container{ margin:0; padding:0; }
-      h1{ margin:0 0 8px 0; }
-      .print-meta{ display:block !important; margin-bottom:10px; color:#555; }
-      .table th, .table td{ font-size:12px; padding:6px; }
-    }
-    .number{ font-variant-numeric: tabular-nums; text-align:right; }
-  </style>
 </head>
 <body>
 <header class="topbar">
-  <div class="brand"><span class="logo-dot"></span><img src="icon-192.png" alt="" style="width:22px;height:22px;border-radius:4px;object-fit:cover; margin-left:6px;"><span class="brand-text">Arbeitseinteilung und Zeiterfassung Holzbau Zaunschirm</span></div>
+  <div class="brand"><span class="logo-dot"></span><span class="brand-text">Arbeitseinteilung und Zeiterfassung Holzbau Zaunschirm</span></div>
   <nav class="nav">
     <a href="dashboard.html">Übersicht</a>
     <a href="mitarbeiter.html" class="require-role-admin">Mitarbeiter</a>
@@ -34,32 +23,34 @@
     <button id="logoutBtn" class="btn-ghost">Logout</button>
   </nav>
 </header>
-
 <main class="container">
-  <section class="card">
-    <h1>Berichte • Gesamtstunden</h1>
-    <div class="controls row wrap">
-      <label>Von <input type="date" id="fromDate"></label>
-      <label>Bis <input type="date" id="toDate"></label>
-      <button class="btn" id="refreshBtn">Aktualisieren</button>
-      <button class="btn-primary" id="printBtn">Als PDF exportieren</button>
-    </div>
-    <div class="print-meta no-print hidden" id="printMeta"></div>
-    <table class="table" id="repTable">
-      <thead>
-        <tr><th style="width:45%">Mitarbeiter</th><th class="number" style="width:20%">Stunden (HH:MM)</th><th class="number" style="width:20%">Überstunden (&gt; 9:00/Tag)</th><th class="number" style="width:15%">Tage</th></tr>
-      </thead>
-      <tbody></tbody>
-      <tfoot>
-        <tr><th>Gesamt</th><th class="number" id="sumAll">00:00</th><th class="number" id="sumOt">00:00</th><th class="number" id="sumDays">0</th></tr>
-      </tfoot>
-    </table>
-  </section>
-</main>
-<footer class="footer"><small>© 2025 Holzbau Zaunschirm • V01h</small></footer>
 
+<section class="card">
+  <h1>Berichte • Gesamtstunden</h1>
+  <div class="controls row wrap">
+    <label>Von <input type="date" id="fromDate"></label>
+    <label>Bis <input type="date" id="toDate"></label>
+    <button class="btn" id="refreshBtn">Aktualisieren</button>
+    <button class="btn-primary" id="printBtn">Als PDF exportieren</button>
+  </div>
+  <div class="print-meta hidden" id="printMeta"></div>
+  <table class="table" id="repTable">
+    <thead>
+      <tr><th style="width:45%">Mitarbeiter</th><th class="number" style="width:20%">Stunden (HH:MM)</th><th class="number" style="width:20%">Überstunden (&gt; 9:00/Tag)</th><th class="number" style="width:15%">Tage</th></tr>
+    </thead>
+    <tbody></tbody>
+    <tfoot>
+      <tr><th>Gesamt</th><th class="number" id="sumAll">00:00</th><th class="number" id="sumOt">00:00</th><th class="number" id="sumDays">0</th></tr>
+    </tfoot>
+  </table>
+</section>
+
+</main>
+<footer class="footer"><small>© 2025 Holzbau Zaunschirm • V01n</small></footer>
 <script defer src="js/storage.js"></script>
 <script defer src="js/auth.js"></script>
+<script defer src="js/app.js"></script>
+
 <script>
 function minToHHMM(min){ const sign=min<0?'-':''; const m=Math.abs(min); const h=Math.floor(m/60); const mm=m%60; return sign+String(h).padStart(2,'0')+':'+String(mm).padStart(2,'0'); }
 function eachDate(from, to){
@@ -98,7 +89,7 @@ function calc(){
   const meta = document.getElementById('printMeta'); meta.textContent = `Zeitraum: ${fd} bis ${td}`; meta.classList.remove('hidden');
 }
 document.addEventListener('DOMContentLoaded', ()=>{
-  protectPage(['admin']); // nur Admin
+  protectPage(['admin']); renderNavByRole();
   const now=new Date(); const start=new Date(now); start.setDate(start.getDate()-6);
   document.getElementById('fromDate').valueAsDate = start;
   document.getElementById('toDate').valueAsDate = now;
@@ -107,5 +98,6 @@ document.addEventListener('DOMContentLoaded', ()=>{
   calc();
 });
 </script>
+
 </body>
 </html>

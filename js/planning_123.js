@@ -22,13 +22,13 @@ function dateKey(d){ return d.toISOString().slice(0,10); }
 function renderBoard(){
   const users = readUsers(); const term=(empSearch.value||'').toLowerCase();
   const emps = users.filter(u=> (u.name||'').toLowerCase().includes(term) || (u.username||'').toLowerCase().includes(term));
-  empList.innerHTML = emps.map(u=>`<span class="empchip" draggable="true" data-uid="${u.id}">${escapeHtml(u.name||u.username)}</span>`).join('');
+  empList.innerHTML = emps.map(u=>`<span class="empchip" draggable="${window.__canEditPlanning?'true':'false'}" data-uid="${u.id}">${escapeHtml(u.name||u.username)}</span>`).join('');
   if(window.__canEditPlanning){
     empList.querySelectorAll('.empchip').forEach(chip=> chip.addEventListener('dragstart', e=>{ e.dataTransfer.setData('text/plain', JSON.stringify({type:'emp', uid:chip.dataset.uid})); e.dataTransfer.effectAllowed='copy'; }));
   }
 
   const projs = readProjects();
-  projList.innerHTML = projs.map(p=>`<span class="projchip" data-pid="${p.id}"><span class="color" style="background:${p.color}"></span>${escapeHtml(p.name)}${p.costCenter?` <small style='color:#6b7280'>(KSt ${escapeHtml(p.costCenter)})</small>`:''} ${window.__canEditPlanning?'<button class="remove" title="Löschen">×</button>':''}</span>`).join('');
+  projList.innerHTML = projs.map(p=>`<span class="projchip" data-pid="${p.id}"><span class="projcolor" style="background:${p.color}"></span>${escapeHtml(p.name)}${p.costCenter?` <small style='color:#6b7280'>(KSt ${escapeHtml(p.costCenter)})</small>`:''} ${window.__canEditPlanning?'<button class="remove" title="Löschen">×</button>':''}</span>`).join('');
   if(window.__canEditPlanning){
     projList.querySelectorAll('.remove').forEach(btn=> btn.addEventListener('click', ()=>{ const pid=btn.parentElement.getAttribute('data-pid'); writeProjects(readProjects().filter(x=>x.id!==pid)); renderBoard(); }));
   }
@@ -59,7 +59,6 @@ function renderBoard(){
         else if(data.type==='move') moveAssign(data.uid, data.fromDate, data.fromPid, zone.dataset.date, zone.dataset.pid);
       });
     });
-
     document.querySelectorAll('.assignment').forEach(chip=> chip.addEventListener('dragstart', e=>{
       const from = chip.closest('.projdrop'); const payload={type:'move', uid:chip.dataset.uid, fromDate:from.dataset.date, fromPid:from.dataset.pid};
       e.dataTransfer.setData('text/plain', JSON.stringify(payload)); e.dataTransfer.effectAllowed='move';

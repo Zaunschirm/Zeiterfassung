@@ -1,15 +1,10 @@
 
 (function(){
-  window.closeEmpModal = function(){ const m=document.getElementById('empModal'); if(m && !m.classList.contains('hidden')){ m.classList.add('hidden'); const add=document.getElementById('addEmp'); if(add) setTimeout(()=>add.focus(),0); } };
-
   let editingId = null;
   const E = ()=> ({
     add: document.getElementById('addEmp'),
-    cancel: document.getElementById('cancelEmp'),
     save: document.getElementById('saveEmp'),
     search: document.getElementById('search'),
-    modal: document.getElementById('empModal'),
-    title: document.getElementById('modalTitle'),
     name: document.getElementById('empName'),
     user: document.getElementById('empUser'),
     role: document.getElementById('empRole'),
@@ -17,30 +12,6 @@
     photo: document.getElementById('empPhoto'),
     tbody: document.querySelector('#empTable tbody')
   });
-  function openModal(emp=null){
-    const el = E();
-    editingId = emp?.id || null;
-    el.title.textContent = editingId ? 'Mitarbeiter bearbeiten' : 'Mitarbeiter anlegen';
-    el.name.value = emp?.name || '';
-    el.user.value = emp?.username || '';
-    el.role.value = emp?.role || 'employee';
-    el.pw.value = '';
-    if(el.photo) el.photo.value='';
-    el.modal.classList.remove('hidden'); el.modal.focus();
-  }
-  function closeModal(){ const el=E(); el.modal.classList.add('hidden'); }
-  function saveEmp(){
-    const el = E();
-    const name = el.name.value.trim(); const username = el.user.value.trim(); const role = el.role.value; const pw = el.pw.value;
-    const file = el.photo?.files?.[0];
-    if(!name || !username){ alert('Name und Nutzername sind erforderlich.'); return; }
-    const users = readUsers(); let user = users.find(u=>u.id===editingId);
-    const upsert = (photo)=>{ if(user){ user.name=name; user.username=username; user.role=role; if(pw) user.password=pw; if(photo) user.photo=photo; }
-      else{ const id='u'+Math.random().toString(36).slice(2,9); user={id,name,username,role,password:pw||'1234', mustChangePassword:true}; if(photo) user.photo=photo; users.push(user); }
-      writeUsers(users); closeModal(); renderTable(); };
-    if(file){ const r=new FileReader(); r.onload=()=>upsert(r.result); r.readAsDataURL(file); } else upsert(null);
-  }
-  function removeEmp(id){ if(!confirm('Mitarbeiter wirklich löschen?')) return; const users=readUsers().filter(u=>u.id!==id); writeUsers(users); renderTable(); }
   function renderTable(){
     const el = E(); const term=(el.search?.value||'').toLowerCase(); const users=readUsers().filter(u=>(u.name||'').toLowerCase().includes(term)||(u.username||'').toLowerCase().includes(term));
     el.tbody.innerHTML = users.map(u=>`
@@ -52,69 +23,29 @@
         <td>${u.mustChangePassword?'Erstlogin':'Aktiv'}</td>
         <td><button class="btn" data-edit="${u.id}">Bearbeiten</button> <button class="btn-ghost" data-del="${u.id}">Löschen</button></td>
       </tr>`).join('');
-    el.tbody.querySelectorAll('[data-edit]').forEach(b=> b.addEventListener('click', ()=>{ const emp=readUsers().find(x=>x.id===b.dataset.edit); openModal(emp); }));
+    el.tbody.querySelectorAll('[data-edit]').forEach(b=> b.addEventListener('click', ()=>{ const emp=readUsers().find(x=>x.id===b.dataset.edit); if(window.openModal) openModal(emp); }));
     el.tbody.querySelectorAll('[data-del]').forEach(b=> b.addEventListener('click', ()=> removeEmp(b.dataset.del)));
   }
-  
-function initEmployeePage(){
-  const me = currentUser(); if(me?.role!=='admin' && me?.role!=='lead'){ alert('Keine Berechtigung'); location.replace('dashboard.html'); return; }
-  const el = (function(){
-  window.closeEmpModal = function(){ const m=document.getElementById('empModal'); if(m && !m.classList.contains('hidden')){ m.classList.add('hidden'); const add=document.getElementById('addEmp'); if(add) setTimeout(()=>add.focus(),0); } };
- return {
-    add: document.getElementById('addEmp'),
-    cancel: document.getElementById('cancelEmp'),
-    save: document.getElementById('saveEmp'),
-    search: document.getElementById('search'),
-    modal: document.getElementById('empModal'),
-    title: document.getElementById('modalTitle'),
-    name: document.getElementById('empName'),
-    user: document.getElementById('empUser'),
-    role: document.getElementById('empRole'),
-    pw: document.getElementById('empPw'),
-    photo: document.getElementById('empPhoto'),
-    tbody: document.querySelector('#empTable tbody')
-  }; })();
-
-  function closeHandler(ev){ if(ev){ ev.stopPropagation?.(); ev.preventDefault?.(); } closeModal(); setTimeout(()=>document.getElementById('addEmp')?.focus(), 0); }
-  // ensure button type
-  el.cancel?.setAttribute('type','button');
-
-  // open/close wiring
-  el.add?.addEventListener('click', ()=>openModal());
-  el.save?.addEventListener('click', saveEmp);
-  el.search?.addEventListener('input', renderTable);
-  el.cancel?.addEventListener('click', closeHandler);
-  el.cancel?.addEventListener('pointerup', closeHandler);
-
-  // overlay click closes when backdrop hit
-  el.modal?.addEventListener('click', (ev)=>{ if(ev.target===el.modal) closeHandler(ev); });
-
-  // ESC closes
-  document.addEventListener('keydown', function onEsc(ev){
-    if(ev.key==='Escape' && !el.modal.classList.contains('hidden')){ closeHandler(ev); }
-  });
-
-  renderTable();
-}
-window.initEmployeePage = initEmployeePage;
-})();
-
-// Delegation for cancel button (never breaks)
-document.addEventListener('click', function (ev) {
-  if (ev.target && ev.target.id === 'cancelEmp') {
-    ev.preventDefault(); ev.stopPropagation();
-    window.closeEmpModal && window.closeEmpModal();
+  function removeEmp(id){ if(!confirm('Mitarbeiter wirklich löschen?')) return; const users=readUsers().filter(u=>u.id!==id); writeUsers(users); renderTable(); }
+  function saveEmp(){
+    const el = E();
+    const name = el.name.value.trim(); const username = el.user.value.trim(); const role = el.role.value; const pw = el.pw.value;
+    const file = el.photo?.files?.[0];
+    if(!name || !username){ alert('Name und Nutzername sind erforderlich.'); return; }
+    const users = readUsers(); let user = users.find(u=>u.id===editingId);
+    const done = (photo)=>{ if(user){ user.name=name; user.username=username; user.role=role; if(pw) user.password=pw; if(photo) user.photo=photo; }
+      else{ const id='u'+Math.random().toString(36).slice(2,9); user={id,name,username,role,password:pw||'1234', mustChangePassword:true}; if(photo) user.photo=photo; users.push(user); }
+      writeUsers(users); if(window.closeModal) closeModal(); renderTable(); };
+    if(file){ const r=new FileReader(); r.onload=()=>done(r.result); r.readAsDataURL(file); } else done(null);
   }
-});
-// ESC to close
-document.addEventListener('keydown', function(ev){
-  if(ev.key==='Escape'){
-    const m=document.getElementById('empModal');
-    if(m && !m.classList.contains('hidden')){ ev.preventDefault(); window.closeEmpModal(); }
+  function initEmployeePage(){
+    const el=E();
+    el.add?.addEventListener('click', ()=>{ editingId=null; });
+    el.save?.addEventListener('click', saveEmp);
+    el.search?.addEventListener('input', renderTable);
+    renderTable();
   }
-});
-// Backdrop click
-(function(){
-  const m=document.getElementById('empModal');
-  if(m){ m.addEventListener('click', function(ev){ if(ev.target===m){ ev.preventDefault(); window.closeEmpModal(); } }); }
+  window.initEmployeePage = initEmployeePage;
+  window.renderTable = renderTable;
+  window.saveEmp = saveEmp;
 })();

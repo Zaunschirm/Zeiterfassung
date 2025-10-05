@@ -5,16 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Arbeitseinteilung und Zeiterfassung Holzbau Zaunschirm – Wocheneinteilung</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="apple-touch-icon" href="apple-touch-icon.png">
-  <link rel="icon" href="favicon.ico">
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <link rel="stylesheet" href="assets/css/style.css">
   <meta name="theme-color" content="#2F3438">
 </head>
 <body>
 <header class="topbar">
-  <div class="brand"><span class="logo-dot"></span><img src="icon-192.png" alt="" style="width:22px;height:22px;border-radius:4px;object-fit:cover; margin-left:6px;"><span class="brand-text">Arbeitseinteilung und Zeiterfassung Holzbau Zaunschirm</span></div>
+  <div class="brand"><span class="logo-dot"></span><span class="brand-text">Arbeitseinteilung und Zeiterfassung Holzbau Zaunschirm</span></div>
   <nav class="nav">
     <a href="dashboard.html">Übersicht</a>
     <a href="mitarbeiter.html" class="require-role-admin">Mitarbeiter</a>
@@ -36,21 +35,20 @@
     <button class="btn" id="copyPrev">Vorwoche kopieren</button>
     <button class="btn" id="clearWeek">Woche leeren</button>
     <button class="btn" id="exportCsv">CSV exportieren</button>
-    <button class="btn-ghost" onclick="window.print()">Drucken</button>
+    <button class="btn-ghost require-no-print" onclick="window.print()">Drucken</button>
   </div>
-
   <div class="card">
     <details open>
-      <summary><strong>Projekte</strong> (Farbe & Reihenfolge)</summary>
+      <summary><strong>Projekte</strong> (Farbe, Kostenstelle & Reihenfolge)</summary>
       <div class="row wrap" style="margin-top:8px">
         <label>Projektname <input id="projName" placeholder="BV Mustergasse 12"></label>
-        <label>Farbe <input id="projColor" type="color" value="#C8A86B">        </label><label>Kostenstelle <input id="projKst" placeholder="z.B. 4711-01"></label>
+        <label>Farbe <input id="projColor" type="color" value="#C8A86B"></label>
+        <label>Kostenstelle <input id="projKst" placeholder="z.B. 4711-01"></label>
         <button class="btn-primary" id="addProject">Projekt hinzufügen</button>
       </div>
       <div id="projList" class="projlist"></div>
     </details>
   </div>
-
   <div class="board">
     <aside>
       <div class="empheader"><strong>Mitarbeiter (ziehen)</strong></div>
@@ -62,7 +60,7 @@
 </section>
 
 </main>
-<footer class="footer"><small>© 2025 Holzbau Zaunschirm • V01g</small></footer>
+<footer class="footer"><small>© 2025 Holzbau Zaunschirm • V01n</small></footer>
 <script defer src="js/storage.js"></script>
 <script defer src="js/auth.js"></script>
 <script defer src="js/app.js"></script>
@@ -70,7 +68,8 @@
 <script defer src="js/planning_123.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', ()=>{
-  try{ protectPage(['admin','lead']); renderNavByRole(); if(typeof initPlanning123==='function') initPlanning123(); const me=currentUser(); if(me && me.role!=='admin'){ readonlyNotice.classList.remove('hidden'); } }catch(e){ console.error(e); }
+  protectPage(['admin','lead']); renderNavByRole(); if(typeof initPlanning123==='function') initPlanning123();
+  const me=currentUser(); if(me && me.role!=='admin'){ readonlyNotice.classList.remove('hidden'); }
 });
 </script>
 
