@@ -1,7 +1,7 @@
 {
-  "name": "Zeiterfassung – Clean V54",
+  "name": "Zeiterfassung – V55",
   "short_name": "Zeit",
-  "start_url": "/Zeiterfassung/?v=54",
+  "start_url": "/Zeiterfassung/?v=55",
   "scope": "/Zeiterfassung/",
   "display": "standalone",
   "background_color": "#faf6f6",

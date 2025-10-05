@@ -1,5 +1,5 @@
-// V54
-const CACHE='zeit2-pwa-v54';
+// V55
+const CACHE='zeit2-pwa-v55';
 self.addEventListener('install',e=>{
   e.waitUntil(caches.open(CACHE).then(c=>c.addAll(['./','./index.html','./manifest.json','./assets/logo.png','./users/'])));
 });
@@ -8,10 +8,7 @@ self.addEventListener('activate',e=>{
 });
 self.addEventListener('fetch',e=>{
   if(e.request.method!=='GET') return;
-  e.respondWith(
-    caches.match(e.request).then(r=>r||fetch(e.request).then(res=>{
-      const copy=res.clone(); caches.open(CACHE).then(c=>c.put(e.request,copy));
-      return res;
-    }).catch(()=>r))
-  );
+  e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request).then(res=>{
+    const copy=res.clone(); caches.open(CACHE).then(c=>c.put(e.request,copy)); return res;
+  }).catch(()=>r)));
 });
