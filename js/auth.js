@@ -26,3 +26,11 @@ function changeOwnPassword(newPw){
   if(i>=0){ users[i].password = newPw; users[i].mustChangePassword=false; writeUsers(users); return true; }
   return false;
 }
+
+// expose globals
+window.ensureSeedAdmin = ensureSeedAdmin;
+window.login = login;
+window.currentUser = currentUser;
+window.logout = logout;
+window.protectPage = protectPage;
+window.changeOwnPassword = changeOwnPassword;
