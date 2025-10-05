@@ -1,605 +1,409 @@
+
 <!doctype html>
 <html lang="de">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>Zeiterfassung</title>
-  <link rel="manifest" href="/Zeiterfassung/manifest.json">
-  <meta name="theme-color" content="#c9b8a6" id="metaTheme"/>
-  <link rel="icon" href="./icons/icon-192.png">
-  <style>
-    :root{--bg:#faf8f6;--card:#fff;--ink:#2b261f;--muted:#8b857e;--primary:#c9b8a6;--primaryText:#2b261f;--button:#8c7b6a;--line:#e5e7eb}
-    *{box-sizing:border-box}
-    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink)}
-    header{background:var(--primary);color:var(--primaryText);padding:10px 14px;display:flex;justify-content:space-between;align-items:center}
-    .brand{display:flex;gap:10px;align-items:center}
-    .brand img{height:34px;width:auto;object-fit:contain}
-    main{max-width:1200px;margin:0 auto;padding:16px}
-    .card{background:var(--card);border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,.06);padding:16px;margin:12px 0}
-    label{display:block;font-size:14px;margin:8px 0 4px}
-    input,select,button{width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;font:inherit}
-    input.inline,select.inline{padding:6px 8px}
-    button{background:var(--button);color:#fff;cursor:pointer}
-    button.ghost{background:#fff;color:var(--ink);border:1px solid #d1d5db}
-    button.secondary{background:#6b7280}
-    .row{display:flex;gap:12px;flex-wrap:wrap}
-    .row>*{flex:1 1 220px}
-    .hidden{display:none}
-    table{width:100%;border-collapse:collapse}
-    th,td{padding:8px;border-bottom:1px solid #eee;font-size:14px;text-align:left}
-    th.right,td.right{text-align:right}
-    tfoot td{font-weight:600}
-    .thumbs{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px}
-    .thumbs figure{margin:0}
-    .thumbs img{width:110px;height:110px;object-fit:cover;border-radius:8px;border:1px solid #ddd;display:block}
-    .thumbs figcaption{font-size:12px;color:#666;text-align:center;margin-top:4px}
-    .cb-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px}
-    .cb-item{display:flex;align-items:center;gap:10px;padding:8px;border:1px solid var(--line);border-radius:10px;background:#fff}
-    .cb-item input{width:auto}
-    .muted{color:var(--muted)}
-    .badge{display:inline-block;padding:2px 6px;border-radius:6px;background:#f3f4f6;border:1px solid #e5e7eb;font-size:12px}
-  
-/* v38: hide photo UI */
-#photoWrap, #photoGallery, #btnAddPhotos { display: none !important; }
-
-/* v39: strict remove photo UI */
-#photoWrap, #photoGallery, #btnAddPhotos { display: none !important; }
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zeiterfassung</title>
+<link rel="manifest" href="/Zeiterfassung/manifest.json">
+<link rel="icon" href="/Zeiterfassung/assets/logo.png">
+<style>
+:root{--bg:#faf6f6;--ink:#1d1d1d;--card:#fff;--line:#ddd;--btn:#8c7b6a;--mut:#666}
+*{box-sizing:border-box}
+body{margin:0;font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink)}
+header{background:#d9c9b9;color:#2b261f;padding:10px 14px;display:flex;justify-content:space-between;align-items:center}
+.wrap{max-width:1080px;margin:16px auto;padding:0 12px}
+.card{background:var(--card);border-radius:10px;box-shadow:0 6px 20px rgba(0,0,0,.06);padding:16px;margin:12px 0}
+label{display:block;font-size:12px;margin-bottom:4px;color:#555}
+input,select,textarea{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;font:inherit}
+textarea{resize:vertical;min-height:40px}
+button{background:var(--btn);color:#fff;border:0;padding:10px 16px;border-radius:10px;font:inherit;cursor:pointer}
+button.ghost{background:#fff;color:var(--ink);border:1px solid var(--line)}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.row-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+.row-inline{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:end}
+@media(max-width:720px){.row,.row-3,.row-inline{grid-template-columns:1fr}}
+.range-row{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center}
+table{width:100%;border-collapse:collapse;margin-top:6px}
+th,td{border-bottom:1px solid var(--line);text-align:left;padding:10px;font-size:14px}
+th{font-weight:600}
+/* Foto UI */
+#photoGallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px;margin-top:10px}
+#photoGallery figure{margin:0;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#fff}
+#photoGallery img{display:block;width:100%;height:110px;object-fit:cover}
+#photoGallery figcaption{font-size:12px;color:#666;text-align:center;padding:6px}
+.muted{color:var(--mut)}
 </style>
-  <script>
-  async function applyBranding(){
-    try{
-      const r=await fetch('./config.json',{cache:'reload'});
-      const c=await r.json();
-      for(const [k,v] of Object.entries({bg:c.bg, card:c.card, primary:c.primary, primaryText:c.primaryText, accent:c.accent, muted:c.muted})){
-        if(v) document.documentElement.style.setProperty('--'+(k==='accent'?'button':k), v);
-      }
-      if(c.appName){document.title=c.appName; const t=document.getElementById('brandTitle'); if(t)t.textContent=c.appName;}
-      if(c.logoPath){const i=document.getElementById('brandLogo'); if(i)i.src=c.logoPath;}
-      const meta=document.getElementById('metaTheme'); if(meta&&c.primary)meta.setAttribute('content',c.primary);
-    }catch(e){}
-  }
-  </script>
 </head>
-<!-- V34-HOTFIX -->
-<!-- V35-FIX -->
-<!-- V36-FIX -->
-<!-- V36.1-FIX -->
-<!-- V37-FIX -->
-<!-- V38-NOPHOTO -->
-<!-- V39-STRIP-NOPHOTO -->
-<!-- V40-PDFFIX -->
-<!-- V41-DBUP -->
-<!-- V42-LINKFIX -->
-<!-- V44-PROJECTSELECT-FIX -->
-<!-- V45-PACK -->
-<!-- V49-DB-NOVERSION -->
-<body onload="applyBranding()">
+<body>
 <header>
-  <div class="brand">
-    <img id="brandLogo" src="/Zeiterfassung/assets/logo.png" alt="Logo">
-    <strong id="brandTitle">Zeiterfassung</strong>
-  </div>
-  <div class="row" style="flex:0 0 auto;gap:8px;align-items:center">
-    <a href="/Zeiterfassung/users/" id="linkUsers" class="ghost" style="text-decoration:none;display:inline-block;width:auto">Mitarbeiterverwaltung</a>
-    <button id="btnLogout" class="ghost">Logout</button>
-  </div>
+  <strong>Zeiterfassung</strong>
+  <nav><a href="/Zeiterfassung/users/" style="color:#2b261f;text-decoration:none">Mitarbeiterverwaltung</a></nav>
 </header>
 
-<main>
-  <section id="loginView" class="card">
-    <h2>Anmelden</h2>
-    <div class="row">
-      <div><label>Nutzername<input id="loginUser" autocomplete="username"></label></div>
-      <div><label>Passwort<input id="loginPass" type="password" autocomplete="current-password"></label></div>
-    </div>
-    <div class="row"><button id="btnLogin">Login</button></div>
-  </section>
-
-  <section id="forcePwView" class="card hidden">
-    <h2>Passwort ändern</h2>
-    <p>Bitte setze ein neues Passwort, bevor du die App verwendest.</p>
-    <div class="row">
-      <div><label>Neues Passwort<input id="pwNew" type="password"></label></div>
-      <div><label>Wiederholen<input id="pwNew2" type="password"></label></div>
-    </div>
-    <div class="row">
-      <button id="btnSetPw">Passwort speichern</button>
-    </div>
-  </section>
-
-  <section id="appView" class="hidden">
-    <div class="card">
-      <h2>Zeiteingabe</h2>
-      <div class="row">
-        <div><label>Projekt / Kostenstelle<select id="projectSelect"></select></label></div>
-        <div><label>Pausen (Minuten)<select id="breakMin">
-          <option>0</option><option>15</option><option selected>30</option><option>45</option><option>60</option>
-        </select></label></div>
-        <div><label>Bemerkung<input id="noteInput" placeholder="z. B. Montage, Fahrtzeit"></label></div>
+<main class="wrap">
+  <section class="card">
+    <h2>Zeiteingabe</h2>
+    <div class="row-3">
+      <div>
+        <label>Projekt / Kostenstelle</label>
+        <select id="projectSelect"></select>
       </div>
+      <div>
+        <label>Pausen (Minuten)</label>
+        <select id="pauseMin">
+          <option>0</option><option>15</option><option selected>30</option><option>45</option><option>60</option>
+        </select>
+      </div>
+      <div>
+        <label>Bemerkung</label>
+        <input id="note" placeholder="z. B. Montage, Fahrzeit">
+      </div>
+    </div>
 
-      <div class="row">
-        <div><label>Tagesstatus<select id="dayStatus">
+    <div class="row">
+      <div>
+        <label>Tagesstatus</label>
+        <select id="status">
           <option value="work" selected>Arbeit</option>
           <option value="urlaub">Urlaub</option>
           <option value="krank">Krank</option>
-        </select></label></div>
+        </select>
       </div>
+      <div></div>
+    </div>
 
-      <div class="row">
-        <div style="flex:1 1 100%">
-          <div class="row" style="align-items:center">
-            <output id="startOut">06:45</output>
-            <input id="startRange" type="range" min="16" max="80" step="1" value="27"><span>Start</span>
-          </div>
-          <div class="row" style="align-items:center">
-            <output id="endOut">16:30</output>
-            <input id="endRange" type="range" min="16" max="80" step="1" value="66"><span>Ende</span>
-          </div>
+    <div class="range-row">
+      <div>
+        <div class="range-row">
+          <input id="startRange" type="range" min="0" max="1439" value="405">
+          <span>Start</span>
+        </div>
+        <div class="range-row" style="margin-top:8px">
+          <input id="endRange" type="range" min="0" max="1439" value="990">
+          <span>Ende</span>
         </div>
       </div>
-      <div class="row">
-        <div><label>Datum<input type="date" id="manualDate"></label></div>
-        <div><label>Arbeitszeit (HH:MM)<input id="workMinPreview" readonly></label></div>
-      </div>
-
-      <div class="card" style="margin-top:8px">
-        <h3 style="margin-top:0">Mitarbeiter auswählen</h3>
-        <div id="userCheckboxes" class="cb-list"></div>
-        <div class="row" style="margin-top:8px">
-          <button id="btnAddEntry">Nur für mich speichern</button>
-          <button id="btnAddBatch" class="secondary">Für alle ausgewählten speichern</button>
-        </div>
-      </div>
-
-      <div class="row" style="margin-top:8px">
-        <div><button id="btnAddPhotos" class="ghost">📷 Projekt‑Fotos hinzufügen</button></div>
-      </div>
-      <div id="photoWrap" class="hidden">
-        <h3 style="margin-top:6px">Projektfotos</h3>
-        <div id="photoGallery" class="thumbs"></div>
+      <div>
+        <label>Arbeitszeit (HH:MM)</label>
+        <input id="workTime" type="text" readonly>
       </div>
     </div>
 
-    <div class="card">
-      <div class="row" style="align-items:flex-end">
-        <h3 style="flex:1 1 200px">Übersicht Monat</h3>
-        <div><label>Monat<input type="month" id="monthPicker"></label></div>
-        <div><label>Nutzer<select id="userFilter"></select></label></div>
+    <div class="row">
+      <div>
+        <label>Datum</label>
+        <input id="date" type="date">
       </div>
-      <p id="editHint" class="muted" style="margin:0 0 8px"></p>
-      <table id="monthTable">
-        <thead><tr><th>Datum</th><th>Status</th><th>Von</th><th>Bis</th><th>Projekt</th><th class="right">Kostenstelle</th><th class="right">Pausen</th><th class="right">Arbeitszeit</th><th class="right">Überstunden</th><th>Notiz</th><th>Aktion</th></tr></thead>
-        <tbody></tbody>
-        <tfoot><tr><td colspan="7" class="right">Summe</td><td class="right" id="sumWork">00:00</td><td class="right" id="sumOT">00:00</td><td></td><td></td></tr></tfoot>
-      </table>
-      <div class="row" style="margin-top:8px">
-        <button id="btnExportCSV" class="ghost">CSV‑Export</button>
-        <button id="btnExportPDF" class="ghost">PDF‑Export</button>
-      </div>
+      <div></div>
     </div>
 
-    <div class="card" id="adminPanel">
-      <h3>Projekte (Admin)</h3>
-      <div class="row">
-        <div><label>Name<input id="newProjectName"></label></div>
-        <div><label>Kostenstelle<input id="newProjectCost"></label></div>
-        <div style="align-self:end"><button id="btnAddProject">Hinzufügen</button></div>
+    <div class="card" style="padding:12px;margin:14px 0">
+      <h3>Mitarbeiter auswählen</h3>
+      <label style="display:flex;gap:10px;align-items:center">
+        <input type="checkbox" id="chkMe" checked>
+        <span id="meLabel">Ich (Admin)</span>
+      </label>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px">
+        <button id="btnSaveMine">Nur für mich speichern</button>
       </div>
-      <div id="projectList" style="margin-top:10px"></div>
     </div>
+  </section>
+
+  <section id="photoWrap" class="card">
+    <h3>Fotos zum Eintrag / Projekt</h3>
+    <div class="row" style="grid-template-columns:1fr auto;gap:10px;align-items:center">
+      <input id="photoInput" type="file" accept="image/*" multiple capture="environment">
+      <button id="btnAddPhotos" class="ghost">Fotos hinzufügen</button>
+    </div>
+    <div id="photoGallery"></div>
+  </section>
+
+  <section class="card">
+    <h3>Übersicht Monat</h3>
+    <div class="row-3">
+      <div>
+        <label>Monat</label>
+        <input id="monthPicker" type="month">
+      </div>
+      <div>
+        <label>Nutzer</label>
+        <select id="userPicker"></select>
+      </div>
+      <div></div>
+    </div>
+    <table>
+      <thead>
+        <tr><th>Datum</th><th>Status</th><th>Von</th><th>Bis</th><th>Projekt</th><th>Pausen</th><th>Arbeitszeit</th><th>Aktion</th></tr>
+      </thead>
+      <tbody id="tblMonth"></tbody>
+      <tfoot><tr><td colspan="6">Summe</td><td id="sumTime">00:00</td><td></td></tr></tfoot>
+    </table>
+    <div style="display:flex;gap:10px;margin-top:10px">
+      <button id="btnCsv" class="ghost">CSV-Export</button>
+      <button id="btnPdf" class="ghost">PDF-Export</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <h3>Projekte (Admin)</h3>
+    <div class="row" style="grid-template-columns:1fr auto">
+      <input id="newProjectName" placeholder="Projektname / Kostenstelle">
+      <button id="btnAddProject" class="ghost">Anlegen</button>
+    </div>
+    <ul id="projectList"></ul>
   </section>
 </main>
 
 <script>
-(function(){
-  const a=document.getElementById('linkUsers');
-  a.addEventListener('click',function(ev){
-    ev.preventDefault();
-    const p=location.pathname; const base=p.endsWith('/')?p:p.replace(/[^/]+$/,'');
-    location.href=location.origin+base+'users/';
-  });
-})();
+/*** Datenbank ***/
+const DB_NAME='zeit-web-pwa';
+const STORE={users:'users',projects:'projects',entries:'entries',photos:'photos'};
 
-if (location.protocol.startsWith('http')) { navigator.serviceWorker && navigator.serviceWorker.register('/Zeiterfassung/sw.js', {scope:'/Zeiterfassung/'}); }
-
-const DB_NAME='zeit-web-pwa', DB_VERSION=15; // bump
-const STORE={ users:'users', projects:'projects', entries:'entries', photos:'photos' };
-function withDB(){return new Promise((resolve,reject)=>{const r=indexedDB.open(DB_NAME);
-  r.onupgradeneeded=()=>{const db=r.result;
-    if(!db.objectStoreNames.contains(STORE.users)) db.createObjectStore(STORE.users,{keyPath:'username'});
-    if(!db.objectStoreNames.contains(STORE.projects)) db.createObjectStore(STORE.projects,{keyPath:'id'});
-    if(!db.objectStoreNames.contains(STORE.entries)) db.createObjectStore(STORE.entries,{keyPath:'id'});
-    if(!db.objectStoreNames.contains(STORE.photos)) db.createObjectStore(STORE.photos,{keyPath:'id'});
-  };
-  r.onsuccess=()=>resolve(r.result); r.onerror=()=>reject(r.error);
-});}
-async function put(store,val){const db=await withDB();return new Promise((res,rej)=>{const tx=db.transaction(store,'readwrite');tx.objectStore(store).put(val);tx.oncomplete=()=>res(val);tx.onerror=()=>rej(tx.error);});}
-async function get(store,key){const db=await withDB();return new Promise((res,rej)=>{const tx=db.transaction(store,'readonly');const q=tx.objectStore(store).get(key);q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error);});}
-async function getAll(store){const db=await withDB();return new Promise((res,rej)=>{const tx=db.transaction(store,'readonly');const q=tx.objectStore(store).getAll();q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error);});}
-async function delRec(store,key){const db=await withDB();return new Promise((res,rej)=>{const tx=db.transaction(store,'readwrite');tx.objectStore(store).delete(key);tx.oncomplete=()=>res(true);tx.onerror=()=>rej(tx.error);});}
-
-let currentUser=null;
-function uuid(){return'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0,v=c==='x'?r:(r&0x3|0x8);return v.toString(16)})}
-function todayISO(){ const d=new Date(); d.setHours(0,0,0,0); return d.toISOString().slice(0,10); }
-function currentMonth(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
-function ixToTime(ix){ const m=ix*15, h=String(Math.floor(m/60)).padStart(2,'0'), mm=String(m%60).padStart(2,'0'); return h+':'+mm; }
-function minToHHMM(m){ const h=Math.floor(m/60), mm=m%60; return String(h).padStart(2,'0')+':'+String(mm).padStart(2,'0'); }
-function durationMin(a,b){ return Math.max(0, Math.round((new Date(b)-new Date(a))/60000)); }
-function ixToDateISO(dateISO,ix){ const p=dateISO.split('-'); const y=parseInt(p[0],10), mo=parseInt(p[1],10), d=parseInt(p[2],10); const minutes=ix*15; const h=Math.floor(minutes/60), mm=minutes%60; return new Date(y,mo-1,d,h,mm,0).toISOString(); }
-
-async function ensureAdminExists(){
-  const users = await getAll(STORE.users);
-  const hasAdmin = users && users.some(u => (u.role==='admin') && (u.active!==false));
-  if (!hasAdmin) {
-    await put(STORE.users, {username:'admin', password:'admin', role:'admin', display:'Administrator', active:true, mustChange:false});
-  }
-}
-
-function showSection(id){
-  document.getElementById('loginView').classList.add('hidden');
-  document.getElementById('forcePwView').classList.add('hidden');
-  document.getElementById('appView').classList.add('hidden');
-  document.getElementById(id).classList.remove('hidden');
-}
-
-function isEditor(){ return currentUser && (currentUser.role==='admin' || currentUser.role==='lead'); }
-
-async function login(u,p){
-  await ensureAdminExists();
-  const user=await get(STORE.users,u);
-  if(!user){ alert('Nutzer nicht gefunden'); return; }
-  if(user.active===false){ alert('Nutzer ist deaktiviert'); return; }
-  if(user.password!==p){ alert('Passwort falsch'); return; }
-  if(user.mustChange===true){
-    currentUser=user; localStorage.setItem('cu_pending', JSON.stringify(user)); showSection('forcePwView'); return;
-  }
-  currentUser=user; localStorage.setItem('cu', JSON.stringify(user)); await enterApp();
-}
-
-async function enterApp(){
-  showSection('appView');
-  document.getElementById('manualDate').value=todayISO();
-  document.getElementById('monthPicker').value=currentMonth();
-  const admin = (currentUser.role==='admin');
-  document.getElementById('adminPanel').style.display = admin ? 'block' : 'none';
-  document.getElementById('editHint').textContent = isEditor() ? 'Monatsübersicht ist bearbeitbar (Admin & Teamleiter).' : 'Nur Admin/Teamleiter können Einträge bearbeiten.';
-  await loadProjects();
-  await loadUsersToFilter();
-  await renderUserCheckboxes();
-  setupRanges();
-  setupDayStatusBehaviour();
-  await refreshMonth();
-  }
-
-async function finishPasswordChange(){
-  const np=document.getElementById('pwNew').value;
-  const np2=document.getElementById('pwNew2').value;
-  if(np.length<6){ alert('Das Passwort muss mindestens 6 Zeichen haben.'); return; }
-  if(np!==np2){ alert('Passwörter stimmen nicht überein.'); return; }
-  const pending = JSON.parse(localStorage.getItem('cu_pending')||'null');
-  if(!pending){ alert('Kein Nutzer geladen.'); return; }
-  const upd = Object.assign({}, pending, {password:np, mustChange:false});
-  await put(STORE.users, upd);
-  localStorage.removeItem('cu_pending');
-  await login(upd.username, np);
-}
-
-async function loadProjects(){
-  const sel=document.getElementById('projectSelect'); sel.innerHTML='';
-  const projs=await getAll(STORE.projects);
-  projs.filter(p=>!p.archived).forEach(p=>{ const o=document.createElement('option'); o.value=p.id; o.textContent=p.costCenter?(p.name+' ('+p.costCenter+')'):p.name; sel.appendChild(o); });
-  renderProjectList(projs);
-}
-
-function renderProjectList(projs){
-  const list=document.getElementById('projectList'); list.innerHTML='';
-  projs.forEach(p=>{
-    const row=document.createElement('div'); row.className='row '+(p.archived?'archived':'');
-    const name=document.createElement('input'); name.value=p.name; name.placeholder='Name';
-    const cost=document.createElement('input'); cost.value=p.costCenter||''; cost.placeholder='Kostenstelle';
-    const actions=document.createElement('div'); actions.style.display='flex'; actions.style.gap='8px';
-    const save=document.createElement('button'); save.textContent='Speichern'; save.onclick=async()=>{
-      await put(STORE.projects,{id:p.id,name:name.value.trim(),costCenter:(cost.value.trim()||null),archived:!!p.archived}); await loadProjects(); await refreshMonth();
-    };
-    const arch=document.createElement('button'); arch.className='secondary'; arch.textContent=p.archived?'Wiederherstellen':'Archivieren'; arch.onclick=async()=>{
-      await put(STORE.projects,Object.assign({},p,{name:name.value.trim()||p.name,costCenter:(cost.value.trim()||p.costCenter||null),archived:!p.archived})); await loadProjects(); await refreshMonth();
-    };
-    const delB=document.createElement('button'); delB.className='ghost'; delB.textContent='Löschen'; delB.onclick=async()=>{ if(!confirm('Projekt wirklich löschen?')) return; await delRec(STORE.projects,p.id); await loadProjects(); await refreshMonth(); };
-    actions.appendChild(save); actions.appendChild(arch); actions.appendChild(delB);
-    row.appendChild(name); row.appendChild(cost); row.appendChild(actions);
-    list.appendChild(row);
-  });
-}
-
-function setupRanges(){
-  const s=document.getElementById('startRange'), e=document.getElementById('endRange');
-  const so=document.getElementById('startOut'), eo=document.getElementById('endOut'), b=document.getElementById('breakMin'), w=document.getElementById('workMinPreview');
-  const recalc=()=>{
-    if(+e.value<+s.value) e.value=s.value;
-    so.textContent=ixToTime(+s.value); eo.textContent=ixToTime(+e.value);
-    const mins=(+e.value-+s.value)*15 - parseInt(b.value||'0',10);
-    const ot=Math.max(0, mins-540);
-    w.value=minToHHMM(Math.max(0,mins))+' (Ü: '+minToHHMM(ot)+')';
-  };
-  [s,e,b].forEach(x=>{x.oninput=recalc; x.onchange=recalc;}); recalc();
-}
-
-function setupDayStatusBehaviour(){
-  const sel=document.getElementById('dayStatus');
-  const s=document.getElementById('startRange');
-  const e=document.getElementById('endRange');
-  const b=document.getElementById('breakMin');
-  const note=document.getElementById('noteInput');
-  const w=document.getElementById('workMinPreview');
-  const so=document.getElementById('startOut');
-  const eo=document.getElementById('endOut');
-  function toggle(){
-    const st=sel.value;
-    const disabled = (st!=='work');
-    s.disabled = disabled; e.disabled = disabled; b.disabled = disabled;
-    if(disabled){
-      w.value='00:00 (Ü: 00:00)';
-      note.placeholder = st==='urlaub' ? 'Urlaub' : 'Krank';
-    }else{
-      note.placeholder = 'z. B. Montage, Fahrtzeit';
-    }
-  }
-  sel.onchange=toggle; toggle();
-}
-
-async function addEntryManualForUser(userName){
-  const status=document.getElementById('dayStatus').value; // 'work'|'urlaub'|'krank'
-  const dateISO=document.getElementById('manualDate').value||todayISO();
-  const sIx=+document.getElementById('startRange').value, eIx=+document.getElementById('endRange').value;
-  const breakMin=+document.getElementById('breakMin').value||0; const projectId=document.getElementById('projectSelect').value; const note=document.getElementById('noteInput').value||'';
-  if(status==='work'){
-    if(!projectId) return alert('Bitte Projekt wählen');
-    if(eIx<sIx) return alert('Ende darf nicht vor Start liegen');
-  }
-  const entry={id:uuid(),user:userName,date:dateISO,projectId:(status==='work'?projectId:null),note:note,status:status,
-               start:ixToDateISO(dateISO, sIx),end:ixToDateISO(dateISO, eIx),breaksMin:(status==='work'?breakMin:0)};
-  await put(STORE.entries, entry);
-}
-
-async function addEntryManual(){ await addEntryManualForUser(currentUser.username); await refreshMonth(); }
-
-function fmt(dt){ if(!dt) return ''; const d=new Date(dt); return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); }
-
-async function loadUsersToFilter(){
-  const sel=document.getElementById('userFilter'); sel.innerHTML='';
-  const users=(await getAll(STORE.users)).filter(u=>u.active!==false);
-  const list=isEditor()?users:users.filter(u=>u.username===currentUser.username);
-  list.forEach(u=>{ const o=document.createElement('option'); o.value=u.username; let t=u.display||u.username; if(u.role==='admin') t+=' (Admin)'; if(u.role==='lead') t+=' (Teamleiter)'; o.textContent=t; if(currentUser && u.username===currentUser.username) o.selected=true; sel.appendChild(o); });
-  sel.disabled=!isEditor();
-}
-
-async function renderUserCheckboxes(){
-  const wrap=document.getElementById('userCheckboxes'); wrap.innerHTML='';
-  const users=(await getAll(STORE.users)).filter(u=>u.active!==false);
-  users.sort((a,b)=> (a.display||a.username).localeCompare(b.display||b.username,'de',{sensitivity:'base'}));
-  users.forEach(u=>{
-    const id='cb_'+u.username;
-    const div=document.createElement('div'); div.className='cb-item';
-    const cb=document.createElement('input'); cb.type='checkbox'; cb.id=id; cb.value=u.username;
-    if(currentUser && u.username===currentUser.username) cb.checked=true;
-    const lab=document.createElement('label'); lab.setAttribute('for', id);
-    let label=(u.display||u.username); if(u.role==='admin') label+=' (Admin)'; if(u.role==='lead') label+=' (Teamleiter)';
-    lab.textContent=label;
-    div.appendChild(cb); div.appendChild(lab); wrap.appendChild(div);
-  });
-}
-
-async function addBatch(){
-  const checks=[...document.querySelectorAll('#userCheckboxes input[type=checkbox]:checked')].map(c=>c.value);
-  if(!checks.length){ alert('Bitte mindestens einen Mitarbeiter auswählen.'); return; }
-  for(const u of checks){ await addEntryManualForUser(u); }
-  alert('Einträge für '+checks.length+' Mitarbeiter gespeichert.');
-  await refreshMonth();
-}
-
-async function refreshMonth(){
-  const monthVal=document.getElementById('monthPicker').value||currentMonth();
-  const userVal=document.getElementById('userFilter').value||(currentUser&&currentUser.username);
-  const tbody=document.querySelector('#monthTable tbody'); const sumWorkTd=document.getElementById('sumWork'); const sumOtTd=document.getElementById('sumOT');
-  const entries=(await getAll(STORE.entries)).filter(e=>e.user===userVal && (e.date||'').startsWith(monthVal));
-  const projs=await getAll(STORE.projects); const pm={}; projs.forEach(p=>pm[p.id]=p);
-  entries.sort((a,b)=>(a.date||'').localeCompare(b.date||'') || (a.start||'').localeCompare(b.start||''));
-  tbody.innerHTML=''; let sumWork=0, sumOT=0;
-  const canEdit = isEditor();
-  for(const e of entries){
-    const isWork=(e.status||'work')==='work';
-    const work=isWork?Math.max(0, durationMin(e.start,e.end)-(e.breaksMin||0)):0;
-    const ot=isWork?Math.max(0, work-540):0; sumWork+=work; sumOT+=ot;
-    const tr=document.createElement('tr');
-
-    const tdDate=document.createElement('td'); tdDate.textContent=e.date;
-
-    const tdStatus=document.createElement('td');
-    const selStatus=document.createElement('select'); selStatus.className='inline';
-    ['work','urlaub','krank'].forEach(v=>{ const o=document.createElement('option'); o.value=v; o.textContent=(v==='work'?'Arbeit':(v==='urlaub'?'Urlaub':'Krank')); if((e.status||'work')===v) o.selected=true; selStatus.appendChild(o); });
-    if(!canEdit) selStatus.disabled=true; tdStatus.appendChild(selStatus);
-
-    const tdFrom=document.createElement('td'); const inFrom=document.createElement('input'); inFrom.className='inline'; inFrom.type='time'; inFrom.step=900; const dFrom=new Date(e.start); inFrom.value=String(dFrom.getHours()).padStart(2,'0')+':'+String(dFrom.getMinutes()).padStart(2,'0'); if(!canEdit) inFrom.disabled=true; if(!isWork) inFrom.disabled=true; tdFrom.appendChild(inFrom);
-    const tdTo=document.createElement('td'); const inTo=document.createElement('input'); inTo.className='inline'; inTo.type='time'; inTo.step=900; const dTo=new Date(e.end); inTo.value=String(dTo.getHours()).padStart(2,'0')+':'+String(dTo.getMinutes()).padStart(2,'0'); if(!canEdit) inTo.disabled=true; if(!isWork) inTo.disabled=true; tdTo.appendChild(inTo);
-
-    const tdProj=document.createElement('td'); const selProj=document.createElement('select'); selProj.className='inline'; if(!canEdit||!isWork) selProj.disabled=true;
-    projs.filter(p=>!p.archived || p.id===e.projectId).forEach(p=>{ const o=document.createElement('option'); o.value=p.id; o.textContent=p.name; if(p.id===e.projectId) o.selected=true; selProj.appendChild(o); }); tdProj.appendChild(selProj);
-
-    const tdCost=document.createElement('td'); tdCost.className='right'; tdCost.textContent=(pm[e.projectId] && pm[e.projectId].costCenter)||'';
-
-    const tdBreak=document.createElement('td'); tdBreak.className='right'; const selBreak=document.createElement('select'); selBreak.className='inline'; [0,15,30,45,60].forEach(v=>{ const o=document.createElement('option'); o.value=String(v); o.textContent=String(v); if((e.breaksMin||0)===v) o.selected=true; selBreak.appendChild(o); }); if(!canEdit||!isWork) selBreak.disabled=true; tdBreak.appendChild(selBreak);
-
-    const tdWork=document.createElement('td'); tdWork.className='right'; tdWork.textContent=minToHHMM(work);
-    const tdOT=document.createElement('td'); tdOT.className='right'; tdOT.textContent=minToHHMM(ot);
-    const tdNote=document.createElement('td'); const inNote=document.createElement('input'); inNote.className='inline'; inNote.value=e.note||''; if(!canEdit) inNote.disabled=true; tdNote.appendChild(inNote);
-
-    const tdAct=document.createElement('td');
-    if(canEdit){
-      const btn=document.createElement('button'); btn.textContent='Speichern'; btn.onclick=async()=>{
-        const st=selStatus.value;
-        let startISO=e.start, endISO=e.end, breaks=parseInt(selBreak.value||'0',10), proj=selProj.value;
-        if(st!=='work'){ breaks=0; proj=null; }
-        else {
-          const t1=inFrom.value.split(':'), t2=inTo.value.split(':');
-          startISO=new Date(e.date+'T'+t1[0]+':'+t1[1]+':00').toISOString();
-          endISO=new Date(e.date+'T'+t2[0]+':'+t2[1]+':00').toISOString();
-        }
-        const upd=Object.assign({},e,{status:st,start:startISO,end:endISO,breaksMin:breaks,projectId:proj,note:inNote.value});
-        await put(STORE.entries,upd); await refreshMonth();
-      }; tdAct.appendChild(btn);
-    } else { tdAct.textContent='-'; }
-
-    tr.appendChild(tdDate); tr.appendChild(tdStatus); tr.appendChild(tdFrom); tr.appendChild(tdTo); tr.appendChild(tdProj); tr.appendChild(tdCost); tr.appendChild(tdBreak); tr.appendChild(tdWork); tr.appendChild(tdOT); tr.appendChild(tdNote); tr.appendChild(tdAct);
-    tbody.appendChild(tr);
-  }
-  sumWorkTd.textContent=minToHHMM(sumWork); sumOtTd.textContent=minToHHMM(sumOT);
-}
-
-// Photos + compression
-function pickFiles(accept='image/*', multiple=true){
-  return new Promise(resolve=>{
-    const input=document.createElement('input');
-    input.type='file'; input.accept=accept; input.multiple=multiple;
-    input.onchange=()=>resolve(Array.from(input.files||[]));
-    input.click();
-  });
-}
-function compressImage(file, maxDim=1600, quality=0.82){
+function openDB(version){
   return new Promise((resolve,reject)=>{
-    const reader=new FileReader();
-    reader.onload=()=>{
-      const img=new Image();
-      img.onload=()=>{
-        const scale=Math.min(1, maxDim/Math.max(img.width,img.height));
-        const w=Math.round(img.width*scale), h=Math.round(img.height*scale);
-        const canvas=document.createElement('canvas');
-        canvas.width=w; canvas.height=h;
-        const ctx=canvas.getContext('2d');
-        ctx.drawImage(img,0,0,w,h);
-        const dataUrl=canvas.toDataURL('image/jpeg', quality);
-        resolve(dataUrl);
-      };
-      img.onerror=reject;
-      img.src=reader.result;
+    const req = (version ? indexedDB.open(DB_NAME, version) : indexedDB.open(DB_NAME));
+    req.onerror = ()=>reject(req.error);
+    req.onsuccess= ()=>resolve(req.result);
+    req.onupgradeneeded = (ev)=>{
+      const db = ev.target.result;
+      if(!db.objectStoreNames.contains(STORE.users)){
+        const s=db.createObjectStore(STORE.users,{keyPath:'username'});
+        s.createIndex('role','role',{unique:false}); s.createIndex('status','status',{unique:false});
+      }
+      if(!db.objectStoreNames.contains(STORE.projects)){
+        const s=db.createObjectStore(STORE.projects,{keyPath:'id'});
+        s.createIndex('name','name',{unique:false});
+      }
+      if(!db.objectStoreNames.contains(STORE.entries)){
+        const s=db.createObjectStore(STORE.entries,{keyPath:'id'});
+        s.createIndex('date','date',{unique:false});
+        s.createIndex('username','username',{unique:false});
+      }
+      if(!db.objectStoreNames.contains(STORE.photos)){
+        const s=db.createObjectStore(STORE.photos,{keyPath:'id'});
+        s.createIndex('projectId','projectId',{unique:false});
+        s.createIndex('createdAt','createdAt',{unique:false});
+      }
     };
-    reader.onerror=reject;
-    reader.readAsDataURL(file);
   });
 }
-async function addPhotosToProject(){
+function tx(db, store, mode='readonly'){ return db.transaction(store, mode).objectStore(store); }
+
+/*** Helpers ***/
+function me(){ try{return JSON.parse(localStorage.getItem('cu')||'null');}catch(e){return null;} }
+function setMe(u){ localStorage.setItem('cu', JSON.stringify(u)); }
+function pad(n){ return String(n).padStart(2,'0'); }
+function minToHHMM(m){ const h=Math.floor(m/60), mm=m%60; return pad(h)+':'+pad(mm); }
+function hhmmToMin(t){ const [h,m]=t.split(':').map(x=>+x); return h*60+m; }
+function curDate(){ const d=new Date(); return d.toISOString().slice(0,10); }
+function monthKey(d){ return d.slice(0,7); }
+
+/*** Users bootstrap ***/
+async function ensureBootstrap(){
+  const db=await openDB(); const os=tx(db, STORE.users);
+  const have=await new Promise((res,rej)=>{ const r=os.count(); r.onsuccess=()=>res(r.result>0); r.onerror=()=>rej(r.error); });
+  if(!have){
+    const w=tx(db, STORE.users,'readwrite');
+    await new Promise((res,rej)=>{ const r=w.put({username:'admin',display:'Administrator',pass:'admin',role:'admin',status:'active'}); r.onsuccess=res; r.onerror=()=>rej(r.error); });
+  }
+  if(!me()){ setMe({username:'admin',display:'Administrator',role:'admin'}); }
+  document.getElementById('meLabel').textContent = `${me().display||me().username} (${me().role})`;
+}
+
+/*** Projects ***/
+async function listProjects(){
+  const db=await openDB(); const os=tx(db, STORE.projects);
+  const items=[];
+  await new Promise((res,rej)=>{ const r=os.openCursor(); r.onsuccess=e=>{const c=e.target.result; if(c){items.push(c.value); c.continue();} else res();}; r.onerror=()=>rej(r.error); });
+  items.sort((a,b)=>a.name.localeCompare(b.name));
+  const sel=document.getElementById('projectSelect'); sel.innerHTML='';
+  for(const p of items){ const o=document.createElement('option'); o.value=p.id; o.textContent=p.name; sel.appendChild(o); }
+  const ul=document.getElementById('projectList'); ul.innerHTML='';
+  for(const p of items){
+    const li=document.createElement('li'); li.textContent=p.name+' ';
+    const b=document.createElement('button'); b.className='ghost'; b.textContent='Löschen';
+    b.onclick=async()=>{ const db2=await openDB(); await new Promise((res,rej)=>{ const r=tx(db2,STORE.projects,'readwrite').delete(p.id); r.onsuccess=res; r.onerror=()=>rej(r.error);}); await listProjects(); refreshPhotoGallery();};
+    li.appendChild(b); ul.appendChild(li);
+  }
+}
+async function addProject(name){
+  if(!name.trim()) return;
+  const db=await openDB(); const os=tx(db, STORE.projects, 'readwrite');
+  await new Promise((res,rej)=>{ const r=os.put({id:crypto.randomUUID(), name:name.trim()}); r.onsuccess=res; r.onerror=()=>rej(r.error); });
+  await listProjects();
+}
+
+/*** Entries ***/
+async function saveEntryFor(username){
+  const date=document.getElementById('date').value;
   const pid=document.getElementById('projectSelect').value;
-  if(!pid) return alert('Bitte zuerst ein Projekt wählen');
-  const files=await pickFiles('image/*', true);
+  const status=document.getElementById('status').value;
+  const start=+document.getElementById('startRange').value;
+  const end=+document.getElementById('endRange').value;
+  const pause=+document.getElementById('pauseMin').value;
+  const note=document.getElementById('note').value.trim();
+  const work=Math.max(0, end-start-pause);
+  const rec={id:crypto.randomUUID(), username, date, projectId:pid, status, start, end, pause, work, note};
+  const db=await openDB(); const os=tx(db, STORE.entries,'readwrite');
+  await new Promise((res,rej)=>{ const r=os.put(rec); r.onsuccess=res; r.onerror=()=>rej(r.error); });
+  await renderMonth();
+}
+
+async function getEntries(month, username){
+  const db=await openDB(); const os=tx(db, STORE.entries);
+  const out=[];
+  await new Promise((res,rej)=>{
+    const r=os.openCursor(); r.onsuccess=e=>{const c=e.target.result; if(c){ const v=c.value; if(v.username===username && monthKey(v.date)===month) out.push(v); c.continue();} else res();};
+    r.onerror=()=>rej(r.error);
+  });
+  out.sort((a,b)=>a.date.localeCompare(b.date));
+  return out;
+}
+
+/*** Fotos (wie in Users-Seite) ***/
+async function ensurePhotoStore(){
+  let db=await openDB();
+  if(!db.objectStoreNames.contains(STORE.photos)){
+    const newV = db.version + 1; db.close(); db = await openDB(newV);
+  }
+  return db;
+}
+
+async function compressImage(file, maxW=1600, quality=0.82){
+  const img=new Image();
+  img.src = await new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(file);});
+  await new Promise(res=>img.onload=res);
+  const scale=Math.min(1, maxW/img.width);
+  const w=Math.round(img.width*scale), h=Math.round(img.height*scale);
+  const c=document.createElement('canvas'); c.width=w; c.height=h; const ctx=c.getContext('2d'); ctx.drawImage(img,0,0,w,h);
+  return c.toDataURL('image/jpeg', quality);
+}
+
+async function addPhotosToProject(){
+  const inp=document.getElementById('photoInput');
+  const files=Array.from(inp.files||[]);
+  if(!files.length){ alert('Bitte Fotos auswählen.'); return; }
+  const pid=document.getElementById('projectSelect').value; if(!pid){ alert('Bitte zuerst ein Projekt wählen.'); return; }
+
+  const db=await ensurePhotoStore();
+  const s=tx(db, STORE.photos, 'readwrite');
+
   for(const f of files){
-    const data=await compressImage(f,1600,0.82);
-    // removed rec v39;
-    await put(STORE.photos, rec);
+    const dataUrl=await compressImage(f);
+    const rec={id:crypto.randomUUID(), projectId:pid, filename:f.name, dataUrl, createdAt:new Date().toISOString()};
+    await new Promise((res,rej)=>{ const r=s.put(rec); r.onsuccess=res; r.onerror=()=>rej(r.error); });
   }
-  }
+  inp.value='';
+  await refreshPhotoGallery();
+}
+
 async function refreshPhotoGallery(){
   const pid=document.getElementById('projectSelect').value;
-  const wrap=document.getElementById('photoWrap'); const gal=document.getElementById('photoGallery');
-  if(!pid){ wrap.classList.add('hidden'); return; }
-  const all=await getAll(STORE.photos); const list=all.filter(p=>p.projectId===pid).sort((a,b)=>a.createdAt.localeCompare(b.createdAt));
-  wrap.classList.remove('hidden'); gal.innerHTML='';
-  list.forEach(p=>{
+  const wrap=document.getElementById('photoGallery'); wrap.innerHTML='';
+  if(!pid) return;
+  const db=await ensurePhotoStore(); const s=tx(db,STORE.photos);
+  const out=[];
+  await new Promise((res,rej)=>{
+    const idx=s.index('projectId'); const r=idx? idx.openCursor(IDBKeyRange.only(pid)) : s.openCursor();
+    r.onsuccess=e=>{ const c=e.target.result; if(c){ const v=c.value; if(!pid||v.projectId===pid) out.push(v); c.continue(); } else res(); };
+    r.onerror=()=>rej(r.error);
+  });
+  out.sort((a,b)=>a.createdAt.localeCompare(b.createdAt));
+  for(const p of out){
     const fig=document.createElement('figure');
     const img=document.createElement('img'); img.src=p.dataUrl; img.alt=p.filename||'';
     const cap=document.createElement('figcaption');
-    const del=document.createElement('button'); del.className='ghost'; del.textContent='Löschen'; del.onclick=async()=>{ if(!confirm('Foto löschen?')) return; await delRec(STORE.photos,p.id); };
-    cap.appendChild(del);
-    fig.appendChild(img); fig.appendChild(cap);
-    gal.appendChild(fig);
-  });
+    const del=document.createElement('button'); del.className='ghost'; del.textContent='Löschen';
+    del.onclick=async()=>{
+      if(!confirm('Foto löschen?')) return;
+      const db2=await ensurePhotoStore();
+      await new Promise((res,rej)=>{ const r=tx(db2,STORE.photos,'readwrite').delete(p.id); r.onsuccess=res; r.onerror=()=>rej(r.error); });
+      await refreshPhotoGallery();
+    };
+    cap.appendChild(del); fig.appendChild(img); fig.appendChild(cap); wrap.appendChild(fig);
+  }
 }
 
-// events
-window.addEventListener('DOMContentLoaded', async ()=>{
-  await ensureAdminExists();
-  const cu=localStorage.getItem('cu');
-  const pend=localStorage.getItem('cu_pending');
-  if(pend){ showSection('forcePwView'); }
-  else if(cu){
-    currentUser=JSON.parse(cu);
-    await enterApp();
+/*** Monat-UI ***/
+async function renderMonth(){
+  const month=document.getElementById('monthPicker').value || monthKey(curDate());
+  const user=document.getElementById('userPicker').value || me().username;
+  const rows=await getEntries(month, user);
+  const tb=document.getElementById('tblMonth'); tb.innerHTML='';
+  let sum=0;
+  for(const r of rows){
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td>${r.date}</td><td>${r.status}</td><td>${minToHHMM(r.start)}</td><td>${minToHHMM(r.end)}</td><td>${r.projectId||''}</td><td>${r.pause}</td><td>${minToHHMM(r.work)}</td><td></td>`;
+    tb.appendChild(tr);
+    sum+=r.work;
   }
+  document.getElementById('sumTime').textContent=minToHHMM(sum);
+}
 
-  document.getElementById('btnLogin').onclick=async()=>{ const u=document.getElementById('loginUser').value.trim(); const p=document.getElementById('loginPass').value; try{ await login(u,p); }catch(e){ alert('Login fehlgeschlagen'); } };
-  document.getElementById('btnLogout').onclick=()=>{ localStorage.removeItem('cu'); localStorage.removeItem('cu_pending'); location.reload(); };
-  document.getElementById('btnSetPw').onclick=finishPasswordChange;
-  document.getElementById('btnAddEntry').onclick=addEntryManual;
-  document.getElementById('btnAddBatch').onclick=addBatch;
-  document.getElementById('monthPicker').onchange=refreshMonth;
-  document.getElementById('userFilter').onchange=refreshMonth;
-  document.getElementById('btnExportCSV').onclick=exportCSV;
-  document.getElementById('btnExportPDF').onclick=exportPDF;
-  document.getElementById('btnAddProject').onclick=async()=>{ const name=(document.getElementById('newProjectName').value||'').trim(); const cost=(document.getElementById('newProjectCost').value||'').trim(); if(!name) return alert('Bitte Projektname angeben'); await put(STORE.projects,{id:uuid(),name:name,costCenter:(cost||null),archived:false}); document.getElementById('newProjectName').value=''; document.getElementById('newProjectCost').value=''; await loadProjects(); await refreshMonth(); };
-  // btnAddPhotos disabled
-  // projectSelect refresh disabled
+/*** Export ***/
+function entriesToCsv(rows){
+  const head=['Datum','Status','Von','Bis','Projekt','Pause','Arbeitszeit'];
+  const csv=[head.join(';')];
+  for(const r of rows) csv.push([r.date,r.status,minToHHMM(r.start),minToHHMM(r.end),r.projectId||'',r.pause,minToHHMM(r.work)].join(';'));
+  return csv.join('\n');
+}
+
+/*** Event-Bindings ***/
+window.addEventListener('DOMContentLoaded', async () => {
+  if('serviceWorker' in navigator){ try{ await navigator.serviceWorker.register('/Zeiterfassung/sw.js',{scope:'/Zeiterfassung/'});}catch(e){} }
+
+  await ensureBootstrap();
+
+  document.getElementById('date').value = curDate();
+  document.getElementById('monthPicker').value = monthKey(curDate());
+
+  // default project if none
+  const db=await openDB(); const count=await new Promise((res,rej)=>{ const r=tx(db,STORE.projects).count(); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); });
+  if(count===0){ await addProject('Allgemein'); }
+
+  await listProjects();
+  await refreshPhotoGallery();
+
+  // user picker fill
+  const os=tx(await openDB(), STORE.users); const users=[];
+  await new Promise((res,rej)=>{ const r=os.openCursor(); r.onsuccess=e=>{ const c=e.target.result; if(c){ users.push(c.value); c.continue(); } else res(); }; r.onerror=()=>rej(r.error); });
+  const up=document.getElementById('userPicker'); up.innerHTML=''; users.sort((a,b)=>a.username.localeCompare(b.username));
+  for(const u of users){ const o=document.createElement('option'); o.value=u.username; o.textContent=`${u.display||u.username} (${u.role})`; if(u.username===me().username) o.selected=true; up.appendChild(o); }
+
+  function recalc(){
+    const start=+document.getElementById('startRange').value;
+    const end=+document.getElementById('endRange').value;
+    const pause=+document.getElementById('pauseMin').value;
+    const work=Math.max(0, end-start-pause);
+    document.getElementById('workTime').value = `${minToHHMM(work)} (Ü: ${minToHHMM(Math.max(0,work-8*60))})`;
+  }
+  ['startRange','endRange','pauseMin'].forEach(id=>document.getElementById(id).addEventListener('input',recalc));
+  recalc();
+
+  document.getElementById('btnAddProject').onclick=()=>addProject(document.getElementById('newProjectName').value).then(()=>{document.getElementById('newProjectName').value='';});
+  document.getElementById('projectSelect').addEventListener('change',refreshPhotoGallery);
+
+  document.getElementById('btnAddPhotos').onclick=(e)=>{e.preventDefault(); addPhotosToProject();};
+
+  document.getElementById('btnSaveMine').onclick=()=>saveEntryFor(me().username);
+
+  document.getElementById('monthPicker').addEventListener('change',renderMonth);
+  document.getElementById('userPicker').addEventListener('change',renderMonth);
+  document.getElementById('btnCsv').onclick=async()=>{
+    const rows=await getEntries(document.getElementById('monthPicker').value, document.getElementById('userPicker').value);
+    const csv=entriesToCsv(rows);
+    const blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='zeiten.csv'; a.click();
+  };
+  document.getElementById('btnPdf').onclick=()=>{
+    const w=window.open('','_blank'); w.document.write('<!doctype html><meta charset="utf-8"><title>PDF</title>');
+    w.document.write(document.querySelector('section.card:nth-of-type(3)').outerHTML);
+    w.document.close(); w.focus(); w.print();
+  };
+
+  await renderMonth();
 });
-
-// exports
-function csvExport(rows){ return rows.map(r=>r.map(x=> '"'+String(x).replaceAll('"','""')+'"').join(',')).join('\n'); }
-async function exportCSV(){
-  const monthVal=document.getElementById('monthPicker').value||currentMonth();
-  const userVal=document.getElementById('userFilter').value||(currentUser&&currentUser.username);
-  const rows=[[ 'Datum','Status','Mitarbeiter','Von','Bis','Projekt','Kostenstelle','Pausen (min)','Arbeitszeit','Überstunden','Notiz' ]];
-  const entries=(await getAll(STORE.entries)).filter(e=>e.user===userVal&&(e.date||'').startsWith(monthVal));
-  const projs=await getAll(STORE.projects); const pm={}; projs.forEach(p=>pm[p.id]=p);
-  let sumW=0,sumO=0; entries.sort((a,b)=>(a.date||'').localeCompare(b.date||'')||(a.start||'').localeCompare(b.start||''));
-  for(const e of entries){ const isWork=(e.status||'work')==='work'; const w=isWork?Math.max(0,durationMin(e.start,e.end)-(e.breaksMin||0)):0, o=isWork?Math.max(0,w-540):0; sumW+=w; sumO+=o; const p=pm[e.projectId]||{};
-    rows.push([e.date,(e.status||'work'),' ' + userVal,fmt(e.start),fmt(e.end),p.name||'',p.costCenter||'',(e.breaksMin||0),minToHHMM(w),minToHHMM(o),e.note||'']); }
-  rows.push([]); rows.push(['','','','','','SUMME','','',minToHHMM(sumW),minToHHMM(sumO),'']);
-  const blob=new Blob([csvExport(rows)],{type:'text/csv'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='monat_'+monthVal+'_'+userVal+'.csv'; a.click(); URL.revokeObjectURL(a.href);
-}
-
-async function exportPDF(){
-  const monthVal=document.getElementById('monthPicker').value||currentMonth();
-  const userVal=document.getElementById('userFilter').value||(currentUser&&currentUser.username);
-  const entries=(await getAll(STORE.entries)).filter(e=>e.user===userVal&&(e.date||'').startsWith(monthVal));
-  const projs=await getAll(STORE.projects); const pm={}; projs.forEach(p=>pm[p.id]=p);
-  entries.sort((a,b)=>(a.date||'').localeCompare(b.date||'')||(a.start||'').localeCompare(b.start||''));
-  let sumW=0,sumO=0, rows='';
-  const fmtT=(dt)=>{const d=new Date(dt); return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})};
-  for(const e of entries){
-    const isWork=(e.status||'work')==='work';
-    const w=isWork?Math.max(0,durationMin(e.start,e.end)-(e.breaksMin||0)):0, o=isWork?Math.max(0,w-540):0; sumW+=w; sumO+=o; const p=pm[e.projectId]||{};
-    rows+= '<tr><td>'+e.date+'</td><td>'+(e.status||'work')+'</td><td>'+fmtT(e.start)+'</td><td>'+fmtT(e.end)+'</td><td>'+(p.name||'')+'</td><td class="r">'+(p.costCenter||'')+'</td><td class="r">'+(e.breaksMin||0)+'</td><td class="r">'+minToHHMM(w)+'</td><td class="r">'+minToHHMM(o)+'</td><td>'+(e.note||'')+'</td></tr>';
-  }
-  const html='<!doctype html><html><head><meta charset="utf-8">' + '<title>Monatsübersicht ' + monthVal + ' - ' + userVal + '</title>' + '<style>body{font-family:Arial,sans-serif;margin:24px}table{width:100%;border-collapse:collapse}td,th{border:1px solid #ccc;padding:4px;text-align:left}#photoWrap,#photoGallery,#btnAddPhotos{display:none!important}</style></head>' + '<body onload="window.print()">' + '<h1 style="font-size:18px;margin:0 0 8px">Monatsübersicht ' + monthVal + ' - ' + userVal + '</h1>' + '<table><thead><tr><th>Datum</th><th>Status</th><th>Von</th><th>Bis</th><th>Projekt</th></tr></thead><tbody>' + rows + '</tbody></table></body></html>';
-  const w=window.open('','_blank'); w.document.write(html); w.document.close();
-}
 </script>
-
-<script>
-(function hideCacheButton(){
-  function kill(){
-    var nodes = Array.prototype.slice.call(document.querySelectorAll('button, a, div, span'));
-    nodes.forEach(function(n){
-      var t = (n.innerText || n.textContent || '').trim().toLowerCase();
-      if (!t) return;
-      if (t === 'cache leeren' || t.includes('cache leeren') || t === 'clear cache' || t.includes('clear cache')) {
-        try { n.style.display = 'none'; n.setAttribute('aria-hidden','true'); } catch(e){}
-      }
-      // defensive: role/data attributes
-      if (n.dataset && (n.dataset.role === 'clear-cache' || n.dataset.action === 'clear-cache')) {
-        try { n.style.display = 'none'; n.setAttribute('aria-hidden','true'); } catch(e){}
-      }
-      // click handlers with clearCache name
-      var onclickAttr = (n.getAttribute && (n.getAttribute('onclick')||'').toLowerCase()) || '';
-      if (onclickAttr.includes('clearcache') || onclickAttr.includes('cache')) {
-        if (t.includes('cache')) { try { n.style.display = 'none'; } catch(e){} }
-      }
-    });
-  }
-  document.addEventListener('DOMContentLoaded', kill);
-  // also observe app frameworks mounting later
-  var obs = new MutationObserver(function(){ kill(); });
-  obs.observe(document.documentElement, {childList:true, subtree:true});
-  // also run periodically just in case
-  setInterval(kill, 2000);
-})();
-</script>
-
-</body></html>
+</body>
+</html>

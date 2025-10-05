@@ -1,13 +1,11 @@
-
 <!doctype html>
 <html lang="de">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Mitarbeiterverwaltung</title>
   <link rel="icon" href="/Zeiterfassung/assets/logo.png">
   <style>
-    :root{--bg:#faf6f6;--ink:#1d1d1d;--card:#fff;--line:#ddd;--btn:#8c7b6a;--muted:#8587e5}
+    :root{--bg:#faf6f6;--ink:#1d1d1d;--card:#fff;--line:#ddd;--btn:#8c7b6a}
     *{box-sizing:border-box} body{margin:0;font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink)}
     header{background:#d9c9b9;color:#2b261f;padding:10px 14px;display:flex;justify-content:space-between;align-items:center}
     .wrap{max-width:1080px;margin:16px auto;padding:0 12px}
@@ -21,11 +19,7 @@
     th{font-weight:600}
     .row{display:grid;grid-template-columns:repeat(4,1fr) 130px;gap:10px;align-items:end}
     .back{color:#2b261f;text-decoration:none}
-    .tag{font-size:11px;border-radius:8px;padding:2px 8px;border:1px solid var(--line);background:#fff}
     .actions{display:flex;gap:8px;flex-wrap:wrap}
-    .muted{color:#666}
-    .ok{color:#0a7d2c}
-    .warn{color:#9a2f2f}
   </style>
 </head>
 <body>
@@ -34,201 +28,34 @@
     <strong>Zeiterfassung – Mitarbeiterverwaltung</strong>
     <span></span>
   </header>
-
   <main class="wrap">
     <section class="card">
       <h3>Neuen Mitarbeiter anlegen</h3>
       <div class="row">
-        <div>
-          <label>Benutzername</label>
-          <input id="nuUser" autocomplete="off" placeholder="z. B. stefan">
-        </div>
-        <div>
-          <label>Anzeigename</label>
-          <input id="nuDisplay" autocomplete="off" placeholder="z. B. Stefan H.">
-        </div>
-        <div>
-          <label>Passwort</label>
-          <input id="nuPass" autocomplete="new-password" placeholder="mind. 4 Zeichen">
-        </div>
-        <div>
-          <label>Rolle</label>
-          <select id="nuRole">
-            <option value="mitarbeiter">Mitarbeiter</option>
-            <option value="teamleiter">Teamleiter</option>
-            <option value="admin">Admin</option>
-          </select>
-        </div>
-        <div>
-          <button id="btnCreateUser">Anlegen</button>
-        </div>
+        <div><label>Benutzername</label><input id="nuUser" autocomplete="off" placeholder="z. B. stefan"></div>
+        <div><label>Anzeigename</label><input id="nuDisplay" autocomplete="off" placeholder="z. B. Stefan H."></div>
+        <div><label>Passwort</label><input id="nuPass" autocomplete="new-password" placeholder="mind. 4 Zeichen"></div>
+        <div><label>Rolle</label><select id="nuRole"><option value="mitarbeiter">Mitarbeiter</option><option value="teamleiter">Teamleiter</option><option value="admin">Admin</option></select></div>
+        <div><button id="btnCreateUser">Anlegen</button></div>
       </div>
-      <p class="muted" style="margin-top:8px">Hinweis: Admin kann Nutzer anlegen/löschen, Teamleiter darf Monatsdaten bearbeiten.</p>
     </section>
-
     <section class="card">
       <h3>Nutzerliste</h3>
-      <table>
-        <thead>
-          <tr>
-            <th>Benutzername</th>
-            <th>Anzeigename</th>
-            <th>Rolle</th>
-            <th>Status</th>
-            <th>Aktion</th>
-          </tr>
-        </thead>
-        <tbody id="tblBody"></tbody>
-      </table>
+      <table><thead><tr><th>Benutzername</th><th>Anzeigename</th><th>Rolle</th><th>Status</th><th>Aktion</th></tr></thead><tbody id="tblBody"></tbody></table>
     </section>
   </main>
-
 <script>
-/* === Datenbank & Helpers ================================================ */
-const DB_NAME='zeit-web-pwa';                    // identisch wie Hauptapp
-const STORE={users:'users'};                     // Objektstore-Name
-
-function openDB(){
-  return new Promise((resolve,reject)=>{
-    // OHNE Versionsangabe -> verwendet vorhandene Version, keine VersionError mehr
-    const req = indexedDB.open(DB_NAME);
-    req.onerror = ()=>reject(req.error);
-    req.onsuccess= ()=>resolve(req.result);
-    // Falls DB noch nicht existiert, onupgradeneeded initialisieren
-    req.onupgradeneeded = (ev)=>{
-      const db = ev.target.result;
-      if(!db.objectStoreNames.contains(STORE.users)){
-        const s = db.createObjectStore(STORE.users, { keyPath:'username' });
-        s.createIndex('role','role',{unique:false});
-        s.createIndex('status','status',{unique:false});
-      }
-    };
-  });
-}
-
-function idb(db, store, mode='readonly'){ return db.transaction(store, mode).objectStore(store); }
-
-async function getAllUsers(){
-  const db = await openDB();
-  const os = idb(db, STORE.users);
-  return await new Promise((resolve,reject)=>{
-    const out=[]; const req=os.openCursor();
-    req.onsuccess= e=>{ const c=e.target.result; if(c){ out.push(c.value); c.continue(); } else resolve(out); };
-    req.onerror = ()=>reject(req.error);
-  });
-}
-
-async function getUser(username){
-  const db = await openDB(); const os=idb(db, STORE.users);
-  return await new Promise((resolve,reject)=>{
-    const r=os.get(username); r.onsuccess=()=>resolve(r.result||null); r.onerror=()=>reject(r.error);
-  });
-}
-
-async function putUser(u){
-  const db = await openDB(); const os=idb(db, STORE.users, 'readwrite');
-  return await new Promise((resolve,reject)=>{
-    const r=os.put(u); r.onsuccess=()=>resolve(); r.onerror=()=>reject(r.error);
-  });
-}
-
-async function delUser(username){
-  const db = await openDB(); const os=idb(db, STORE.users, 'readwrite');
-  return await new Promise((resolve,reject)=>{
-    const r=os.delete(username); r.onsuccess=()=>resolve(); r.onerror=()=>reject(r.error);
-  });
-}
-
-/* === Admin-Schutz & Bootstrap =========================================== */
-function me(){
-  try{ return JSON.parse(localStorage.getItem('cu')||'null'); }catch(e){ return null;}
-}
-
-async function ensureAdminExists(){
-  // legt einen Default-Admin an, wenn keine Nutzer vorhanden
-  const all = await getAllUsers();
-  if(all.length===0){
-    await putUser({username:'admin',display:'Admin',pass:'admin',role:'admin',status:'active',createdAt:new Date().toISOString()});
-  }
-}
-
-function requireAdmin(){
-  const u = me();
-  return u && u.role==='admin';
-}
-
-/* === Rendering =========================================================== */
-function td(text){ const d=document.createElement('td'); d.textContent=text; return d; }
-
-function userRow(u){
-  const tr=document.createElement('tr');
-  tr.appendChild(td(u.username));
-  tr.appendChild(td(u.display||''));
-  tr.appendChild(td(u.role));
-  tr.appendChild(td(u.status||'active'));
-  const act=document.createElement('td'); act.className='actions';
-
-  const btnDel=document.createElement('button'); btnDel.className='ghost'; btnDel.textContent='Löschen';
-  btnDel.onclick=async()=>{
-    if(!confirm('Nutzer löschen?')) return;
-    await delUser(u.username);
-    await renderUsers();
-  };
-
-  const btnToggle=document.createElement('button'); btnToggle.className='ghost'; btnToggle.textContent=(u.status==='active'?'Deaktivieren':'Aktivieren');
-  btnToggle.onclick=async()=>{
-    u.status = (u.status==='active'?'inactive':'active');
-    await putUser(u); await renderUsers();
-  };
-
-  const btnReset=document.createElement('button'); btnReset.className='ghost'; btnReset.textContent='PW zurücksetzen';
-  btnReset.onclick=async()=>{
-    const np = prompt('Neues Passwort für '+u.username+':');
-    if(np && np.trim().length>=4){ u.pass=np.trim(); await putUser(u); alert('Passwort gesetzt.'); }
-  };
-
-  act.appendChild(btnToggle);
-  act.appendChild(btnReset);
-  act.appendChild(btnDel);
-  tr.appendChild(act);
-  return tr;
-}
-
-async function renderUsers(){
-  const body=document.getElementById('tblBody');
-  body.innerHTML='';
-  const data=await getAllUsers();
-  data.sort((a,b)=>a.username.localeCompare(b.username));
-  for(const u of data){ body.appendChild(userRow(u)); }
-}
-
-/* === Events ============================================================= */
-window.addEventListener('DOMContentLoaded', async () => {
-  await ensureAdminExists();
-
-  if(!requireAdmin()){
-    alert('Nur Admin darf diese Seite verwenden.');
-    location.href='/Zeiterfassung/';
-    return;
-  }
-
-  const btn=document.getElementById('btnCreateUser');
-  btn.onclick = async () => {
-    const nu=document.getElementById('nuUser').value.trim();
-    const nd=document.getElementById('nuDisplay').value.trim();
-    const np=document.getElementById('nuPass').value.trim();
-    const nr=document.getElementById('nuRole').value;
-    if(!nu || !np){ alert('Benutzername und Passwort erforderlich.'); return; }
-    if(await getUser(nu)){ alert('Benutzer existiert bereits.'); return; }
-    await putUser({username:nu,display:nd||nu,pass:np,role:nr,status:'active',createdAt:new Date().toISOString()});
-    document.getElementById('nuUser').value='';
-    document.getElementById('nuDisplay').value='';
-    document.getElementById('nuPass').value='';
-    await renderUsers();
-  };
-
-  await renderUsers();
-});
+const DB_NAME='zeit-web-pwa'; const STORE={users:'users'};
+function openDB(version){ return new Promise((resolve,reject)=>{ const req=(version?indexedDB.open(DB_NAME,version):indexedDB.open(DB_NAME)); req.onerror=()=>reject(req.error); req.onsuccess=()=>resolve(req.result); req.onupgradeneeded=(ev)=>{ const db=ev.target.result; if(!db.objectStoreNames.contains(STORE.users)){ const s=db.createObjectStore(STORE.users,{keyPath:'username'}); s.createIndex('role','role',{unique:false}); s.createIndex('status','status',{unique:false}); } }; }); }
+function me(){ try{ return JSON.parse(localStorage.getItem('cu')||'null'); }catch(e){ return null; } }
+async function ensureBootstrap(){ const db=await openDB(); const os=db.transaction(STORE.users).objectStore(STORE.users); const have=await new Promise((res,rej)=>{ const r=os.count(); r.onsuccess=()=>res(r.result>0); r.onerror=()=>rej(r.error); }); if(!have){ const w=db.transaction(STORE.users,'readwrite').objectStore(STORE.users); await new Promise((res,rej)=>{ const r=w.put({username:'admin',display:'Admin',pass:'admin',role:'admin',status:'active'}); r.onsuccess=res; r.onerror=()=>rej(r.error); }); } if(!me()){ localStorage.setItem('cu','{"username":"admin","display":"Admin","role":"admin"}'); } }
+function idb(db,store,mode='readonly'){ return db.transaction(store,mode).objectStore(store); }
+async function getAll(){ const db=await openDB(); const os=idb(db,STORE.users); const out=[]; await new Promise((res,rej)=>{ const r=os.openCursor(); r.onsuccess=e=>{ const c=e.target.result; if(c){ out.push(c.value); c.continue(); } else res(); }; r.onerror=()=>rej(r.error); }); return out; }
+async function putUser(u){ const db=await openDB(); const os=idb(db,STORE.users,'readwrite'); await new Promise((res,rej)=>{ const r=os.put(u); r.onsuccess=res; r.onerror=()=>rej(r.error); }); }
+async function delUser(name){ const db=await openDB(); const os=idb(db,STORE.users,'readwrite'); await new Promise((res,rej)=>{ const r=os.delete(name); r.onsuccess=res; r.onerror=()=>rej(r.error); }); }
+function td(t){ const d=document.createElement('td'); d.textContent=t; return d; }
+function row(u){ const tr=document.createElement('tr'); tr.appendChild(td(u.username)); tr.appendChild(td(u.display||'')); tr.appendChild(td(u.role)); tr.appendChild(td(u.status||'active')); const act=document.createElement('td'); act.className='actions'; const b1=document.createElement('button'); b1.className='ghost'; b1.textContent=(u.status==='active'?'Deaktivieren':'Aktivieren'); b1.onclick=async()=>{ u.status=(u.status==='active'?'inactive':'active'); await putUser(u); render(); }; const b2=document.createElement('button'); b2.className='ghost'; b2.textContent='PW zurücksetzen'; b2.onclick=async()=>{ const np=prompt('Neues Passwort für '+u.username+':'); if(np&&np.trim().length>=4){ u.pass=np.trim(); await putUser(u); alert('Gesetzt.'); } }; const b3=document.createElement('button'); b3.className='ghost'; b3.textContent='Löschen'; b3.onclick=async()=>{ if(!confirm('Nutzer löschen?'))return; await delUser(u.username); render(); }; act.append(b1,b2,b3); tr.appendChild(act); return tr; }
+async function render(){ const tb=document.getElementById('tblBody'); tb.innerHTML=''; const all=(await getAll()).sort((a,b)=>a.username.localeCompare(b.username)); for(const u of all) tb.appendChild(row(u)); }
+window.addEventListener('DOMContentLoaded', async ()=>{ await ensureBootstrap(); const u=me(); if(!u||u.role!=='admin'){ alert('Nur Admin'); location.href='/Zeiterfassung/'; return; } document.getElementById('btnCreateUser').onclick=async()=>{ const nu=document.getElementById('nuUser').value.trim(); const nd=document.getElementById('nuDisplay').value.trim(); const np=document.getElementById('nuPass').value.trim(); const nr=document.getElementById('nuRole').value; if(!nu||!np){ alert('Benutzername und Passwort erforderlich'); return; } const all=await getAll(); if(all.find(x=>x.username===nu)){ alert('Benutzer existiert bereits'); return; } await putUser({username:nu,display:nd||nu,pass:np,role:nr,status:'active'}); document.getElementById('nuUser').value=''; document.getElementById('nuDisplay').value=''; document.getElementById('nuPass').value=''; await render(); }; await render(); });
 </script>
-</body>
-</html>
+</body></html>
