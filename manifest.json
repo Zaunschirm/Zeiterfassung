@@ -1,16 +1,12 @@
 {
-  "name": "Zeiterfassung – V60",
-  "short_name": "Zeit V60",
-  "start_url": "/Zeiterfassung/?v=60",
+  "name": "Zeiterfassung – V61",
+  "short_name": "Zeit V61",
+  "start_url": "/Zeiterfassung/",
   "scope": "/Zeiterfassung/",
   "display": "standalone",
   "background_color": "#faf6f6",
-  "theme_color": "#c9b8a6",
+  "theme_color": "#c9b9a7",
   "icons": [
-    {
-      "src": "/Zeiterfassung/assets/logo.png",
-      "sizes": "16x16 32x32 64x64 128x128",
-      "type": "image/png"
-    }
+    { "src": "/Zeiterfassung/assets/logo.png", "sizes": "64x64 128x128", "type": "image/png" }
   ]
 }
