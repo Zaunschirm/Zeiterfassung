@@ -1,9 +1,26 @@
 {
-  "name": "Zeiterfassung V01a – Zaunschirm",
-  "short_name": "Zeit V01a",
+  "name": "Arbeitseinteilung und Zeiterfassung Holzbau Zaunschirm",
+  "short_name": "Arbeit & Zeit – Zaunschirm",
   "start_url": "index.html",
   "display": "standalone",
   "background_color": "#F6F4EF",
   "theme_color": "#2F3438",
-  "icons": []
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "icon-512.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    },
+    {
+      "src": "icon-512-maskable.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    }
+  ]
 }
