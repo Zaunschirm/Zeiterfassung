@@ -3,66 +3,51 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Übersicht – Zeiterfassung V63</title>
+  <title>Übersicht – Zeiterfassung V01a</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="stylesheet" href="assets/css/style.css">
   <meta name="theme-color" content="#2F3438">
 </head>
 <body>
 <header class="topbar">
-  <div class="brand">
-    <span class="logo-dot"></span>
-    <span class="brand-text">Holzbau Zaunschirm</span>
-  </div>
-  <nav id="nav" class="nav">
-    <a href="dashboard.html" class="navlink">Übersicht</a>
-    <a href="mitarbeiter.html" class="navlink require-role-admin">Mitarbeiter</a>
-    <a href="zeiterfassung.html" class="navlink">Zeiterfassung</a>
-    <a href="plan.html" class="navlink require-role-lead">Wocheneinteilung</a>
+  <div class="brand"><span class="logo-dot"></span><span class="brand-text">Holzbau Zaunschirm</span></div>
+  <nav class="nav">
+    <a href="dashboard.html">Übersicht</a>
+    <a href="mitarbeiter.html" class="require-role-admin">Mitarbeiter</a>
+    <a href="zeiterfassung.html">Zeiterfassung</a>
+    <a href="plan.html" class="require-role-lead">Wocheneinteilung</a>
     <button id="logoutBtn" class="btn-ghost">Logout</button>
   </nav>
 </header>
 <main class="container">
 
-<section class="grid">
-  <article class="card">
-    <h2>Übersicht</h2>
-    <ul class="list">
-      <li><a class="btn-link" href="zeiterfassung.html">⏱️ Zeiterfassung</a></li>
-      <li><a class="btn-link require-role-lead" href="plan.html">📅 Wocheneinteilung</a></li>
-      <li><a class="btn-link require-role-admin" href="mitarbeiter.html">👥 Mitarbeiter</a></li>
-    </ul>
-    <div id="pwChange" class="alert hidden">
-      <strong>Bitte neues Passwort setzen.</strong>
-      <label>Neues Passwort <input id="newPw" type="password"></label>
-      <button class="btn-primary" id="saveNewPw">Speichern</button>
-    </div>
-  </article>
-  <article class="card">
-    <h3>Aktionen</h3>
-    <div class="row">
-      <a class="btn" href="zeiterfassung.html">Arbeitszeit buchen</a>
-      <a class="btn" href="plan.html">Woche planen</a>
-      <button class="btn" id="clearData">Alte Daten löschen</button>
-    </div>
-  </article>
+<section class="card">
+  <h2>Übersicht</h2>
+  <ul class="list">
+    <li><a class="btn" href="zeiterfassung.html">⏱️ Zeiterfassung</a></li>
+    <li><a class="btn require-role-lead" href="plan.html">📅 Wocheneinteilung</a></li>
+    <li><a class="btn require-role-admin" href="mitarbeiter.html">👥 Mitarbeiter</a></li>
+  </ul>
+  <div id="pwChange" class="alert hidden">
+    <strong>Bitte neues Passwort setzen.</strong>
+    <label>Neues Passwort <input id="newPw" type="password"></label>
+    <button class="btn-primary" id="saveNewPw">Speichern</button>
+  </div>
 </section>
-
-</main>
-<footer class="footer">
-  <small>© 2025 Holzbau Zaunschirm</small>
-</footer>
-<script src="js/storage.js"></script>
-<script src="js/auth.js"></script>
-<script src="js/app.js"></script>
-
 <script>
+document.addEventListener('DOMContentLoaded', ()=>{
   protectPage(); renderNavByRole();
   const me = currentUser();
   if(sessionStorage.getItem('mustChangePassword')==='1' || me?.mustChangePassword){ pwChange.classList.remove('hidden'); }
-  saveNewPw.addEventListener('click', ()=>{ if(changeOwnPassword(newPw.value)){ pwChange.classList.add('hidden'); sessionStorage.removeItem('mustChangePassword'); alert('Passwort aktualisiert.'); } });
-  clearData.addEventListener('click', ()=>{ if(confirm('Alle lokalen App-Daten wirklich löschen?')){ localStorage.clear(); caches && caches.keys().then(keys=>keys.forEach(k=>caches.delete(k))); location.replace('login.html'); } });
+  saveNewPw.addEventListener('click', ()=>{{ if(changeOwnPassword(newPw.value)){{ pwChange.classList.add('hidden'); sessionStorage.removeItem('mustChangePassword'); alert('Passwort aktualisiert.'); }} }});
+});
 </script>
+
+</main>
+<footer class="footer"><small>© 2025 Holzbau Zaunschirm • V01a</small></footer>
+<script defer src="js/storage.js"></script>
+<script defer src="js/auth.js"></script>
+<script defer src="js/app.js"></script>
 
 </body>
 </html>

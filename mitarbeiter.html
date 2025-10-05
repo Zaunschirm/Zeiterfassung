@@ -3,22 +3,19 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Mitarbeiter – Zeiterfassung V63</title>
+  <title>Mitarbeiter – Zeiterfassung V01a</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="stylesheet" href="assets/css/style.css">
   <meta name="theme-color" content="#2F3438">
 </head>
 <body>
 <header class="topbar">
-  <div class="brand">
-    <span class="logo-dot"></span>
-    <span class="brand-text">Holzbau Zaunschirm</span>
-  </div>
-  <nav id="nav" class="nav">
-    <a href="dashboard.html" class="navlink">Übersicht</a>
-    <a href="mitarbeiter.html" class="navlink require-role-admin">Mitarbeiter</a>
-    <a href="zeiterfassung.html" class="navlink">Zeiterfassung</a>
-    <a href="plan.html" class="navlink require-role-lead">Wocheneinteilung</a>
+  <div class="brand"><span class="logo-dot"></span><span class="brand-text">Holzbau Zaunschirm</span></div>
+  <nav class="nav">
+    <a href="dashboard.html">Übersicht</a>
+    <a href="mitarbeiter.html" class="require-role-admin">Mitarbeiter</a>
+    <a href="zeiterfassung.html">Zeiterfassung</a>
+    <a href="plan.html" class="require-role-lead">Wocheneinteilung</a>
     <button id="logoutBtn" class="btn-ghost">Logout</button>
   </nav>
 </header>
@@ -35,8 +32,8 @@
     <tbody></tbody>
   </table>
 </section>
-<div class="modal hidden" id="empModal">
-  <div class="modal-content">
+<div class="modal hidden" id="empModal" style="position:fixed; inset:0; background:rgba(0,0,0,.35); display:flex; align-items:center; justify-content:center">
+  <div class="modal-content card" style="width:100%; max-width:520px; margin:0 12px;">
     <h3 id="modalTitle">Mitarbeiter</h3>
     <label>Name <input id="empName"></label>
     <label>Nutzername <input id="empUser"></label>
@@ -47,21 +44,23 @@
     <label>Foto <input id="empPhoto" type="file" accept="image/*"></label>
     <div class="row">
       <button class="btn-primary" id="saveEmp">Speichern</button>
-      <button type="button" class="btn" id="cancelEmp" type="button">Abbrechen</button>
+      <button class="btn" id="cancelEmp" type="button">Abbrechen</button>
     </div>
   </div>
 </div>
 
 </main>
-<footer class="footer">
-  <small>© 2025 Holzbau Zaunschirm</small>
-</footer>
-<script src="js/storage.js"></script>
-<script src="js/auth.js"></script>
-<script src="js/app.js"></script>
+<footer class="footer"><small>© 2025 Holzbau Zaunschirm • V01a</small></footer>
+<script defer src="js/storage.js"></script>
+<script defer src="js/auth.js"></script>
+<script defer src="js/app.js"></script>
 
-<script src="js/employees.js"></script>
-<script>protectPage(['admin','lead']); renderNavByRole(); initEmployeePage();</script>
+<script defer src="js/employees.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', ()=>{
+  try{ protectPage(['admin','lead']); renderNavByRole(); if(typeof initEmployeePage==='function') initEmployeePage(); }catch(e){ console.error(e); }
+});
+</script>
 
 </body>
 </html>

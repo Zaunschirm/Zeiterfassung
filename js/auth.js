@@ -14,20 +14,17 @@ async function login(username, password){
   writeSession({userId:u.id, ts:Date.now()});
   return {ok:true, mustChangePassword:!!u.mustChangePassword};
 }
-function currentUser(){
-  const s = readSession(); if(!s) return null;
-  return readUsers().find(x=>x.id===s.userId)||null;
-}
+function currentUser(){ const s = readSession(); if(!s) return null; return readUsers().find(x=>x.id===s.userId)||null; }
 function logout(){ localStorage.removeItem(DB.sessionKey); location.replace('login.html'); }
 function protectPage(roles=null){
   const me = currentUser();
   if(!me){ location.replace('login.html'); return; }
-  if(Array.isArray(roles) && !roles.includes(me.role)){ alert('Kein Zugriff für Rolle: '+me.role); location.replace('dashboard.html'); }
+  if(Array.isArray(roles) && !roles.includes(me.role)){ alert('Kein Zugriff: '+me.role); location.replace('dashboard.html'); }
 }
 function changeOwnPassword(newPw){
   if(!newPw || newPw.length<4){ alert('Passwort zu kurz'); return false; }
   const me = currentUser(); if(!me) return false;
   const users = readUsers(); const i = users.findIndex(x=>x.id===me.id);
-  if(i>=0){ users[i].password = newPw; users[i].mustChangePassword = false; writeUsers(users); return true; }
+  if(i>=0){ users[i].password = newPw; users[i].mustChangePassword=false; writeUsers(users); return true; }
   return false;
 }

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Anmelden – Zeiterfassung V63</title>
+  <title>Anmelden – Zeiterfassung V01a</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="stylesheet" href="assets/css/style.css">
   <meta name="theme-color" content="#2F3438">
@@ -11,14 +11,10 @@
 <body class="login-body">
   <main class="login-container">
     <section class="card">
-      <h1 class="brand-line"><span class="logo-dot"></span> Holzbau Zaunschirm</h1>
+      <h1><span class="logo-dot"></span> Holzbau Zaunschirm</h1>
       <h2>Anmelden</h2>
-      <label>Nutzername
-        <input id="username" placeholder="z. B. admin" autocomplete="username">
-      </label>
-      <label>Passwort
-        <input id="password" type="password" placeholder="••••••••" autocomplete="current-password">
-      </label>
+      <label>Nutzername <input id="username" autocomplete="username" placeholder="admin"></label>
+      <label>Passwort <input id="password" type="password" autocomplete="current-password" placeholder="••••••••"></label>
       <div class="row">
         <button id="loginBtn" class="btn-primary">Login</button>
         <button id="clearBtn" class="btn">Abbrechen</button>
@@ -27,14 +23,14 @@
       <p id="msg" class="msg"></p>
     </section>
   </main>
-  <script src="js/storage.js"></script>
-  <script src="js/auth.js"></script>
+  <script defer src="js/storage.js"></script>
+  <script defer src="js/auth.js"></script>
   <script>
     ensureSeedAdmin();
-    clearBtn.addEventListener('click', ()=>{ username.value=''; password.value=''; msg.textContent=''; });
-    loginBtn.addEventListener('click', async ()=>{
+    document.getElementById('clearBtn').addEventListener('click', ()=>{ username.value=''; password.value=''; msg.textContent=''; });
+    document.getElementById('loginBtn').addEventListener('click', async ()=>{
       const res = await login(username.value.trim(), password.value);
-      if(res.ok){ if(res.mustChangePassword){ sessionStorage.setItem('mustChangePassword','1'); } location.replace('dashboard.html'); }
+      if(res.ok){ if(res.mustChangePassword) sessionStorage.setItem('mustChangePassword','1'); location.replace('dashboard.html'); }
       else { msg.textContent = res.error || 'Login fehlgeschlagen'; msg.classList.add('error'); }
     });
     document.addEventListener('keydown', e=>{ if(e.key==='Enter') loginBtn.click(); });

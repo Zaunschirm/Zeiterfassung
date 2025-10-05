@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Wocheneinteilung – 123erfasst Stil (V67)</title>
+  <title>Wocheneinteilung – Zeiterfassung V01a</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="stylesheet" href="assets/css/style.css">
   <meta name="theme-color" content="#2F3438">
@@ -11,55 +11,62 @@
 <body>
 <header class="topbar">
   <div class="brand"><span class="logo-dot"></span><span class="brand-text">Holzbau Zaunschirm</span></div>
-  <nav id="nav" class="nav">
-    <a href="dashboard.html" class="navlink">Übersicht</a>
-    <a href="mitarbeiter.html" class="navlink require-role-admin">Mitarbeiter</a>
-    <a href="zeiterfassung.html" class="navlink">Zeiterfassung</a>
-    <a href="plan.html" class="navlink require-role-lead">Wocheneinteilung</a>
+  <nav class="nav">
+    <a href="dashboard.html">Übersicht</a>
+    <a href="mitarbeiter.html" class="require-role-admin">Mitarbeiter</a>
+    <a href="zeiterfassung.html">Zeiterfassung</a>
+    <a href="plan.html" class="require-role-lead">Wocheneinteilung</a>
     <button id="logoutBtn" class="btn-ghost">Logout</button>
   </nav>
 </header>
 <main class="container">
-  <section class="card">
-    <h2>Wocheneinteilung (Drag & Drop – 123erfasst-Stil)</h2>
 
-    <div class="controls">
-      <label>Woche (ISO) <input type="week" id="weekPicker"></label>
-      <button class="btn" id="prevWeek">← Vorherige Woche</button>
-      <button class="btn" id="nextWeek">Nächste Woche →</button>
-      <button class="btn" id="copyPrev">Vorwoche kopieren</button>
-      <button class="btn" id="clearWeek">Woche leeren</button>
-      <button class="btn" id="exportCsv">CSV exportieren</button>
-      <button class="btn-ghost" onclick="window.print()">Drucken</button>
-    </div>
+<section class="card">
+  <h2>Wocheneinteilung (Drag & Drop)</h2>
+  <div class="row wrap">
+    <label>Woche (ISO) <input type="week" id="weekPicker"></label>
+    <button class="btn" id="prevWeek">← Vorherige Woche</button>
+    <button class="btn" id="nextWeek">Nächste Woche →</button>
+    <button class="btn" id="copyPrev">Vorwoche kopieren</button>
+    <button class="btn" id="clearWeek">Woche leeren</button>
+    <button class="btn" id="exportCsv">CSV exportieren</button>
+    <button class="btn-ghost" onclick="window.print()">Drucken</button>
+  </div>
 
-    <div class="card" style="margin-bottom:16px">
-      <details open>
-        <summary><strong>Projekte</strong> (Farben & Reihenfolge)</summary>
-        <div class="row wrap" style="margin-top:8px">
-          <label>Projektname <input id="projName" placeholder="z. B. BV Mustergasse"></label>
-          <label>Farbe <input id="projColor" type="color" value="#C8A86B"></label>
-          <button class="btn-primary" id="addProject">Projekt hinzufügen</button>
-        </div>
-        <div id="projList" class="projlist"></div>
-      </details>
-    </div>
+  <div class="card">
+    <details open>
+      <summary><strong>Projekte</strong> (Farbe & Reihenfolge)</summary>
+      <div class="row wrap" style="margin-top:8px">
+        <label>Projektname <input id="projName" placeholder="BV Mustergasse 12"></label>
+        <label>Farbe <input id="projColor" type="color" value="#C8A86B"></label>
+        <button class="btn-primary" id="addProject">Projekt hinzufügen</button>
+      </div>
+      <div id="projList" class="projlist"></div>
+    </details>
+  </div>
 
-    <div class="board">
-      <aside>
-        <div class="empheader"><strong>Mitarbeiter (ziehen)</strong></div>
-        <div class="empsearch"><input id="empSearch" placeholder="Suche…"></div>
-        <div id="empList" class="emplist"></div>
-      </aside>
-      <section class="board-cols" id="boardCols"></section>
-    </div>
-  </section>
+  <div class="board">
+    <aside>
+      <div class="empheader"><strong>Mitarbeiter (ziehen)</strong></div>
+      <div class="empsearch"><input id="empSearch" placeholder="Suche…"></div>
+      <div id="empList" class="emplist"></div>
+    </aside>
+    <section class="board-cols" id="boardCols"></section>
+  </div>
+</section>
+
 </main>
-<footer class="footer"><small>© 2025 Holzbau Zaunschirm</small></footer>
-<script src="js/storage.js"></script>
-<script src="js/auth.js"></script>
-<script src="js/app.js"></script>
-<script src="js/planning_123.js"></script>
-<script>protectPage(['admin','lead']); renderNavByRole(); initPlanning123();</script>
+<footer class="footer"><small>© 2025 Holzbau Zaunschirm • V01a</small></footer>
+<script defer src="js/storage.js"></script>
+<script defer src="js/auth.js"></script>
+<script defer src="js/app.js"></script>
+
+<script defer src="js/planning_123.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', ()=>{
+  try{ protectPage(['admin','lead']); renderNavByRole(); if(typeof initPlanning123==='function') initPlanning123(); }catch(e){ console.error(e); }
+});
+</script>
+
 </body>
 </html>
