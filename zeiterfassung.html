@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Zeiterfassung – V62</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="assets/css/style.css">
+  <meta name="theme-color" content="#f3f4f6">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">⏱️ Zeiterfassung – V62</div>
+  <nav id="nav">
+    <a href="dashboard.html" class="navlink">Übersicht</a>
+    <a href="mitarbeiter.html" class="navlink require-role-admin">Mitarbeiterverwaltung</a>
+    <a href="zeiterfassung.html" class="navlink">Zeiterfassung</a>
+    <a href="plan.html" class="navlink require-role-lead">Wocheneinteilung</a>
+    <button id="logoutBtn" class="btn-outline">Logout</button>
+  </nav>
+</header>
+<main class="container">
+
+<section class="card">
+  <h2>Zeiterfassung</h2>
+  <div class="row wrap">
+    <label>Mitarbeiter <select id="userSelect"></select></label>
+    <label>Datum <input type="date" id="dateInput"></label>
+    <label>Tagesstatus
+      <select id="dayStatus">
+        <option value="work">Arbeit</option>
+        <option value="vacation">Urlaub</option>
+        <option value="sick">Krank</option>
+      </select>
+    </label>
+  </div>
+  <div class="row">
+    <button id="startBtn" class="btn-primary">Start</button>
+    <button id="pauseBtn" class="btn">Pause</button>
+    <button id="stopBtn" class="btn-outline">Stopp</button>
+    <label>Pause&nbsp;(Dropdown)
+      <select id="pauseDropdown">
+        <option value="0">keine</option>
+        <option value="15">15 min</option>
+        <option value="30">30 min</option>
+        <option value="45">45 min</option>
+        <option value="60">60 min</option>
+      </select>
+    </label>
+  </div>
+  <div class="row">
+    <label>Foto zur Buchung (optional) <input type="file" id="photoInput" accept="image/*"></label>
+  </div>
+  <h3>Heutige Buchungen</h3>
+  <table class="table" id="timeTable">
+    <thead><tr><th>Von</th><th>Bis</th><th>Dauer (min)</th><th>Pause (min)</th><th>Status</th><th>Foto</th></tr></thead>
+    <tbody></tbody>
+  </table>
+</section>
+<script src="js/storage.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/times.js"></script>
+<script>protectPage(); renderNavByRole(); initTimesPage();</script>
+
+</main>
+<footer class="footer">
+  <small>© 2025 Holzbau Zaunschirm – Demo-App</small>
+</footer>
+<script src="js/storage.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

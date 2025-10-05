@@ -1,246 +1,52 @@
 <!doctype html>
 <html lang="de">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Zeiterfassung – V61</title>
-<link rel="manifest" href="/Zeiterfassung/manifest.json">
-<link rel="icon" href="/Zeiterfassung/assets/logo.png">
-<style>
-:root{--bg:#faf6f6;--ink:#1f1f1f;--card:#fff;--line:#e6e2de;--brand:#2b261f;--btn:#8c7b6a}
-*{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif}
-header{background:#d9c9b9;padding:10px 14px;display:flex;gap:12px;align-items:center;justify-content:space-between}
-header a{color:var(--brand);text-decoration:none}
-.wrap{max-width:1100px;margin:0 auto;padding:12px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin:12px 0;box-shadow:0 8px 28px rgba(0,0,0,.05)}
-h1,h2,h3{margin:.2em 0}.muted{color:#777}
-label{display:block;font-size:12px;color:#555;margin:6px 0 4px}
-input,select,textarea{width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;font:inherit;background:#fff}
-.row{display:grid;gap:12px}.row-2{grid-template-columns:1fr 1fr}.row-3{grid-template-columns:1fr 1fr 1fr}
-@media(max-width:860px){.row-2,.row-3{grid-template-columns:1fr}}
-button{background:var(--btn);color:#fff;border:0;border-radius:10px;padding:10px 16px;font:inherit;cursor:pointer}
-button.ghost{background:#fff;color:var(--ink);border:1px solid var(--line)}
-table{width:100%;border-collapse:collapse} th,td{padding:10px;border-bottom:1px solid var(--line);text-align:left;font-size:14px}
-.badge{background:#fff;border:1px solid var(--line);padding:5px 10px;border-radius:999px}
-.box{border:1px dashed var(--line);padding:10px;border-radius:10px}
-</style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Zeiterfassung – V62</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="assets/css/style.css">
+  <meta name="theme-color" content="#f3f4f6">
 </head>
 <body>
-<header>
-  <strong>Zeiterfassung – V61</strong>
-  <nav style="display:flex;gap:10px;align-items:center">
-    <a href="/Zeiterfassung/users/">Mitarbeiterverwaltung</a>
-    <span id="who" class="badge"></span>
-    <a href="#" id="logout">Logout</a>
+<header class="topbar">
+  <div class="brand">⏱️ Zeiterfassung – V62</div>
+  <nav id="nav">
+    <a href="dashboard.html" class="navlink">Übersicht</a>
+    <a href="mitarbeiter.html" class="navlink require-role-admin">Mitarbeiterverwaltung</a>
+    <a href="zeiterfassung.html" class="navlink">Zeiterfassung</a>
+    <a href="plan.html" class="navlink require-role-lead">Wocheneinteilung</a>
+    <button id="logoutBtn" class="btn-outline">Logout</button>
   </nav>
 </header>
+<main class="container">
 
-<section id="loginPane" class="wrap" style="display:none">
-  <div class="card" style="max-width:420px">
-    <h2>Anmelden</h2>
-    <label>Nutzername</label><input id="lgUser" autocomplete="username" placeholder="z. B. admin">
-    <label>Passwort</label><input id="lgPass" type="password" autocomplete="current-password" placeholder="z. B. admin">
-    <div style="margin-top:10px;display:flex;gap:8px"><button id="btnLogin">Login</button><button class="ghost" id="btnCancel">Abbrechen</button></div>
-    <p class="muted">Erststart: <code>admin / admin</code></p>
-  </div>
+<section class="card">
+  <h1>Starte...</h1>
+  <p>Du wirst automatisch weitergeleitet.</p>
 </section>
-
-<main id="appPane" class="wrap" style="display:none">
-  <section class="card">
-    <h2>Zeiteingabe</h2>
-    <div class="row row-3">
-      <div><label>Projekt</label><select id="project"></select></div>
-      <div><label>Pausen (Minuten)</label><input id="pause" type="number" min="0" value="30"></div>
-      <div><label>Bemerkung</label><input id="note" placeholder="z. B. Montage, Fahrtzeit"></div>
-    </div>
-    <div class="row row-3">
-      <div><label>Status</label>
-        <select id="status">
-          <option value="work">Arbeit</option>
-          <option value="urlaub">Urlaub</option>
-          <option value="krank">Krank</option>
-        </select>
-      </div>
-      <div><label>Start</label><input type="time" id="start" value="08:00"></div>
-      <div><label>Ende</label><input type="time" id="end" value="17:00"></div>
-    </div>
-    <div class="row row-2">
-      <div><label>Datum</label><input type="date" id="date"></div>
-      <div><label>Mitarbeiter auswählen</label><div id="userChecks" class="box muted">Wird nach Login gefüllt</div></div>
-    </div>
-    <div style="display:flex;gap:10px;margin-top:10px"><button id="saveMine">Nur für mich speichern</button><button id="saveAll">Für alle ausgewählten speichern</button></div>
-  </section>
-
-  <section class="card">
-    <h3>Fotos zum Eintrag / Projekt</h3>
-    <input type="file" id="photo" accept="image/*" multiple>
-    <button class="ghost" id="btnAddPhotos">Fotos hinzufügen</button>
-    <div id="gallery" class="row row-3" style="margin-top:10px"></div>
-  </section>
-
-  <section class="card">
-    <h3>Übersicht Monat</h3>
-    <div class="row row-2">
-      <div><label>Monat</label><input type="month" id="month"></div>
-      <div><label>Nutzer</label><select id="userPick"></select></div>
-    </div>
-    <table>
-      <thead><tr><th>Datum</th><th>Status</th><th>Von</th><th>Bis</th><th>Projekt</th><th>Pause</th><th>Arbeitszeit</th></tr></thead>
-      <tbody id="rows"></tbody>
-      <tfoot><tr><td colspan="6">Summe</td><td id="sum">00:00</td></tr></tfoot>
-    </table>
-    <div style="display:flex;gap:10px;margin-top:10px">
-      <button class="ghost" id="csv">CSV-Export</button>
-    </div>
-  </section>
-</main>
-
 <script>
-// ===== IndexedDB =====
-const DB_NAME='zeitdb_v61'; const DB_VER=1;
-function openDB(){return new Promise((resolve,reject)=>{
-  const r=indexedDB.open(DB_NAME,DB_VER);
-  r.onupgradeneeded=e=>{const db=e.target.result;
-    const users=db.createObjectStore('users',{keyPath:'username'});
-    users.createIndex('role','role',{unique:false});
-    const projects=db.createObjectStore('projects',{keyPath:'id',autoIncrement:true});
-    const entries=db.createObjectStore('entries',{keyPath:'id',autoIncrement:true});
-    entries.createIndex('byMonthUser',['month','username'],{unique:false});
-    const photos=db.createObjectStore('photos',{keyPath:'id',autoIncrement:true});
-    photos.createIndex('byDateUser',['date','username'],{unique:false});
-  };
-  r.onsuccess=()=>resolve(r.result); r.onerror=()=>reject(r.error);
-});}
-
-async function tx(store,mode,fn){const db=await openDB();return new Promise((res,rej)=>{
-  const t=db.transaction(store,mode); const s=t.objectStore(store); const out=fn(s);
-  t.oncomplete=()=>res(out); t.onerror=()=>rej(t.error);
-});}
-
-// ===== Helpers =====
-const qs=s=>document.querySelector(s);
-const qsa=s=>[...document.querySelectorAll(s)];
-const today=()=>new Date().toISOString().slice(0,10);
-const monthKey=d=>d.slice(0,7); // YYYY-MM
-function pad2(n){return String(n).padStart(2,'0')}
-function diffHM(start,end){const [sh,sm]=start.split(':').map(Number);const [eh,em]=end.split(':').map(Number);
-  let m=(eh*60+em)-(sh*60+sm); if(m<0)m+=24*60; return m;}
-function minToHHMM(m){return pad2(Math.floor(m/60))+':'+pad2(m%60)}
-
-// ===== Seed =====
-async function ensureSeed(){
-  const count=await tx('users','readonly',s=>s.count());
-  if(!count){await tx('users','readwrite',s=>{s.put({username:'admin',display:'Administrator',role:'admin',pass:'admin'})});
-  await tx('projects','readwrite',s=>{s.put({id:1,name:'Allgemein'})});}
-}
-
-// ===== Auth =====
-function session(){try{return JSON.parse(localStorage.getItem('session'))}catch{return null}}
-function setSession(obj){localStorage.setItem('session',JSON.stringify(obj||null))}
-async function login(u,p){
-  const user=await new Promise(async (resolve)=>{
-    const db=await openDB(); const t=db.transaction('users'); const s=t.objectStore('users'); const r=s.get(u); r.onsuccess=()=>resolve(r.result);
-  });
-  if(user && user.pass===p){setSession({u:user.username,role:user.role,display:user.display}); return true;}
-  return false;
-}
-function logout(){setSession(null); location.reload()}
-
-// ===== UI =====
-async function fillProjects(){
-  const arr=await new Promise(async resolve=>{
-    const db=await openDB(); const s=db.transaction('projects').objectStore('projects'); const out=[];
-    s.openCursor().onsuccess=e=>{const c=e.target.result; if(c){out.push(c.value); c.continue()} else resolve(out)};
-  });
-  const sel=qs('#project'); sel.innerHTML=''; for(const p of arr){const o=document.createElement('option');o.value=p.id;o.textContent=p.name; sel.append(o);}
-}
-async function fillUsers(){
-  const me=session(); const arr=await new Promise(async resolve=>{
-    const db=await openDB(); const s=db.transaction('users').objectStore('users'); const out=[];
-    s.openCursor().onsuccess=e=>{const c=e.target.result; if(c){out.push(c.value); c.continue()} else resolve(out)};
-  });
-  // Checkbox-Liste
-  const wrap=qs('#userChecks'); wrap.innerHTML='';
-  const list=me.role==='admin'||me.role==='team'?arr:arr.filter(x=>x.username===me.u);
-  for(const u of list){
-    const id='ck_'+u.username; const label=document.createElement('label'); label.style.display='flex'; label.style.gap='8px'; label.style.alignItems='center';
-    label.innerHTML=`<input type="checkbox" id="${id}" data-username="${u.username}" ${u.username===me.u?'checked':''}> ${u.display} <span class="muted">(${u.role})</span>`;
-    wrap.append(label);
-  }
-  // Monat & Nutzerpicker
-  qs('#month').value=monthKey(today());
-  const up=qs('#userPick'); up.innerHTML=''; for(const u of arr){const o=document.createElement('option');o.value=u.username;o.textContent=`${u.display} (${u.role})`; up.append(o);}
-  up.value=me.u;
-}
-async function save(type){ // type: 'mine'|'all'
-  const me=session(); const date=qs('#date').value||today();
-  const start=qs('#start').value; const end=qs('#end').value; const pause=parseInt(qs('#pause').value||'0',10);
-  const status=qs('#status').value; const note=qs('#note').value.trim(); const pid=parseInt(qs('#project').value,10);
-  let targets=[];
-  if(type==='mine'){targets=[me.u]} else {targets=qsa('#userChecks input[type=checkbox]:checked').map(i=>i.dataset.username)}
-  if(!targets.length){alert('Keinen Mitarbeiter gewählt');return}
-  await tx('entries','readwrite',s=>{for(const u of targets){s.put({username:u,date,month:monthKey(date),start,end,pause,status,note,projectId:pid});}});
-  await renderMonth(); alert('Gespeichert.');
-}
-async function monthEntries(month,u){
-  return await new Promise(async resolve=>{
-    const db=await openDB(); const s=db.transaction('entries').objectStore('entries'); const idx=s.index('byMonthUser'); const out=[];
-    const range=IDBKeyRange.only([month,u]); idx.openCursor(range).onsuccess=e=>{const c=e.target.result; if(c){out.push(c.value); c.continue()} else resolve(out)};
-  });
-}
-async function projectName(id){const p=await new Promise(async resolve=>{const db=await openDB();const s=db.transaction('projects').objectStore('projects');const r=s.get(id);r.onsuccess=()=>resolve(r.result)}); return p?p.name:''}
-async function renderMonth(){
-  const m=qs('#month').value; const u=qs('#userPick').value; const arr=await monthEntries(m,u); const tb=qs('#rows'); tb.innerHTML='';
-  let sum=0;
-  for(const e of arr){
-    const mins=diffHM(e.start,e.end)-Number(e.pause||0); sum+=Math.max(0,mins);
-    const tr=document.createElement('tr'); tr.innerHTML=`<td>${e.date}</td><td>${e.status}</td><td>${e.start}</td><td>${e.end}</td><td>${await projectName(e.projectId)}</td><td>${e.pause}</td><td>${minToHHMM(Math.max(0,mins))}</td>`; tb.append(tr);
-  }
-  qs('#sum').textContent=minToHHMM(sum);
-}
-function toCSV(){
-  const rows=[['Datum','Status','Von','Bis','Projekt','Pause','Arbeitszeit']];
-  qsa('#rows tr').forEach(tr=>{rows.push([...tr.children].map(td=>td.textContent))});
-  const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(';')).join('\r\n');
-  const blob=new Blob([csv],{type:'text/csv;charset=utf-8'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='zeit.csv'; a.click();
-}
-
-// Fotos (Basis: an Datum/Projekt/Nutzer hängen)
-async function addPhotos(){
-  const files=qs('#photo').files; if(!files.length){alert('Keine Dateien gewählt');return}
-  const me=session(); const date=qs('#date').value||today(); const pid=parseInt(qs('#project').value,10);
-  for(const f of files){
-    const data=await new Promise(res=>{const r=new FileReader(); r.onload=()=>res(r.result); r.readAsDataURL(f)});
-    await tx('photos','readwrite',s=>s.put({username:me.u,date,projectId:pid,data}));
-  }
-  await showGallery();
-}
-async function showGallery(){
-  const me=session(); const date=qs('#date').value||today();
-  const list=await new Promise(async resolve=>{
-    const db=await openDB(); const s=db.transaction('photos').objectStore('photos'); const idx=s.index('byDateUser');
-    const out=[]; const range=IDBKeyRange.only([date,me.u]); idx.openCursor(range).onsuccess=e=>{const c=e.target.result; if(c){out.push(c.value); c.continue()} else resolve(out)};
-  });
-  const g=qs('#gallery'); g.innerHTML=''; for(const p of list){const fig=document.createElement('figure'); fig.className='box'; fig.innerHTML=`<img src="${p.data}" style="width:100%;border-radius:8px"><figcaption class="muted">${p.date}</figcaption>`; g.append(fig);}
-}
-
-// ===== Boot =====
-async function boot(){
-  await ensureSeed();
-  const s=session();
-  qs('#date').value=today();
-  if(s){qs('#who').textContent=s.display+' ('+s.role+')'; qs('#appPane').style.display='block';}
-  else {qs('#loginPane').style.display='block'}
-  await fillProjects(); await fillUsers(); await renderMonth(); await showGallery();
-}
-// Events
-qs('#btnLogin').onclick=async()=>{const ok=await login(qs('#lgUser').value.trim(),qs('#lgPass').value); if(!ok){alert('Login fehlgeschlagen');return} location.reload()}
-qs('#btnCancel').onclick=()=>{qs('#lgUser').value='';qs('#lgPass').value=''}
-qs('#logout').onclick=e=>{e.preventDefault(); logout()}
-qs('#saveMine').onclick=()=>save('mine'); qs('#saveAll').onclick=()=>save('all');
-qs('#month').onchange=renderMonth; qs('#userPick').onchange=renderMonth;
-qs('#btnAddPhotos').onclick=addPhotos;
-
-boot();
+  (function() {
+    try {
+      const session = JSON.parse(localStorage.getItem('z_session'));
+      if (!session || !session.userId) {
+        window.location.replace('login.html');
+        return;
+      }
+      window.location.replace('dashboard.html');
+    } catch(e) {
+      console.error(e);
+      window.location.replace('login.html');
+    }
+  })();
 </script>
-</body></html>
+
+</main>
+<footer class="footer">
+  <small>© 2025 Holzbau Zaunschirm – Demo-App</small>
+</footer>
+<script src="js/storage.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

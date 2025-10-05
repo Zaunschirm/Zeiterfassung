@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Anmelden – Zeiterfassung V62</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body class="login-body">
+  <main class="login-container">
+    <section class="card">
+      <h1>Anmelden</h1>
+      <label>Nutzername
+        <input id="username" placeholder="z. B. admin" autocomplete="username">
+      </label>
+      <label>Passwort
+        <input id="password" type="password" placeholder="••••••••" autocomplete="current-password">
+      </label>
+      <div class="row">
+        <button id="loginBtn" class="btn-primary">Login</button>
+        <button id="clearBtn" class="btn">Abbrechen</button>
+      </div>
+      <p class="hint">Erststart: <code>admin / admin</code></p>
+      <p id="msg" class="msg"></p>
+    </section>
+  </main>
+  <script src="js/storage.js"></script>
+  <script src="js/auth.js"></script>
+  <script>
+    ensureSeedAdmin();
+    clearBtn.addEventListener('click', ()=>{ username.value=''; password.value=''; msg.textContent=''; });
+    loginBtn.addEventListener('click', async ()=>{
+      const res = await login(username.value.trim(), password.value);
+      if(res.ok){
+        if(res.mustChangePassword){ sessionStorage.setItem('mustChangePassword','1'); }
+        window.location.replace('dashboard.html');
+      } else { msg.textContent = res.error || 'Login fehlgeschlagen'; msg.classList.add('error'); }
+    });
+    document.addEventListener('keydown', e=>{ if(e.key==='Enter') loginBtn.click(); });
+  </script>
+</body>
+</html>
