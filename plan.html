@@ -3,17 +3,14 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Wocheneinteilung – Zeiterfassung V63</title>
+  <title>Wocheneinteilung – Zeiterfassung V65</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="stylesheet" href="assets/css/style.css">
   <meta name="theme-color" content="#2F3438">
 </head>
 <body>
 <header class="topbar">
-  <div class="brand">
-    <span class="logo-dot"></span>
-    <span class="brand-text">Holzbau Zaunschirm</span>
-  </div>
+  <div class="brand"><span class="logo-dot"></span><span class="brand-text">Holzbau Zaunschirm</span></div>
   <nav id="nav" class="nav">
     <a href="dashboard.html" class="navlink">Übersicht</a>
     <a href="mitarbeiter.html" class="navlink require-role-admin">Mitarbeiter</a>
@@ -23,41 +20,44 @@
   </nav>
 </header>
 <main class="container">
-
-<section class="card">
-  <h2>Wocheneinteilung</h2>
-  <div class="row wrap">
-    <label>Woche (ISO) <input type="week" id="weekPicker"></label>
-    <button class="btn" id="prevWeek">← Vorherige Woche</button>
-    <button class="btn" id="nextWeek">Nächste Woche →</button>
-    <button class="btn" id="copyPrev">Vorwoche kopieren</button>
-    <button class="btn" id="exportCsv">CSV exportieren</button>
-    <button class="btn-ghost" onclick="window.print()">Drucken</button>
-  </div>
-  <div class="row">
-    <label>Schnellvorgabe
-      <select id="preset"><option value="">— Auswahl —</option><option>Früh</option><option>Spät</option><option>Ganztag</option><option>Frei</option><option>Urlaub</option><option>Krank</option></select>
-    </label>
-    <small>Tipp: Doppelklick auf ein Feld setzt die Schnellvorgabe. Klick macht das Feld editierbar.</small>
-  </div>
-  <div class="table-scroll">
-    <table class="table" id="planTable">
-      <thead id="planHead"></thead>
-      <tbody id="planBody"></tbody>
-    </table>
-  </div>
-</section>
-
+  <section class="card">
+    <h2>Wocheneinteilung (Drag & Drop)</h2>
+    <div class="controls">
+      <label>Woche (ISO) <input type="week" id="weekPicker"></label>
+      <button class="btn" id="prevWeek">← Vorherige Woche</button>
+      <button class="btn" id="nextWeek">Nächste Woche →</button>
+      <button class="btn" id="copyPrev">Vorwoche kopieren</button>
+      <button class="btn" id="clearWeek">Woche leeren</button>
+      <button class="btn" id="exportCsv">CSV exportieren</button>
+      <button class="btn-ghost" onclick="window.print()">Drucken</button>
+      <label>Vorgabe
+        <select id="preset">
+          <option value="">— keine —</option>
+          <option>Früh</option>
+          <option>Spät</option>
+          <option>Ganztag</option>
+          <option>Frei</option>
+          <option>Urlaub</option>
+          <option>Krank</option>
+        </select>
+      </label>
+      <label>Notiz/Projekt <input id="note" placeholder="z. B. BV XYZ"></label>
+    </div>
+    <div class="board">
+      <aside class="emp">
+        <div class="empheader"><strong>Mitarbeiter (ziehen)</strong></div>
+        <div class="empsearch"><input id="empSearch" placeholder="Suche…"></div>
+        <div id="empList" class="emplist"></div>
+      </aside>
+      <section class="board-cols" id="boardCols"></section>
+    </div>
+  </section>
 </main>
-<footer class="footer">
-  <small>© 2025 Holzbau Zaunschirm</small>
-</footer>
+<footer class="footer"><small>© 2025 Holzbau Zaunschirm</small></footer>
 <script src="js/storage.js"></script>
 <script src="js/auth.js"></script>
 <script src="js/app.js"></script>
-
-<script src="js/planning.js"></script>
-<script>protectPage(['admin','lead']); renderNavByRole(); initPlanningPage();</script>
-
+<script src="js/planning_dnd.js"></script>
+<script>protectPage(['admin','lead']); renderNavByRole(); initPlanningDnD();</script>
 </body>
 </html>
