@@ -1,4 +1,5 @@
-<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Mitarbeiterverwaltung</title><link rel="icon" href="/Zeiterfassung/assets/logo.png"><style>:root{--bg:#faf6f6;--ink:#1d1d1d;--card:#fff;--line:#ddd;--btn:#8c7b6a;--brand:#2b261f;--mut:#666}
 *{box-sizing:border-box}
 body{margin:0;font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink)}
@@ -26,10 +27,10 @@ th{font-weight:600}
 #photoGallery img{display:block;width:100%;height:110px;object-fit:cover}
 #photoGallery figcaption{font-size:12px;color:#666;text-align:center;padding:6px}
 </style></head>
-<body><header><a href="/Zeiterfassung/">← Zurück</a><strong>Zeiterfassung – Mitarbeiterverwaltung</strong><span></span></header>
+<body><header><a href="/Zeiterfassung/">← Zurück</a><strong>Zeiterfassung – Mitarbeiterverwaltung V54</strong><span></span></header>
 <main class="wrap">
 <section class="card"><h3>Neuen Mitarbeiter anlegen</h3>
-<div class="row row-3" style="grid-template-columns:1fr 1fr 1fr 1fr 140px">
+<div class="row" style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 140px;gap:12px">
   <div><label>Benutzername</label><input id="nuUser" placeholder="z. B. stefan"></div>
   <div><label>Anzeigename</label><input id="nuDisplay" placeholder="z. B. Stefan H."></div>
   <div><label>Passwort</label><input id="nuPass" placeholder="mind. 4 Zeichen"></div>
@@ -39,15 +40,35 @@ th{font-weight:600}
 <section class="card"><h3>Nutzerliste</h3><table><thead><tr><th>Benutzername</th><th>Anzeigename</th><th>Rolle</th><th>Status</th><th>Aktion</th></tr></thead><tbody id="tblBody"></tbody></table></section>
 </main>
 <script>
-const DB_NAME='zeit-web-pwa2'; const STORE={{users:'users'}};
-function openDB(){{return new Promise((resolve,reject)=>{{const req=indexedDB.open(DB_NAME,1);req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error);req.onupgradeneeded=(ev)=>{{const db=ev.target.result;if(!db.objectStoreNames.contains(STORE.users)){{const s=db.createObjectStore(STORE.users,{{keyPath:'username'}});s.createIndex('role','role',{{unique:false}});}}}});}}}
-function me(){{try{{return JSON.parse(localStorage.getItem('cu2')||'null');}}catch(e){{return null;}}}}
-function os(db,name,mode='readonly'){{return db.transaction(name,mode).objectStore(name);}}
-async function allUsers(){{const db=await openDB();const s=os(db,STORE.users);const out=[];await new Promise((res,rej)=>{{const r=s.openCursor();r.onsuccess=e=>{{const c=e.target.result;if(c){{out.push(c.value);c.continue();}}else res();}};r.onerror=()=>rej(r.error);}});return out;}}
-async function putUser(u){{const db=await openDB();await new Promise((res,rej)=>{{const r=os(db,STORE.users,'readwrite').put(u);r.onsuccess=res;r.onerror=()=>rej(r.error);}});}}
-async function delUser(id){{const db=await openDB();await new Promise((res,rej)=>{{const r=os(db,STORE.users,'readwrite').delete(id);r.onsuccess=res;r.onerror=()=>rej(r.error);}});}}
-function td(t){{const d=document.createElement('td');d.textContent=t;return d;}}
-function row(u){{const tr=document.createElement('tr');tr.appendChild(td(u.username));tr.appendChild(td(u.display||''));tr.appendChild(td(u.role));tr.appendChild(td(u.status||'active'));const act=document.createElement('td');act.style.display='flex';act.style.gap='8px';const tgl=document.createElement('button');tgl.className='ghost';tgl.textContent=(u.status==='active'?'Deaktivieren':'Aktivieren');tgl.onclick=async()=>{{u.status=(u.status==='active'?'inactive':'active');await putUser(u);render();}};const pw=document.createElement('button');pw.className='ghost';pw.textContent='PW setzen';pw.onclick=async()=>{{const np=prompt('Neues Passwort:');if(np&&np.trim().length>=4){{u.pass=np.trim();await putUser(u);}}}};const rm=document.createElement('button');rm.className='ghost';rm.textContent='Löschen';rm.onclick=async()=>{{if(!confirm('Nutzer löschen?')) return; await delUser(u.username); render();}};act.appendChild(tgl);act.appendChild(pw);act.appendChild(rm);tr.appendChild(act);return tr;}}
-async function render(){{const tb=document.getElementById('tblBody');tb.innerHTML='';const users=(await allUsers()).sort((a,b)=>a.username.localeCompare(b.username));for(const u of users) tb.appendChild(row(u));}}
-window.addEventListener('DOMContentLoaded', async ()=>{{const db=await openDB();const s=os(db,STORE.users);const count=await new Promise((res,rej)=>{{const r=s.count();r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);}});if(count===0){{await new Promise((res,rej)=>{{const r=os(db,STORE.users,'readwrite').put({{username:'admin',display:'Administrator',pass:'admin',role:'admin',status:'active'}});r.onsuccess=res;r.onerror=()=>rej(r.error);}});}if(!me()){{localStorage.setItem('cu2', JSON.stringify({{username:'admin',display:'Administrator',role:'admin'}}));}}const u=me();if(!u||u.role!=='admin'){{alert('Nur Admin darf diese Seite nutzen.');location.href='/Zeiterfassung/';return;}}document.getElementById('btnCreateUser').onclick=async()=>{{const nu=document.getElementById('nuUser').value.trim();const nd=document.getElementById('nuDisplay').value.trim();const np=document.getElementById('nuPass').value.trim();const nr=document.getElementById('nuRole').value;if(!nu||!np){{alert('Benutzername und Passwort erforderlich.');return;}}const users=await allUsers();if(users.some(x=>x.username===nu)){{alert('Benutzer existiert bereits.');return;}}await putUser({{username:nu,display:nd||nu,pass:np,role:nr,status:'active'}});document.getElementById('nuUser').value='';document.getElementById('nuDisplay').value='';document.getElementById('nuPass').value='';render();}};await render();}});
+const DB_NAME='zeit-web-pwa2'; const STORE={users:'users'};
+function openDB(){ return new Promise((resolve,reject)=>{ const req=indexedDB.open(DB_NAME,1); req.onsuccess=()=>resolve(req.result); req.onerror=()=>reject(req.error); req.onupgradeneeded=ev=>{ const db=ev.target.result; if(!db.objectStoreNames.contains(STORE.users)){ const s=db.createObjectStore(STORE.users,{keyPath:'username'}); s.createIndex('role','role',{unique:false}); } }; }); }
+const os=(db,name,mode='readonly')=>db.transaction(name,mode).objectStore(name);
+const me=()=>{ try{return JSON.parse(localStorage.getItem('cu2')||'null');}catch(_){return null;} };
+async function allUsers(){ const db=await openDB(); const s=os(db,STORE.users); const out=[]; await new Promise((res,rej)=>{const r=s.openCursor(); r.onsuccess=e=>{const c=e.target.result; if(c){out.push(c.value); c.continue();} else res();}; r.onerror=()=>rej(r.error);}); return out; }
+async function putUser(u){ const db=await openDB(); await new Promise((res,rej)=>{const r=os(db,STORE.users,'readwrite').put(u); r.onsuccess=res; r.onerror=()=>rej(r.error);}); }
+async function delUser(id){ const db=await openDB(); await new Promise((res,rej)=>{const r=os(db,STORE.users,'readwrite').delete(id); r.onsuccess=res; r.onerror=()=>rej(r.error);}); }
+const td=t=>{const d=document.createElement('td'); d.textContent=t; return d;};
+function row(u){ const tr=document.createElement('tr'); tr.appendChild(td(u.username)); tr.appendChild(td(u.display||'')); tr.appendChild(td(u.role)); tr.appendChild(td(u.status||'active')); const act=document.createElement('td'); act.style.display='flex'; act.style.gap='8px';
+  const tgl=document.createElement('button'); tgl.className='ghost'; tgl.textContent=(u.status==='active'?'Deaktivieren':'Aktivieren'); tgl.onclick=async()=>{u.status=(u.status==='active'?'inactive':'active'); await putUser(u); render();};
+  const pw=document.createElement('button'); pw.className='ghost'; pw.textContent='Passwort'; pw.onclick=async()=>{const p=prompt('Neues Passwort:',''); if(p){u.pass=p; await putUser(u); alert('Gespeichert.');}};
+  const del=document.createElement('button'); del.className='ghost'; del.textContent='Löschen'; del.onclick=async()=>{ if(confirm('Benutzer löschen?')){ await delUser(u.username); render(); } };
+  act.appendChild(tgl); act.appendChild(pw); act.appendChild(del); tr.appendChild(act); return tr; }
+async function render(){ const tb=document.getElementById('tblBody'); tb.innerHTML=''; const users=(await allUsers()).sort((a,b)=>a.username.localeCompare(b.username)); for(const u of users) tb.appendChild(row(u)); }
+window.addEventListener('DOMContentLoaded', async ()=>{
+  const db=await openDB(); const s=os(db,STORE.users); const count=await new Promise((res,rej)=>{const r=s.count(); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error);});
+  if(count===0){ await new Promise((res,rej)=>{const r=os(db,STORE.users,'readwrite').put({username:'admin',display:'Administrator',pass:'admin',role:'admin',status:'active'}); r.onsuccess=res; r.onerror=()=>rej(r.error);}); }
+  if(!me()){ localStorage.setItem('cu2', JSON.stringify({username:'admin',display:'Administrator',role:'admin'})); }
+  const you=me(); if(!you || you.role!=='admin'){ alert('Nur Admin darf diese Seite nutzen.'); location.href='/Zeiterfassung/'; return; }
+  document.getElementById('btnCreateUser').onclick=async()=>{
+    const nu=document.getElementById('nuUser').value.trim();
+    const nd=document.getElementById('nuDisplay').value.trim();
+    const np=document.getElementById('nuPass').value.trim();
+    const nr=document.getElementById('nuRole').value;
+    if(!nu || !np){ alert('Benutzername und Passwort erforderlich.'); return; }
+    const users=await allUsers(); if(users.some(x=>x.username===nu)){ alert('Benutzer existiert bereits.'); return; }
+    await putUser({username:nu,display:nd||nu,pass:np,role:nr,status:'active'});
+    document.getElementById('nuUser').value=''; document.getElementById('nuDisplay').value=''; document.getElementById('nuPass').value=''; render();
+  };
+  await render();
+});
 </script></body></html>
