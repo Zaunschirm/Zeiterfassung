@@ -2,3 +2,4 @@ self.addEventListener('install', e=>{ self.skipWaiting(); }); self.addEventListe
 // V02b built 2025-10-05T17:25:22.990812Z
 // V02c mobile login fixes 2025-10-05T17:31:15.056913Z
 // V02d login text removed 2025-10-05T17:34:40.407110Z
+// V02e backup page added 2025-10-05T17:38:12.139831Z
