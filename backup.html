@@ -20,7 +20,7 @@
     <a href="plan.html">Wocheneinteilung</a>
     <a href="reports.html" class="require-role-admin">Berichte</a>
     <a href="backup.html" class="require-role-admin">Backup</a>
-    <button id="logoutBtn" class="btn-ghost">Logout</button>
+    <button id="logoutBtn" type="button" class="btn-ghost">Logout</button>
       <a href="cloud.html" class="require-role-admin">Cloud</a>
     </nav>
 </header>
@@ -49,9 +49,6 @@
   </section>
 </main>
 <footer class="footer"><small>© 2025 Holzbau Zaunschirm • Backup</small></footer>
-<script defer src="js/storage.js?v=03a?v=02c"></script>
-<script defer src="js/auth.js?v=03a?v=02c"></script>
-<script defer src="js/app.js?v=03a?v=02c"></script>
 <script>
 document.addEventListener('DOMContentLoaded', ()=>{
   protectPage(['admin']); renderNavByRole();
@@ -127,6 +124,10 @@ document.addEventListener('DOMContentLoaded', ()=>{
   });
 });
 </script>
-<script defer src="js/cloud.js?v=03a"></script>
+
+<script defer src="js/storage.js?v=03c"></script>
+<script defer src="js/auth.js?v=03c"></script>
+<script defer src="js/app.js?v=03c"></script>
+<script defer src="js/cloud.js?v=03c"></script>
 </body>
 </html>

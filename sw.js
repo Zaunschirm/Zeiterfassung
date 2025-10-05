@@ -6,3 +6,4 @@ self.addEventListener('install', e=>{ self.skipWaiting(); }); self.addEventListe
 // V03 cloud sync added 2025-10-05T17:42:19.419898Z
 // V03a logout/protectPage safe bind 2025-10-05T17:47:40.218881Z
 // V03b guarded auth exports 2025-10-05T17:53:08.949066Z
+// V03c logout-type & cache bust 2025-10-05T17:56:51.125372Z
