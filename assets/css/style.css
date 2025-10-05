@@ -48,19 +48,24 @@ img.avatar{width:40px; height:40px; border-radius:50%; object-fit:cover; border:
 @media print{ .topbar, .footer, .row button, .row select, .row small { display:none !important; } .container{ margin:0; } }
 
 
-/* DnD Wocheneinteilung */
+/* 123erfasst-like weekly board */
 .board{display:grid; grid-template-columns:260px 1fr; gap:16px}
 .emplist{background:#fff; border:1px solid var(--border); border-radius:var(--radius); padding:10px; max-height:70vh; overflow:auto}
 .empchip{display:inline-flex; align-items:center; gap:8px; padding:6px 10px; border:1px solid var(--border); border-radius:999px; background:#f8f5ee; margin:4px 6px 4px 0; cursor:grab; user-select:none}
 .empchip:active{cursor:grabbing}
-.badge{font-size:12px; background:#f3eee2; border:1px solid var(--border); padding:2px 6px; border-radius:999px}
 .board-cols{display:grid; grid-template-columns: repeat(7, 1fr); gap:10px}
-.daycol{background:#fff; border:1px solid var(--border); border-radius:var(--radius); display:flex; flex-direction:column; min-height:240px}
+.daycol{background:#fff; border:1px solid var(--border); border-radius:var(--radius); display:flex; flex-direction:column; min-height:280px}
 .dayhead{padding:8px 10px; background:#f3eee2; border-bottom:1px solid var(--border); font-weight:600}
-.daydrop{flex:1; padding:10px; display:flex; flex-wrap:wrap; align-content:flex-start; gap:8px; min-height:180px}
-.assignment{display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border:1px solid var(--border); background:#fff; border-radius:999px; box-shadow:0 1px 0 rgba(0,0,0,.04)}
-.assignment .label{font-size:12px; color:#7a5a1d}
-.assignment button{border:none; background:transparent; cursor:pointer; font-weight:700; color:#973737}
-.daydrop.highlight{outline:2px dashed var(--primary); outline-offset:-6px; background:#fffdf6}
+.project{border-top:1px dashed var(--border)}
+.projhead{display:flex; align-items:center; justify-content:space-between; gap:8px; padding:6px 10px; font-weight:600; border-bottom:1px solid var(--border); background:#faf8f1}
+.projcolor{width:10px; height:10px; border-radius:2px; display:inline-block; margin-right:6px; border:1px solid rgba(0,0,0,.15)}
+.projdrop{min-height:90px; padding:8px; display:flex; flex-wrap:wrap; gap:8px}
+.assignment{display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border:1px solid var(--border); background:#fff; border-radius:999px; box-shadow:0 1px 0 rgba(0,0,0,.04); cursor:grab}
+.assignment:active{cursor:grabbing}
+.projdrop.highlight{outline:2px dashed var(--primary); outline-offset:-6px; background:#fffdf6}
 .controls{display:flex; gap:8px; flex-wrap:wrap; margin:10px 0}
+.projlist{display:flex; flex-wrap:wrap; gap:8px}
+.projchip{display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border-radius:999px; border:1px solid var(--border); background:#fff}
+.projchip .color{width:12px; height:12px; border-radius:2px; border:1px solid rgba(0,0,0,.2)}
+.remove{border:none; background:transparent; cursor:pointer; color:#973737; font-weight:700}
 @media(max-width:1000px){ .board{grid-template-columns:1fr} }
