@@ -97,14 +97,7 @@ function bookFromGrid(){
   function idxToTime(idx){ const minutesFromStart = idx*15; const totalMinutes = 5*60 + minutesFromStart; const h=Math.floor(totalMinutes/60); const m=totalMinutes%60; return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`; }
 }
 
-function renderTimes(){
-  const me = currentUser();
-  const firstChecked = selectedUserIds()[0] || me?.id;
-  const dateStr = document.getElementById('dateInput').value;
-  if(!firstChecked || !dateStr) return;
-  const base = readTimes(); const list = (base[firstChecked] && base[firstChecked][dateStr]) ? base[firstChecked][dateStr] : [];
-  const tbody = document.querySelector('#timeTable tbody'); if(!tbody) return;
-}
+function renderTimes(){ /* intentionally minimal in this build */ }
 
 function renderMonth(){
   const me = currentUser();
@@ -124,6 +117,7 @@ function renderMonth(){
   for(let day=1; day<=daysInMonth; day++){
     const dk = new Date(year, month, day).toISOString().slice(0,10);
     const list = userDays[dk] || [];
+    if(!list.length) continue; // nur Tage mit Einträgen
     const dayMin = list.reduce((acc,r)=> acc + (r.durMin||0), 0);
     const status = list.length ? (list[0].status || 'Arbeit') : '—';
     const projs = Array.from(new Set(list.map(r=> (projectNameById(r.projectId)||'').trim()).filter(Boolean))).join(', ');
@@ -134,7 +128,7 @@ function renderMonth(){
     if(dayMin > 9*60) sumOt += (dayMin - 9*60);
   }
   const tbody = document.querySelector('#monthTable tbody');
-  if(tbody) tbody.innerHTML = rows;
+  if(tbody) tbody.innerHTML = rows || '<tr><td colspan="3" style="color:#6b7280">Keine Einträge im Monat.</td></tr>';
   const monthLabel = document.getElementById('monthLabel'); if(monthLabel){ const s = label; monthLabel.textContent = s.charAt(0).toUpperCase()+s.slice(1); }
   const mt = document.getElementById('monthTotal'); if(mt) mt.textContent = minToHHMM(sumMin);
   const mo = document.getElementById('monthOT'); if(mo) mo.textContent = minToHHMM(sumOt);

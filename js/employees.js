@@ -23,10 +23,47 @@
         <td>${u.mustChangePassword?'Erstlogin':'Aktiv'}</td>
         <td><button class="btn" data-edit="${u.id}">Bearbeiten</button> <button class="btn-ghost" data-del="${u.id}">Löschen</button></td>
       </tr>`).join('');
-    el.tbody.querySelectorAll('[data-edit]').forEach(b=> b.addEventListener('click', ()=>{ const emp=readUsers().find(x=>x.id===b.dataset.edit); if(window.openModal) openModal(emp); }));
+    el.tbody.querySelectorAll('[data-edit]').forEach(b=> b.addEventListener('click', ()=>{ const emp=readUsers().find(x=>x.id===b.dataset.edit); if(window.openModal) openModal(emp); editingId = emp?.id || null; }));
     el.tbody.querySelectorAll('[data-del]').forEach(b=> b.addEventListener('click', ()=> removeEmp(b.dataset.del)));
   }
-  function removeEmp(id){ if(!confirm('Mitarbeiter wirklich löschen?')) return; const users=readUsers().filter(u=>u.id!==id); writeUsers(users); renderTable(); }
+  function removeEmp(id){
+    const me = currentUser();
+    const users = readUsers();
+    const target = users.find(u=>u.id===id);
+    if(!target){ alert('Mitarbeiter nicht gefunden.'); return; }
+    if(me && me.id===id){ alert('Du kannst dich nicht selbst löschen.'); return; }
+    // mindestens ein Admin muss bleiben
+    if(target.role==='admin'){
+      const otherAdmins = users.filter(u=>u.role==='admin' && u.id!==id);
+      if(otherAdmins.length===0){ alert('Mindestens ein Admin muss verbleiben.'); return; }
+    }
+    if(!confirm(`Mitarbeiter "${target.name||target.username}" wirklich löschen?`)) return;
+
+    // 1) Nutzer löschen
+    const remain = users.filter(u=>u.id!==id);
+    writeUsers(remain);
+
+    // 2) Zeiten entfernen
+    const times = readTimes(); if(times[id]){ delete times[id]; writeTimes(times); }
+
+    // 3) Planungseinträge entfernen
+    const plan = readPlan(); let changed=false;
+    Object.keys(plan).forEach(week=>{
+      const weekData = plan[week]||{};
+      Object.keys(weekData).forEach(date=>{
+        const dayObj = weekData[date]||{};
+        Object.keys(dayObj).forEach(pid=>{
+          const arr = dayObj[pid]||[];
+          const arrNew = arr.filter(x=>x.uid!==id);
+          if(arrNew.length!==arr.length){ dayObj[pid]=arrNew; changed=true; }
+        });
+      });
+    });
+    if(changed) writePlan(plan);
+
+    renderTable();
+    alert('Mitarbeiter und zugehörige Einteilungen/Zeiten wurden entfernt.');
+  }
   function saveEmp(){
     const el = E();
     const name = el.name.value.trim(); const username = el.user.value.trim(); const role = el.role.value; const pw = el.pw.value;

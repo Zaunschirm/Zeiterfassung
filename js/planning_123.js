@@ -8,10 +8,10 @@ function initPlanning123(){
   prevWeek.addEventListener('click', ()=> shiftWeek(-1));
   nextWeek.addEventListener('click', ()=> shiftWeek(1));
   weekPicker.addEventListener('change', renderBoard);
-  if(window.__canEditPlanning) copyPrev.addEventListener('click', copyPreviousWeek);
-  if(window.__canEditPlanning) clearWeek.addEventListener('click', ()=>{ if(confirm('Woche wirklich leeren?')){ const all=readPlan(); all[weekPicker.value]={}; writePlan(all); renderBoard(); }});
+  if(window.__canEditPlanning) copyPrev.addEventListener('click', copyPreviousWeek); else copyPrev.disabled=true;
+  if(window.__canEditPlanning) clearWeek.addEventListener('click', ()=>{ if(confirm('Woche wirklich leeren?')){ const all=readPlan(); all[weekPicker.value]={}; writePlan(all); renderBoard(); }}); else clearWeek.disabled=true;
   exportCsv.addEventListener('click', exportPlanningCsv);
-  if(window.__canEditPlanning) addProject.addEventListener('click', ()=>{ const name=(projName.value||'').trim(); const color=projColor.value||'#C8A86B'; const cost=(projKst&&projKst.value||'').trim(); if(!name) return; const ps=readProjects(); ps.push({id:'p'+Math.random().toString(36).slice(2,9), name, color, costCenter: cost}); writeProjects(ps); if(projName) projName.value=''; if(projKst) projKst.value=''; renderBoard(); });
+  if(window.__canEditPlanning) addProject.addEventListener('click', ()=>{ const name=(projName.value||'').trim(); const color=projColor.value||'#C8A86B'; const cost=(projKst&&projKst.value||'').trim(); if(!name) return; const ps=readProjects(); ps.push({id:'p'+Math.random().toString(36).slice(2,9), name, color, costCenter: cost}); writeProjects(ps); if(projName) projName.value=''; if(projKst) projKst.value=''; renderBoard(); }); else addProject.disabled=true;
   renderBoard();
 }
 function isoWeekString(d){ const dt=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate())); const dayNum=(dt.getUTCDay()+6)%7; dt.setUTCDate(dt.getUTCDate()-dayNum+3); const firstThursday=new Date(Date.UTC(dt.getUTCFullYear(),0,4)); const weekNo=1+Math.round(((dt-firstThursday)/86400000-3+((firstThursday.getUTCDay()+6)%7))/7); const year=dt.getUTCFullYear(); return year+'-W'+String(weekNo).padStart(2,'0'); }
@@ -66,7 +66,7 @@ function renderBoard(){
   }
 }
 
-function renderAssignmentChip(uid){ const u=readUsers().find(x=>x.id===uid); if(!u) return ''; return `<span class="assignment" draggable="true" data-uid="${u.id}">${escapeHtml(u.name||u.username)}</span>`; }
+function renderAssignmentChip(uid){ const u=readUsers().find(x=>x.id===uid); if(!u) return ''; return `<span class="assignment" draggable="${window.__canEditPlanning?'true':'false'}" data-uid="${u.id}">${escapeHtml(u.name||u.username)}</span>`; }
 function addAssign(date,pid,uid){ const all=readPlan(); const w=weekPicker.value; if(!all[w]) all[w]={}; if(!all[w][date]) all[w][date]={}; if(!all[w][date][pid]) all[w][date][pid]=[]; if(all[w][date][pid].some(x=>x.uid===uid)) return; all[w][date][pid].push({uid}); writePlan(all); renderBoard(); }
 function moveAssign(uid,fd,fp,td,tp){ if(fd===td && fp===tp) return; const all=readPlan(); const w=weekPicker.value; const arr=(((all[w]||{})[fd]||{})[fp]||[]); const idx=arr.findIndex(x=>x.uid===uid); if(idx<0) return; const item=arr.splice(idx,1)[0]; if(!all[w][td]) all[w][td]={}; if(!all[w][td][tp]) all[w][td][tp]=[]; if(!all[w][td][tp].some(x=>x.uid===uid)) all[w][td][tp].push(item); writePlan(all); renderBoard(); }
 function copyPreviousWeek(){ const cur=weekPicker.value; const d=weekInputToDate(cur); d.setDate(d.getDate()-7); const prev=isoWeekString(d); const all=readPlan(); if(!all[prev]){ alert('Keine Vorwoche vorhanden.'); return; } all[cur]=JSON.parse(JSON.stringify(all[prev])); writePlan(all); renderBoard(); }

@@ -18,7 +18,7 @@
     <a href="dashboard.html">Übersicht</a>
     <a href="mitarbeiter.html" class="require-role-admin">Mitarbeiter</a>
     <a href="zeiterfassung.html">Zeiterfassung</a>
-    <a href="plan.html" class="require-role-lead">Wocheneinteilung</a>
+    <a href="plan.html">Wocheneinteilung</a>
     <a href="reports.html" class="require-role-admin">Berichte</a>
     <button id="logoutBtn" class="btn-ghost">Logout</button>
   </nav>
@@ -60,7 +60,7 @@
 </aside>
 
 </main>
-<footer class="footer"><small>© 2025 Holzbau Zaunschirm • V01n</small></footer>
+<footer class="footer"><small>© 2025 Holzbau Zaunschirm • V02a</small></footer>
 <script defer src="js/storage.js"></script>
 <script defer src="js/auth.js"></script>
 <script defer src="js/app.js"></script>
@@ -68,10 +68,7 @@
 <script defer src="js/employees.js"></script>
 <script defer src="js/employees.drawer.js"></script>
 <script>
-document.addEventListener('DOMContentLoaded', ()=>{
-  protectPage(['admin']); renderNavByRole();
-  if(typeof initEmployeePage==='function') initEmployeePage();
-});
+document.addEventListener('DOMContentLoaded', ()=>{ protectPage(['admin']); renderNavByRole(); if(typeof initEmployeePage==='function') initEmployeePage(); });
 </script>
 
 </body>

@@ -1,9 +1,5 @@
 
-:root{
-  --bg:#F6F4EF; --txt:#222; --muted:#6b7280;
-  --primary:#C8A86B; --accent:#2F3438; --card:#fff; --border:#d9d3c7;
-  --radius:12px;
-}
+:root{ --bg:#F6F4EF; --txt:#222; --muted:#6b7280; --primary:#C8A86B; --accent:#2F3438; --card:#fff; --border:#d9d3c7; --radius:12px; }
 *{box-sizing:border-box}
 body{margin:0; font-family:Inter,system-ui,Segoe UI,Roboto,Ubuntu; color:var(--txt); background:var(--bg)}
 .container{max-width:1100px; margin:84px auto 40px; padding:0 16px}

@@ -18,7 +18,7 @@
     <a href="dashboard.html">Übersicht</a>
     <a href="mitarbeiter.html" class="require-role-admin">Mitarbeiter</a>
     <a href="zeiterfassung.html">Zeiterfassung</a>
-    <a href="plan.html" class="require-role-lead">Wocheneinteilung</a>
+    <a href="plan.html">Wocheneinteilung</a>
     <a href="reports.html" class="require-role-admin">Berichte</a>
     <button id="logoutBtn" class="btn-ghost">Logout</button>
   </nav>
@@ -46,19 +46,14 @@
 </section>
 
 </main>
-<footer class="footer"><small>© 2025 Holzbau Zaunschirm • V01n</small></footer>
+<footer class="footer"><small>© 2025 Holzbau Zaunschirm • V02a</small></footer>
 <script defer src="js/storage.js"></script>
 <script defer src="js/auth.js"></script>
 <script defer src="js/app.js"></script>
 
 <script>
 function minToHHMM(min){ const sign=min<0?'-':''; const m=Math.abs(min); const h=Math.floor(m/60); const mm=m%60; return sign+String(h).padStart(2,'0')+':'+String(mm).padStart(2,'0'); }
-function eachDate(from, to){
-  const out=[]; const d=new Date(from.getTime()); d.setHours(0,0,0,0);
-  const end=new Date(to.getTime()); end.setHours(0,0,0,0);
-  while(d<=end){ out.push(d.toISOString().slice(0,10)); d.setDate(d.getDate()+1); }
-  return out;
-}
+function eachDate(from, to){ const out=[]; const d=new Date(from.getTime()); d.setHours(0,0,0,0); const end=new Date(to.getTime()); end.setHours(0,0,0,0); while(d<=end){ out.push(d.toISOString().slice(0,10)); d.setDate(d.getDate()+1); } return out; }
 function calc(){
   const users = JSON.parse(localStorage.getItem('z_users')||'[]');
   const times = JSON.parse(localStorage.getItem('z_times')||'{}');
@@ -73,7 +68,7 @@ function calc(){
     dates.forEach(dk=>{
       const list = (times[u.id] && times[u.id][dk]) ? times[u.id][dk] : [];
       const sumDay = list.reduce((acc,r)=> acc + (r.durMin||0), 0);
-      if(sumDay>0){ days+=1; }
+      if(list.length>0){ days+=1; } // Tag mit Eintrag zählt
       m += sumDay;
       if(sumDay>9*60) ot += (sumDay - 9*60);
     });
