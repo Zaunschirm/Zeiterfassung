@@ -1,5 +1,6 @@
-// V55
-const CACHE='zeit2-pwa-v55';
+
+// V56
+const CACHE='zeit2-pwa-v56';
 self.addEventListener('install',e=>{
   e.waitUntil(caches.open(CACHE).then(c=>c.addAll(['./','./index.html','./manifest.json','./assets/logo.png','./users/'])));
 });

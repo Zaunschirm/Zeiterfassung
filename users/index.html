@@ -18,19 +18,16 @@ table{width:100%;border-collapse:collapse;margin-top:8px}th,td{border-bottom:1px
 #photoGallery figure{margin:0;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fff}
 #photoGallery img{display:block;width:100%;height:110px;object-fit:cover}
 #photoGallery figcaption{font-size:12px;color:#666;text-align:center;padding:6px}
-/* login modal */
 #loginModal{position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;align-items:center;justify-content:center;padding:16px}
-#loginCard{max-width:420px;width:100%}
-</style></head><body>
+#loginCard{max-width:420px;width:100%}</style></head><body>
 <header>
   <a href="/Zeiterfassung/">← Zurück</a>
-  <strong>Mitarbeiterverwaltung – V55</strong>
+  <strong>Mitarbeiterverwaltung – V56</strong>
   <span style="flex:1"></span>
   <span id="who" class="muted"></span>
   <button id="btnLogout" class="link">Logout</button>
 </header>
 
-<!-- Login Modal -->
 <div id="loginModal" style="position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;align-items:center;justify-content:center;padding:16px">
   <section class="card" style="max-width:420px;width:100%">
     <h3>Bitte anmelden (Admin)</h3>
@@ -55,36 +52,91 @@ table{width:100%;border-collapse:collapse;margin-top:8px}th,td{border-bottom:1px
 </main>
 
 <script>
-const APP_SCOPE='/Zeiterfassung/'; const DB_NAME='zeit-web-pwa2'; const STORE={users:'users'};
+
+const DB_NAME='zeit-web-pwa2'; const STORE={users:'users'};
 const os=(db,name,mode='readonly')=>db.transaction(name,mode).objectStore(name);
-const me=()=>{try{return JSON.parse(localStorage.getItem('cu2')||'null');}catch(_){return null;}}; const setMe=u=>localStorage.setItem('cu2',JSON.stringify(u));
-async function openDB(){ return await new Promise((resolve,reject)=>{const req=indexedDB.open(DB_NAME,1); req.onsuccess=()=>resolve(req.result); req.onerror=()=>reject(req.error); req.onupgradeneeded=(ev)=>{const db=ev.target.result; if(!db.objectStoreNames.contains(STORE.users)){const s=db.createObjectStore(STORE.users,{keyPath:'username'}); s.createIndex('role','role',{unique:false});}}}); }
+const me=()=>{ try{return JSON.parse(localStorage.getItem('cu2')||'null');}catch(_){return null;} };
+const setMe=u=>localStorage.setItem('cu2',JSON.stringify(u));
+
+function openDB(){
+  return new Promise((resolve,reject)=>{
+    const req=indexedDB.open(DB_NAME,1);
+    req.onsuccess=()=>resolve(req.result);
+    req.onerror=()=>reject(req.error);
+    req.onupgradeneeded=e=>{
+      const db=e.target.result;
+      if(!db.objectStoreNames.contains(STORE.users)){
+        const s=db.createObjectStore(STORE.users,{keyPath:'username'});
+        s.createIndex('role','role',{unique:false});
+      }
+    };
+  });
+}
+
+async function ensureBootstrap(){
+  const db=await openDB(); const s=os(db,STORE.users); const count=await new Promise((res,rej)=>{const r=s.count(); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error);});
+  if(count===0){
+    await new Promise((res,rej)=>{const r=os(db,STORE.users,'readwrite').put({username:'admin',display:'Administrator',pass:'admin',role:'admin',status:'active'}); r.onsuccess=res; r.onerror=()=>rej(r.error);});
+  }
+}
 async function allUsers(){ const db=await openDB(); const s=os(db,STORE.users); const out=[]; await new Promise((res,rej)=>{const r=s.openCursor(); r.onsuccess=e=>{const c=e.target.result; if(c){out.push(c.value); c.continue();} else res();}; r.onerror=()=>rej(r.error);}); return out; }
 async function putUser(u){ const db=await openDB(); await new Promise((res,rej)=>{const r=os(db,STORE.users,'readwrite').put(u); r.onsuccess=res; r.onerror=()=>rej(r.error);}); }
 async function delUser(id){ const db=await openDB(); await new Promise((res,rej)=>{const r=os(db,STORE.users,'readwrite').delete(id); r.onsuccess=res; r.onerror=()=>rej(r.error);}); }
-const td=t=>{const d=document.createElement('td'); d.textContent=t; return d;};
-function row(u){ const tr=document.createElement('tr'); tr.appendChild(td(u.username)); tr.appendChild(td(u.display||'')); tr.appendChild(td(u.role)); tr.appendChild(td(u.status||'active')); const act=document.createElement('td'); act.style.display='flex'; act.style.gap='8px';
-  const tgl=document.createElement('button'); tgl.className='ghost'; tgl.textContent=(u.status==='active'?'Deaktivieren':'Aktivieren'); tgl.onclick=async()=>{u.status=(u.status==='active'?'inactive':'active'); await putUser(u); render();};
-  const pw=document.createElement('button'); pw.className='ghost'; pw.textContent='Passwort'; pw.onclick=async()=>{const p=prompt('Neues Passwort:',''); if(p){u.pass=p; await putUser(u); alert('Gespeichert.');}};
-  const del=document.createElement('button'); del.className='ghost'; del.textContent='Löschen'; del.onclick=async()=>{ if(confirm('Benutzer löschen?')){ await delUser(u.username); render(); } };
-  act.appendChild(tgl); act.appendChild(pw); act.appendChild(del); tr.appendChild(act); return tr; }
-async function render(){ const tb=document.getElementById('tblBody'); tb.innerHTML=''; const users=(await allUsers()).sort((a,b)=>a.username.localeCompare(b.username)); for(const u of users) tb.appendChild(row(u)); }
-async function ensureBootstrap(){ const db=await openDB(); const s=os(db,STORE.users); const count=await new Promise((res,rej)=>{const r=s.count(); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error);}); if(count===0){ await new Promise((res,rej)=>{const r=os(db,STORE.users,'readwrite').put({username:'admin',display:'Administrator',pass:'admin',role:'admin',status:'active'}); r.onsuccess=res; r.onerror=()=>rej(r.error);}); } }
-async function requireAdmin(){ const u=me(); if(u&&u.role==='admin'){ document.getElementById('who').textContent=(u.display||u.username)+' (Admin)'; return true; } document.getElementById('loginModal').style.display='flex'; return false; }
-async function tryLogin(){ const user=document.getElementById('lgUser').value.trim(); const pass=document.getElementById('lgPass').value.trim(); const db=await openDB(); const st=os(db,STORE.users); let ok=null; await new Promise((res,rej)=>{const r=st.openCursor(); r.onsuccess=e=>{const c=e.target.result; if(c){const v=c.value; if(v.username===user && v.pass===pass && v.role==='admin' && v.status!=='inactive'){ ok=v; res(); } c.continue();} else res();}; r.onerror=()=>rej(r.error);}); if(ok){ setMe({username:ok.username,display:ok.display||ok.username,role:ok.role}); document.getElementById('loginModal').style.display='none'; document.getElementById('who').textContent=(ok.display||ok.username)+' (Admin)'; } else alert('Nur Admin darf hier rein.'); }
+
+async function requireAdmin(){
+  const u=me();
+  if(u&&u.role==='admin'){ document.getElementById('who').textContent=(u.display||u.username)+' (Admin)'; return true; }
+  document.getElementById('loginModal').style.display='flex'; return false;
+}
+async function tryLogin(){
+  const user=document.getElementById('lgUser').value.trim();
+  const pass=document.getElementById('lgPass').value.trim();
+  const db=await openDB(); const st=os(db,STORE.users); let ok=null;
+  await new Promise((res,rej)=>{const r=st.openCursor(); r.onsuccess=e=>{const c=e.target.result; if(c){const v=c.value; if(v.username===user && v.pass===pass && v.role==='admin' && v.status!=='inactive'){ ok=v; res(); } c.continue(); } else res();}; r.onerror=()=>rej(r.error);});
+  if(ok){ setMe({username:ok.username,display:ok.display||ok.username,role:ok.role}); document.getElementById('loginModal').style.display='none'; location.reload(); }
+  else alert('Login fehlgeschlagen oder kein Admin.');
+}
 function doLogout(){ localStorage.removeItem('cu2'); location.reload(); }
+
+function td(t){ const d=document.createElement('td'); d.textContent=t; return d; }
+function row(u){
+  const tr=document.createElement('tr');
+  tr.appendChild(td(u.username));
+  tr.appendChild(td(u.display||''));
+  tr.appendChild(td(u.role||''));
+  tr.appendChild(td(u.status||'active'));
+  const act=document.createElement('td'); act.style.display='flex'; act.style.gap='8px';
+  const tgl=document.createElement('button'); tgl.className='ghost'; tgl.textContent=(u.status==='active'?'Deaktivieren':'Aktivieren');
+  tgl.onclick=async()=>{u.status=(u.status==='active'?'inactive':'active'); await putUser(u); render();};
+  const pw=document.createElement('button'); pw.className='ghost'; pw.textContent='Passwort';
+  pw.onclick=async()=>{const p=prompt('Neues Passwort:',''); if(p){u.pass=p; await putUser(u);}};
+  const del=document.createElement('button'); del.className='ghost'; del.textContent='Löschen';
+  del.onclick=async()=>{ if(confirm('Benutzer löschen?')){ await delUser(u.username); render(); } };
+  act.appendChild(tgl); act.appendChild(pw); act.appendChild(del); tr.appendChild(act); return tr;
+}
+async function render(){
+  const tb=document.getElementById('tblBody'); tb.innerHTML='';
+  const users=(await allUsers()).sort((a,b)=>a.username.localeCompare(b.username));
+  for(const u of users) tb.appendChild(row(u));
+}
 
 window.addEventListener('DOMContentLoaded', async ()=>{
   await ensureBootstrap();
   if(!await requireAdmin()){ document.getElementById('btnLogin').onclick=tryLogin; }
   document.getElementById('btnLogout').onclick=doLogout;
   document.getElementById('btnCreateUser').onclick=async()=>{
-    const nu=document.getElementById('nuUser').value.trim(); const nd=document.getElementById('nuDisplay').value.trim(); const np=document.getElementById('nuPass').value.trim(); const nr=document.getElementById('nuRole').value;
+    const nu=document.getElementById('nuUser').value.trim();
+    const nd=document.getElementById('nuDisplay').value.trim();
+    const np=document.getElementById('nuPass').value.trim();
+    const nr=document.getElementById('nuRole').value;
     if(!nu||!np){ alert('Benutzername und Passwort erforderlich.'); return; }
-    const users=await allUsers(); if(users.some(x=>x.username===nu)){ alert('Benutzer existiert bereits.'); return; }
+    const users=await allUsers();
+    if(users.some(x=>x.username===nu)){ alert('Benutzer existiert bereits.'); return; }
     await putUser({username:nu,display:nd||nu,pass:np,role:nr,status:'active'});
-    document.getElementById('nuUser').value=''; document.getElementById('nuDisplay').value=''; document.getElementById('nuPass').value=''; render();
+    document.getElementById('nuUser').value=''; document.getElementById('nuDisplay').value=''; document.getElementById('nuPass').value='';
+    render();
   };
   await render();
 });
+
 </script></body></html>

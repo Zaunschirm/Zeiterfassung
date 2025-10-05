@@ -20,12 +20,10 @@ table{width:100%;border-collapse:collapse;margin-top:8px}th,td{border-bottom:1px
 #photoGallery figure{margin:0;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fff}
 #photoGallery img{display:block;width:100%;height:110px;object-fit:cover}
 #photoGallery figcaption{font-size:12px;color:#666;text-align:center;padding:6px}
-/* login modal */
 #loginModal{position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;align-items:center;justify-content:center;padding:16px}
-#loginCard{max-width:420px;width:100%}
-</style></head><body>
+#loginCard{max-width:420px;width:100%}</style></head><body>
 <header>
-  <strong>Zeiterfassung – V55</strong>
+  <strong>Zeiterfassung – V56</strong>
   <nav style="display:flex;gap:12px;align-items:center">
     <a href="/Zeiterfassung/users/">Mitarbeiterverwaltung</a>
     <span id="who" class="muted"></span>
@@ -105,21 +103,43 @@ table{width:100%;border-collapse:collapse;margin-top:8px}th,td{border-bottom:1px
 </main>
 
 <script>
-const APP_SCOPE='/Zeiterfassung/'; const DB_NAME='zeit-web-pwa2'; const CACHE_KEEP='zeit2-pwa-v55';
+
+const APP_SCOPE='/Zeiterfassung/';
+const DB_NAME='zeit-web-pwa2';
+const CACHE_KEEP='zeit2-pwa-v56';
 const STORE={ users:'users', projects:'projects', entries:'entries', photos:'photos' };
 const os=(db,name,mode='readonly')=>db.transaction(name,mode).objectStore(name);
-const me=()=>{try{return JSON.parse(localStorage.getItem('cu2')||'null');}catch(_){return null;}};
+const me=()=>{ try{return JSON.parse(localStorage.getItem('cu2')||'null');}catch(_){return null;} };
 const setMe=u=>localStorage.setItem('cu2',JSON.stringify(u));
-const pad=n=>String(n).padStart(2,'0'); const minToHHMM=m=>pad(Math.floor(m/60))+':'+pad(m%60);
-const today=()=>new Date().toISOString().slice(0,10); const monthKey=d=>d.slice(0,7);
+const pad=n=>String(n).padStart(2,'0');
+const minToHHMM=m=>pad(Math.floor(m/60))+':'+pad(m%60);
+const today=()=>new Date().toISOString().slice(0,10);
+const monthKey=d=>d.slice(0,7);
 
 async function autoCleanup(){
-  try{ if(indexedDB.databases){ const dbs=await indexedDB.databases(); for(const d of dbs){ const name=d.name||''; if(name&&name!==DB_NAME&&(name.startsWith('zeit')||name.includes('pwa'))){ try{indexedDB.deleteDatabase(name);}catch(e){} } } }
-        ['zeit-web-pwa','zeit-web','zeit-pwa','zeit-pwa-v29','zeit-pwa-v30','zeit-pwa-v31','zeit-pwa-v32','zeit-pwa-v33','zeit-pwa-v34','zeit-pwa-v35','zeit-pwa-v36','zeit-pwa-v37','zeit-pwa-v38','zeit-pwa-v39','zeit-pwa-v40','zeit-pwa-v41','zeit-pwa-v42','zeit-pwa-v43']
-        .forEach(n=>{try{indexedDB.deleteDatabase(n);}catch(e){}});
+  try{
+    if(indexedDB.databases){
+      const dbs=await indexedDB.databases();
+      for(const d of dbs){
+        const n=d.name||'';
+        if(n && n!==DB_NAME && (n.startsWith('zeit')||n.includes('pwa'))){
+          try{ indexedDB.deleteDatabase(n); }catch(e){}
+        }
+      }
+    }
+    const legacy=['zeit-web-pwa','zeit-web','zeit-pwa','zeit-pwa-v29','zeit-pwa-v30','zeit-pwa-v31','zeit-pwa-v32','zeit-pwa-v33','zeit-pwa-v34','zeit-pwa-v35','zeit-pwa-v36','zeit-pwa-v37','zeit-pwa-v38','zeit-pwa-v39','zeit-pwa-v40','zeit-pwa-v41','zeit-pwa-v42','zeit-pwa-v43','zeit-pwa-v44','zeit-pwa-v45','zeit-pwa-v46','zeit-pwa-v47','zeit-pwa-v48','zeit-pwa-v49','zeit-pwa-v50','zeit-pwa-v51','zeit-pwa-v52','zeit-pwa-v53','zeit-pwa-v54','zeit2-pwa-v55'];
+    legacy.forEach(n=>{ try{ indexedDB.deleteDatabase(n); }catch(e){} });
   }catch(e){}
-  try{ const keys=await caches.keys(); await Promise.all(keys.filter(k=>k!==CACHE_KEEP).map(k=>caches.delete(k))); }catch(e){}
-  try{ if(navigator.serviceWorker){ const regs=await navigator.serviceWorker.getRegistrations(); await Promise.all(regs.filter(r=>r.scope&&r.scope.endsWith(APP_SCOPE)).map(r=>r.unregister())); } }catch(e){}
+  try{
+    const keys=await caches.keys();
+    await Promise.all(keys.filter(k=>k!==CACHE_KEEP).map(k=>caches.delete(k)));
+  }catch(e){}
+  try{
+    if(navigator.serviceWorker){
+      const regs=await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.filter(r=>r.scope&&r.scope.endsWith(APP_SCOPE)).map(r=>r.unregister()));
+    }
+  }catch(e){}
 }
 
 function openDB(){
@@ -129,10 +149,23 @@ function openDB(){
     req.onsuccess=()=>resolve(req.result);
     req.onupgradeneeded=ev=>{
       const db=ev.target.result;
-      if(!db.objectStoreNames.contains(STORE.users)){ const s=db.createObjectStore(STORE.users,{keyPath:'username'}); s.createIndex('role','role',{unique:false}); }
-      if(!db.objectStoreNames.contains(STORE.projects)){ const s=db.createObjectStore(STORE.projects,{keyPath:'id'}); s.createIndex('name','name',{unique:false}); }
-      if(!db.objectStoreNames.contains(STORE.entries)){ const s=db.createObjectStore(STORE.entries,{keyPath:'id'}); s.createIndex('byUser','username',{unique:false}); s.createIndex('byMonth','month',{unique:false}); }
-      if(!db.objectStoreNames.contains(STORE.photos)){ const s=db.createObjectStore(STORE.photos',{keyPath:'id'}); s.createIndex('byProject','projectId',{unique:false}); }
+      if(!db.objectStoreNames.contains(STORE.users)){
+        const s=db.createObjectStore(STORE.users,{keyPath:'username'});
+        s.createIndex('role','role',{unique:false});
+      }
+      if(!db.objectStoreNames.contains(STORE.projects)){
+        const s=db.createObjectStore(STORE.projects,{keyPath:'id'});
+        s.createIndex('name','name',{unique:false});
+      }
+      if(!db.objectStoreNames.contains(STORE.entries)){
+        const s=db.createObjectStore(STORE.entries,{keyPath:'id'});
+        s.createIndex('byUser','username',{unique:false});
+        s.createIndex('byMonth','month',{unique:false});
+      }
+      if(!db.objectStoreNames.contains(STORE.photos)){
+        const s=db.createObjectStore(STORE.photos,{keyPath:'id'});
+        s.createIndex('byProject','projectId',{unique:false});
+      }
     };
   });
 }
@@ -149,8 +182,10 @@ async function bootstrap(){
 
 async function requireLogin(){
   const u=me();
-  if(u && u.username){ document.getElementById('who').textContent = (u.display||u.username)+' ('+u.role+')'; return true; }
-  // Show modal
+  if(u && u.username){
+    document.getElementById('who').textContent=(u.display||u.username)+' ('+u.role+')';
+    return true;
+  }
   document.getElementById('loginModal').style.display='flex';
   return false;
 }
@@ -164,28 +199,52 @@ async function tryLogin(){
   let ok=null;
   await new Promise((res,rej)=>{
     const r=st.openCursor();
-    r.onsuccess=e=>{ const c=e.target.result; if(c){ const v=c.value; if(v.username===user && v.pass===pass && v.status!=='inactive'){ ok=v; res(); } c.continue(); } else res(); };
+    r.onsuccess=e=>{
+      const c=e.target.result;
+      if(c){
+        const v=c.value;
+        if(v.username===user && v.pass===pass && v.status!=='inactive'){ ok=v; res(); }
+        c.continue();
+      } else res();
+    };
     r.onerror=()=>rej(r.error);
   });
-  if(ok){ setMe({username:ok.username,display:ok.display||ok.username,role:ok.role}); document.getElementById('loginModal').style.display='none'; document.getElementById('who').textContent=(ok.display||ok.username)+' ('+ok.role+')'; }
-  else alert('Login fehlgeschlagen oder Benutzer inaktiv.');
+  if(ok){
+    setMe({username:ok.username,display:ok.display||ok.username,role:ok.role});
+    document.getElementById('loginModal').style.display='none';
+    document.getElementById('who').textContent=(ok.display||ok.username)+' ('+ok.role+')';
+  } else {
+    alert('Login fehlgeschlagen oder Benutzer inaktiv.');
+  }
 }
 
 function doLogout(){ localStorage.removeItem('cu2'); location.reload(); }
 
 async function listProjects(){
-  const db=await openDB(); const st=os(db,STORE.projects); const items=[];
-  await new Promise((res,rej)=>{const r=st.openCursor(); r.onsuccess=e=>{const c=e.target.result; if(c){items.push(c.value); c.continue();} else res();}; r.onerror=()=>rej(r.error);});
+  const db=await openDB();
+  const st=os(db,STORE.projects);
+  const items=[];
+  await new Promise((res,rej)=>{
+    const r=st.openCursor();
+    r.onsuccess=e=>{ const c=e.target.result; if(c){ items.push(c.value); c.continue(); } else res(); };
+    r.onerror=()=>rej(r.error);
+  });
   items.sort((a,b)=>a.name.localeCompare(b.name));
-  const sel=document.getElementById('projectSelect'); sel.innerHTML=''; for(const p of items){ const o=document.createElement('option'); o.value=p.id; o.textContent=p.name; sel.appendChild(o); }
-  const ul=document.getElementById('projectList'); if(ul){ ul.innerHTML=''; for(const p of items){ const li=document.createElement('li'); li.textContent=p.name; ul.appendChild(li);} }
+  const sel=document.getElementById('projectSelect'); sel.innerHTML='';
+  for(const p of items){ const o=document.createElement('option'); o.value=p.id; o.textContent=p.name; sel.appendChild(o); }
+  const ul=document.getElementById('projectList');
+  if(ul){ ul.innerHTML=''; for(const p of items){ const li=document.createElement('li'); li.textContent=p.name; ul.appendChild(li); } }
 }
+
 async function addProject(name){
-  const u=me(); if(!u||u.role!=='admin'){ alert('Nur Admin darf Projekte anlegen.'); return; }
+  const u=me();
+  if(!u||u.role!=='admin'){ alert('Nur Admin darf Projekte anlegen.'); return; }
   if(!name||!name.trim()) return;
-  const db=await openDB(); await new Promise((res,rej)=>{const r=os(db,STORE.projects,'readwrite').put({id:crypto.randomUUID(),name:name.trim()}); r.onsuccess=res; r.onerror=()=>rej(r.error);});
+  const db=await openDB();
+  await new Promise((res,rej)=>{const r=os(db,STORE.projects,'readwrite').put({id:crypto.randomUUID(),name:name.trim()}); r.onsuccess=res; r.onerror=()=>rej(r.error);});
   await listProjects();
 }
+
 async function saveEntryFor(username){
   const u=me(); if(!u){ alert('Bitte zuerst anmelden.'); return; }
   const date=document.getElementById('date').value;
@@ -197,36 +256,170 @@ async function saveEntryFor(username){
   const note=document.getElementById('note').value.trim();
   const work=Math.max(0,end-start-pause);
   const rec={id:crypto.randomUUID(),username,date,projectId:pid,status,start,end,pause,note,work,month:monthKey(date)};
-  const db=await openDB(); await new Promise((res,rej)=>{const r=os(db,STORE.entries,'readwrite').put(rec); r.onsuccess=res; r.onerror=()=>rej(r.error);});
-  await renderMonth(); alert('Gespeichert.');
+  const db=await openDB();
+  await new Promise((res,rej)=>{const r=os(db,STORE.entries,'readwrite').put(rec); r.onsuccess=res; r.onerror=()=>rej(r.error);});
+  await renderMonth();
+  alert('Gespeichert.');
 }
-async function getEntries(month,u){ const db=await openDB(); const st=os(db,STORE.entries); const out=[];
-  await new Promise((res,rej)=>{const r=st.openCursor(); r.onsuccess=e=>{const c=e.target.result; if(c){const v=c.value; if(v.username===u && v.month===month) out.push(v); c.continue();} else res();}; r.onerror=()=>rej(r.error);}); out.sort((a,b)=>a.date.localeCompare(b.date)); return out; }
-async function compressImage(file,maxW=1600,quality=.82){ const img=new Image(); const dataUrl=await new Promise((res,rej)=>{const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(file);}); img.src=dataUrl; await new Promise(res=>img.onload=res); const scale=Math.min(1,maxW/img.width),w=Math.round(img.width*scale),h=Math.round(img.height*scale); const c=document.createElement('canvas'); c.width=w; c.height=h; c.getContext('2d').drawImage(img,0,0,w,h); return c.toDataURL('image/jpeg',quality); }
-async function addPhotosToProject(){ const inp=document.getElementById('photoInput'); const files=Array.from(inp.files||[]); if(!files.length){ alert('Bitte Fotos auswählen.'); return;} const pid=document.getElementById('projectSelect').value; if(!pid){ alert('Bitte Projekt wählen.'); return;} const db=await openDB(); const s=os(db,STORE.photos,'readwrite'); for(const f of files){ const dataUrl=await compressImage(f); const rec={id:crypto.randomUUID(),projectId:pid,filename:f.name,dataUrl,createdAt:new Date().toISOString()}; await new Promise((res,rej)=>{const r=s.put(rec); r.onsuccess=res; r.onerror=()=>rej(r.error);}); } await refreshPhotoGallery(); inp.value=''; }
-async function delPhoto(id){ const db=await openDB(); await new Promise((res,rej)=>{const r=os(db,STORE.photos,'readwrite').delete(id); r.onsuccess=res; r.onerror=()=>rej(r.error);}); await refreshPhotoGallery(); }
-async function refreshPhotoGallery(){ const pid=document.getElementById('projectSelect').value; const wrap=document.getElementById('photoGallery'); wrap.innerHTML=''; if(!pid) return; const db=await openDB(); const s=os(db,STORE.photos); const idx=s.index('byProject'); const list=[]; await new Promise((res,rej)=>{const r=idx.openCursor(IDBKeyRange.only(pid)); r.onsuccess=e=>{const c=e.target.result; if(c){list.push(c.value); c.continue();} else res();}; r.onerror=()=>rej(r.error);}); list.sort((a,b)=>a.createdAt.localeCompare(b.createdAt)); for(const p of list){ const fig=document.createElement('figure'); const img=new Image(); img.src=p.dataUrl; img.alt=p.filename; const cap=document.createElement('figcaption'); cap.textContent=p.filename; const btn=document.createElement('button'); btn.className='ghost'; btn.textContent='Löschen'; btn.onclick=()=>{ if(confirm('Foto löschen?')) delPhoto(p.id); }; fig.appendChild(img); fig.appendChild(cap); fig.appendChild(btn); wrap.appendChild(fig);} }
-async function renderMonth(){ const m=document.getElementById('monthPicker').value||monthKey(today()); const u=(me()&&me().username)||''; const rows=await getEntries(m,u); const tb=document.getElementById('tblMonth'); tb.innerHTML=''; let sum=0; for(const r of rows){ sum+=r.work; const tr=document.createElement('tr'); tr.innerHTML='<td>'+r.date+'</td><td>'+r.status+'</td><td>'+minToHHMM(r.start)+'</td><td>'+minToHHMM(r.end)+'</td><td>'+(r.projectId||'')+'</td><td>'+r.pause+'</td><td>'+minToHHMM(r.work)+'</td><td></td>'; tb.appendChild(tr);} document.getElementById('sumTime').textContent=minToHHMM(sum); }
+
+async function getEntries(month,u){
+  const db=await openDB();
+  const st=os(db,STORE.entries);
+  const out=[];
+  await new Promise((res,rej)=>{
+    const r=st.openCursor();
+    r.onsuccess=e=>{ const c=e.target.result; if(c){ const v=c.value; if(v.username===u && v.month===month) out.push(v); c.continue(); } else res(); };
+    r.onerror=()=>rej(r.error);
+  });
+  out.sort((a,b)=>a.date.localeCompare(b.date));
+  return out;
+}
+
+function imgToDataURL(file){
+  return new Promise((resolve,reject)=>{
+    const fr=new FileReader();
+    fr.onload=()=>resolve(fr.result);
+    fr.onerror=reject;
+    fr.readAsDataURL(file);
+  });
+}
+
+async function compressImage(file,maxW=1600,quality=.82){
+  const data=await imgToDataURL(file);
+  const img=new Image();
+  img.src=data;
+  await new Promise(res=>img.onload=res);
+  const scale=Math.min(1,maxW/img.width);
+  const w=Math.round(img.width*scale), h=Math.round(img.height*scale);
+  const c=document.createElement('canvas');
+  c.width=w; c.height=h;
+  const ctx=c.getContext('2d'); ctx.drawImage(img,0,0,w,h);
+  return c.toDataURL('image/jpeg',quality);
+}
+
+async function addPhotosToProject(){
+  const inp=document.getElementById('photoInput');
+  const files=Array.from(inp.files||[]);
+  if(!files.length){ alert('Bitte Fotos auswählen.'); return; }
+  const pid=document.getElementById('projectSelect').value;
+  if(!pid){ alert('Bitte Projekt wählen.'); return; }
+  const db=await openDB();
+  const s=os(db,STORE.photos,'readwrite');
+  for(const f of files){
+    const dataUrl=await compressImage(f);
+    const rec={id:crypto.randomUUID(),projectId:pid,filename:f.name,dataUrl,createdAt:new Date().toISOString()};
+    await new Promise((res,rej)=>{const r=s.put(rec); r.onsuccess=res; r.onerror=()=>rej(r.error);});
+  }
+  await refreshPhotoGallery();
+  inp.value='';
+}
+
+async function delPhoto(id){
+  const db=await openDB();
+  await new Promise((res,rej)=>{const r=os(db,STORE.photos,'readwrite').delete(id); r.onsuccess=res; r.onerror=()=>rej(r.error);});
+  await refreshPhotoGallery();
+}
+
+async function refreshPhotoGallery(){
+  const pid=document.getElementById('projectSelect').value;
+  const wrap=document.getElementById('photoGallery');
+  wrap.innerHTML='';
+  if(!pid) return;
+  const db=await openDB();
+  const s=os(db,STORE.photos);
+  const idx=s.index('byProject');
+  const list=[];
+  await new Promise((res,rej)=>{
+    const r=idx.openCursor(IDBKeyRange.only(pid));
+    r.onsuccess=e=>{ const c=e.target.result; if(c){ list.push(c.value); c.continue(); } else res(); };
+    r.onerror=()=>rej(r.error);
+  });
+  list.sort((a,b)=>String(a.createdAt).localeCompare(String(b.createdAt)));
+  for(const p of list){
+    const fig=document.createElement('figure');
+    const img=document.createElement('img'); img.src=p.dataUrl; img.alt=p.filename||'';
+    const cap=document.createElement('figcaption');
+    const del=document.createElement('button'); del.className='ghost'; del.textContent='Löschen';
+    del.onclick=async()=>{ if(!confirm('Foto löschen?')) return; await delPhoto(p.id); };
+    cap.appendChild(del);
+    fig.appendChild(img); fig.appendChild(cap);
+    wrap.appendChild(fig);
+  }
+}
+
+async function renderMonth(){
+  const m=document.getElementById('monthPicker').value||monthKey(today());
+  const u=(me()&&me().username)||'';
+  const rows=await getEntries(m,u);
+  const tb=document.getElementById('tblMonth'); tb.innerHTML='';
+  let sum=0;
+  for(const r of rows){
+    sum+=r.work;
+    const tr=document.createElement('tr');
+    tr.innerHTML='<td>'+r.date+'</td>'
+      +'<td>'+r.status+'</td>'
+      +'<td>'+minToHHMM(r.start)+'</td>'
+      +'<td>'+minToHHMM(r.end)+'</td>'
+      +'<td>'+(r.projectId||'')+'</td>'
+      +'<td>'+r.pause+'</td>'
+      +'<td>'+minToHHMM(r.work)+'</td>'
+      +'<td></td>';
+    tb.appendChild(tr);
+  }
+  document.getElementById('sumTime').textContent=minToHHMM(sum);
+}
 
 window.addEventListener('DOMContentLoaded', async ()=>{
   await autoCleanup();
-  if('serviceWorker' in navigator){ try{ await navigator.serviceWorker.register('/Zeiterfassung/sw.js',{scope:'/Zeiterfassung/'}); }catch(e){} }
+  if('serviceWorker' in navigator){
+    try{ await navigator.serviceWorker.register('/Zeiterfassung/sw.js',{scope:'/Zeiterfassung/'}); }catch(e){}
+  }
   await bootstrap();
-  if(!await requireLogin()){ document.getElementById('btnLogin').onclick=tryLogin; }
+  if(!await requireLogin()){
+    document.getElementById('btnLogin').onclick=tryLogin;
+  }
   document.getElementById('btnLogout').onclick=doLogout;
   const u=me(); if(u){ document.getElementById('who').textContent=(u.display||u.username)+' ('+u.role+')'; }
   document.getElementById('date').value=today();
   document.getElementById('monthPicker').value=monthKey(today());
-  await listProjects(); await refreshPhotoGallery();
-  const db=await openDB(); const us=os(db,STORE.users); const items=[]; await new Promise((res,rej)=>{const r=us.openCursor(); r.onsuccess=e=>{const c=e.target.result; if(c){items.push(c.value); c.continue();} else res();}; r.onerror=()=>rej(r.error);}); items.sort((a,b)=>a.username.localeCompare(b.username)); const up=document.getElementById('userPicker'); up.innerHTML=''; for(const u2 of items){ const o=document.createElement('option'); o.value=u2.username; o.textContent=(u2.display||u2.username)+' ('+u2.role+')'; if(u&&u2.username===u.username) o.selected=true; up.appendChild(o); }
-  const recalc=()=>{ const start=+document.getElementById('startRange').value, end=+document.getElementById('endRange').value, pause=+document.getElementById('pauseMin').value; const work=Math.max(0,end-start-pause), over=Math.max(0,work-8*60); document.getElementById('workTime').value=minToHHMM(work)+' (Ü: '+minToHHMM(over)+')'; }; ['startRange','endRange','pauseMin'].forEach(id=>document.getElementById(id).addEventListener('input',recalc)); recalc();
-  document.getElementById('btnAddProject').onclick=()=>{const v=document.getElementById('newProjectName').value; addProject(v).then(()=>document.getElementById('newProjectName').value='');};
+  await listProjects();
+  await refreshPhotoGallery();
+  const db=await openDB();
+  const us=os(db,STORE.users); const items=[];
+  await new Promise((res,rej)=>{
+    const r=us.openCursor();
+    r.onsuccess=e=>{ const c=e.target.result; if(c){ items.push(c.value); c.continue(); } else res(); };
+    r.onerror=()=>rej(r.error);
+  });
+  items.sort((a,b)=>a.username.localeCompare(b.username));
+  const up=document.getElementById('userPicker'); up.innerHTML='';
+  for(const u2 of items){
+    const o=document.createElement('option');
+    o.value=u2.username;
+    o.textContent=(u2.display||u2.username)+' ('+(u2.role||'')+')';
+    up.appendChild(o);
+  }
+  const recalc=()=>{
+    const start=+document.getElementById('startRange').value;
+    const end=+document.getElementById('endRange').value;
+    const pause=+document.getElementById('pauseMin').value;
+    const work=Math.max(0,end-start-pause);
+    const over=Math.max(0,work-8*60);
+    document.getElementById('workTime').value=minToHHMM(work)+' (Ü: '+minToHHMM(over)+')';
+  };
+  ['startRange','endRange','pauseMin'].forEach(id=>document.getElementById(id).addEventListener('input',recalc));
+  recalc();
+  document.getElementById('btnAddProject').onclick=()=>{
+    const v=document.getElementById('newProjectName').value;
+    addProject(v).then(()=>document.getElementById('newProjectName').value='');
+  };
   document.getElementById('projectSelect').addEventListener('change',refreshPhotoGallery);
-  document.getElementById('btnAddPhotos').onclick=(e)=>{e.preventDefault(); addPhotosToProject();};
-  document.getElementById('btnSaveMine').onclick=()=>saveEntryFor(me().username);
+  document.getElementById('btnAddPhotos').onclick=(e)=>{ e.preventDefault(); addPhotosToProject(); };
+  document.getElementById('btnSaveMine').onclick=()=>{ const cu=me(); if(cu) saveEntryFor(cu.username); };
   document.getElementById('monthPicker').addEventListener('change',renderMonth);
   document.getElementById('userPicker').addEventListener('change',renderMonth);
   await renderMonth();
 });
+
 </script>
 </body></html>
