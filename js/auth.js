@@ -10,18 +10,14 @@ function ensureSeedAdmin(){
 }
 async function login(username, password){
   ensureSeedAdmin();
-  const u = readUsers().find(x=>x.username===username);
+  const uname = String(username||'').trim().toLowerCase();
+  const pwd = String(password||'').trim();
+  const users = readUsers();
+  const u = users.find(x=> String(x.username||'').toLowerCase()===uname);
   if(!u) return {ok:false, error:'Unbekannter Nutzer'};
-  if(u.password!==password) return {ok:false, error:'Falsches Passwort'};
+  if(String(u.password)!==pwd) return {ok:false, error:'Falsches Passwort'};
   writeSession({userId:u.id, ts:Date.now()});
   return {ok:true, mustChangePassword:!!u.mustChangePassword};
-}
-function currentUser(){ const s = readSession(); if(!s) return null; return readUsers().find(x=>x.id===s.userId)||null; }
-function logout(){ localStorage.removeItem(DB.sessionKey); location.replace('login.html'); }
-function protectPage(roles=null){
-  const me = currentUser();
-  if(!me){ location.replace('login.html'); return; }
-  if(Array.isArray(roles) && !roles.includes(me.role)){ alert('Kein Zugriff: '+me.role); location.replace('dashboard.html'); }
 }
 function changeOwnPassword(newPw){
   if(!newPw || newPw.length<4){ alert('Passwort zu kurz'); return false; }

@@ -15,18 +15,17 @@
     <section class="card">
       <h1><span class="logo-dot"></span> Holzbau Zaunschirm</h1>
       <h2>Anmelden</h2>
-      <label>Nutzername <input id="username" autocomplete="username" placeholder="admin"></label>
-      <label>Passwort <input id="password" type="password" autocomplete="current-password" placeholder="••••••••"></label>
+      <label>Nutzername <input id="username" autocapitalize="none" autocorrect="off" spellcheck="false" inputmode="email" autocomplete="username" placeholder="admin"></label>
+      <label>Passwort <input id="password" autocapitalize="none" autocorrect="off" spellcheck="false" type="password" autocomplete="current-password" placeholder="••••••••"></label>
       <div class="row">
         <button id="loginBtn" class="btn-primary">Login</button>
         <button id="clearBtn" class="btn" type="button">Abbrechen</button>
       </div>
-      <p class="hint">Erststart: <code>admin / admin</code>, <code>lead / lead</code>, <code>user / user</code></p>
-      <p id="msg" class="msg"></p>
+      <p id="msg" class="msg" style="display:none"></p>
     </section>
   </main>
-  <script defer src="js/storage.js"></script>
-  <script defer src="js/auth.js"></script>
+  <script defer src="js/storage.js?v=02c"></script>
+  <script defer src="js/auth.js?v=02c"></script>
   <script>
     document.addEventListener('DOMContentLoaded', function(){
       try {
@@ -40,7 +39,7 @@
         loginBtn.addEventListener("click", async ()=>{
           const res = await login(username.value.trim(), password.value);
           if (res.ok){ if(res.mustChangePassword) sessionStorage.setItem("mustChangePassword","1"); location.replace("dashboard.html"); }
-          else { msg.textContent = res.error || "Login fehlgeschlagen"; msg.classList.add("error"); }
+          else { msg.textContent = res.error || "Login fehlgeschlagen"; msg.classList.add("error"); msg.style.display='block'; }
         });
         document.addEventListener("keydown", e=>{ if(e.key==="Enter") loginBtn.click(); });
       } catch(e){ console.error(e); }
