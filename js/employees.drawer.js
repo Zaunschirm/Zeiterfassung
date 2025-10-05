@@ -16,7 +16,7 @@
   function drawerClose(){ UI.drawer.classList.remove('open'); UI.backdrop.classList.remove('open'); setTimeout(()=> UI.backdrop.classList.add('hidden'), 200); setTimeout(()=> UI.addBtn?.focus(), 100); }
   window.openModal = function(emp){ drawerOpen(emp); }; window.closeModal = function(){ drawerClose(); }; window.closeEmpModal = drawerClose;
   document.addEventListener('DOMContentLoaded', ()=>{
-    UI.addBtn && UI.addBtn.addEventListener('click', ()=>drawerOpen(null));
+    UI.addBtn && UI.addEventListener && UI.addBtn.addEventListener('click', ()=>drawerOpen(null));
     UI.closeBtn && UI.closeBtn.addEventListener('click', drawerClose);
     UI.cancelBtn && UI.cancelBtn.addEventListener('click', drawerClose);
     UI.backdrop && UI.backdrop.addEventListener('click', (ev)=>{ if(ev.target===UI.backdrop) drawerClose(); });

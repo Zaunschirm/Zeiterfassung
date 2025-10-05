@@ -32,21 +32,20 @@
     const target = users.find(u=>u.id===id);
     if(!target){ alert('Mitarbeiter nicht gefunden.'); return; }
     if(me && me.id===id){ alert('Du kannst dich nicht selbst löschen.'); return; }
-    // mindestens ein Admin muss bleiben
     if(target.role==='admin'){
       const otherAdmins = users.filter(u=>u.role==='admin' && u.id!==id);
       if(otherAdmins.length===0){ alert('Mindestens ein Admin muss verbleiben.'); return; }
     }
     if(!confirm(`Mitarbeiter "${target.name||target.username}" wirklich löschen?`)) return;
 
-    // 1) Nutzer löschen
+    // Remove from users
     const remain = users.filter(u=>u.id!==id);
     writeUsers(remain);
 
-    // 2) Zeiten entfernen
+    // Remove times
     const times = readTimes(); if(times[id]){ delete times[id]; writeTimes(times); }
 
-    // 3) Planungseinträge entfernen
+    // Remove from planning
     const plan = readPlan(); let changed=false;
     Object.keys(plan).forEach(week=>{
       const weekData = plan[week]||{};

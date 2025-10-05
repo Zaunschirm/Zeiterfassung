@@ -42,7 +42,8 @@ function setupSliders(){
     fromOut.textContent = from; toOut.textContent = to;
     const pauseMin = parseInt(document.getElementById('pauseDropdown').value||'0',10);
     const totalMin = (e - s + 1) * 15;
-    durOut.textContent = Math.max(0, totalMin - pauseMin);
+    const net = Math.max(0, totalMin - pauseMin);
+    durOut.textContent = minToHHMM(net);
   }
   rs.min=0; rs.max=59; re.min=0; re.max=59; rs.step=1; re.step=1;
   rs.value='7'; re.value='46'; clamp();
@@ -86,7 +87,8 @@ function bookFromGrid(){
   if(gridSelection.start==null){ alert('Bitte Zeitbereich wählen.'); return; }
   const fromStr = idxToTime(gridSelection.start); const toStr = idxToTime(gridSelection.end+1);
   const fromMs = toDateTimeMs(dateStr, fromStr); const toMs = toDateTimeMs(dateStr, toStr);
-  const duration = Math.max(0, Math.round((toMs - fromMs)/60000) - pauseMin);
+  const totalMin = Math.max(0, Math.round((toMs - fromMs)/60000));
+  const duration = Math.max(0, totalMin - pauseMin);
 
   ids.forEach(userId=>{
     const base = readTimes(); if(!base[userId]) base[userId]={}; if(!base[userId][dateStr]) base[userId][dateStr]=[];
@@ -97,7 +99,7 @@ function bookFromGrid(){
   function idxToTime(idx){ const minutesFromStart = idx*15; const totalMinutes = 5*60 + minutesFromStart; const h=Math.floor(totalMinutes/60); const m=totalMinutes%60; return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`; }
 }
 
-function renderTimes(){ /* intentionally minimal in this build */ }
+function renderTimes(){ /* keep minimal */ }
 
 function renderMonth(){
   const me = currentUser();
