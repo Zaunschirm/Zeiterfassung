@@ -1,6 +1,6 @@
-<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Mitarbeiterverwaltung</title>
-<link rel="icon" href="/Zeiterfassung/assets/logo.png">
+<!doctype html><html lang="de"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mitarbeiterverwaltung – V58</title><link rel="icon" href="/Zeiterfassung/assets/logo.png">
 <style>:root{--bg:#faf6f6;--ink:#1d1d1d;--card:#fff;--line:#ddd;--btn:#8c7b6a;--brand:#2b261f;--mut:#666}
 *{box-sizing:border-box}body{margin:0;font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink)}
 header{background:#d9c9b9;color:var(--brand);padding:10px 14px;display:flex;gap:12px;justify-content:space-between;align-items:center}
@@ -12,131 +12,118 @@ button{background:var(--btn);color:#fff;border:0;padding:10px 16px;border-radius
 button.ghost{background:#fff;color:var(--ink);border:1px solid var(--line)}
 .row{display:grid;gap:12px}.row-2{grid-template-columns:1fr 1fr}.row-3{grid-template-columns:1fr 1fr 1fr}
 @media(max-width:820px){.row-2,.row-3{grid-template-columns:1fr}}
-.range-row{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center}
-table{width:100%;border-collapse:collapse;margin-top:8px}th,td{border-bottom:1px solid var(--line);text-align:left;padding:10px;font-size:14px}
-#photoGallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px;margin-top:10px}
-#photoGallery figure{margin:0;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fff}
-#photoGallery img{display:block;width:100%;height:110px;object-fit:cover}
-#photoGallery figcaption{font-size:12px;color:#666;text-align:center;padding:6px}
-#loginModal{position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;align-items:center;justify-content:center;padding:16px}
-#loginCard{max-width:420px;width:100%}</style></head><body>
+table{width:100%;border-collapse:collapse;margin-top:12px}th,td{border-bottom:1px solid var(--line);text-align:left;padding:10px;font-size:14px}
+.muted{color:var(--mut)}
+</style></head><body>
 <header>
-  <a href="/Zeiterfassung/">← Zurück</a>
-  <strong>Mitarbeiterverwaltung – V56</strong>
-  <span style="flex:1"></span>
-  <span id="who" class="muted"></span>
-  <button id="btnLogout" class="link">Logout</button>
+  <strong>Mitarbeiterverwaltung</strong>
+  <nav style="display:flex;gap:12px;align-items:center">
+    <a href="/Zeiterfassung/">← Zurück</a>
+    <span id="who" class="muted"></span>
+  </nav>
 </header>
 
-<div id="loginModal" style="position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;align-items:center;justify-content:center;padding:16px">
-  <section class="card" style="max-width:420px;width:100%">
-    <h3>Bitte anmelden (Admin)</h3>
-    <div class="row row-2">
-      <div><label>Benutzername</label><input id="lgUser" placeholder="admin"></div>
-      <div><label>Passwort</label><input id="lgPass" type="password" placeholder="admin"></div>
-    </div>
-    <div style="display:flex;gap:10px;margin-top:10px"><button id="btnLogin">Login</button></div>
-  </section>
-</div>
-
 <main class="wrap">
-<section class="card"><h3>Neuen Mitarbeiter anlegen</h3>
-<div class="row" style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 140px;gap:12px">
-  <div><label>Benutzername</label><input id="nuUser" placeholder="z. B. stefan"></div>
-  <div><label>Anzeigename</label><input id="nuDisplay" placeholder="z. B. Stefan H."></div>
-  <div><label>Passwort</label><input id="nuPass" placeholder="mind. 4 Zeichen"></div>
-  <div><label>Rolle</label><select id="nuRole"><option value="mitarbeiter">Mitarbeiter</option><option value="teamleiter">Teamleiter</option><option value="admin">Admin</option></select></div>
-  <div><button id="btnCreateUser">Anlegen</button></div>
-</div></section>
-<section class="card"><h3>Nutzerliste</h3><table><thead><tr><th>Benutzername</th><th>Anzeigename</th><th>Rolle</th><th>Status</th><th>Aktion</th></tr></thead><tbody id="tblBody"></tbody></table></section>
+  <section class="card">
+    <h3>Neuen Benutzer anlegen</h3>
+    <div class="row row-3">
+      <div><label>Benutzername</label><input id="nuUser" placeholder="z. B. stefan"></div>
+      <div><label>Anzeigename</label><input id="nuName" placeholder="z. B. Stefan"></div>
+      <div><label>Passwort (leer = 1234)</label><input id="nuPass" type="password" placeholder="z. B. starkes PW"></div>
+    </div>
+    <div class="row row-2" style="margin-top:8px">
+      <div><label>Rolle</label>
+        <select id="nuRole"><option value="mitarbeiter">Mitarbeiter</option><option value="teamleiter">Teamleiter</option><option value="admin">Admin</option></select>
+      </div>
+      <div style="display:flex;align-items:end"><button id="btnAdd">Anlegen</button></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h3>Benutzerliste</h3>
+    <div id="grid">
+      <table>
+        <thead><tr><th>Benutzername</th><th>Anzeigename</th><th>Rolle</th><th>Status</th><th>Aktion</th></tr></thead>
+        <tbody id="tbl"></tbody>
+      </table>
+    </div>
+    <p class="muted">Aktionen: Rolle/Status ändern, Passwort zurücksetzen auf 1234, Benutzer löschen.</p>
+  </section>
 </main>
 
 <script>
-
 const DB_NAME='zeit-web-pwa2'; const STORE={users:'users'};
-const os=(db,name,mode='readonly')=>db.transaction(name,mode).objectStore(name);
-const me=()=>{ try{return JSON.parse(localStorage.getItem('cu2')||'null');}catch(_){return null;} };
-const setMe=u=>localStorage.setItem('cu2',JSON.stringify(u));
+const os=(db,n,m='readonly')=>db.transaction(n,m).objectStore(n);
+const me=()=>{try{return JSON.parse(localStorage.getItem('cu2')||'null');}catch(_){return null;}};
 
-function openDB(){
-  return new Promise((resolve,reject)=>{
-    const req=indexedDB.open(DB_NAME,1);
-    req.onsuccess=()=>resolve(req.result);
-    req.onerror=()=>reject(req.error);
-    req.onupgradeneeded=e=>{
-      const db=e.target.result;
-      if(!db.objectStoreNames.contains(STORE.users)){
-        const s=db.createObjectStore(STORE.users,{keyPath:'username'});
-        s.createIndex('role','role',{unique:false});
-      }
-    };
-  });
-}
-
-async function ensureBootstrap(){
-  const db=await openDB(); const s=os(db,STORE.users); const count=await new Promise((res,rej)=>{const r=s.count(); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error);});
-  if(count===0){
-    await new Promise((res,rej)=>{const r=os(db,STORE.users,'readwrite').put({username:'admin',display:'Administrator',pass:'admin',role:'admin',status:'active'}); r.onsuccess=res; r.onerror=()=>rej(r.error);});
-  }
-}
-async function allUsers(){ const db=await openDB(); const s=os(db,STORE.users); const out=[]; await new Promise((res,rej)=>{const r=s.openCursor(); r.onsuccess=e=>{const c=e.target.result; if(c){out.push(c.value); c.continue();} else res();}; r.onerror=()=>rej(r.error);}); return out; }
-async function putUser(u){ const db=await openDB(); await new Promise((res,rej)=>{const r=os(db,STORE.users,'readwrite').put(u); r.onsuccess=res; r.onerror=()=>rej(r.error);}); }
-async function delUser(id){ const db=await openDB(); await new Promise((res,rej)=>{const r=os(db,STORE.users,'readwrite').delete(id); r.onsuccess=res; r.onerror=()=>rej(r.error);}); }
+function openDB(){return new Promise((res,rej)=>{const r=indexedDB.open(DB_NAME,1); r.onerror=()=>rej(r.error); r.onsuccess=()=>res(r.result); r.onupgradeneeded=e=>{const db=e.target.result; if(!db.objectStoreNames.contains(STORE.users)){const s=db.createObjectStore(STORE.users,{keyPath:'username'}); s.createIndex('role','role',{unique:false});}}});}
 
 async function requireAdmin(){
-  const u=me();
-  if(u&&u.role==='admin'){ document.getElementById('who').textContent=(u.display||u.username)+' (Admin)'; return true; }
-  document.getElementById('loginModal').style.display='flex'; return false;
+  const u=me(); if(!u){ alert('Bitte erst in der Haupt-App anmelden.'); location.href='/Zeiterfassung/'; return false; }
+  if(u.role!=='admin'){ alert('Nur Administratoren dürfen die Mitarbeiterverwaltung öffnen.'); location.href='/Zeiterfassung/'; return false; }
+  document.getElementById('who').textContent=u.display||u.username; return true;
 }
-async function tryLogin(){
-  const user=document.getElementById('lgUser').value.trim();
-  const pass=document.getElementById('lgPass').value.trim();
-  const db=await openDB(); const st=os(db,STORE.users); let ok=null;
-  await new Promise((res,rej)=>{const r=st.openCursor(); r.onsuccess=e=>{const c=e.target.result; if(c){const v=c.value; if(v.username===user && v.pass===pass && v.role==='admin' && v.status!=='inactive'){ ok=v; res(); } c.continue(); } else res();}; r.onerror=()=>rej(r.error);});
-  if(ok){ setMe({username:ok.username,display:ok.display||ok.username,role:ok.role}); document.getElementById('loginModal').style.display='none'; location.reload(); }
-  else alert('Login fehlgeschlagen oder kein Admin.');
-}
-function doLogout(){ localStorage.removeItem('cu2'); location.reload(); }
 
-function td(t){ const d=document.createElement('td'); d.textContent=t; return d; }
-function row(u){
-  const tr=document.createElement('tr');
-  tr.appendChild(td(u.username));
-  tr.appendChild(td(u.display||''));
-  tr.appendChild(td(u.role||''));
-  tr.appendChild(td(u.status||'active'));
-  const act=document.createElement('td'); act.style.display='flex'; act.style.gap='8px';
-  const tgl=document.createElement('button'); tgl.className='ghost'; tgl.textContent=(u.status==='active'?'Deaktivieren':'Aktivieren');
-  tgl.onclick=async()=>{u.status=(u.status==='active'?'inactive':'active'); await putUser(u); render();};
-  const pw=document.createElement('button'); pw.className='ghost'; pw.textContent='Passwort';
-  pw.onclick=async()=>{const p=prompt('Neues Passwort:',''); if(p){u.pass=p; await putUser(u);}};
-  const del=document.createElement('button'); del.className='ghost'; del.textContent='Löschen';
-  del.onclick=async()=>{ if(confirm('Benutzer löschen?')){ await delUser(u.username); render(); } };
-  act.appendChild(tgl); act.appendChild(pw); act.appendChild(del); tr.appendChild(act); return tr;
+async function listUsers(){
+  const db=await openDB(); const s=os(db,STORE.users); const rows=[];
+  await new Promise((res,rej)=>{const r=s.openCursor(); r.onsuccess=e=>{const c=e.target.result; if(c){rows.push(c.value); c.continue();} else res();}; r.onerror=()=>rej(r.error);});
+  rows.sort((a,b)=>a.username.localeCompare(b.username));
+  const tb=document.getElementById('tbl'); tb.innerHTML=''; for(const u of rows){
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td>${u.username}</td><td>${u.display||''}</td>
+      <td><select data-act="role" data-id="${u.username}"><option value="mitarbeiter">Mitarbeiter</option><option value="teamleiter">Teamleiter</option><option value="admin">Admin</option></select></td>
+      <td><select data-act="stat" data-id="${u.username}"><option value="active">aktiv</option><option value="inactive">inaktiv</option></select></td>
+      <td style="display:flex;gap:8px">
+        <button data-act="reset" data-id="${u.username}" class="ghost">Passwort 1234</button>
+        <button data-act="del" data-id="${u.username}" class="ghost">Löschen</button>
+      </td>`;
+    tb.appendChild(tr);
+    tr.querySelector('[data-act="role"]').value=u.role||'mitarbeiter';
+    tr.querySelector('[data-act="stat"]').value=u.status||'active';
+  }
 }
-async function render(){
-  const tb=document.getElementById('tblBody'); tb.innerHTML='';
-  const users=(await allUsers()).sort((a,b)=>a.username.localeCompare(b.username));
-  for(const u of users) tb.appendChild(row(u));
+
+async function addUser(){
+  const username=document.getElementById('nuUser').value.trim();
+  const display=document.getElementById('nuName').value.trim();
+  const pass=document.getElementById('nuPass').value.trim()||'1234';
+  const role=document.getElementById('nuRole').value;
+  if(!username){alert('Benutzername fehlt');return;}
+  const db=await openDB();
+  await new Promise((res,rej)=>{const r=os(db,STORE.users,'readwrite').put({username,display,pass,role,status:'active'}); r.onsuccess=res; r.onerror=()=>rej(r.error);});
+  document.getElementById('nuUser').value=''; document.getElementById('nuName').value=''; document.getElementById('nuPass').value='';
+  await listUsers();
+}
+
+async function updateUser(username,patch){
+  const db=await openDB(); const s=os(db,STORE.users);
+  const u=await new Promise((res,rej)=>{const r=s.get(username); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error);});
+  if(!u) return;
+  Object.assign(u,patch);
+  await new Promise((res,rej)=>{const r=os(db,STORE.users,'readwrite').put(u); r.onsuccess=res; r.onerror=()=>rej(r.error);});
+}
+
+async function delUser(username){
+  if(!confirm('Benutzer wirklich löschen?')) return;
+  const db=await openDB();
+  await new Promise((res,rej)=>{const r=os(db,STORE.users,'readwrite').delete(username); r.onsuccess=res; r.onerror=()=>rej(r.error);});
+  await listUsers();
 }
 
 window.addEventListener('DOMContentLoaded', async ()=>{
-  await ensureBootstrap();
-  if(!await requireAdmin()){ document.getElementById('btnLogin').onclick=tryLogin; }
-  document.getElementById('btnLogout').onclick=doLogout;
-  document.getElementById('btnCreateUser').onclick=async()=>{
-    const nu=document.getElementById('nuUser').value.trim();
-    const nd=document.getElementById('nuDisplay').value.trim();
-    const np=document.getElementById('nuPass').value.trim();
-    const nr=document.getElementById('nuRole').value;
-    if(!nu||!np){ alert('Benutzername und Passwort erforderlich.'); return; }
-    const users=await allUsers();
-    if(users.some(x=>x.username===nu)){ alert('Benutzer existiert bereits.'); return; }
-    await putUser({username:nu,display:nd||nu,pass:np,role:nr,status:'active'});
-    document.getElementById('nuUser').value=''; document.getElementById('nuDisplay').value=''; document.getElementById('nuPass').value='';
-    render();
-  };
-  await render();
+  if(!await requireAdmin()) return;
+  await listUsers();
+  document.getElementById('btnAdd').onclick=addUser;
+  document.getElementById('grid').addEventListener('change', async e=>{
+    const t=e.target, id=t.getAttribute('data-id'); if(!id) return;
+    if(t.getAttribute('data-act')==='role') await updateUser(id,{role:t.value});
+    if(t.getAttribute('data-act')==='stat') await updateUser(id,{status:t.value});
+  });
+  document.getElementById('grid').addEventListener('click', async e=>{
+    const btn=e.target.closest('button'); if(!btn) return; const id=btn.getAttribute('data-id');
+    if(btn.getAttribute('data-act')==='reset'){ await updateUser(id,{pass:'1234'}); alert('Passwort gesetzt: 1234'); }
+    if(btn.getAttribute('data-act')==='del'){ await delUser(id); }
+  });
 });
-
-</script></body></html>
+</script>
+</body></html>
