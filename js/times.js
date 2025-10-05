@@ -132,3 +132,6 @@ document.addEventListener('click', (e)=>{
     lastTappedIdx = null;
   }
 });
+
+// ensure global access for inline init call
+if (typeof window !== 'undefined') { window.initTimesPage = initTimesPage; }
