@@ -21,9 +21,12 @@
         <button id="loginBtn" class="btn-primary">Login</button>
         <button id="clearBtn" class="btn" type="button">Abbrechen</button>
       </div>
-      <p id="msg" class="msg" style="display:none"></p>
+      <p class="hint">Erststart: <code>admin / admin</code>, <code>lead / lead</code>, <code>user / user</code></p>
+      <p id="msg" class="msg"></p>
     </section>
   </main>
+  <script defer src="js/storage.js?v=02c"></script>
+  <script defer src="js/auth.js?v=02c"></script>
   <script>
     document.addEventListener('DOMContentLoaded', function(){
       try {
@@ -37,15 +40,11 @@
         loginBtn.addEventListener("click", async ()=>{
           const res = await login(username.value.trim(), password.value);
           if (res.ok){ if(res.mustChangePassword) sessionStorage.setItem("mustChangePassword","1"); location.replace("dashboard.html"); }
-          else { msg.textContent = res.error || "Login fehlgeschlagen"; msg.classList.add("error"); msg.style.display='block'; }
+          else { msg.textContent = res.error || "Login fehlgeschlagen"; msg.classList.add("error"); }
         });
         document.addEventListener("keydown", e=>{ if(e.key==="Enter") loginBtn.click(); });
       } catch(e){ console.error(e); }
     });
   </script>
-
-<script defer src="js/storage.js?v=03c"></script>
-<script defer src="js/auth.js?v=03c"></script>
-<script defer src="js/app.js?v=03c"></script>
 </body>
 </html>

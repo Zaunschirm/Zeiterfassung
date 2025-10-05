@@ -26,21 +26,3 @@ function changeOwnPassword(newPw){
   if(i>=0){ users[i].password = newPw; users[i].mustChangePassword=false; writeUsers(users); return true; }
   return false;
 }
-
-
-window.ensureSeedAdmin = ensureSeedAdmin;
-window.login = login;
-window.currentUser = currentUser;
-window.logout = logout;
-window.protectPage = protectPage;
-window.changeOwnPassword = changeOwnPassword;
-
-// expose globals (guarded)
-(function(){
-  try{ if(typeof ensureSeedAdmin==='function') window.ensureSeedAdmin = ensureSeedAdmin; }catch(e){}
-  try{ if(typeof login==='function') window.login = login; }catch(e){}
-  try{ if(typeof currentUser==='function') window.currentUser = currentUser; }catch(e){}
-  try{ if(typeof logout==='function') window.logout = logout; }catch(e){}
-  try{ if(typeof protectPage==='function') window.protectPage = protectPage; }catch(e){}
-  try{ if(typeof changeOwnPassword==='function') window.changeOwnPassword = changeOwnPassword; }catch(e){}
-})();
