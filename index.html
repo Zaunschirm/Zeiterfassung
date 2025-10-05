@@ -3,50 +3,45 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Zeiterfassung – V62</title>
+  <title>Start – Zeiterfassung V63</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="stylesheet" href="assets/css/style.css">
-  <meta name="theme-color" content="#f3f4f6">
+  <meta name="theme-color" content="#2F3438">
 </head>
 <body>
 <header class="topbar">
-  <div class="brand">⏱️ Zeiterfassung – V62</div>
-  <nav id="nav">
+  <div class="brand">
+    <span class="logo-dot"></span>
+    <span class="brand-text">Holzbau Zaunschirm</span>
+  </div>
+  <nav id="nav" class="nav">
     <a href="dashboard.html" class="navlink">Übersicht</a>
-    <a href="mitarbeiter.html" class="navlink require-role-admin">Mitarbeiterverwaltung</a>
+    <a href="mitarbeiter.html" class="navlink require-role-admin">Mitarbeiter</a>
     <a href="zeiterfassung.html" class="navlink">Zeiterfassung</a>
     <a href="plan.html" class="navlink require-role-lead">Wocheneinteilung</a>
-    <button id="logoutBtn" class="btn-outline">Logout</button>
+    <button id="logoutBtn" class="btn-ghost">Logout</button>
   </nav>
 </header>
 <main class="container">
 
 <section class="card">
-  <h1>Starte...</h1>
-  <p>Du wirst automatisch weitergeleitet.</p>
+  <h1>Starte…</h1>
+  <p>Weiterleitung folgt.</p>
 </section>
 <script>
   (function() {
-    try {
-      const session = JSON.parse(localStorage.getItem('z_session'));
-      if (!session || !session.userId) {
-        window.location.replace('login.html');
-        return;
-      }
-      window.location.replace('dashboard.html');
-    } catch(e) {
-      console.error(e);
-      window.location.replace('login.html');
-    }
+    const s = JSON.parse(localStorage.getItem('z_session')||'null');
+    if(!s || !s.userId){ location.replace('login.html'); } else { location.replace('dashboard.html'); }
   })();
 </script>
 
 </main>
 <footer class="footer">
-  <small>© 2025 Holzbau Zaunschirm – Demo-App</small>
+  <small>© 2025 Holzbau Zaunschirm</small>
 </footer>
 <script src="js/storage.js"></script>
 <script src="js/auth.js"></script>
 <script src="js/app.js"></script>
+
 </body>
 </html>

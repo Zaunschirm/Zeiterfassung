@@ -3,14 +3,16 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Anmelden – Zeiterfassung V62</title>
+  <title>Anmelden – Zeiterfassung V63</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="stylesheet" href="assets/css/style.css">
+  <meta name="theme-color" content="#2F3438">
 </head>
 <body class="login-body">
   <main class="login-container">
     <section class="card">
-      <h1>Anmelden</h1>
+      <h1 class="brand-line"><span class="logo-dot"></span> Holzbau Zaunschirm</h1>
+      <h2>Anmelden</h2>
       <label>Nutzername
         <input id="username" placeholder="z. B. admin" autocomplete="username">
       </label>
@@ -32,10 +34,8 @@
     clearBtn.addEventListener('click', ()=>{ username.value=''; password.value=''; msg.textContent=''; });
     loginBtn.addEventListener('click', async ()=>{
       const res = await login(username.value.trim(), password.value);
-      if(res.ok){
-        if(res.mustChangePassword){ sessionStorage.setItem('mustChangePassword','1'); }
-        window.location.replace('dashboard.html');
-      } else { msg.textContent = res.error || 'Login fehlgeschlagen'; msg.classList.add('error'); }
+      if(res.ok){ if(res.mustChangePassword){ sessionStorage.setItem('mustChangePassword','1'); } location.replace('dashboard.html'); }
+      else { msg.textContent = res.error || 'Login fehlgeschlagen'; msg.classList.add('error'); }
     });
     document.addEventListener('keydown', e=>{ if(e.key==='Enter') loginBtn.click(); });
   </script>

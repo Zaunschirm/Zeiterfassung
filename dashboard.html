@@ -3,76 +3,66 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Zeiterfassung – V62</title>
+  <title>Übersicht – Zeiterfassung V63</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="stylesheet" href="assets/css/style.css">
-  <meta name="theme-color" content="#f3f4f6">
+  <meta name="theme-color" content="#2F3438">
 </head>
 <body>
 <header class="topbar">
-  <div class="brand">⏱️ Zeiterfassung – V62</div>
-  <nav id="nav">
+  <div class="brand">
+    <span class="logo-dot"></span>
+    <span class="brand-text">Holzbau Zaunschirm</span>
+  </div>
+  <nav id="nav" class="nav">
     <a href="dashboard.html" class="navlink">Übersicht</a>
-    <a href="mitarbeiter.html" class="navlink require-role-admin">Mitarbeiterverwaltung</a>
+    <a href="mitarbeiter.html" class="navlink require-role-admin">Mitarbeiter</a>
     <a href="zeiterfassung.html" class="navlink">Zeiterfassung</a>
     <a href="plan.html" class="navlink require-role-lead">Wocheneinteilung</a>
-    <button id="logoutBtn" class="btn-outline">Logout</button>
+    <button id="logoutBtn" class="btn-ghost">Logout</button>
   </nav>
 </header>
 <main class="container">
 
 <section class="grid">
   <article class="card">
-    <h2>Willkommen<span id="userName"></span>!</h2>
-    <ul>
+    <h2>Übersicht</h2>
+    <ul class="list">
       <li><a class="btn-link" href="zeiterfassung.html">⏱️ Zeiterfassung</a></li>
       <li><a class="btn-link require-role-lead" href="plan.html">📅 Wocheneinteilung</a></li>
-      <li><a class="btn-link require-role-admin" href="mitarbeiter.html">👥 Mitarbeiterverwaltung</a></li>
+      <li><a class="btn-link require-role-admin" href="mitarbeiter.html">👥 Mitarbeiter</a></li>
     </ul>
     <div id="pwChange" class="alert hidden">
       <strong>Bitte neues Passwort setzen.</strong>
-      <label>Neues Passwort
-        <input id="newPw" type="password">
-      </label>
+      <label>Neues Passwort <input id="newPw" type="password"></label>
       <button class="btn-primary" id="saveNewPw">Speichern</button>
     </div>
   </article>
   <article class="card">
-    <h3>Schnellaktionen</h3>
+    <h3>Aktionen</h3>
     <div class="row">
       <a class="btn" href="zeiterfassung.html">Arbeitszeit buchen</a>
       <a class="btn" href="plan.html">Woche planen</a>
-      <button class="btn-outline" id="clearData">Alte Daten löschen</button>
+      <button class="btn" id="clearData">Alte Daten löschen</button>
     </div>
   </article>
 </section>
-<script>
-  protectPage(); renderNavByRole();
-  const me = currentUser();
-  if(me){ userName.textContent = me.name ? (", "+me.name) : ""; }
-  if(sessionStorage.getItem('mustChangePassword')==='1' || me?.mustChangePassword){
-    pwChange.classList.remove('hidden');
-  }
-  saveNewPw.addEventListener('click', ()=>{
-    const ok = changeOwnPassword(newPw.value);
-    if(ok){ pwChange.classList.add('hidden'); sessionStorage.removeItem('mustChangePassword'); alert('Passwort aktualisiert.'); }
-  });
-  clearData.addEventListener('click', ()=>{
-    if(confirm('Alle lokalen App-Daten wirklich löschen?')){
-      localStorage.clear();
-      caches && caches.keys().then(keys=>keys.forEach(k=>caches.delete(k)));
-      alert('Gelöscht. Starte neu.');
-      window.location.replace('login.html');
-    }
-  });
-</script>
 
 </main>
 <footer class="footer">
-  <small>© 2025 Holzbau Zaunschirm – Demo-App</small>
+  <small>© 2025 Holzbau Zaunschirm</small>
 </footer>
 <script src="js/storage.js"></script>
 <script src="js/auth.js"></script>
 <script src="js/app.js"></script>
+
+<script>
+  protectPage(); renderNavByRole();
+  const me = currentUser();
+  if(sessionStorage.getItem('mustChangePassword')==='1' || me?.mustChangePassword){ pwChange.classList.remove('hidden'); }
+  saveNewPw.addEventListener('click', ()=>{ if(changeOwnPassword(newPw.value)){ pwChange.classList.add('hidden'); sessionStorage.removeItem('mustChangePassword'); alert('Passwort aktualisiert.'); } });
+  clearData.addEventListener('click', ()=>{ if(confirm('Alle lokalen App-Daten wirklich löschen?')){ localStorage.clear(); caches && caches.keys().then(keys=>keys.forEach(k=>caches.delete(k))); location.replace('login.html'); } });
+</script>
+
 </body>
 </html>
