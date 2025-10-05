@@ -48,7 +48,19 @@
   <div class="row">
     <label>Foto zur Buchung (optional) <input type="file" id="photoInput" accept="image/*"></label>
   </div>
-  <h3>Heutige Buchungen</h3>
+  <section class="card">
+  <h3>Zeitbalken (15-Minuten Raster)</h3>
+  <div class="timeline">
+    <div class="timeline-scale"><span>05:00</span><span>06:00</span><span>07:00</span><span>08:00</span><span>09:00</span><span>10:00</span><span>11:00</span><span>12:00</span><span>13:00</span><span>14:00</span><span>15:00</span><span>16:00</span><span>17:00</span><span>18:00</span><span>19:00</span><span>20:00</span></div>
+    <div id="timelineGrid" class="timeline-grid"></div>
+    <div class="timeline-legend">
+      <div>Von: <span id="fromOut" class="timeout">—</span> · Bis: <span id="toOut" class="timeout">—</span></div>
+      <div>Dauer: <span id="durOut" class="timeout">0</span> min (abzgl. Pause)</div>
+    </div>
+    <div class="row"><button id="bookBtn" class="btn-primary">Buchen</button></div>
+  </div>
+</section>
+<h3>Heutige Buchungen</h3>
   <table class="table" id="timeTable">
     <thead><tr><th>Von</th><th>Bis</th><th>Dauer (min)</th><th>Pause (min)</th><th>Status</th><th>Foto</th></tr></thead>
     <tbody></tbody>

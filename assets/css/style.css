@@ -69,3 +69,15 @@ img.avatar{width:40px; height:40px; border-radius:50%; object-fit:cover; border:
 .projchip .color{width:12px; height:12px; border-radius:2px; border:1px solid rgba(0,0,0,.2)}
 .remove{border:none; background:transparent; cursor:pointer; color:#973737; font-weight:700}
 @media(max-width:1000px){ .board{grid-template-columns:1fr} }
+
+
+/* Zeitbalken (15-Minuten Raster) */
+.timeline{margin:12px 0; border:1px solid var(--border); background:#fff; border-radius:var(--radius); padding:10px}
+.timeline-scale{display:flex; font-size:12px; color:#555; margin-bottom:6px}
+.timeline-scale span{flex:1; text-align:center}
+.timeline-grid{display:grid; grid-template-columns: repeat(60, 1fr); gap:2px}
+.slot{height:28px; background:#f3eee2; border:1px solid var(--border); cursor:pointer; position:relative}
+.slot.selected{background:var(--primary); border-color:#b6955b}
+.slot .tick{position:absolute; top:0; left:0; right:0; height:2px; background:rgba(0,0,0,.06)}
+.timeline-legend{display:flex; justify-content:space-between; font-size:12px; color:#555; margin-top:6px}
+.timeout{font-weight:600; color:#2F3438}
