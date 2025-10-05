@@ -5,8 +5,12 @@
   "scope": "/Zeiterfassung/",
   "display": "standalone",
   "background_color": "#faf6f6",
-  "theme_color": "#c9b9a7",
+  "theme_color": "#d9c9b9",
   "icons": [
-    { "src": "/Zeiterfassung/assets/logo.png", "sizes": "64x64 128x128", "type": "image/png" }
+    {
+      "src": "/Zeiterfassung/assets/logo.png",
+      "sizes": "64x64 128x128",
+      "type": "image/png"
+    }
   ]
 }

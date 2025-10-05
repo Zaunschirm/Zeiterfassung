@@ -1,3 +1,65 @@
 <!doctype html>
-<html lang="de"><head><meta charset="utf-8"><title>Mitarbeiterverwaltung V61</title></head>
-<body><h1>Mitarbeiterverwaltung</h1></body></html>
+<html lang="de">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mitarbeiterverwaltung – V61</title>
+<link rel="manifest" href="/Zeiterfassung/manifest.json">
+<link rel="icon" href="/Zeiterfassung/assets/logo.png">
+<style>
+:root{--bg:#faf6f6;--ink:#1f1f1f;--card:#fff;--line:#e6e2de;--btn:#8c7b6a}
+*{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif}
+header{background:#d9c9b9;padding:10px 14px;display:flex;justify-content:space-between;align-items:center}
+.wrap{max-width:900px;margin:0 auto;padding:12px}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px;margin:12px 0}
+label{display:block;font-size:12px;color:#555;margin:6px 0 4px}
+input,select{width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;font:inherit}
+.row{display:grid;gap:12px;grid-template-columns:1fr 1fr 1fr 1fr}
+@media(max-width:840px){.row{grid-template-columns:1fr}}
+button{background:var(--btn);color:#fff;border:0;border-radius:10px;padding:10px 16px;font:inherit;cursor:pointer}
+table{width:100%;border-collapse:collapse} th,td{border-bottom:1px solid var(--line);padding:10px;text-align:left}
+</style>
+</head>
+<body>
+<header><strong>Mitarbeiterverwaltung – V61</strong><a href="/Zeiterfassung/">Zur App</a></header>
+<main class="wrap">
+  <section class="card">
+    <h2>Neuen Mitarbeiter anlegen</h2>
+    <div class="row">
+      <div><label>Benutzername</label><input id="nu" placeholder="z. B. stefan"></div>
+      <div><label>Anzeigename</label><input id="nd" placeholder="z. B. Stefan"></div>
+      <div><label>Passwort</label><input id="np" placeholder="Passwort"></div>
+      <div><label>Rolle</label><select id="nr"><option value="mitarbeiter">Mitarbeiter</option><option value="team">Teamleiter</option><option value="admin">Admin</option></select></div>
+    </div>
+    <div style="margin-top:10px"><button id="btnCreate">Anlegen</button></div>
+  </section>
+  <section class="card">
+    <h3>Nutzerliste</h3>
+    <table><thead><tr><th>Benutzername</th><th>Name</th><th>Rolle</th><th>Aktion</th></tr></thead><tbody id="tb"></tbody></table>
+  </section>
+</main>
+<script>
+const DB_NAME='zeitdb_v61'; const DB_VER=1;
+function openDB(){return new Promise((resolve,reject)=>{const r=indexedDB.open(DB_NAME,DB_VER);
+  r.onupgradeneeded=e=>{const db=e.target.result;
+    const users=db.createObjectStore('users',{keyPath:'username'});
+    users.createIndex('role','role',{unique:false});
+    const projects=db.createObjectStore('projects',{keyPath:'id',autoIncrement:true});
+    const entries=db.createObjectStore('entries',{keyPath:'id',autoIncrement:true});
+    entries.createIndex('byMonthUser',['month','username'],{unique:false});
+    const photos=db.createObjectStore('photos',{keyPath:'id',autoIncrement:true});
+    photos.createIndex('byDateUser',['date','username'],{unique:false});};
+  r.onsuccess=()=>resolve(r.result); r.onerror=()=>reject(r.error);});}
+async function tx(store,mode,fn){const db=await openDB();return new Promise((res,rej)=>{const t=db.transaction(store,mode);const s=t.objectStore(store);const out=fn(s);t.oncomplete=()=>res(out);t.onerror=()=>rej(t.error);});}
+async function ensureSeed(){const c=await tx('users','readonly',s=>s.count()); if(!c){await tx('users','readwrite',s=>s.put({username:'admin',display:'Administrator',role:'admin',pass:'admin'})); await tx('projects','readwrite',s=>s.put({id:1,name:'Allgemein'}));}}
+async function list(){const arr=await new Promise(async resolve=>{const db=await openDB();const s=db.transaction('users').objectStore('users');const out=[];s.openCursor().onsuccess=e=>{const c=e.target.result;if(c){out.push(c.value);c.continue()}else resolve(out)}});
+  const tb=document.getElementById('tb'); tb.innerHTML=''; for(const u of arr){const tr=document.createElement('tr'); tr.innerHTML=`<td>${u.username}</td><td>${u.display}</td><td>${u.role}</td><td><button data-u="${u.username}" class="del">Löschen</button></td>`; tb.append(tr);} 
+  tb.querySelectorAll('.del').forEach(b=>b.onclick=async()=>{const u=b.dataset.u; if(!confirm('Nutzer '+u+' löschen?'))return; await tx('users','readwrite',s=>s.delete(u)); list();});
+}
+document.getElementById('btnCreate').onclick=async()=>{
+  const u=document.getElementById('nu').value.trim(); const d=document.getElementById('nd').value.trim()||u; const p=document.getElementById('np').value||'1234'; const r=document.getElementById('nr').value;
+  if(!u){alert('Benutzername fehlt');return}
+  await tx('users','readwrite',s=>s.put({username:u,display:d,role:r,pass:p})); list(); alert('Angelegt.');
+}
+ensureSeed().then(list);
+</script>
+</body></html>
