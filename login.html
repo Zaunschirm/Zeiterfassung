@@ -15,8 +15,8 @@
     <section class="card">
       <h1><span class="logo-dot"></span> Holzbau Zaunschirm</h1>
       <h2>Anmelden</h2>
-      <label>Nutzername <input id="username" autocapitalize="none" autocorrect="off" spellcheck="false" inputmode="email" autocomplete="username" placeholder="admin"></label>
-      <label>Passwort <input id="password" autocapitalize="none" autocorrect="off" spellcheck="false" type="password" autocomplete="current-password" placeholder="••••••••"></label>
+      <label>Nutzername <input id="username" autocomplete="username" placeholder="admin"></label>
+      <label>Passwort <input id="password" type="password" autocomplete="current-password" placeholder="••••••••"></label>
       <div class="row">
         <button id="loginBtn" class="btn-primary">Login</button>
         <button id="clearBtn" class="btn" type="button">Abbrechen</button>
@@ -25,8 +25,8 @@
       <p id="msg" class="msg"></p>
     </section>
   </main>
-  <script defer src="js/storage.js?v=02c"></script>
-  <script defer src="js/auth.js?v=02c"></script>
+  <script defer src="js/storage.js"></script>
+  <script defer src="js/auth.js"></script>
   <script>
     document.addEventListener('DOMContentLoaded', function(){
       try {
