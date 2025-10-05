@@ -1,52 +1,5 @@
 
-// V68: Zeitbalken (15-Minuten Raster) 05:00–20:00, Default 06:45–16:30, Pause 30 Min
-let gridSelection = {start:null, end:null}; // indices 0..59
-function initTimesPage(){
-  const me = currentUser();
-  const sel = document.getElementById('userSelect');
-  const users = readUsers();
-  const options = (me.role==='admin' || me.role==='lead') ? users : users.filter(u=>u.id===me.id);
-  sel.innerHTML = options.map(u=>`<option value="${u.id}">${u.name||u.username}</option>`).join('');
-  sel.value = (me.role==='admin'||me.role==='lead') ? sel.value : me.id;
-  document.getElementById('dateInput').valueAsDate = new Date();
-
-  // Default Pause 30
-  const pauseDrop = document.getElementById('pauseDropdown');
-  if(pauseDrop){ pauseDrop.value = '30'; }
-
-  // Build timeline if exists
-  if(document.getElementById('timelineGrid')){
-    buildTimeline();
-    document.getElementById('bookBtn').addEventListener('click', bookFromGrid);
-  }
-
-  // Fallback old buttons remain (optional)
-  const sb = document.getElementById('startBtn'); if(sb) sb.addEventListener('click', ()=>alert('Nutze bitte den Zeitbalken oben und klicke auf "Buchen".'));
-  const pb = document.getElementById('pauseBtn'); if(pb) pb.addEventListener('click', ()=>alert('Pause über das Dropdown auswählen.'));
-  const eb = document.getElementById('stopBtn'); if(eb) eb.addEventListener('click', ()=>alert('Nutze den Zeitbalken (Buchen) statt Start/Stopp.'));
-
-  renderTimes();
-}
-
-function buildTimeline(){
-  const grid = document.getElementById('timelineGrid');
-  grid.innerHTML = '';
-  // 05:00 -> 20:00 → 60 Slots à 15 min
-  for(let i=0;i<60;i++){
-    const div = document.createElement('div');
-    div.className = 'slot';
-    div.dataset.idx = i;
-    div.addEventListener('mousedown', onSelectStart);
-    div.addEventListener('mouseover', onSelectOver);
-    div.addEventListener('mouseup', onSelectEnd);
-    grid.appendChild(div);
-  }
-  // Default selection 06:45 (idx 7) to 16:30 (idx 46)
-  setSelection(7, 46);
-  updateOutputs();
-  document.addEventListener('mouseup', ()=> dragging=false);
-}
-
+// V69 mobile + totals
 let dragging = false;
 let anchor = null;
 
@@ -90,7 +43,8 @@ function updateOutputs(){
   fromOut.textContent = from; toOut.textContent = to;
   const totalMin = ((gridSelection.end - gridSelection.start + 1) * 15);
   const pauseMin = parseInt(document.getElementById('pauseDropdown').value||'0',10);
-  durOut.textContent = Math.max(0, totalMin - pauseMin);
+  const d = Math.max(0, totalMin - pauseMin);
+  durOut.textContent = d;
 }
 
 function bookFromGrid(){
@@ -148,4 +102,16 @@ function renderTimes(){
       <td>${r.photo ? '<a target="_blank" href="'+r.photo+'">Foto</a>' : '—'}</td>
     </tr>
   `).join('');
+  computeTotalsForDay(userId, dateStr);
+}
+
+function computeTotalsForDay(userId, dateStr){
+  const base = readTimes();
+  const list = (base[userId] && base[userId][dateStr]) ? base[userId][dateStr] : [];
+  const sum = list.reduce((acc, r)=> acc + (r.durMin||0), 0);
+  const overtime = Math.max(0, sum - 9*60);
+  const tEl = document.getElementById('totalsToday');
+  const oEl = document.getElementById('overtimeToday');
+  if(tEl) tEl.textContent = minToHHMM(sum);
+  if(oEl) oEl.textContent = minToHHMM(overtime);
 }

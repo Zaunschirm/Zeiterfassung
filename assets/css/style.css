@@ -81,3 +81,19 @@ img.avatar{width:40px; height:40px; border-radius:50%; object-fit:cover; border:
 .slot .tick{position:absolute; top:0; left:0; right:0; height:2px; background:rgba(0,0,0,.06)}
 .timeline-legend{display:flex; justify-content:space-between; font-size:12px; color:#555; margin-top:6px}
 .timeout{font-weight:600; color:#2F3438}
+
+
+/* --- Mobile optimizations --- */
+@media(max-width: 640px){
+  .container{ margin-top: 76px; padding: 0 10px; }
+  .row{ gap: 8px; }
+  input, select, textarea, .btn, .btn-primary, .btn-ghost{ font-size:16px; padding:12px 14px; }
+  .table th, .table td{ padding:10px; }
+  .timeline{ padding:8px; }
+  .timeline-grid{ gap:1px; }
+  .slot{ height:32px; }
+  .topbar{ height:56px; }
+}
+/* Sticky footer totals on mobile */
+.totalsbar{position:sticky; bottom:0; background:#fff; border:1px solid var(--border); border-radius:var(--radius); padding:10px; display:flex; justify-content:space-between; gap:10px; margin-top:8px}
+.totalsbar strong{font-variant-numeric: tabular-nums;}
