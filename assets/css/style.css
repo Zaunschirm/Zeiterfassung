@@ -91,7 +91,7 @@ img.avatar{width:40px; height:40px; border-radius:50%; object-fit:cover; border:
   .table th, .table td{ padding:10px; }
   .timeline{ padding:8px; }
   .timeline-grid{ gap:1px; }
-  .slot{ height:32px; }
+  .slot{ height:38px; }
   .topbar{ height:56px; }
 }
 /* Sticky footer totals on mobile */

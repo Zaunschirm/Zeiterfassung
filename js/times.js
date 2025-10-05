@@ -115,3 +115,20 @@ function computeTotalsForDay(userId, dateStr){
   if(tEl) tEl.textContent = minToHHMM(sum);
   if(oEl) oEl.textContent = minToHHMM(overtime);
 }
+
+// Tap-to-select on mobile: first tap sets start, second tap sets end
+let lastTappedIdx = null;
+document.addEventListener('click', (e)=>{
+  const slot = e.target.closest('.slot');
+  if(!slot) return;
+  const idx = parseInt(slot.dataset.idx,10);
+  if(lastTappedIdx===null){
+    setSelection(idx, idx);
+    lastTappedIdx = idx;
+  } else {
+    const a = Math.min(lastTappedIdx, idx);
+    const b = Math.max(lastTappedIdx, idx);
+    setSelection(a, b);
+    lastTappedIdx = null;
+  }
+});
