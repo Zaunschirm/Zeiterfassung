@@ -7,3 +7,5 @@ self.addEventListener('install', e=>{ self.skipWaiting(); }); self.addEventListe
 // V01j month overview
 
 // V01k checklist users + projects + cancel harden
+
+// V01l admin-only projects + cost center + slider + admin-only employees

@@ -63,7 +63,7 @@
 <script defer src="js/employees.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', ()=>{
-  try{ protectPage(['admin','lead']); renderNavByRole(); if(typeof initEmployeePage==='function') initEmployeePage(); }catch(e){ console.error(e); }
+  try{ protectPage(['admin']); renderNavByRole(); if(typeof initEmployeePage==='function') initEmployeePage(); }catch(e){ console.error(e); }
 });
 </script>
 

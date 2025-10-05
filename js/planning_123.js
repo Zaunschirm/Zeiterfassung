@@ -11,7 +11,7 @@ function initPlanning123(){
   if(window.__canEditPlanning) copyPrev.addEventListener('click', copyPreviousWeek);
   if(window.__canEditPlanning) clearWeek.addEventListener('click', ()=>{ if(confirm('Woche wirklich leeren?')){ const all=readPlan(); all[weekPicker.value]={}; writePlan(all); renderBoard(); }});
   exportCsv.addEventListener('click', exportPlanningCsv);
-  if(window.__canEditPlanning) addProject.addEventListener('click', ()=>{ const name=(projName.value||'').trim(); const color=projColor.value||'#C8A86B'; if(!name) return; const ps=readProjects(); ps.push({id:'p'+Math.random().toString(36).slice(2,9), name, color}); writeProjects(ps); projName.value=''; renderBoard(); });
+  if(window.__canEditPlanning) addProject.addEventListener('click', ()=>{ const name=(projName.value||'').trim(); const color=projColor.value||'#C8A86B'; const cost=(projKst&&projKst.value||'').trim(); if(!name) return; const ps=readProjects(); ps.push({id:'p'+Math.random().toString(36).slice(2,9), name, color, costCenter: cost}); writeProjects(ps); if(projName) projName.value=''; if(projKst) projKst.value=''; renderBoard(); });
   renderBoard();
 }
 function isoWeekString(d){ const dt=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate())); const dayNum=(dt.getUTCDay()+6)%7; dt.setUTCDate(dt.getUTCDate()-dayNum+3); const firstThursday=new Date(Date.UTC(dt.getUTCFullYear(),0,4)); const weekNo=1+Math.round(((dt-firstThursday)/86400000-3+((firstThursday.getUTCDay()+6)%7))/7); const year=dt.getUTCFullYear(); return year+'-W'+String(weekNo).padStart(2,'0'); }
@@ -28,7 +28,7 @@ function renderBoard(){
   }
 
   const projs = readProjects();
-  projList.innerHTML = projs.map(p=>`<span class="projchip" data-pid="${p.id}"><span class="color" style="background:${p.color}"></span>${escapeHtml(p.name)} ${window.__canEditPlanning?'<button class="remove" title="Löschen">×</button>':''}</span>`).join('');
+  projList.innerHTML = projs.map(p=>`<span class="projchip" data-pid="${p.id}"><span class="color" style="background:${p.color}"></span>${escapeHtml(p.name)}${p.costCenter?` <small style='color:#6b7280'>(KSt ${escapeHtml(p.costCenter)})</small>`:''} ${window.__canEditPlanning?'<button class="remove" title="Löschen">×</button>':''}</span>`).join('');
   if(window.__canEditPlanning){
     projList.querySelectorAll('.remove').forEach(btn=> btn.addEventListener('click', ()=>{ const pid=btn.parentElement.getAttribute('data-pid'); writeProjects(readProjects().filter(x=>x.id!==pid)); renderBoard(); }));
   }

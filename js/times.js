@@ -15,7 +15,8 @@ function initTimesPage(){
   document.getElementById('dateInput').valueAsDate = new Date();
   document.getElementById('pauseDropdown').value = '30';
 
-  buildTimeline();
+  // buildTimeline removed in slider version
+  setupSliders();
   // populate project select
   if(document.getElementById('projectSelect')){ populateProjectSelect(); document.getElementById('addProjBtn').addEventListener('click', addNewProject); }
   document.getElementById('bookBtn').addEventListener('click', bookFromGrid);
@@ -26,7 +27,7 @@ function initTimesPage(){
 }
 
 function buildTimeline(){
-  const grid = document.getElementById('timelineGrid');
+  const rs=document.getElementById('rangeStart'); const re=document.getElementById('rangeEnd');
   grid.innerHTML = '';
   for(let i=0;i<60;i++){
     const div = document.createElement('div');
@@ -157,14 +158,14 @@ function handleDayStatusLock(){
   const status = document.getElementById('dayStatus').value;
   const pid = (document.getElementById('projectSelect')||{}).value || null;
   const pauseSel = document.getElementById('pauseDropdown');
-  const grid = document.getElementById('timelineGrid');
+  const rs=document.getElementById('rangeStart'); const re=document.getElementById('rangeEnd');
   if(status==='vacation' || status==='sick'){
     pauseSel.value = '0'; pauseSel.disabled = true;
     setSelection(0, 59);
-    grid.style.pointerEvents = 'none';
+    if(rs) rs.disabled=true; if(re) re.disabled=true;
   } else {
     pauseSel.disabled = false;
-    grid.style.pointerEvents = 'auto';
+    if(rs) rs.disabled=false; if(re) re.disabled=false;
     if(gridSelection.start===0 && gridSelection.end===59){
       setSelection(7,46);
     }
@@ -221,13 +222,36 @@ function populateProjectSelect(){
   sel.innerHTML = `<option value="">(ohne Projekt)</option>` + ps.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
 }
 function addNewProject(){
-  const name = (document.getElementById('newProjName')||{}).value?.trim();
+  const me=currentUser(); if(!me || me.role!=='admin'){ alert('Projekte dürfen nur Admins anlegen.'); return; }
+  const name = (document.getElementById('newProjName')||{}).value?.trim(); const cost=(document.getElementById('newProjKst')||{}).value?.trim();
   const color = (document.getElementById('newProjColor')||{}).value || '#C8A86B';
   if(!name){ alert('Bitte Projektnamen eingeben.'); return; }
   const ps = readProjects(); const id = 'p'+Math.random().toString(36).slice(2,9);
-  ps.push({id, name, color}); writeProjects(ps);
-  if(document.getElementById('newProjName')) document.getElementById('newProjName').value='';
+  ps.push({id, name, color, costCenter: cost||''}); writeProjects(ps);
+  if(document.getElementById('newProjName')) document.getElementById('newProjName').value=''; if(document.getElementById('newProjKst')) document.getElementById('newProjKst').value='';
   populateProjectSelect();
   const sel = document.getElementById('projectSelect'); if(sel) sel.value = id;
   alert('Projekt angelegt.');
+}
+
+function setupSliders(){
+  const rs=document.getElementById('rangeStart'); const re=document.getElementById('rangeEnd');
+  function clamp(){
+    let s=parseInt(rs.value||'7',10), e=parseInt(re.value||'46',10);
+    if(e<s) e=s;
+    rs.value=String(s); re.value=String(e);
+    gridSelection.start=s; gridSelection.end=e;
+    const from = idxToTime(s); const to = idxToTime(e+1);
+    document.getElementById('labelStart').textContent = from;
+    document.getElementById('labelEnd').textContent = to;
+    fromOut.textContent = from; toOut.textContent = to;
+    const pauseMin = parseInt(document.getElementById('pauseDropdown').value||'0',10);
+    const totalMin = (e - s + 1) * 15;
+    durOut.textContent = Math.max(0, totalMin - pauseMin);
+  }
+  rs.min=0; rs.max=59; re.min=0; re.max=59; rs.step=1; re.step=1;
+  // defaults 06:45..16:30 -> indices from 05:00 base: 1h45=7, to=16:30 => from 05:00: 11h30 -> 46
+  rs.value='7'; re.value='46'; clamp();
+  rs.addEventListener('input', clamp); re.addEventListener('input', clamp);
+  document.getElementById('pauseDropdown').addEventListener('change', clamp);
 }

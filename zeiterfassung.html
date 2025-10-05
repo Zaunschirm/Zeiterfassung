@@ -53,23 +53,32 @@
   </label>
   <div class="row" style="gap:6px">
     <label>Neues Projekt <input id="newProjName" placeholder="Projektname"></label>
+    <label>Kostenstelle <input id="newProjKst" placeholder="z.B. 4711-01"></label>
     <label>Farbe <input id="newProjColor" type="color" value="#C8A86B"></label>
     <button id="addProjBtn" class="btn">Anlegen</button>
   </div>
 </div>
 
+
 <section class="card">
-  <h3>Zeitbalken (15-Minuten Raster)</h3>
-  <div class="timeline">
-    <div class="timeline-scale"><span>05:00</span><span>06:00</span><span>07:00</span><span>08:00</span><span>09:00</span><span>10:00</span><span>11:00</span><span>12:00</span><span>13:00</span><span>14:00</span><span>15:00</span><span>16:00</span><span>17:00</span><span>18:00</span><span>19:00</span><span>20:00</span></div>
-    <div id="timelineGrid" class="timeline-grid"></div>
-    <div class="timeline-legend">
-      <div>Von: <span id="fromOut" class="timeout">—</span> · Bis: <span id="toOut" class="timeout">—</span></div>
-      <div>Dauer: <span id="durOut" class="timeout">0</span> min (abzgl. Pause)</div>
-    </div>
-    <div class="row"><button id="bookBtn" class="btn-primary">Buchen</button></div>
+  <h3>Zeitbalken (Schieber • 15‑Minuten Raster)</h3>
+  <div class="row wrap">
+    <label>Start
+      <input type="range" id="rangeStart" min="0" max="59" step="1">
+      <div><small id="labelStart">—</small></div>
+    </label>
+    <label>Ende
+      <input type="range" id="rangeEnd" min="0" max="59" step="1">
+      <div><small id="labelEnd">—</small></div>
+    </label>
   </div>
+  <div class="timeline-legend">
+    <div>Von: <span id="fromOut" class="timeout">—</span> · Bis: <span id="toOut" class="timeout">—</span></div>
+    <div>Dauer: <span id="durOut" class="timeout">0</span> min (abzgl. Pause)</div>
+  </div>
+  <div class="row"><button id="bookBtn" class="btn-primary">Buchen</button></div>
 </section>
+
 
 
 <h3>Monatsübersicht</h3>
