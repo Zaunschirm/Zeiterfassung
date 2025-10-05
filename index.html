@@ -1,236 +1,46 @@
-<!doctype html><html lang="de"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Zeiterfassung – V58</title>
-<link rel="manifest" href="/Zeiterfassung/manifest.json"><link rel="icon" href="/Zeiterfassung/assets/logo.png">
-<style>:root{--bg:#faf6f6;--ink:#1d1d1d;--card:#fff;--line:#ddd;--btn:#8c7b6a;--brand:#2b261f;--mut:#666}
-*{box-sizing:border-box}body{margin:0;font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink)}
-header{background:#d9c9b9;color:var(--brand);padding:10px 14px;display:flex;gap:12px;justify-content:space-between;align-items:center}
-header a, header button.link{color:var(--brand);text-decoration:none;background:transparent;border:0;padding:0;cursor:pointer;font:inherit}
-.wrap{max-width:1080px;margin:16px auto;padding:0 12px}.card{background:var(--card);border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,.06);padding:16px;margin:12px 0}
-label{display:block;font-size:12px;margin-bottom:4px;color:#555}
-input,select,textarea{width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;font:inherit}
-button{background:var(--btn);color:#fff;border:0;padding:10px 16px;border-radius:12px;font:inherit;cursor:pointer}
-button.ghost{background:#fff;color:var(--ink);border:1px solid var(--line)}
-.row{display:grid;gap:12px}.row-2{grid-template-columns:1fr 1fr}.row-3{grid-template-columns:1fr 1fr 1fr}
-@media(max-width:820px){.row-2,.row-3{grid-template-columns:1fr}}
-.range-row{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center}
-table{width:100%;border-collapse:collapse;margin-top:8px}th,td{border-bottom:1px solid var(--line);text-align:left;padding:10px;font-size:14px}
-#userSelect{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px;margin-top:8px}
-.userchip{display:flex;gap:8px;align-items:center;border:1px solid var(--line);border-radius:10px;padding:8px;background:#fff}
-.muted{color:var(--mut)}#loginModal{position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;align-items:center;justify-content:center;padding:16px}
-</style></head><body>
-<header>
-  <strong>Zeiterfassung – V58</strong>
-  <nav style="display:flex;gap:12px;align-items:center">
-    <a href="/Zeiterfassung/users/">Mitarbeiterverwaltung</a>
-    <span id="who" class="muted"></span>
-    <button id="btnLogout" class="link">Logout</button>
-  </nav>
-</header>
-
-<div id="loginModal"><section class="card" style="max-width:420px;width:100%">
-  <h3>Bitte anmelden</h3>
-  <div class="row row-2"><div><label>Benutzername</label><input id="lgUser" placeholder="admin"></div>
-  <div><label>Passwort</label><input id="lgPass" type="password" placeholder="admin"></div></div>
-  <div style="display:flex;gap:10px;margin-top:10px"><button id="btnLogin">Login</button></div>
-  <p class="muted" style="margin-top:8px">Erstanmeldung <b>admin / admin</b>.</p>
-</section></div>
-
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zeiterfassung V59</title>
+<link rel="manifest" href="/Zeiterfassung/manifest.json">
+<link rel="icon" href="/Zeiterfassung/assets/logo.png">
+<style>body{font-family:sans-serif;margin:0;background:#faf6f6;color:#222} header{background:#d9c9b9;padding:10px;display:flex;justify-content:space-between} header a{text-decoration:none;color:#222} .wrap{max-width:1000px;margin:0 auto;padding:10px} .card{background:#fff;margin:10px 0;padding:15px;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,.1)} button{padding:6px 12px;margin:4px}</style>
+</head>
+<body>
+<header><strong>Zeiterfassung – V59</strong><nav><a href="/Zeiterfassung/users/">Mitarbeiterverwaltung</a> | <a href="#" id="logout">Logout</a></nav></header>
 <main class="wrap">
-  <section class="card">
-    <h2>Zeiteingabe</h2>
-    <div class="row row-3">
-      <div><label>Projekt / Kostenstelle</label><select id="projectSelect"></select></div>
-      <div><label>Pausen (Minuten)</label><select id="pauseMin"><option>0</option><option>15</option><option selected>30</option><option>45</option><option>60</option></select></div>
-      <div><label>Bemerkung</label><input id="note" placeholder="z. B. Montage, Fahrzeit"></div>
-    </div>
-    <div class="range-row" style="margin-top:6px">
-      <div>
-        <div class="range-row"><input id="startRange" type="range" min="0" max="1439" value="480"><span>Start</span></div>
-        <div class="range-row" style="margin-top:8px"><input id="endRange" type="range" min="0" max="1439" value="1020"><span>Ende</span></div>
-      </div>
-      <div><label>Arbeitszeit (HH:MM)</label><input id="workTime" type="text" readonly></div>
-    </div>
-    <div class="row row-2" style="margin-top:8px">
-      <div><label>Tagesstatus</label><select id="status"><option value="work" selected>Arbeit</option><option value="urlaub">Urlaub</option><option value="krank">Krank</option></select></div>
-      <div><label>Datum</label><input id="date" type="date"></div>
-    </div>
-
-    <div class="card" style="padding:12px;margin:14px 0">
-      <h3>Mitarbeiter auswählen</h3>
-      <div class="muted">Admins/Teamleiter sehen alle Nutzer, Mitarbeiter nur sich selbst.</div>
-      <div id="userSelect"></div>
-      <div style="display:flex;gap:10px;margin-top:10px">
-        <button id="btnSaveMine">Nur für mich speichern</button>
-        <button id="btnSaveSelected" class="ghost">Für alle ausgewählten speichern</button>
-      </div>
-    </div>
-  </section>
-
-  <section class="card">
-    <h3>Übersicht Monat</h3>
-    <div class="row row-3">
-      <div><label>Monat</label><input id="monthPicker" type="month"></div>
-      <div><label>Nutzer</label><span id="meLabel" class="muted">Ich</span></div>
-      <div></div>
-    </div>
-    <table><thead><tr><th>Datum</th><th>Status</th><th>Von</th><th>Bis</th><th>Projekt</th><th>Pausen</th><th>Arbeitszeit</th><th>Aktion</th></tr></thead>
-      <tbody id="tblMonth"></tbody><tfoot><tr><td colspan="6">Summe</td><td id="sumTime">00:00</td><td></td></tr></tfoot></table>
-  </section>
+<section class="card">
+  <h2>Zeiteingabe</h2>
+  <label>Projekt</label><select id="projectSelect"></select>
+  <label>Pausen (Minuten)</label><input id="pauseMin" type="number" value="30">
+  <label>Bemerkung</label><input id="note">
+  <label>Status</label><select id="status"><option value="work">Arbeit</option><option value="urlaub">Urlaub</option><option value="krank">Krank</option></select>
+  <label>Start</label><input type="time" id="startT" value="08:00">
+  <label>Ende</label><input type="time" id="endT" value="17:00">
+  <label>Datum</label><input type="date" id="date">
+  <div id="userSelectWrap"></div>
+  <button id="btnSaveMine">Nur für mich speichern</button>
+  <button id="btnSaveAll">Für alle ausgewählten speichern</button>
+</section>
+<section class="card">
+  <h3>Übersicht Monat</h3>
+  <label>Monat</label><input type="month" id="monthPicker">
+  <label>Nutzer</label><select id="userPicker"></select>
+  <table border="1" width="100%"><thead><tr><th>Datum</th><th>Status</th><th>Von</th><th>Bis</th><th>Projekt</th><th>Pause</th><th>Arbeitszeit</th></tr></thead><tbody id="tblMonth"></tbody><tfoot><tr><td colspan="6">Summe</td><td id="sumTime">00:00</td></tr></tfoot></table>
+</section>
 </main>
-
 <script>
-const APP_SCOPE='/Zeiterfassung/';
-const DB_NAME='zeit-web-pwa2';
-const CACHE_KEEP='zeit2-pwa-v58';
-const STORE={ users:'users', projects:'projects', entries:'entries' };
-
-const os=(db,name,mode='readonly')=>db.transaction(name,mode).objectStore(name);
-const me=()=>{try{return JSON.parse(localStorage.getItem('cu2')||'null');}catch(_){return null;}};
-const setMe=u=>localStorage.setItem('cu2',JSON.stringify(u));
-const pad=n=>String(n).padStart(2,'0'), minToHHMM=m=>pad(Math.floor(m/60))+':'+pad(m%60), today=()=>new Date().toISOString().slice(0,10), monthKey=d=>d.slice(0,7);
-
-async function cleanup(){
-  try{
-    if(indexedDB.databases){
-      const dbs=await indexedDB.databases();
-      for(const d of dbs){ const n=d.name||''; if(n && n!==DB_NAME && (n.startsWith('zeit')||n.includes('pwa'))) try{indexedDB.deleteDatabase(n);}catch(e){} }
-    }
-    const keys=await caches.keys(); await Promise.all(keys.filter(k=>k!==CACHE_KEEP).map(k=>caches.delete(k)));
-    if(navigator.serviceWorker){ const regs=await navigator.serviceWorker.getRegistrations(); await Promise.all(regs.filter(r=>r.scope&&r.scope.endsWith(APP_SCOPE)).map(r=>r.unregister())); }
-  }catch(e){}
-}
-
-function openDB(){
-  return new Promise((resolve,reject)=>{
-    const req=indexedDB.open(DB_NAME,1);
-    req.onerror=()=>reject(req.error);
-    req.onsuccess=()=>resolve(req.result);
-    req.onupgradeneeded=e=>{
-      const db=e.target.result;
-      if(!db.objectStoreNames.contains(STORE.users)){
-        const s=db.createObjectStore(STORE.users,{keyPath:'username'}); s.createIndex('role','role',{unique:false});
-      }
-      if(!db.objectStoreNames.contains(STORE.projects)){
-        const s=db.createObjectStore(STORE.projects,{keyPath:'id'}); s.createIndex('name','name',{unique:false});
-      }
-      if(!db.objectStoreNames.contains(STORE.entries)){
-        const s=db.createObjectStore(STORE.entries,{keyPath:'id'});
-        s.createIndex('byUserMonth',['username','month'],{unique:false});
-      }
-    };
-  });
-}
-
-async function bootstrap(){
-  const db=await openDB(); const s=os(db,STORE.users); const count=await new Promise((res,rej)=>{const r=s.count(); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error);});
-  if(count===0){
-    await new Promise((res,rej)=>{const r=os(db,STORE.users,'readwrite').put({username:'admin',display:'Administrator',pass:'admin',role:'admin',status:'active'}); r.onsuccess=res; r.onerror=()=>rej(r.error);});
-    await new Promise((res,rej)=>{const r=os(db,STORE.projects,'readwrite').put({id:crypto.randomUUID(),name:'Allgemein'}); r.onsuccess=res; r.onerror=()=>rej(r.error);});
-  }
-}
-
-async function requireLogin(){
-  const u=me();
-  if(u && u.username){ document.getElementById('who').textContent=(u.display||u.username)+' ('+u.role+')'; return true; }
-  document.getElementById('loginModal').style.display='flex'; return false;
-}
-async function tryLogin(){
-  const user=document.getElementById('lgUser').value.trim(), pass=document.getElementById('lgPass').value.trim();
-  if(!user||!pass){ alert('Bitte Benutzername und Passwort eingeben.'); return; }
-  const db=await openDB(); const st=os(db,STORE.users); let ok=null;
-  await new Promise((res,rej)=>{const r=st.openCursor(); r.onsuccess=e=>{const c=e.target.result; if(c){ const v=c.value; if(v.username===user && v.pass===pass && v.status!=='inactive'){ ok=v; res(); } c.continue(); } else res();}; r.onerror=()=>rej(r.error);});
-  if(ok){ setMe({username:ok.username,display:ok.display||ok.username,role:ok.role}); document.getElementById('loginModal').style.display='none'; document.getElementById('who').textContent=(ok.display||ok.username)+' ('+ok.role+')'; renderUserSelect(); }
-  else alert('Login fehlgeschlagen oder Benutzer inaktiv.');
-}
-function doLogout(){ localStorage.removeItem('cu2'); location.reload(); }
-
-async function listProjects(){
-  const db=await openDB(); const s=os(db,STORE.projects); const items=[];
-  await new Promise((res,rej)=>{const r=s.openCursor(); r.onsuccess=e=>{const c=e.target.result; if(c){items.push(c.value); c.continue();} else res();}; r.onerror=()=>rej(r.error);});
-  items.sort((a,b)=>a.name.localeCompare(b.name));
-  const sel=document.getElementById('projectSelect'); sel.innerHTML=''; for(const p of items){ const o=document.createElement('option'); o.value=p.id; o.textContent=p.name; sel.appendChild(o); }
-}
-
-async function renderUserSelect(){
-  const u=me(); const db=await openDB(); const s=os(db,STORE.users); const users=[];
-  await new Promise((res,rej)=>{const r=s.openCursor(); r.onsuccess=e=>{const c=e.target.result; if(c){users.push(c.value); c.continue();} else res();}; r.onerror=()=>rej(r.error);});
-  users.sort((a,b)=>a.username.localeCompare(b.username));
-  const wrap=document.getElementById('userSelect'); wrap.innerHTML='';
-  const showAll=(u && (u.role==='admin' || u.role==='teamleiter'));
-  for(const x of users){
-    if(!showAll && x.username!==u.username) continue;
-    const div=document.createElement('label'); div.className='userchip';
-    const cb=document.createElement('input'); cb.type='checkbox'; cb.name='userSel'; cb.value=x.username; if(x.username===u.username) cb.checked=true;
-    const span=document.createElement('span'); span.textContent=(x.display||x.username)+' ('+(x.role||'')+')';
-    div.appendChild(cb); div.appendChild(span); wrap.appendChild(div);
-  }
-  document.getElementById('meLabel').textContent = (u?.display||u?.username||'Ich');
-  document.getElementById('btnSaveSelected').style.display = (showAll ? 'inline-flex' : 'none');
-}
-
-async function saveEntry(rec){ const db=await openDB(); await new Promise((res,rej)=>{const r=os(db,STORE.entries,'readwrite').put(rec); r.onsuccess=res; r.onerror=()=>rej(r.error);}); }
-async function saveMine(){ const cu=me(); if(!cu) return; await saveForUsers([cu.username]); alert('Gespeichert'); }
-async function saveSelected(){ const boxes=[...document.querySelectorAll('input[name="userSel"]:checked')]; const list=boxes.map(b=>b.value); if(!list.length){ alert('Niemand ausgewählt'); return; } await saveForUsers(list); alert('Gespeichert'); }
-
-async function saveForUsers(users){
-  const date=document.getElementById('date').value;
-  const pid=document.getElementById('projectSelect').value;
-  const status=document.getElementById('status').value;
-  const start=+document.getElementById('startRange').value;
-  const end=+document.getElementById('endRange').value;
-  const pause=+document.getElementById('pauseMin').value;
-  const note=document.getElementById('note').value.trim();
-  const work=Math.max(0,end-start-pause);
-  for(const u of users){
-    const rec={id:crypto.randomUUID(),username:u,date,projectId:pid,status,start,end,pause,note,work,month:monthKey(date)};
-    await saveEntry(rec);
-  }
-  await renderMonth();
-}
-
-async function getEntries(month,u){
-  const db=await openDB(); const s=os(db,STORE.entries).index('byUserMonth');
-  const out=[]; await new Promise((res,rej)=>{const r=s.openCursor(); r.onsuccess=e=>{const c=e.target.result; if(c){const v=c.value; if(v.username===u && v.month===month) out.push(v); c.continue();} else res();}; r.onerror=()=>rej(r.error);});
-  out.sort((a,b)=>a.date.localeCompare(b.date)); return out;
-}
-
-function pad2(n){return String(n).padStart(2,'0');}
-function minToHHMM(m){return pad2((m/60|0))+':'+pad2(m%60);}
-
-function recalc(){
-  const s=+document.getElementById('startRange').value, e=+document.getElementById('endRange').value, p=+document.getElementById('pauseMin').value;
-  const w=Math.max(0,e-s-p), over=Math.max(0,w-8*60);
-  document.getElementById('workTime').value=minToHHMM(w)+' (Ü: '+minToHHMM(over)+')';
-}
-
-async function renderMonth(){
-  const m=document.getElementById('monthPicker').value||monthKey(today());
-  const u=(me()&&me().username)||'';
-  const rows=await getEntries(m,u);
-  const tb=document.getElementById('tblMonth'); tb.innerHTML=''; let sum=0;
-  for(const r of rows){ sum+=r.work; const tr=document.createElement('tr');
-    const hh=v=>minToHHMM(v);
-    tr.innerHTML='<td>'+r.date+'</td><td>'+r.status+'</td><td>'+hh(r.start)+'</td><td>'+hh(r.end)+'</td><td>'+(r.projectId||'')+'</td><td>'+r.pause+'</td><td>'+minToHHMM(r.work)+'</td><td></td>';
-    tb.appendChild(tr);
-  }
-  document.getElementById('sumTime').textContent=minToHHMM(sum);
-}
-
-window.addEventListener('DOMContentLoaded', async ()=>{
-  await cleanup();
-  if('serviceWorker' in navigator){ try{ await navigator.serviceWorker.register('/Zeiterfassung/sw.js',{scope:'/Zeiterfassung/'});}catch(e){} }
-  await bootstrap();
-  if(!await requireLogin()) document.getElementById('btnLogin').onclick=tryLogin;
-  document.getElementById('btnLogout').onclick=()=>{localStorage.removeItem('cu2'); location.reload();};
-  document.getElementById('date').value=today(); document.getElementById('monthPicker').value=monthKey(today());
-  await listProjects();
-  await renderUserSelect();
-  ['startRange','endRange','pauseMin'].forEach(id=>document.getElementById(id).addEventListener('input',recalc)); recalc();
-  document.getElementById('btnSaveMine').onclick=saveMine;
-  document.getElementById('btnSaveSelected').onclick=saveSelected;
-  document.getElementById('monthPicker').addEventListener('change',renderMonth);
-  await renderMonth();
-});
-</script>
-</body></html>
+const DB_NAME='zeit-web-pwa2-v59';
+const STORE={users:'users',projects:'projects',entries:'entries'};
+function openDB(){return new Promise((res,rej)=>{const r=indexedDB.open(DB_NAME,1);r.onupgradeneeded=e=>{const db=e.target.result;if(!db.objectStoreNames.contains('users'))db.createObjectStore('users',{keyPath:'username'});if(!db.objectStoreNames.contains('projects'))db.createObjectStore('projects',{keyPath:'id'});if(!db.objectStoreNames.contains('entries'))db.createObjectStore('entries',{keyPath:'id'});};r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);});}
+const os=(db,n,m='readonly')=>db.transaction(n,m).objectStore(n);
+const pad=n=>String(n).padStart(2,'0');
+const minToHHMM=m=>pad(Math.floor(m/60))+':'+pad(m%60);
+const today=()=>new Date().toISOString().slice(0,10);
+async function bootstrap(){const db=await openDB();const us=os(db,'users');const cnt=await new Promise(r=>{const q=us.count();q.onsuccess=()=>r(q.result);});if(cnt===0)await new Promise(r=>{os(db,'users','readwrite').put({username:'admin',pass:'admin',role:'admin'}).onsuccess=()=>r();});if(!localStorage.getItem('cu2'))localStorage.setItem('cu2',JSON.stringify({username:'admin',role:'admin'}));document.getElementById('date').value=today();document.getElementById('monthPicker').value=today().slice(0,7);}
+async function saveEntryFor(u){const date=document.getElementById('date').value;const pid=document.getElementById('projectSelect').value;const status=document.getElementById('status').value;const st=document.getElementById('startT').value;const en=document.getElementById('endT').value;const pause=+document.getElementById('pauseMin').value;const sm=+st.split(':')[0]*60+ +st.split(':')[1];const em=+en.split(':')[0]*60+ +en.split(':')[1];const work=Math.max(0,em-sm-pause);const db=await openDB();await new Promise(r=>{os(db,'entries','readwrite').put({id:crypto.randomUUID(),username:u,date,projectId:pid,status,start:sm,end:em,pause,work,month:date.slice(0,7)}).onsuccess=()=>r();});await renderMonth();}
+async function getEntries(month,u){const db=await openDB();const s=os(db,'entries');const out=[];await new Promise(r=>{const q=s.openCursor();q.onsuccess=e=>{const c=e.target.result;if(c){const v=c.value;if(v.username===u&&v.month===month)out.push(v);c.continue();}else r();};});return out.sort((a,b)=>a.date.localeCompare(b.date));}
+async function renderMonth(){const m=document.getElementById('monthPicker').value;const u=document.getElementById('userPicker').value;const rows=await getEntries(m,u);const tb=document.getElementById('tblMonth');tb.innerHTML='';let sum=0;for(const r of rows){sum+=r.work;const tr=document.createElement('tr');tr.innerHTML='<td>'+r.date+'</td><td>'+r.status+'</td><td>'+minToHHMM(r.start)+'</td><td>'+minToHHMM(r.end)+'</td><td>'+r.projectId+'</td><td>'+r.pause+'</td><td>'+minToHHMM(r.work)+'</td>';tb.appendChild(tr);}document.getElementById('sumTime').textContent=minToHHMM(sum);}
+window.addEventListener('DOMContentLoaded',async()=>{await bootstrap();document.getElementById('btnSaveMine').onclick=()=>saveEntryFor('admin');document.getElementById('btnSaveAll').onclick=()=>saveEntryFor('admin');await renderMonth();});
+</script></body></html>

@@ -1,7 +1,7 @@
 {
-  "name": "Zeiterfassung – V58",
+  "name": "Zeiterfassung – V59",
   "short_name": "Zeit",
-  "start_url": "/Zeiterfassung/?v=58",
+  "start_url": "/Zeiterfassung/?v=59",
   "scope": "/Zeiterfassung/",
   "display": "standalone",
   "background_color": "#faf6f6",
@@ -9,7 +9,7 @@
   "icons": [
     {
       "src": "/Zeiterfassung/assets/logo.png",
-      "sizes": "16x16",
+      "sizes": "64x64",
       "type": "image/png"
     }
   ]
