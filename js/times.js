@@ -4,28 +4,20 @@ let dragging = false, anchor = null, lastTappedIdx = null;
 
 function initTimesPage(){
   const me = currentUser();
-  const sel = document.getElementById('userSelect');
+  const cl = document.getElementById('userChecklist');
   const users = readUsers();
-
   const isLeadOrAdmin = (me.role==='admin' || me.role==='lead');
-  const list = isLeadOrAdmin ? users : users.filter(u=>u.id===me.id);
-  sel.innerHTML = list.map(u=>`<option value="${u.id}">${u.name||u.username}</option>`).join('');
-
-  if(isLeadOrAdmin){
-    document.getElementById('multiHint').style.display = 'block';
-    sel.multiple = true;
-    sel.size = Math.min(6, Math.max(3, list.length));
-  } else {
-    document.getElementById('multiHint').style.display = 'none';
-    sel.multiple = false;
-    sel.size = 1;
-    sel.value = me.id;
-  }
+  let list = isLeadOrAdmin ? users : users.filter(u=>u.id===me.id);
+  // render checkboxes
+  cl.innerHTML = list.map(u=>`<label style="display:flex; align-items:center; gap:8px; padding:4px 0"><input type="checkbox" name="userChk" value="${u.id}" ${!isLeadOrAdmin?'checked disabled':''}> <span>${u.name||u.username}</span></label>`).join('');
+  document.getElementById('multiHint').style.display = isLeadOrAdmin ? 'block' : 'none';
 
   document.getElementById('dateInput').valueAsDate = new Date();
   document.getElementById('pauseDropdown').value = '30';
 
   buildTimeline();
+  // populate project select
+  if(document.getElementById('projectSelect')){ populateProjectSelect(); document.getElementById('addProjBtn').addEventListener('click', addNewProject); }
   document.getElementById('bookBtn').addEventListener('click', bookFromGrid);
   document.getElementById('dayStatus').addEventListener('change', handleDayStatusLock);
   document.getElementById('dateInput').addEventListener('change', ()=>{ renderTimes(); renderMonth(); renderMonth(); });
@@ -91,15 +83,21 @@ function updateOutputs(){
 }
 
 function selectedUserIds(){
-  const sel = document.getElementById('userSelect');
-  if(sel.multiple){
-    return Array.from(sel.selectedOptions).map(o=>o.value);
+  const boxes = Array.from(document.querySelectorAll('input[name="userChk"]'));
+  const ids = boxes.filter(b=>b.checked).map(b=>b.value);
+  if(!ids.length){
+    // fallback: if none checked and there is a disabled own checkbox, pick it
+    const own = boxes.find(b=>b.disabled);
+    if(own) return [own.value];
   }
+  return ids;
+}
   return [ sel.value ];
 }
 
 function bookFromGrid(){
   const status = document.getElementById('dayStatus').value;
+  const pid = (document.getElementById('projectSelect')||{}).value || null;
   const dateStr = document.getElementById('dateInput').value;
   const pauseMin = parseInt(document.getElementById('pauseDropdown').value||'0',10);
   const ids = selectedUserIds();
@@ -123,7 +121,7 @@ function bookFromGrid(){
   const finalize = (photo)=>{
     ids.forEach(userId=>{
       const base = readTimes(); if(!base[userId]) base[userId]={}; if(!base[userId][dateStr]) base[userId][dateStr]=[];
-      base[userId][dateStr].push({from: fromMs, to: toMs, durMin: duration, pauseMin, status, photo: photo||null});
+      base[userId][dateStr].push({from: fromMs, to: toMs, durMin: duration, pauseMin, status, projectId: pid||null, photo: photo||null});
       writeTimes(base);
     });
     document.getElementById('photoInput').value=''; renderTimes(); renderMonth();
@@ -143,7 +141,7 @@ function renderTimes(){
   if(!userId || !dateStr) return;
   const base = readTimes(); const list = (base[userId] && base[userId][dateStr]) ? base[userId][dateStr] : [];
   const tbody = document.querySelector('#timeTable tbody'); const fmt=(ms)=> new Date(ms).toLocaleTimeString('de-AT',{hour:'2-digit',minute:'2-digit'});
-  tbody.innerHTML = list.map(r=>{ const f = r.from? fmt(r.from) : '—'; const t = r.to? fmt(r.to) : '—'; return `<tr><td>${f}</td><td>${t}</td><td>${r.durMin}</td><td>${r.pauseMin}</td><td>${r.status}</td><td>${r.photo?'<a target="_blank" href="'+r.photo+'">Foto</a>':'—'}</td></tr>`; }).join('');
+  tbody.innerHTML = list.map(r=>{ const f = r.from? fmt(r.from) : '—'; const t = r.to? fmt(r.to) : '—'; return `<tr><td>${f}</td><td>${t}</td><td>${r.durMin}</td><td>${r.pauseMin}</td><td>${r.status}</td><td>${projectNameById(r.projectId)||'—'}</td><td>${r.photo?'<a target="_blank" href="'+r.photo+'">Foto</a>':'—'}</td></tr>`; }).join('');
   computeTotalsForDay(userId, dateStr);
 }
 
@@ -157,6 +155,7 @@ function computeTotalsForDay(userId, dateStr){
 
 function handleDayStatusLock(){
   const status = document.getElementById('dayStatus').value;
+  const pid = (document.getElementById('projectSelect')||{}).value || null;
   const pauseSel = document.getElementById('pauseDropdown');
   const grid = document.getElementById('timelineGrid');
   if(status==='vacation' || status==='sick'){
@@ -195,8 +194,10 @@ function renderMonth(){
     const list = userDays[dk] || [];
     const dayMin = list.reduce((acc,r)=> acc + (r.durMin||0), 0);
     const status = list.length ? (list[0].status || 'Arbeit') : '—';
+    const projs = Array.from(new Set(list.map(r=> projectNameById(r.projectId)).filter(Boolean))).join(', ');
+    const label = projs ? `${status} – ${projs}` : status;
     const hhmm = minToHHMM(dayMin);
-    rows += `<tr><td>${dk}</td><td>${status}</td><td class="number">${hhmm}</td></tr>`;
+    rows += `<tr><td>${dk}</td><td>${label}</td><td class="number">${hhmm}</td></tr>`;
     sumMin += dayMin;
     if(dayMin > 9*60) sumOt += (dayMin - 9*60);
   }
@@ -206,4 +207,27 @@ function renderMonth(){
   if(monthLabel) monthLabel.textContent = label.charAt(0).toUpperCase()+label.slice(1);
   const mt = document.getElementById('monthTotal'); if(mt) mt.textContent = minToHHMM(sumMin);
   const mo = document.getElementById('monthOT'); if(mo) mo.textContent = minToHHMM(sumOt);
+}
+
+function projectNameById(pid){
+  if(!pid) return '';
+  const ps = readProjects(); const p = ps.find(x=>x.id===pid);
+  return p ? p.name : '';
+}
+
+function populateProjectSelect(){
+  const sel = document.getElementById('projectSelect'); if(!sel) return;
+  const ps = readProjects();
+  sel.innerHTML = `<option value="">(ohne Projekt)</option>` + ps.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
+}
+function addNewProject(){
+  const name = (document.getElementById('newProjName')||{}).value?.trim();
+  const color = (document.getElementById('newProjColor')||{}).value || '#C8A86B';
+  if(!name){ alert('Bitte Projektnamen eingeben.'); return; }
+  const ps = readProjects(); const id = 'p'+Math.random().toString(36).slice(2,9);
+  ps.push({id, name, color}); writeProjects(ps);
+  if(document.getElementById('newProjName')) document.getElementById('newProjName').value='';
+  populateProjectSelect();
+  const sel = document.getElementById('projectSelect'); if(sel) sel.value = id;
+  alert('Projekt angelegt.');
 }

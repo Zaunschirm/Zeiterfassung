@@ -1,5 +1,7 @@
 
 (function(){
+  window.closeEmpModal = function(){ const m=document.getElementById('empModal'); if(m && !m.classList.contains('hidden')){ m.classList.add('hidden'); const add=document.getElementById('addEmp'); if(add) setTimeout(()=>add.focus(),0); } };
+
   let editingId = null;
   const E = ()=> ({
     add: document.getElementById('addEmp'),
@@ -56,7 +58,9 @@
   
 function initEmployeePage(){
   const me = currentUser(); if(me?.role!=='admin' && me?.role!=='lead'){ alert('Keine Berechtigung'); location.replace('dashboard.html'); return; }
-  const el = (function(){ return {
+  const el = (function(){
+  window.closeEmpModal = function(){ const m=document.getElementById('empModal'); if(m && !m.classList.contains('hidden')){ m.classList.add('hidden'); const add=document.getElementById('addEmp'); if(add) setTimeout(()=>add.focus(),0); } };
+ return {
     add: document.getElementById('addEmp'),
     cancel: document.getElementById('cancelEmp'),
     save: document.getElementById('saveEmp'),
@@ -93,4 +97,24 @@ function initEmployeePage(){
   renderTable();
 }
 window.initEmployeePage = initEmployeePage;
+})();
+
+// Delegation for cancel button (never breaks)
+document.addEventListener('click', function (ev) {
+  if (ev.target && ev.target.id === 'cancelEmp') {
+    ev.preventDefault(); ev.stopPropagation();
+    window.closeEmpModal && window.closeEmpModal();
+  }
+});
+// ESC to close
+document.addEventListener('keydown', function(ev){
+  if(ev.key==='Escape'){
+    const m=document.getElementById('empModal');
+    if(m && !m.classList.contains('hidden')){ ev.preventDefault(); window.closeEmpModal(); }
+  }
+});
+// Backdrop click
+(function(){
+  const m=document.getElementById('empModal');
+  if(m){ m.addEventListener('click', function(ev){ if(ev.target===m){ ev.preventDefault(); window.closeEmpModal(); } }); }
 })();

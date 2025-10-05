@@ -5,3 +5,5 @@ self.addEventListener('install', e=>{ self.skipWaiting(); }); self.addEventListe
 // V01i cancel esc fix
 
 // V01j month overview
+
+// V01k checklist users + projects + cancel harden

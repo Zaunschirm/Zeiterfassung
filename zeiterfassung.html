@@ -29,7 +29,7 @@
 <section class="card">
   <h2>Zeiterfassung</h2>
   <div class="row wrap">
-    <label>Mitarbeiter <select id="userSelect" multiple size="5" style="min-width:220px"></select><small id="multiHint" style="color:#6b7280">Mehrere auswählen (Strg/⌘ oder Tippen)</small></label>
+    <label>Mitarbeiter<br><div id="userChecklist" class="card" style="max-height:220px; overflow:auto; padding:8px"></div><small id="multiHint" style="color:#6b7280">Mehrere ankreuzen</small></label>
     <label>Datum <input type="date" id="dateInput"></label>
     <label>Tagesstatus
       <select id="dayStatus">
@@ -46,6 +46,17 @@
   </div>
   <div class="row"><label>Foto zur Buchung (optional) <input type="file" id="photoInput" accept="image/*"></label></div>
 </section>
+
+<div class="row wrap" style="margin:6px 0 12px 0">
+  <label>Projekt wählen
+    <select id="projectSelect" style="min-width:220px"></select>
+  </label>
+  <div class="row" style="gap:6px">
+    <label>Neues Projekt <input id="newProjName" placeholder="Projektname"></label>
+    <label>Farbe <input id="newProjColor" type="color" value="#C8A86B"></label>
+    <button id="addProjBtn" class="btn">Anlegen</button>
+  </div>
+</div>
 
 <section class="card">
   <h3>Zeitbalken (15-Minuten Raster)</h3>
@@ -69,7 +80,7 @@
   </div>
   <table class="table" id="monthTable">
     <thead>
-      <tr><th style="width:20%">Datum</th><th style="width:60%">Status</th><th style="width:20%">Stunden (HH:MM)</th></tr>
+      <tr><th style="width:20%">Datum</th><th style="width:45%">Status / Projekte</th><th style="width:35%">Stunden (HH:MM)</th></tr>
     </thead>
     <tbody></tbody>
   </table>
