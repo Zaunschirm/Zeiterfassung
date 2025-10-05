@@ -20,6 +20,7 @@
     <a href="mitarbeiter.html" class="require-role-admin">Mitarbeiter</a>
     <a href="zeiterfassung.html">Zeiterfassung</a>
     <a href="plan.html" class="require-role-lead">Wocheneinteilung</a>
+    <a href="reports.html" class="require-role-admin">Berichte</a>
     <button id="logoutBtn" class="btn-ghost">Logout</button>
   </nav>
 </header>
@@ -36,7 +37,7 @@
     <tbody></tbody>
   </table>
 </section>
-<div class="modal hidden" id="empModal" style="position:fixed; inset:0; background:rgba(0,0,0,.35); display:flex; align-items:center; justify-content:center">
+<div class="modal hidden" id="empModal" role="dialog" aria-modal="true" tabindex="-1" style="position:fixed; inset:0; background:rgba(0,0,0,.35); display:flex; align-items:center; justify-content:center">
   <div class="modal-content card" style="width:100%; max-width:520px; margin:0 12px;">
     <h3 id="modalTitle">Mitarbeiter</h3>
     <label>Name <input id="empName"></label>

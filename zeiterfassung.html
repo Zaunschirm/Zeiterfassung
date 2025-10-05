@@ -20,6 +20,7 @@
     <a href="mitarbeiter.html" class="require-role-admin">Mitarbeiter</a>
     <a href="zeiterfassung.html">Zeiterfassung</a>
     <a href="plan.html" class="require-role-lead">Wocheneinteilung</a>
+    <a href="reports.html" class="require-role-admin">Berichte</a>
     <button id="logoutBtn" class="btn-ghost">Logout</button>
   </nav>
 </header>
@@ -59,14 +60,21 @@
   </div>
 </section>
 
-<h3>Heutige Buchungen</h3>
+
+<h3>Monatsübersicht</h3>
 <section class="card">
-  <table class="table" id="timeTable">
-    <thead><tr><th>Von</th><th>Bis</th><th>Dauer (min)</th><th>Pause (min)</th><th>Status</th><th>Foto</th></tr></thead>
+  <div class="row wrap">
+    <div>Monat: <strong id="monthLabel">–</strong></div>
+    <div style="margin-left:auto">Gesamt: <strong id="monthTotal">00:00</strong> • Überstunden (&gt;9:00/Tag): <strong id="monthOT">00:00</strong></div>
+  </div>
+  <table class="table" id="monthTable">
+    <thead>
+      <tr><th style="width:20%">Datum</th><th style="width:60%">Status</th><th style="width:20%">Stunden (HH:MM)</th></tr>
+    </thead>
     <tbody></tbody>
   </table>
-  <div class="totalsbar"><div>Summe (heute): <strong id="totalsToday">00:00</strong></div><div>Überstunden (&gt;9:00): <strong id="overtimeToday">00:00</strong></div></div>
 </section>
+
 
 </main>
 <footer class="footer"><small>© 2025 Holzbau Zaunschirm • V01g</small></footer>

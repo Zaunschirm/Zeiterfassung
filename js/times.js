@@ -28,8 +28,9 @@ function initTimesPage(){
   buildTimeline();
   document.getElementById('bookBtn').addEventListener('click', bookFromGrid);
   document.getElementById('dayStatus').addEventListener('change', handleDayStatusLock);
+  document.getElementById('dateInput').addEventListener('change', ()=>{ renderTimes(); renderMonth(); renderMonth(); });
   handleDayStatusLock();
-  renderTimes();
+  renderTimes(); renderMonth();
 }
 
 function buildTimeline(){
@@ -110,7 +111,7 @@ function bookFromGrid(){
       base[userId][dateStr].push({from: null, to: null, durMin: 0, pauseMin: 0, status});
       writeTimes(base);
     });
-    renderTimes();
+    renderTimes(); renderMonth();
     return;
   }
 
@@ -125,7 +126,7 @@ function bookFromGrid(){
       base[userId][dateStr].push({from: fromMs, to: toMs, durMin: duration, pauseMin, status, photo: photo||null});
       writeTimes(base);
     });
-    document.getElementById('photoInput').value=''; renderTimes();
+    document.getElementById('photoInput').value=''; renderTimes(); renderMonth();
   };
   if(photoFile){ const r=new FileReader(); r.onload=()=>finalize(r.result); r.readAsDataURL(photoFile); } else finalize(null);
 }
@@ -172,3 +173,37 @@ function handleDayStatusLock(){
 }
 
 window.initTimesPage = initTimesPage;
+
+function renderMonth(){
+  const sel = document.getElementById('userSelect');
+  const me = currentUser();
+  const userId = (sel.multiple ? (sel.selectedOptions[0]?.value || me?.id) : (sel.value || me?.id));
+  const dateStr = document.getElementById('dateInput').value;
+  if(!userId || !dateStr) return;
+
+  const d = new Date(dateStr+'T00:00:00');
+  const year = d.getFullYear(); const month = d.getMonth(); // 0-based
+  const monthStart = new Date(year, month, 1);
+  const monthEnd = new Date(year, month+1, 0);
+  const daysInMonth = monthEnd.getDate();
+  const label = monthStart.toLocaleDateString('de-AT', { month:'long', year:'numeric' });
+  const times = readTimes(); const userDays = times[userId] || {};
+
+  let rows = '', sumMin = 0, sumOt = 0;
+  for(let day=1; day<=daysInMonth; day++){
+    const dk = new Date(year, month, day).toISOString().slice(0,10);
+    const list = userDays[dk] || [];
+    const dayMin = list.reduce((acc,r)=> acc + (r.durMin||0), 0);
+    const status = list.length ? (list[0].status || 'Arbeit') : '—';
+    const hhmm = minToHHMM(dayMin);
+    rows += `<tr><td>${dk}</td><td>${status}</td><td class="number">${hhmm}</td></tr>`;
+    sumMin += dayMin;
+    if(dayMin > 9*60) sumOt += (dayMin - 9*60);
+  }
+  const tbody = document.querySelector('#monthTable tbody');
+  if(tbody) tbody.innerHTML = rows;
+  const monthLabel = document.getElementById('monthLabel');
+  if(monthLabel) monthLabel.textContent = label.charAt(0).toUpperCase()+label.slice(1);
+  const mt = document.getElementById('monthTotal'); if(mt) mt.textContent = minToHHMM(sumMin);
+  const mo = document.getElementById('monthOT'); if(mo) mo.textContent = minToHHMM(sumOt);
+}

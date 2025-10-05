@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Arbeitseinteilung und Zeiterfassung Holzbau Zaunschirm – Berichte</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <link rel="icon" href="favicon.ico">
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png">
+  <link rel="stylesheet" href="assets/css/style.css">
+  <meta name="theme-color" content="#2F3438">
+  <style>
+    @media print{
+      .topbar, .controls, .btn, .nav, .no-print{ display:none !important; }
+      .container{ margin:0; padding:0; }
+      h1{ margin:0 0 8px 0; }
+      .print-meta{ display:block !important; margin-bottom:10px; color:#555; }
+      .table th, .table td{ font-size:12px; padding:6px; }
+    }
+    .number{ font-variant-numeric: tabular-nums; text-align:right; }
+  </style>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><span class="logo-dot"></span><img src="icon-192.png" alt="" style="width:22px;height:22px;border-radius:4px;object-fit:cover; margin-left:6px;"><span class="brand-text">Arbeitseinteilung und Zeiterfassung Holzbau Zaunschirm</span></div>
+  <nav class="nav">
+    <a href="dashboard.html">Übersicht</a>
+    <a href="mitarbeiter.html" class="require-role-admin">Mitarbeiter</a>
+    <a href="zeiterfassung.html">Zeiterfassung</a>
+    <a href="plan.html" class="require-role-lead">Wocheneinteilung</a>
+    <a href="reports.html" class="require-role-admin">Berichte</a>
+    <button id="logoutBtn" class="btn-ghost">Logout</button>
+  </nav>
+</header>
+
+<main class="container">
+  <section class="card">
+    <h1>Berichte • Gesamtstunden</h1>
+    <div class="controls row wrap">
+      <label>Von <input type="date" id="fromDate"></label>
+      <label>Bis <input type="date" id="toDate"></label>
+      <button class="btn" id="refreshBtn">Aktualisieren</button>
+      <button class="btn-primary" id="printBtn">Als PDF exportieren</button>
+    </div>
+    <div class="print-meta no-print hidden" id="printMeta"></div>
+    <table class="table" id="repTable">
+      <thead>
+        <tr><th style="width:45%">Mitarbeiter</th><th class="number" style="width:20%">Stunden (HH:MM)</th><th class="number" style="width:20%">Überstunden (&gt; 9:00/Tag)</th><th class="number" style="width:15%">Tage</th></tr>
+      </thead>
+      <tbody></tbody>
+      <tfoot>
+        <tr><th>Gesamt</th><th class="number" id="sumAll">00:00</th><th class="number" id="sumOt">00:00</th><th class="number" id="sumDays">0</th></tr>
+      </tfoot>
+    </table>
+  </section>
+</main>
+<footer class="footer"><small>© 2025 Holzbau Zaunschirm • V01h</small></footer>
+
+<script defer src="js/storage.js"></script>
+<script defer src="js/auth.js"></script>
+<script>
+function minToHHMM(min){ const sign=min<0?'-':''; const m=Math.abs(min); const h=Math.floor(m/60); const mm=m%60; return sign+String(h).padStart(2,'0')+':'+String(mm).padStart(2,'0'); }
+function eachDate(from, to){
+  const out=[]; const d=new Date(from.getTime()); d.setHours(0,0,0,0);
+  const end=new Date(to.getTime()); end.setHours(0,0,0,0);
+  while(d<=end){ out.push(d.toISOString().slice(0,10)); d.setDate(d.getDate()+1); }
+  return out;
+}
+function calc(){
+  const users = JSON.parse(localStorage.getItem('z_users')||'[]');
+  const times = JSON.parse(localStorage.getItem('z_times')||'{}');
+  const tbody = document.querySelector('#repTable tbody');
+  const from = new Date(document.getElementById('fromDate').value);
+  const to = new Date(document.getElementById('toDate').value);
+  if(!(from instanceof Date) || !(to instanceof Date)) return;
+  const dates = eachDate(from,to);
+  const rows=[]; let totalMin=0, totalOT=0, totalDays=0;
+  users.forEach(u=>{
+    let m=0, ot=0, days=0;
+    dates.forEach(dk=>{
+      const list = (times[u.id] && times[u.id][dk]) ? times[u.id][dk] : [];
+      const sumDay = list.reduce((acc,r)=> acc + (r.durMin||0), 0);
+      if(sumDay>0){ days+=1; }
+      m += sumDay;
+      if(sumDay>9*60) ot += (sumDay - 9*60);
+    });
+    rows.push({name: (u.name||u.username), min:m, ot, days});
+    totalMin += m; totalOT += ot; totalDays += days;
+  });
+  rows.sort((a,b)=> a.name.localeCompare(b.name, 'de'));
+  tbody.innerHTML = rows.map(r=>`<tr><td>${r.name}</td><td class="number">${minToHHMM(r.min)}</td><td class="number">${minToHHMM(r.ot)}</td><td class="number">${r.days}</td></tr>`).join('');
+  document.getElementById('sumAll').textContent = minToHHMM(totalMin);
+  document.getElementById('sumOt').textContent = minToHHMM(totalOT);
+  document.getElementById('sumDays').textContent = String(totalDays);
+  const fd=document.getElementById('fromDate').value, td=document.getElementById('toDate').value;
+  const meta = document.getElementById('printMeta'); meta.textContent = `Zeitraum: ${fd} bis ${td}`; meta.classList.remove('hidden');
+}
+document.addEventListener('DOMContentLoaded', ()=>{
+  protectPage(['admin']); // nur Admin
+  const now=new Date(); const start=new Date(now); start.setDate(start.getDate()-6);
+  document.getElementById('fromDate').valueAsDate = start;
+  document.getElementById('toDate').valueAsDate = now;
+  document.getElementById('refreshBtn').addEventListener('click', calc);
+  document.getElementById('printBtn').addEventListener('click', ()=>{ calc(); window.print(); });
+  calc();
+});
+</script>
+</body>
+</html>

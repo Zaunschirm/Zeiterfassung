@@ -24,9 +24,9 @@
     el.role.value = emp?.role || 'employee';
     el.pw.value = '';
     if(el.photo) el.photo.value='';
-    el.modal.classList.remove('hidden');
+    el.modal.classList.remove('hidden'); el.modal.focus();
   }
-  function closeModal(){ E().modal.classList.add('hidden'); }
+  function closeModal(){ const el=E(); el.modal.classList.add('hidden'); }
   function saveEmp(){
     const el = E();
     const name = el.name.value.trim(); const username = el.user.value.trim(); const role = el.role.value; const pw = el.pw.value;
@@ -53,19 +53,44 @@
     el.tbody.querySelectorAll('[data-edit]').forEach(b=> b.addEventListener('click', ()=>{ const emp=readUsers().find(x=>x.id===b.dataset.edit); openModal(emp); }));
     el.tbody.querySelectorAll('[data-del]').forEach(b=> b.addEventListener('click', ()=> removeEmp(b.dataset.del)));
   }
-  function initEmployeePage(){
-    const me = currentUser(); if(me?.role!=='admin' && me?.role!=='lead'){ alert('Keine Berechtigung'); location.replace('dashboard.html'); return; }
-    const el=E(); 
-    el.cancel?.setAttribute('type','button');
-    const closeHandler = (ev)=>{ ev?.stopPropagation?.(); closeModal(); };
-    el.cancel?.addEventListener('click', closeHandler);
-    el.cancel?.addEventListener('pointerup', closeHandler);
-    el.add?.addEventListener('click', ()=>openModal());
-    el.save?.addEventListener('click', saveEmp);
-    el.search?.addEventListener('input', renderTable);
-    el.modal?.addEventListener('click', ev=>{ if(ev.target===el.modal) closeModal(); });
-    document.addEventListener('keydown', ev=>{ if(ev.key==='Escape' && !el.modal.classList.contains('hidden')) closeModal(); });
-    renderTable();
-  }
-  window.initEmployeePage = initEmployeePage;
+  
+function initEmployeePage(){
+  const me = currentUser(); if(me?.role!=='admin' && me?.role!=='lead'){ alert('Keine Berechtigung'); location.replace('dashboard.html'); return; }
+  const el = (function(){ return {
+    add: document.getElementById('addEmp'),
+    cancel: document.getElementById('cancelEmp'),
+    save: document.getElementById('saveEmp'),
+    search: document.getElementById('search'),
+    modal: document.getElementById('empModal'),
+    title: document.getElementById('modalTitle'),
+    name: document.getElementById('empName'),
+    user: document.getElementById('empUser'),
+    role: document.getElementById('empRole'),
+    pw: document.getElementById('empPw'),
+    photo: document.getElementById('empPhoto'),
+    tbody: document.querySelector('#empTable tbody')
+  }; })();
+
+  function closeHandler(ev){ if(ev){ ev.stopPropagation?.(); ev.preventDefault?.(); } closeModal(); setTimeout(()=>document.getElementById('addEmp')?.focus(), 0); }
+  // ensure button type
+  el.cancel?.setAttribute('type','button');
+
+  // open/close wiring
+  el.add?.addEventListener('click', ()=>openModal());
+  el.save?.addEventListener('click', saveEmp);
+  el.search?.addEventListener('input', renderTable);
+  el.cancel?.addEventListener('click', closeHandler);
+  el.cancel?.addEventListener('pointerup', closeHandler);
+
+  // overlay click closes when backdrop hit
+  el.modal?.addEventListener('click', (ev)=>{ if(ev.target===el.modal) closeHandler(ev); });
+
+  // ESC closes
+  document.addEventListener('keydown', function onEsc(ev){
+    if(ev.key==='Escape' && !el.modal.classList.contains('hidden')){ closeHandler(ev); }
+  });
+
+  renderTable();
+}
+window.initEmployeePage = initEmployeePage;
 })();
