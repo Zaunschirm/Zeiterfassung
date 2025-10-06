@@ -3,7 +3,6 @@ let gridSelection = {start:null, end:null};
 
 function initTimesPage(){
   const me = currentUser();
-  // checklist
   const cl = document.getElementById('userChecklist');
   const users = readUsers();
   const isLeadOrAdmin = (me.role==='admin' || me.role==='lead');
@@ -21,7 +20,6 @@ function initTimesPage(){
   document.getElementById('dateInput').addEventListener('change', ()=>{ renderTimes(); renderMonth(); });
   handleDayStatusLock();
 
-  // projects
   populateProjectSelect();
   document.getElementById('addProjBtn').addEventListener('click', addNewProject);
 
@@ -96,10 +94,10 @@ function bookFromGrid(){
     writeTimes(base);
   });
   renderTimes(); renderMonth();
-  function idxToTime(idx){ const minutesFromStart = idx*15; const totalMinutes = 5*60 + minutesFromStart; const h=Math.floor(totalMinutes/60); const m=totalMinutes%60; return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`; }
+  function idxToTime(idx){ const minutesFromStart = idx*15; const totalMinutes = 5*60 + minutesFromStart; const h=Math.floor(totalMinutes/60); const m=minutesFromStart%60; return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`; }
 }
 
-function renderTimes(){ /* keep minimal */ }
+function renderTimes(){}
 
 function renderMonth(){
   const me = currentUser();
@@ -119,7 +117,7 @@ function renderMonth(){
   for(let day=1; day<=daysInMonth; day++){
     const dk = new Date(year, month, day).toISOString().slice(0,10);
     const list = userDays[dk] || [];
-    if(!list.length) continue; // nur Tage mit Einträgen
+    if(!list.length) continue;
     const dayMin = list.reduce((acc,r)=> acc + (r.durMin||0), 0);
     const status = list.length ? (list[0].status || 'Arbeit') : '—';
     const projs = Array.from(new Set(list.map(r=> (projectNameById(r.projectId)||'').trim()).filter(Boolean))).join(', ');

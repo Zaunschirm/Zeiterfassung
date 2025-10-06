@@ -38,14 +38,11 @@
     }
     if(!confirm(`Mitarbeiter "${target.name||target.username}" wirklich löschen?`)) return;
 
-    // Remove from users
     const remain = users.filter(u=>u.id!==id);
     writeUsers(remain);
 
-    // Remove times
     const times = readTimes(); if(times[id]){ delete times[id]; writeTimes(times); }
 
-    // Remove from planning
     const plan = readPlan(); let changed=false;
     Object.keys(plan).forEach(week=>{
       const weekData = plan[week]||{};
