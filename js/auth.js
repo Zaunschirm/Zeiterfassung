@@ -1,22 +1,22 @@
 
-function ensureSeedAdmin(){
-  const users = readUsers();
+async function ensureSeedAdmin(){
+  const users = await DBAPI.readUsers();
   if(!users.length){
     users.push({id:'u1', name:'Administrator', username:'admin', role:'admin', password:'admin', mustChangePassword:true});
     users.push({id:'u2', name:'Teamleiter', username:'lead', role:'lead', password:'lead', mustChangePassword:true});
     users.push({id:'u3', name:'Mitarbeiter', username:'user', role:'employee', password:'user', mustChangePassword:true});
-    writeUsers(users);
+    await DBAPI.writeUsers(users);
   }
 }
 async function login(username, password){
-  ensureSeedAdmin();
-  const u = readUsers().find(x=>x.username===username);
+  await ensureSeedAdmin();
+  const u = (await DBAPI.readUsers()).find(x=>x.username===username);
   if(!u) return {ok:false, error:'Unbekannter Nutzer'};
   if(u.password!==password) return {ok:false, error:'Falsches Passwort'};
-  writeSession({userId:u.id, ts:Date.now()});
+  DBAPI.writeSession({userId:u.id, ts:Date.now()});
   return {ok:true, mustChangePassword:!!u.mustChangePassword};
 }
-function currentUser(){ const s = readSession(); if(!s) return null; return readUsers().find(x=>x.id===s.userId)||null; }
+function currentUser(){ const s = DBAPI.readSession(); if(!s) return null; const users = JSON.parse(localStorage.getItem(DB.usersKey)||'[]'); return users.find(x=>x.id===s.userId)||null; }
 function logout(){ localStorage.removeItem(DB.sessionKey); location.replace('login.html'); }
 function protectPage(roles=null){
   const me = currentUser();
@@ -26,7 +26,6 @@ function protectPage(roles=null){
 function changeOwnPassword(newPw){
   if(!newPw || newPw.length<4){ alert('Passwort zu kurz'); return false; }
   const me = currentUser(); if(!me) return false;
-  const users = readUsers(); const i = users.findIndex(x=>x.id===me.id);
-  if(i>=0){ users[i].password = newPw; users[i].mustChangePassword=false; writeUsers(users); return true; }
-  return false;
+  (async ()=>{ const users = await DBAPI.readUsers(); const i = users.findIndex(x=>x.id===me.id); if(i>=0){ users[i].password = newPw; users[i].mustChangePassword=false; await DBAPI.writeUsers(users); }})();
+  return true;
 }

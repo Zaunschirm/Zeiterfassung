@@ -35,7 +35,7 @@
     </label>
   </div>
   <div class="row wrap">
-    <label>Pause (Dropdown)
+    <label>Pause
       <select id="pauseDropdown"><option value="0">keine</option><option value="15">15 min</option><option value="30" selected>30 min</option><option value="45">45 min</option><option value="60">60 min</option></select>
     </label>
   </div>
@@ -51,7 +51,6 @@
     </div>
   </div>
 </section>
-
 <section class="card">
   <h3>Arbeitszeit</h3>
   <div class="row wrap">
@@ -68,9 +67,8 @@
     <div>Von: <span id="fromOut" class="timeout">—</span> · Bis: <span id="toOut" class="timeout">—</span></div>
     <div>Dauer: <span id="durOut" class="timeout">00:00</span> (abzgl. Pause)</div>
   </div>
-  <div class="row"><button id="bookBtn" class="btn-primary">Buchen</button></div>
+  <div class="row"><button id="bookBtn" class="btn-primary">Eintragen</button></div>
 </section>
-
 <h3>Monatsübersicht</h3>
 <section class="card">
   <div class="row wrap">
@@ -86,23 +84,30 @@
 </section>
 
 </main>
-<footer class="footer"><small>© 2025 Holzbau Zaunschirm • V02c</small></footer>
+<footer class="footer"><small>© 2025 Holzbau Zaunschirm • V03b Firestore</small></footer>
 <script defer src="js/storage.js"></script>
+<script defer src="js/firebase-init.js"></script>
+<script defer src="js/firestore-adapter.js"></script>
 <script defer src="js/auth.js"></script>
 <script defer src="js/app.js"></script>
 
 <script defer src="js/times.js"></script>
 <script>
-document.addEventListener('DOMContentLoaded', ()=>{
-  try{ protectPage(); renderNavByRole(); if(typeof initTimesPage==='function') initTimesPage(); }catch(e){ console.error(e); }
+document.addEventListener('DOMContentLoaded', async ()=>{
+  try{ protectPage(); renderNavByRole(); if(typeof initTimesPage==='function') await initTimesPage(); }catch(e){ console.error(e); }
   try{
-    const me=JSON.parse(localStorage.getItem('z_session')||'null');
-    const users=JSON.parse(localStorage.getItem('z_users')||'[]');
-    const u=users.find(x=>x.id===me?.userId);
+    const me=DBAPI.readSession(); const users=JSON.parse(localStorage.getItem('z_users')||'[]'); const u=users.find(x=>x.id===me?.userId);
     if(!u || u.role!=='admin'){
       const btn=document.getElementById('addProjBtn'); if(btn) btn.style.display='none';
       const np=document.getElementById('newProjName'); const nc=document.getElementById('newProjColor'); const nk=document.getElementById('newProjKst');
       if(np) np.disabled=true; if(nc) nc.disabled=true; if(nk) nk.disabled=true;
+    } else {
+      document.getElementById('addProjBtn').addEventListener('click', async ()=>{
+        const name=(newProjName.value||'').trim(); const color=newProjColor.value||'#C8A86B'; const cost=(newProjKst.value||'').trim();
+        if(!name) return alert('Bitte Projektnamen eingeben.');
+        await DBAPI.addProject({id:'p'+Math.random().toString(36).slice(2,9), name, color, costCenter: cost});
+        newProjName.value=''; newProjKst.value=''; await (async ()=>{ const sel=document.getElementById('projectSelect'); const ps = await DBAPI.readProjects(); sel.innerHTML = `<option value="">(ohne Projekt)</option>` + ps.map(p=>`<option value="${p.id}">${p.name}${p.costCenter? ' • KSt '+p.costCenter:''}</option>`).join(''); })();
+      });
     }
   }catch(e){}
 });

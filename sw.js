@@ -1,2 +1,2 @@
 self.addEventListener('install', e=>{ self.skipWaiting(); }); self.addEventListener('activate', e=>{}); self.addEventListener('fetch', e=>{});
-// V02c built 2025-10-05T18:32:15.342516Z (includes drawer hotfix)
+// V03b Firestore built 2025-10-06T03:40:32.334476Z

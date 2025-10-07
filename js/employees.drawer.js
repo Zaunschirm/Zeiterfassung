@@ -15,15 +15,14 @@
   function drawerClose(){ UI.drawer.classList.remove('open'); UI.backdrop.classList.remove('open'); setTimeout(()=> UI.backdrop.classList.add('hidden'), 200); setTimeout(()=> UI.addBtn?.focus(), 100); }
   window.openModal = function(emp){ drawerOpen(emp); }; window.closeModal = function(){ drawerClose(); }; window.closeEmpModal = drawerClose;
   document.addEventListener('DOMContentLoaded', ()=>{
-    // HOTFIX: richtiges Event-Binding
     UI.addBtn && UI.addBtn.addEventListener('click', ()=>drawerOpen(null));
     UI.closeBtn && UI.closeBtn.addEventListener('click', drawerClose);
     UI.cancelBtn && UI.cancelBtn.addEventListener('click', drawerClose);
     UI.backdrop && UI.backdrop.addEventListener('click', (ev)=>{ if(ev.target===UI.backdrop) drawerClose(); });
     document.addEventListener('keydown', (ev)=>{ if(ev.key==='Escape' && UI.drawer.classList.contains('open')) drawerClose(); });
     const origRender = window.renderTable;
-    window.renderTable = function(){ if (origRender) origRender(); UI.tbody?.querySelectorAll('[data-edit]').forEach(btn=>{ btn.addEventListener('click', ()=>{ const users=readUsers(); const emp=users.find(x=>x.id===btn.dataset.edit); drawerOpen(emp); }); }); };
+    window.renderTable = async function(){ if (origRender) await origRender(); UI.tbody?.querySelectorAll('[data-edit]').forEach(btn=>{ btn.addEventListener('click', async ()=>{ const users=await DBAPI.readUsers(); const emp=users.find(x=>x.id===btn.dataset.edit); drawerOpen(emp); }); }); };
     if (window.renderTable) window.renderTable();
-    if (typeof window.saveEmp === 'function'){ UI.saveBtn && UI.saveBtn.addEventListener('click', ()=>{ window.saveEmp(); drawerClose(); }); }
+    if (typeof window.saveEmp === 'function'){ UI.saveBtn && UI.saveBtn.addEventListener('click', async ()=>{ await window.saveEmp(); drawerClose(); }); }
   });
 })();

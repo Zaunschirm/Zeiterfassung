@@ -26,11 +26,12 @@
     </section>
   </main>
   <script defer src="js/storage.js"></script>
+  <script defer src="js/firebase-init.js"></script>
+  <script defer src="js/firestore-adapter.js"></script>
   <script defer src="js/auth.js"></script>
   <script>
     document.addEventListener('DOMContentLoaded', function(){
       try {
-        ensureSeedAdmin();
         const username = document.getElementById("username");
         const password = document.getElementById("password");
         const msg = document.getElementById("msg");

@@ -26,11 +26,13 @@
 <main class="container">
 
 <section class="card"><h2>Weiterleiten…</h2></section>
-<script>document.addEventListener('DOMContentLoaded', ()=>{ const s=JSON.parse(localStorage.getItem('z_session')||'null'); location.replace(s&&s.userId?'dashboard.html':'login.html'); });</script>
+<script>document.addEventListener('DOMContentLoaded', ()=>{ const s=DBAPI.readSession(); location.replace(s&&s.userId?'dashboard.html':'login.html'); });</script>
 
 </main>
-<footer class="footer"><small>© 2025 Holzbau Zaunschirm • V02c</small></footer>
+<footer class="footer"><small>© 2025 Holzbau Zaunschirm • V03b Firestore</small></footer>
 <script defer src="js/storage.js"></script>
+<script defer src="js/firebase-init.js"></script>
+<script defer src="js/firestore-adapter.js"></script>
 <script defer src="js/auth.js"></script>
 <script defer src="js/app.js"></script>
 
