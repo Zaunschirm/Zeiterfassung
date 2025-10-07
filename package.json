@@ -1,5 +1,5 @@
 {
-  "name": "zauni-pin-app",
+  "name": "zauni-pin-app-complete",
   "private": true,
   "version": "1.0.0",
   "scripts": {
@@ -9,11 +9,10 @@
     "hash-pin": "node scripts/hash-pin.js"
   },
   "dependencies": {
-    "cookie": "^0.6.0",
-    "jose": "^5.2.4",
     "next": "14.2.5",
     "react": "18.2.0",
     "react-dom": "18.2.0",
-    "@supabase/supabase-js": "^2.45.3"
+    "@supabase/supabase-js": "^2.45.3",
+    "jose": "^5.2.4"
   }
 }
