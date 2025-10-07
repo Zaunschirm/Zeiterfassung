@@ -1,4 +1,5 @@
-import { adminClient } from '../../../lib/supabase';
+- import { adminClient } from '@/lib/supabase';
++ import { adminClient } from '../../../lib/supabase';
 import { SignJWT } from 'jose';
 import crypto from 'node:crypto';
 import { cookies } from 'next/headers';
