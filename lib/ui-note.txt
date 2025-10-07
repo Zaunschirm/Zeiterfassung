@@ -1,0 +1,1 @@
+UI files simplified for demo; can be styled further.
