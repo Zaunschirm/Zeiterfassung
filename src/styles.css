@@ -1,3 +1,4 @@
+
 :root { --bg:#0b1215; --card:#0f1720; --muted:#a3b3bd; --accent:#0ea5a3; --ok:#16a34a; --warn:#f59e0b; }
 *{ box-sizing:border-box; -webkit-tap-highlight-color: transparent; }
 html, body, #root { height:100%; margin:0; }

@@ -1,4 +1,5 @@
-const CACHE = 'zaun-zeit-v2'
+
+const CACHE = 'zaun-zeit-v3'
 const APP_SHELL = ['/', '/index.html', '/manifest.webmanifest']
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(APP_SHELL)))

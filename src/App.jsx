@@ -1,19 +1,21 @@
+
 import React from 'react'
 import RoleBar from './components/RoleBar'
 import DaySlider from './components/DaySlider'
 import EntryTable from './components/EntryTable'
-import db from './db'
+import LoginPanel from './components/LoginPanel'
 import './styles.css'
 
 export default function App() {
+  const [session, setSession] = React.useState({ role:'admin', employeeId:1 })
+  const [user, setUser] = React.useState(null)
   return (<div className="app">
-    <div className="header">
-      <h1>Zeiterfassung – Rollen & Slider (15‑Min Raster)</h1>
-      <div className="small">Mobil optimiert • Offline‑fähig • GitHub Pages ready</div>
-    </div>
-    <RoleBar />
-    <DaySlider />
-    <EntryTable />
+    <div className="header"><h1>Zeiterfassung • Rollen • Supabase-ready</h1>
+      <div className="small">Mobil • Offline • GitHub Pages</div></div>
+    <LoginPanel onAuth={setUser} />
+    <RoleBar session={session} setSession={setSession} />
+    <DaySlider session={session} />
+    <EntryTable session={session} user={user} />
     <footer>© {new Date().getFullYear()} Holzbau Zaunschirm</footer>
   </div>)
 }
