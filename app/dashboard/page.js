@@ -1,1 +1,0 @@
-export default function D(){return(<main style={{padding:24}}><h1>Dashboard</h1><a href='/admin/employees'>Admin</a></main>);}
