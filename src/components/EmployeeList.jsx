@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { supabase } from '../lib/supabase';
+import supa from '../lib/supabase.js';
 
 export default function EmployeeList() {
   const [rows, setRows] = useState([]);
