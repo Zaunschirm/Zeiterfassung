@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { supabase } from '../lib/supabase';
+import supa from '../lib/supabase.js';  ;
 
 export default function EmployeeCreate({ onCreated }) {
   const [name, setName] = useState('');
