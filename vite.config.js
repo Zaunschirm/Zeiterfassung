@@ -8,30 +8,23 @@ export default defineConfig({
   base: BASE,
   plugins: [
     react(),
-    VitePWA({
-      registerType: 'autoUpdate',
-      includeAssets: [
-        'favicon.ico',
-        'robots.txt',
-        'apple-touch-icon.png',
-      ],
-      manifest: {
-        name: 'Zeiterfassung',
-        short_name: 'Zeiterfassung',
-        start_url: BASE,       // wichtig im Sub-Pfad
-        scope: BASE,           // dito
-        display: 'standalone',
-        background_color: '#0f766e',
-        theme_color: '#0f766e',
-        icons: [
-          { src: 'icons/pwa-192x192.png', sizes: '192x192', type: 'image/png' },
-          { src: 'icons/pwa-512x512.png', sizes: '512x512', type: 'image/png' },
-          { src: 'icons/pwa-512x512-maskable.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' }
-        ]
-      },
-      // Optional – hilft beim lokalen Testen:
-      // devOptions: { enabled: true }
-    }),
+   VitePWA({
+  manifest: {
+    name: 'Zeiterfassung Zaunschirm',
+    short_name: 'Zaunschirm',
+    start_url: BASE,
+    scope: BASE,
+    display: 'standalone',
+    theme_color: '#8B5A2B',
+    background_color: '#18130F',
+    icons: [
+      { src: `${BASE}icons/pwa-192x192.png`, sizes: '192x192', type: 'image/png' },
+      { src: `${BASE}icons/pwa-512x512.png`, sizes: '512x512', type: 'image/png' },
+      { src: `${BASE}icons/pwa-512x512-maskable.png`, sizes: '512x512', type: 'image/png', purpose: 'maskable' }
+    ]
+  }
+})
+,
   ],
   build: {
     outDir: 'dist',
