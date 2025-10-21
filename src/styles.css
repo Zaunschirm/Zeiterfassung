@@ -1,19 +1,28 @@
 :root{
-  --bg: #161a1a;
-  --bg-soft: #1d2323;
-  --panel: #0f1212;
-  --text: #e8e8e8;
-  --muted: #9aa5a8;
-  --line: #2a2f2f;
-  --brand: #1f8a66;
-  --brand-600:#177355;
-  --brand-700:#125c45;
-  --sand: #e6d5c3;
-  --sand-700:#c8ad92;
-  --radius: 12px;
-  --shadow: 0 8px 24px rgba(0,0,0,.25);
-  --ring: 0 0 0 3px color-mix(in srgb, var(--brand) 35%, transparent);
+  /* === Brand & Akzent – aus dem Logo === */
+  --brand:      #8B5E3C;  /* Holzbraun (Hauptakzent) */
+  --brand-600:  #7A5235;
+  --brand-700:  #5F3E28;  /* dunkles Holz */
+
+  --sand:       #E7D3C0;  /* creme/holzhell für Headlines, Akzente */
+  --sand-700:   #D2B79D;
+
+  /* === Basis (Dark-Theme, aber warm) === */
+  --bg:         #12100E;  /* Hintergrund */
+  --bg-soft:    #181512;
+  --panel:      #0E0C0A;  /* Karten/Panele */
+
+  --text:       #F3EFEA;  /* Standardtext hell, warm */
+  --muted:      #BBAFA6;  /* abgeschwächter Text */
+
+  --line:       #2A221C;  /* Linien/Trenner, warm-dunkel */
+
+  /* Rest wie gehabt */
+  --radius:     12px;
+  --shadow:     0 8px 24px rgba(0,0,0,.25);
+  --ring:       0 0 0 3px color-mix(in srgb, var(--brand) 35%, transparent);
 }
+
 
 *{ box-sizing:border-box }
 html,body{ height:100% }
