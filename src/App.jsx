@@ -19,3 +19,16 @@ export default function App() {
     <footer>© {new Date().getFullYear()} Holzbau Zaunschirm</footer>
   </div>)
 }
+import EmployeeCreate from './components/EmployeeCreate';
+import EmployeeList from './components/EmployeeList';
+
+export default function App() {
+  return (
+    <>
+      {/* LoginPanel & restlicher Inhalt, den du schon hast … */}
+
+      <EmployeeCreate onCreated={() => {/* optional: kannst du benutzen, wenn App laden soll */}} />
+      <EmployeeList />
+    </>
+  );
+}

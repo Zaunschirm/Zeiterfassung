@@ -1,97 +1,110 @@
 import { useState } from 'react';
-import supa from '../lib/supabase.js';  ;
+import { supabase } from '../lib/supabase';
+
+const ROLES = [
+  { value: 'admin', label: 'Admin' },
+  { value: 'teamleiter', label: 'Teamleiter' },
+  { value: 'mitarbeiter', label: 'Mitarbeiter' },
+];
 
 export default function EmployeeCreate({ onCreated }) {
   const [name, setName] = useState('');
   const [pin, setPin] = useState('');
   const [role, setRole] = useState('mitarbeiter');
   const [loading, setLoading] = useState(false);
-  const [msg, setMsg] = useState('');
+  const [msg, setMsg] = useState(null);
 
-  const onSubmit = async (e) => {
+  async function handleCreate(e) {
     e.preventDefault();
-    if (!name.trim() || !pin.trim()) {
-      setMsg('Name und PIN dürfen nicht leer sein');
-      return;
+    setMsg(null);
+
+    // kleine Validierung
+    if (!name.trim()) return setMsg({ type: 'error', text: 'Bitte Name eingeben.' });
+    if (!/^\d{4,6}$/.test(pin)) {
+      return setMsg({ type: 'error', text: 'PIN muss 4–6 Ziffern haben.' });
     }
 
     setLoading(true);
-    const { data, error } = await supabase.rpc('add_mitarbeiter', {
-      p_name: name.trim(),
-      p_pin: pin,
-      p_rolle: role
-    });
-    setLoading(false);
+    try {
+      // sichere Variante A (serverseitiges Hashing):
+      const { data, error } = await supabase.rpc('add_mitarbeiter', {
+        p_name: name.trim(),
+        p_pin: pin,
+        p_rolle: role,
+      });
 
-    if (error) {
-      console.error(error);
-      setMsg('Fehler: ' + error.message);
-    } else {
-      setMsg(`Mitarbeiter „${name}“ angelegt`);
+      if (error) throw error;
+
+      setMsg({ type: 'ok', text: 'Mitarbeiter angelegt.' });
       setName('');
       setPin('');
       setRole('mitarbeiter');
-      onCreated?.();
+      onCreated?.(); // Liste refreshen
+    } catch (err) {
+      console.error(err);
+      setMsg({
+        type: 'error',
+        text:
+          err?.message?.includes('function add_mitarbeiter')
+            ? 'RPC-Funktion add_mitarbeiter fehlt. Bitte SQL unten ausführen.'
+            : err.message || 'Fehler beim Anlegen.',
+      });
+    } finally {
+      setLoading(false);
     }
-  };
+  }
 
   return (
-    <form
-      onSubmit={onSubmit}
-      style={{
-        background: '#1c1c1c',
-        padding: '1rem',
-        borderRadius: '10px',
-        color: 'white',
-        marginBottom: '1rem',
-      }}
-    >
-      <h3 style={{ marginBottom: '0.5rem', fontWeight: 'bold' }}>
-        Mitarbeiter anlegen
-      </h3>
+    <div className="card">
+      <h2>Mitarbeiter anlegen</h2>
 
-      {msg && <div style={{ marginBottom: '0.5rem', color: '#a8ffb5' }}>{msg}</div>}
+      <form onSubmit={handleCreate} className="row">
+        <div className="col">
+          <label className="mb-1">Name</label>
+          <input
+            className="input"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="z. B. Armin"
+            autoFocus
+          />
+        </div>
 
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
-        <input
-          type="text"
-          placeholder="Name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          style={{ flex: 1, padding: '0.5rem', borderRadius: '5px' }}
-        />
-        <input
-          type="password"
-          placeholder="PIN"
-          value={pin}
-          onChange={(e) => setPin(e.target.value)}
-          style={{ flex: 1, padding: '0.5rem', borderRadius: '5px' }}
-        />
-        <select
-          value={role}
-          onChange={(e) => setRole(e.target.value)}
-          style={{ flex: 1, padding: '0.5rem', borderRadius: '5px' }}
-        >
-          <option value="mitarbeiter">Mitarbeiter</option>
-          <option value="teamleiter">Teamleiter</option>
-          <option value="admin">Admin</option>
-        </select>
-      </div>
+        <div className="col">
+          <label className="mb-1">Rolle</label>
+          <select className="input" value={role} onChange={(e) => setRole(e.target.value)}>
+            {ROLES.map((r) => (
+              <option key={r.value} value={r.value}>
+                {r.label}
+              </option>
+            ))}
+          </select>
+        </div>
 
-      <button
-        type="submit"
-        disabled={loading}
-        style={{
-          background: '#885A2B',
-          color: 'white',
-          border: 'none',
-          borderRadius: '5px',
-          padding: '0.5rem 1rem',
-          cursor: 'pointer',
-        }}
-      >
-        {loading ? 'Speichere...' : 'Anlegen'}
-      </button>
-    </form>
+        <div className="col">
+          <label className="mb-1">PIN (4–6 Ziffern)</label>
+          <input
+            className="input"
+            value={pin}
+            onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
+            placeholder="1234"
+            inputMode="numeric"
+            maxLength={6}
+          />
+        </div>
+
+        <div className="col" style={{ alignSelf: 'end' }}>
+          <button className="button" disabled={loading}>
+            {loading ? 'Speichern…' : 'Anlegen'}
+          </button>
+        </div>
+      </form>
+
+      {msg && (
+        <p className="mt-2" style={{ color: msg.type === 'ok' ? 'var(--success)' : 'var(--danger)' }}>
+          {msg.text}
+        </p>
+      )}
+    </div>
   );
 }
