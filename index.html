@@ -2,32 +2,50 @@
 <html lang="de">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
     <title>Holzbau Zaunschirm – Zeiterfassung</title>
-    <link rel="manifest" href="./manifest.webmanifest" />
-    <meta name="theme-color" content="#8B5E3C" />
+
+    <!-- PWA Manifest (falls vorhanden) -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#B88C6A" />
+
+    <!-- Unser neues, vollständiges Stylesheet -->
     <link rel="stylesheet" href="/src/styles.css" />
   </head>
   <body>
-    <header>
+    <header class="site-header">
       <div class="header-left">
-       <img src="/logo.png" alt="Holzbau Zaunschirm Logo" class="logo" />
-        <h1>Holzbau Zaunschirm GmbH</h1>
+        <!-- Dein Logo: /logo.png -->
+        <img src="/logo.png" alt="Holzbau Zaunschirm Logo" class="logo" />
+        <div class="brand">
+          <h1>Holzbau Zaunschirm GmbH</h1>
+          <span class="app-title">Zeiterfassung</span>
+        </div>
       </div>
-      <div class="header-right">
-        <span class="app-title">Zeiterfassung</span>
-      </div>
+      <!-- optionaler Platz rechts -->
+      <div class="header-right"></div>
     </header>
 
     <main class="container">
+      <!-- React mount point -->
       <div id="root"></div>
     </main>
 
-    <footer>
-      © 2025 Holzbau Zaunschirm GmbH – Distelhof 100, 8443 Gleinstätten
+    <footer class="site-footer">
+      © <span data-year></span> Holzbau Zaunschirm GmbH · Distelhof 100, 8443
+      Gleinstätten
     </footer>
 
+    <!-- Dein React/Vite Bundle -->
     <script type="module" src="/src/main.jsx"></script>
+
+    <!-- Kleines Script, um das ©-Jahr zu setzen -->
+    <script>
+      const y = document.querySelector('[data-year]');
+      if (y) y.textContent = new Date().getFullYear();
+    </script>
   </body>
 </html>
-/script>
