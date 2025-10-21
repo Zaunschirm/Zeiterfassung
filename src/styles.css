@@ -223,9 +223,6 @@ header {
   object-fit: contain;          /* Behält Seitenverhältnis bei */
   margin-right: 12px;
 }
-
-
-
 .header-left h1 {
   font-size: 1.3rem;
   color: var(--brand-dark);
@@ -248,4 +245,44 @@ footer {
   padding: 14px 10px;
   font-size: 0.9rem;
 }
+/* --- FIX: Altes Wasserzeichen/Background-Logo entfernen --- */
+body,
+.container {
+  background: #fff !important;        /* weißer Hintergrund */
+}
+
+/* Falls irgendwo ein Pseudo-Element oder Klasse das Logo als BG zeichnet */
+body::before,
+body::after,
+.page-logo,
+.bg-logo,
+.watermark,
+.watermark::before,
+.watermark::after {
+  content: none !important;
+  display: none !important;
+  background: none !important;
+  background-image: none !important;
+  opacity: 0 !important;
+}
+
+/* --- Header-Logo bewusst klein halten --- */
+header .logo,
+.logo {
+  height: 56px !important;  /* hier kannst du anpassen (z.B. 48–64px) */
+  width: auto !important;
+  max-width: 220px !important;
+  object-fit: contain !important;
+  display: block !important;
+}
+
+/* Für schmale Displays noch etwas kleiner */
+@media (max-width: 640px) {
+  header .logo,
+  .logo {
+    height: 44px !important;
+    max-width: 180px !important;
+  }
+}
+
 
