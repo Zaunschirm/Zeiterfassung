@@ -1,15 +1,23 @@
-import React from 'react';
+import React, { useState } from 'react';
+
 import RoleBar from './components/RoleBar';
 import DaySlider from './components/DaySlider';
 import EntryTable from './components/EntryTable';
 import LoginPanel from './components/LoginPanel';
+
 import EmployeeCreate from './components/EmployeeCreate';
 import EmployeeList from './components/EmployeeList';
+
 import './styles.css';
 
 export default function App() {
-  const [session, setSession] = React.useState({ role: 'admin', employeeId: 1 });
-  const [user, setUser] = React.useState(null);
+  // Demo/Fake-Session (lokal ohne Supabase-Auth)
+  const [session, setSession] = useState({ role: 'admin', employeeId: 1 });
+  const [user, setUser] = useState(null);
+
+  // Key-Refresh für EmployeeList nach dem Anlegen
+  const [listKey, setListKey] = useState(0);
+  const handleCreated = () => setListKey((k) => k + 1);
 
   return (
     <div className="app">
@@ -21,14 +29,14 @@ export default function App() {
       {/* Login */}
       <LoginPanel onAuth={setUser} />
 
-      {/* Rollenanzeige / Zeiteingabe */}
+      {/* Rolle/Zeiteingabe */}
       <RoleBar session={session} setSession={setSession} />
       <DaySlider session={session} setSession={setSession} />
       <EntryTable session={session} user={user} />
 
       {/* Mitarbeiterverwaltung */}
-      <EmployeeCreate />
-      <EmployeeList />
+      <EmployeeCreate onCreated={handleCreated} />
+      <EmployeeList key={listKey} />
 
       <footer>
         © {new Date().getFullYear()} Holzbau Zaunschirm GmbH

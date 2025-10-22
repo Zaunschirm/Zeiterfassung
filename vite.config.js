@@ -20,8 +20,8 @@ export default defineConfig({
         scope: BASE,
         display: 'standalone',
         description: 'Zeiterfassung – mobil & offline – Holzbau Zaunschirm',
-        theme_color: '#8B5A2B',           // Holzbraun (Logo-Farbe)
-        background_color: '#18130F',      // Dunkles Braun / Schwarzbraun
+        theme_color: "#8B5E3C",           // Holzbraun (Logo-Farbe)
+        background_color: "#12100E",      // Dunkles Braun / Schwarzbraun
         icons: [
           { src: `${BASE}icons/pwa-192x192.png`, sizes: '192x192', type: 'image/png' },
           { src: `${BASE}icons/pwa-512x512.png`, sizes: '512x512', type: 'image/png' },
