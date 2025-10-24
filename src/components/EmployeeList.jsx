@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { supabase } from '../lib/supabase';
+import { supabase } from '../db';
 
 export default function EmployeeList() {
   const [rows, setRows] = useState([]);
@@ -8,39 +8,25 @@ export default function EmployeeList() {
   const [hasAktiv, setHasAktiv] = useState(true); // wird auto-erkannt
 
   async function load() {
-    setLoading(true);
-    setMsg(null);
-    try {
-      // aktiv ist optional – wenn Spalte fehlt, kommt ein Fehler
-      const { data, error } = await supabase
-        .from('mitarbeiter')
-        .select('id, name, rolle, created_at, aktiv')
-        .order('created_at', { ascending: false });
+  async function load() {
+  setLoading(true);
+  setMsg(null);
+  try {
+    const { data, error } = await supabase
+      .from('mitarbeiter')
+      .select('id, name, rolle, status, created_at')
+      .order('created_at', { ascending: false });
 
-      if (error) {
-        // Prüfe ob Spalte 'aktiv' fehlt -> fallback ohne aktiv
-        if (String(error.message).toLowerCase().includes('column "aktiv"')) {
-          setHasAktiv(false);
-          const { data: data2, error: error2 } = await supabase
-            .from('mitarbeiter')
-            .select('id, name, rolle, created_at')
-            .order('created_at', { ascending: false });
-          if (error2) throw error2;
-          setRows(data2 || []);
-        } else {
-          throw error;
-        }
-      } else {
-        setHasAktiv(true);
-        setRows(data || []);
-      }
-    } catch (err) {
-      setMsg({ type: 'error', text: err?.message || 'Laden fehlgeschlagen.' });
-      setRows([]);
-    } finally {
-      setLoading(false);
-    }
+    if (error) throw error;
+    setRows(data || []);
+  } catch (err) {
+    setMsg({ type: 'error', text: err?.message || 'Laden fehlgeschlagen.' });
+    setRows([]);
+  } finally {
+    setLoading(false);
   }
+}
+
 
   useEffect(() => {
     load();
@@ -63,23 +49,23 @@ export default function EmployeeList() {
     }
   }
 
-  async function handleToggleAktiv(id) {
-    try {
-      const { error } = await supabase.rpc('toggle_mitarbeiter_aktiv', {
-        p_id: id,
-      });
-      if (error) throw error;
-      await load();
-    } catch (err) {
-      // Wenn es die RPC nicht gibt, Button ausblenden
-      setMsg({
-        type: 'error',
-        text:
-          'Aktiv-Status konnte nicht geändert werden. ' +
-          (err?.message || ''),
-      });
-    }
+ async function handleToggleAktiv(id, currentStatus) {
+  try {
+    const next = currentStatus === 'aktiv' ? 'inaktiv' : 'aktiv';
+    const { error } = await supabase.rpc('update_mitarbeiter', {
+      p_id: id,
+      p_status: next,
+    });
+    if (error) throw error;
+    await load();
+  } catch (err) {
+    setMsg({
+      type: 'error',
+      text: 'Aktiv-Status konnte nicht geändert werden. ' + (err?.message || ''),
+    });
   }
+}
+
 
   async function handleDelete(id, name) {
     if (!confirm(`Mitarbeiter „${name}“ wirklich löschen?`)) return;
@@ -134,8 +120,10 @@ export default function EmployeeList() {
                     <div className="btn-row">
                       <button onClick={() => handleResetPin(r.id)}>PIN zurücksetzen</button>
                       {hasAktiv && (
-                        <button onClick={() => handleToggleAktiv(r.id)}>
-                          Aktiv wechseln
+                       <button onClick={() => handleToggleAktiv(r.id)}>
+  Aktiv wechseln
+</button>
+
                         </button>
                       )}
                       <button onClick={() => handleDelete(r.id, r.name)}>Löschen</button>
