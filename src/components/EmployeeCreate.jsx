@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { supabase } from '../db';
+import supabase from '../lib/supabase';
 
 const ROLES = [
   { value: 'mitarbeiter', label: 'Mitarbeiter' },
