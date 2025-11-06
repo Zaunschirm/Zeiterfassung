@@ -1,46 +1,45 @@
-import React, { useState } from 'react';
+import React from "react";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import NavBar from "./components/NavBar.jsx";
+import LoginPanel from "./components/LoginPanel.jsx";
+import DaySlider from "./components/DaySlider.jsx";
+import MonthlyOverview from "./components/MonthlyOverview.jsx";
+// ↓ Passe diese beiden Imports an deine Struktur an:
+import EmployeeList from "./components/EmployeeList.jsx";
+import ProjectPhotos from "./components/ProjectPhotos.jsx";
 
-import RoleBar from './components/RoleBar';
-import DaySlider from './components/DaySlider';
-import EntryTable from './components/EntryTable';
-import LoginPanel from './components/LoginPanel';
+function isAuthed(){ return localStorage.getItem("isAuthed")==="1"; }
+function role(){ return (localStorage.getItem("meRole")||"").toLowerCase(); }
+function isManager(){ const r=role(); return r==="admin" || r==="teamleiter"; }
 
-import EmployeeCreate from './components/EmployeeCreate';
-import EmployeeList from './components/EmployeeList';
+function PrivateRoute({children}){
+  return isAuthed() ? children : <Navigate to="/" replace/>;
+}
+function OnlyManager({children}){
+  return isManager() ? children : <Navigate to="/zeiterfassung" replace/>;
+}
 
-import './styles.css';
-
-export default function App() {
-  // Demo/Fake-Session (lokal ohne Supabase-Auth)
-  const [session, setSession] = useState({ role: 'admin', employeeId: 1 });
-  const [user, setUser] = useState(null);
-
-  // Key-Refresh für EmployeeList nach dem Anlegen
-  const [listKey, setListKey] = useState(0);
-  const handleCreated = () => setListKey((k) => k + 1);
-
+export default function App(){
   return (
-    <div className="app">
-      <header className="header">
-        <h1>Zeiterfassung • Rollen • Supabase-ready</h1>
-        <div className="small">Mobil • Offline • GitHub Pages</div>
-      </header>
-
-      {/* Login */}
-      <LoginPanel onAuth={setUser} />
-
-      {/* Rolle/Zeiteingabe */}
-      <RoleBar session={session} setSession={setSession} />
-      <DaySlider session={session} setSession={setSession} />
-      <EntryTable session={session} user={user} />
-
-      {/* Mitarbeiterverwaltung */}
-      <EmployeeCreate onCreated={handleCreated} />
-      <EmployeeList key={listKey} />
-
-      <footer>
-        © {new Date().getFullYear()} Holzbau Zaunschirm GmbH
-      </footer>
-    </div>
+    <BrowserRouter>
+      {isAuthed() && <NavBar/>}
+      <Routes>
+        <Route path="/" element={<LoginPanel/>} />
+        <Route path="/zeiterfassung" element={
+          <PrivateRoute><DaySlider/></PrivateRoute>
+        } />
+        <Route path="/monatsübersicht" element={
+          <PrivateRoute><MonthlyOverview/></PrivateRoute>
+        } />
+        {/* Mitarbeiter-Bereich NUR für Admin/Teamleiter */}
+        <Route path="/mitarbeiter" element={
+          <PrivateRoute><OnlyManager><EmployeeList/></OnlyManager></PrivateRoute>
+        } />
+        <Route path="/projektfotos" element={
+          <PrivateRoute><ProjectPhotos/></PrivateRoute>
+        } />
+        <Route path="*" element={<Navigate to={isAuthed()?"/zeiterfassung":"/"} replace/>} />
+      </Routes>
+    </BrowserRouter>
   );
 }

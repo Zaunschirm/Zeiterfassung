@@ -1,305 +1,181 @@
-/* ==========================================================================
-   Reset & Grundlayout
-   ========================================================================== */
+/* === HOLZBAU ZAUNSCHIRM CORPORATE DESIGN === */
 
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
+:root {
+  --hbz-brown: #5C3A21;
+  --hbz-beige: #E8DCC5;
+  --hbz-accent: #CBB89B;
+  --hbz-text: #2B1A0E;
 }
 
-html,
 body {
+  background-color: var(--hbz-beige);
+  color: var(--hbz-text);
+  font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   margin: 0;
   padding: 0;
 }
 
-:root {
-  /* Markenfarben */
-  --brand: #b88c6a;    /* Braun aus dem Logo */
-  --brand-dark: #8a6648;
-  --bg: #ffffff;       /* Weißer Hintergrund */
-  --panel: #f9f5f2;    /* ganz leichtes Beige */
-  --panel-border: #eaded5;
-  --text: #2a2a2a;
-  --muted: #6b6b6b;
-  --field-bg: #ffffff;
-  --field-border: #d8cfc7;
-  --focus: #c69a77;
-  --success: #2b8a3e;
-  --danger: #c0392b;
-
-  /* Abstände */
-  --radius: 12px;
-  --radius-sm: 8px;
-  --gap: 16px;
-}
-
-body {
-  background: var(--bg) !important;
-  color: var(--text);
-  font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial,
-    "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
-  line-height: 1.5;
-}
-
-/* Kill ALL possible old background logos/watermarks */
-body::before,
-body::after,
-.bg-logo,
-.bg-logo::before,
-.bg-logo::after,
-.watermark,
-.watermark::before,
-.watermark::after {
-  content: none !important;
-  display: none !important;
-  background: none !important;
-  background-image: none !important;
-  opacity: 0 !important;
-}
-
-/* ==========================================================================
-   Header
-   ========================================================================== */
-
-.site-header {
-  position: sticky;
-  top: 0;
-  z-index: 1000;
-  background: var(--bg);
-  border-bottom: 1px solid var(--panel-border);
-  padding: 10px 18px;
-}
-
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
-
-.logo {
-  display: block !important;
-  height: 56px !important; /* ← Größe anpassen (48–64px) */
-  width: auto !important;
-  max-width: 220px !important;
-  object-fit: contain !important;
-}
-
-.brand h1 {
-  font-size: 1.15rem;
-  margin: 0;
-  color: var(--brand-dark);
-  font-weight: 700;
-}
-
-.brand .app-title {
-  display: block;
-  margin-top: 2px;
-  font-size: 0.95rem;
-  color: var(--muted);
-}
-
-.header-right {
-  /* Platzhalter – falls du was rechts brauchst */
-}
-
-/* ==========================================================================
-   Container
-   ========================================================================== */
-
-.container {
-  width: min(1100px, 92vw);
-  margin: 18px auto 28px;
-  padding: 0 var(--gap);
-}
-
-/* ==========================================================================
-   Karten/Paneele – für alles, was React rendert
-   ========================================================================== */
-
-.card {
-  background: var(--panel);
-  border: 1px solid var(--panel-border);
-  border-radius: var(--radius);
-  padding: 16px;
-  margin: 12px 0;
-  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.02);
-}
-
-.card h2,
-.card h3 {
-  margin: 0 0 10px;
-  color: var(--brand-dark);
-}
-
-/* ==========================================================================
-   Formularelemente
-   ========================================================================== */
-
-.input,
-select,
-textarea,
-input[type="text"],
-input[type="email"],
-input[type="password"],
-input[type="number"],
-input[type="date"] {
-  width: 100%;
-  background: var(--field-bg);
-  color: var(--text);
-  border: 1px solid var(--field-border);
-  border-radius: var(--radius-sm);
-  padding: 10px 12px;
-  outline: none;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
-}
-
-input:focus,
-select:focus,
-textarea:focus {
-  border-color: var(--focus);
-  box-shadow: 0 0 0 3px rgba(184, 140, 106, 0.2);
-}
-
-/* ==========================================================================
-   Buttons
-   ========================================================================== */
-
-.button,
-button,
-input[type="button"],
-input[type="submit"] {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 10px 16px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--brand);
-  background: var(--brand);
+/* Kopfzeile */
+header.hbz-card {
+  background-color: var(--hbz-brown);
   color: #fff;
-  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+}
+
+.hbz-title {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: #fff;
+}
+
+/* Navigation & Buttons */
+.hbz-btn {
+  background-color: var(--hbz-accent);
+  color: var(--hbz-text);
+  border: none;
+  border-radius: 8px;
+  padding: 6px 14px;
+  margin-right: 6px;
+  font-weight: 500;
   cursor: pointer;
-  transition: transform 0.05s ease, background 0.15s ease, border-color 0.15s ease;
+  transition: background-color 0.25s ease;
 }
 
-.button:hover,
-button:hover {
-  background: var(--brand-dark);
-  border-color: var(--brand-dark);
+.hbz-btn:hover {
+  background-color: var(--hbz-brown);
+  color: #fff;
 }
 
-.button.secondary,
-button.secondary {
-  background: transparent;
-  color: var(--brand-dark);
-  border-color: var(--brand);
+.hbz-btn.primary {
+  background-color: var(--hbz-brown);
+  color: #fff;
 }
 
-.button.secondary:hover {
-  background: rgba(184, 140, 106, 0.08);
+.hbz-btn.primary:hover {
+  background-color: #3f2615;
 }
 
-.button.ghost {
-  background: transparent;
-  border-color: var(--field-border);
-  color: var(--text);
-}
-
-.button.ghost:hover {
-  border-color: var(--brand);
-}
-
-/* ==========================================================================
-   Tabellen (z. B. letzte Einträge)
-   ========================================================================== */
-
-.table {
-  width: 100%;
-  border-collapse: collapse;
-  background: var(--panel);
-  border: 1px solid var(--panel-border);
-  border-radius: var(--radius);
-  overflow: hidden; /* für runde Ecken am Wrapper */
-}
-
-.table th,
-.table td {
-  border-bottom: 1px solid var(--panel-border);
-  padding: 10px 12px;
-  text-align: left;
-  font-size: 0.95rem;
-}
-
-.table th {
-  background: #f3ece7;
-  color: var(--brand-dark);
-}
-
-.table tr:last-child td {
-  border-bottom: none;
-}
-
-/* ==========================================================================
-   Footer
-   ========================================================================== */
-
-.site-footer {
-  padding: 18px;
-  text-align: center;
-  color: var(--muted);
-  border-top: 1px solid var(--panel-border);
-  background: var(--bg);
-}
-
-/* ==========================================================================
-   Utility-Klassen (optional)
-   ========================================================================== */
-
-.row {
+/* Mitarbeiter-Pills */
+.hbz-pills {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--gap);
+  gap: 8px;
 }
 
-.col {
-  flex: 1 1 300px;
+.hbz-pill {
+  background: var(--hbz-accent);
+  border: 1px solid var(--hbz-brown);
+  color: var(--hbz-text);
+  border-radius: 20px;
+  padding: 5px 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
 }
 
-.mt-1 {
-  margin-top: 6px;
-}
-.mt-2 {
-  margin-top: 12px;
-}
-.mt-3 {
-  margin-top: 18px;
+.hbz-pill:hover {
+  background: var(--hbz-brown);
+  color: #fff;
 }
 
-.mb-1 {
-  margin-bottom: 6px;
+.hbz-pill.active {
+  background: var(--hbz-brown);
+  color: #fff;
+  border-color: #3f2615;
 }
-.mb-2 {
+
+/* Eingaben */
+.hbz-input,
+.hbz-textarea {
+  background: #fff;
+  border: 1px solid var(--hbz-accent);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: var(--hbz-text);
+  width: 100%;
+}
+
+.hbz-textarea:focus,
+.hbz-input:focus {
+  outline: 2px solid var(--hbz-brown);
+}
+
+input[type="range"] {
+  accent-color: var(--hbz-brown);
+}
+
+/* Karten & Abschnitte */
+.hbz-card {
+  background: #fff;
+  border-radius: 12px;
+  padding: 16px 18px;
+  box-shadow: 0 3px 10px rgba(0,0,0,0.1);
   margin-bottom: 12px;
 }
-.mb-3 {
-  margin-bottom: 18px;
+
+.hbz-section { margin-top: 12px; }
+
+.hbz-label { font-weight: 600; color: var(--hbz-text); }
+
+.hbz-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 12px;
 }
 
-/* Slider (range) – falls vorhanden */
-input[type="range"] {
+.hbz-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+/* Tabellen & Grid */
+.hbz-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.hbz-grid-3 {
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+/* Statusmeldungen */
+.hbz-section.ok {
+  background: #ecf8ef;
+  border: 1px solid #b7ebc6;
+  color: #1c472f;
+  border-radius: 10px;
+}
+
+.hbz-section.error {
+  background: #fff4f3;
+  border: 1px solid #ffd6d2;
+  color: #7a1f1f;
+  border-radius: 10px;
+}
+
+/* Tabellen */
+table.nice {
   width: 100%;
-  accent-color: var(--brand);
+  border-collapse: collapse;
+  font-size: 15px;
 }
 
-/* Statuschips */
-.chip {
-  display: inline-block;
-  padding: 4px 10px;
-  border-radius: 999px;
-  background: #f1edea;
-  color: var(--brand-dark);
-  font-size: 0.85rem;
-  border: 1px solid var(--panel-border);
+table.nice th {
+  background: var(--hbz-brown);
+  color: #fff;
+  text-align: left;
+  padding: 6px 8px;
+}
+
+table.nice td {
+  border-bottom: 1px solid var(--hbz-accent);
+  padding: 6px 8px;
+}
+
+table.nice tr:nth-child(even) {
+  background: #f9f5f0;
 }

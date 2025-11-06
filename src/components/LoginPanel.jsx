@@ -1,156 +1,71 @@
 // src/components/LoginPanel.jsx
-import React, { useEffect, useState } from 'react'
-import { signIn, signOut, getUser } from '../utils/auth'
+import React, { useState } from "react";
+import { supabase } from "../lib/supabase.js";
+import { useNavigate } from "react-router-dom";
 
-// Mitarbeiter-Admin (nur nach Login sichtbar)
-import EmployeeCreate from './EmployeeCreate'
-import EmployeeList from './EmployeeList'
+export default function LoginPanel(){
+  const nav = useNavigate();
+  const [code, setCode] = useState("");
+  const [pin,  setPin]  = useState("");
+  const [err,  setErr]  = useState("");
+  const [busy, setBusy] = useState(false);
 
-/**
- * Optionales onAuth-Callback:
- * - Wird aufgerufen, wenn sich der Auth-Status ändert (Login/Logout).
- */
-export default function LoginPanel({ onAuth }) {
-  const [email, setEmail] = useState('')
-  const [pass, setPass] = useState('')
-  const [user, setUser] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState('')
+  async function handleLogin(e){
+    e.preventDefault();
+    setErr(""); setBusy(true);
 
-  // Beim Mount aktuellen User laden
-  useEffect(() => {
-    let isMounted = true
-    ;(async () => {
-      try {
-        const u = await getUser()
-        if (isMounted) {
-          setUser(u)
-          setLoading(false)
-          onAuth && onAuth(u)
-        }
-      } catch (e) {
-        if (isMounted) {
-          setError(e?.message || 'Konnte Auth-Status nicht ermitteln.')
-          setLoading(false)
-        }
-      }
-    })()
-    return () => { isMounted = false }
-  }, [onAuth])
-
-  async function handleLogin() {
-    setError('')
-    setSubmitting(true)
     try {
-      const u = await signIn(email.trim(), pass)
-      setUser(u)
-      setEmail('')
-      setPass('')
-      onAuth && onAuth(u)
-    } catch (e) {
-      setError(e?.message || 'Login fehlgeschlagen.')
-    } finally {
-      setSubmitting(false)
-    }
-  }
+      // 1) Mitarbeiter mit CODE finden ( Groß/Kleinschreibung egal )
+      const { data, error } = await supabase
+        .from("employees")
+        .select("id,name,role,code,pin,active")
+        .ilike("code", code.trim())        // 'MH' == 'mh'
+        .eq("active", true)
+        .limit(1)
+        .maybeSingle();
 
-  async function handleLogout() {
-    setError('')
-    setSubmitting(true)
-    try {
-      await signOut()
-      setUser(null)
-      onAuth && onAuth(null)
-    } catch (e) {
-      setError(e?.message || 'Logout fehlgeschlagen.')
-    } finally {
-      setSubmitting(false)
-    }
-  }
+      if (error) throw error;
+      if (!data) throw new Error("Benutzer nicht gefunden.");
+      if (!data.pin) throw new Error("Keine PIN hinterlegt.");
+      if (String(pin).trim() !== String(data.pin).trim())
+        throw new Error("PIN falsch.");
 
-  if (loading) {
-    return (
-      <div className="card">
-        <h2>Login (Supabase)</h2>
-        <p>Prüfe Anmeldestatus …</p>
-      </div>
-    )
+      // 2) Session lokal merken
+      localStorage.setItem("me", JSON.stringify(data));
+      localStorage.setItem("employee", JSON.stringify(data));
+      localStorage.setItem("isAuthed", "1");
+      localStorage.setItem("meRole", (data.role || "").toLowerCase());
+
+      // 3) Start → Zeiterfassung
+      nav("/zeiterfassung", { replace: true });
+    } catch (e) {
+      setErr(e.message || String(e));
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
-    <div className="card">
-      <h2>Login (Supabase)</h2>
+    <div className="hbz-container" style={{display:"grid", placeItems:"center", minHeight:"70vh"}}>
+      <form onSubmit={handleLogin} className="hbz-card" style={{width:"min(420px, 92vw)"}}>
+        <div className="hbz-title" style={{marginBottom:10}}>Anmelden</div>
 
-      {/* Status/Fehlermeldungen */}
-      {error && (
-        <div className="badge danger" style={{ marginBottom: '0.5rem' }}>
-          {error}
+        <div className="hbz-section" style={{padding:0}}>
+          <div className="hbz-label" style={{marginBottom:6}}>Code</div>
+          <input className="hbz-input" value={code} onChange={(e)=>setCode(e.target.value)} placeholder="z. B. MH" autoFocus />
+
+          <div className="hbz-label" style={{margin:"12px 0 6px"}}>PIN</div>
+          <input className="hbz-input" value={pin} onChange={(e)=>setPin(e.target.value)} placeholder="4-stellig" maxLength={6} type="password"/>
+
+          {err && <div className="hbz-section error" style={{marginTop:12}}>{err}</div>}
+
+          <div style={{marginTop:14, display:"flex", justifyContent:"flex-end", gap:8}}>
+            <button className="hbz-btn primary" disabled={busy || !code.trim() || !pin.trim()}>
+              {busy ? "Prüfe…" : "Login"}
+            </button>
+          </div>
         </div>
-      )}
-
-      {/* Wenn eingeloggt */}
-      {user ? (
-        <>
-          <div className="row" style={{ alignItems: 'center', gap: '.5rem' }}>
-            <div className="badge">eingeloggt: {user.email || '—'}</div>
-            <button
-              className="button secondary"
-              onClick={handleLogout}
-              disabled={submitting}
-              title="Abmelden"
-            >
-              {submitting ? '…' : 'Logout'}
-            </button>
-          </div>
-
-          <p className="small" style={{ marginTop: '.5rem' }}>
-            Du bist angemeldet. Unten findest du die Mitarbeiter-Verwaltung.
-          </p>
-
-          <hr style={{ opacity: 0.15, margin: '1rem 0' }} />
-
-          {/* Mitarbeiter-Administration */}
-          <div style={{ display: 'grid', gap: '1rem' }}>
-            <EmployeeCreate />
-            <EmployeeList />
-          </div>
-        </>
-      ) : (
-        /* Wenn NICHT eingeloggt: Formular */
-        <>
-          <div className="row" style={{ gap: '.5rem', alignItems: 'center' }}>
-            <input
-              className="input"
-              placeholder="E-Mail"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              inputMode="email"
-              autoComplete="username"
-            />
-            <input
-              className="input"
-              placeholder="Passwort"
-              type="password"
-              value={pass}
-              onChange={(e) => setPass(e.target.value)}
-              autoComplete="current-password"
-            />
-            <button
-              className="button"
-              onClick={handleLogin}
-              disabled={submitting || !email || !pass}
-              title="Anmelden"
-            >
-              {submitting ? '…' : 'Login'}
-            </button>
-          </div>
-
-          <p className="small" style={{ marginTop: '.5rem' }}>
-            Falls nicht konfiguriert, läuft die App offline ohne Login.
-          </p>
-        </>
-      )}
+      </form>
     </div>
-  )
+  );
 }

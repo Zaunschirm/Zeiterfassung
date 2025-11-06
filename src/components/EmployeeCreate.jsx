@@ -1,106 +1,92 @@
-import { useState } from 'react';
-import supabase from '../lib/supabase';
+import { useMemo, useState } from "react";
+import { supabase } from "/src/lib/supabase.js";
 
-const ROLES = [
-  { value: 'mitarbeiter', label: 'Mitarbeiter' },
-  { value: 'teamleiter', label: 'Teamleiter' },
-  { value: 'admin', label: 'Admin' },
-];
+export default function EmployeeCreate(){
+  const [name, setName] = useState("");
+  const [role, setRole] = useState("mitarbeiter");
+  const [code, setCode] = useState("");
+  const [pin, setPin] = useState("");
+  const [ok, setOk] = useState("");
+  const [err, setErr] = useState("");
 
-export default function EmployeeCreate({ onCreated }) {
-  const [name, setName] = useState('');
-  const [role, setRole] = useState('mitarbeiter');
-  const [pin, setPin] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [msg, setMsg] = useState(null); // {type:'error'|'success', text:string}
+  // eingeloggte Person
+  const me = useMemo(() => {
+    try { return JSON.parse(localStorage.getItem("employee") || "{}"); }
+    catch { return {}; }
+  }, []);
+  const isAdmin = (me?.role || "").toLowerCase() === "admin";
 
-  async function handleCreate(e) {
+  async function handleSubmit(e){
     e.preventDefault();
-    setMsg(null);
+    setErr(""); setOk("");
 
-    const trimmed = name.trim();
-    if (!trimmed) {
-      setMsg({ type: 'error', text: 'Bitte einen Namen eingeben.' });
-      return;
-    }
-    if (!/^\d{4,6}$/.test(pin)) {
-      setMsg({ type: 'error', text: 'PIN muss 4–6 Ziffern haben.' });
+    // Harter Check: nur Admin
+    if (!isAdmin) {
+      setErr("Kein Zugriff: Nur Admins dürfen Mitarbeiter anlegen.");
       return;
     }
 
-    setLoading(true);
-    try {
-      const { error } = await supabase.rpc('add_mitarbeiter', {
-        p_name: trimmed,
-        p_pin: pin,
-        p_rolle: role,
+    try{
+      const encoded = btoa(pin); // wie beim Login verwendet
+      const { error } = await supabase.from("employees").insert({
+        name, role, code, pin: encoded, active: true
       });
-
       if (error) throw error;
-
-      setMsg({ type: 'success', text: 'Mitarbeiter angelegt.' });
-      setName('');
-      setPin('');
-      setRole('mitarbeiter');
-      onCreated?.(); // Liste neu laden
-    } catch (err) {
-      setMsg({
-        type: 'error',
-        text: err?.message || 'Anlegen fehlgeschlagen.',
-      });
-    } finally {
-      setLoading(false);
+      setOk("Mitarbeiter angelegt.");
+      setName(""); setRole("mitarbeiter"); setCode(""); setPin("");
+    }catch(ex){
+      setErr(ex.message);
     }
   }
 
+  // Nicht-Admin: freundliche Sperre
+  if (!isAdmin) {
+    return (
+      <>
+        <h1>Mitarbeiter anlegen</h1>
+        <div className="card" style={{maxWidth:560}}>
+          <div className="chips"><span className="chip err">Kein Zugriff</span></div>
+          <p style={{marginTop:8}}>
+            Nur <b>Admins</b> dürfen Mitarbeiter anlegen oder verwalten.
+          </p>
+        </div>
+      </>
+    );
+  }
+
   return (
-    <div className="card">
-      <h2>Mitarbeiter anlegen</h2>
+    <>
+      <h1>Mitarbeiter anlegen</h1>
 
-      {msg && (
-        <p
-          className="mt-1"
-          style={{ color: msg.type === 'error' ? 'var(--danger)' : 'var(--brand-dark)' }}
-        >
-          {msg.text}
-        </p>
-      )}
+      {ok && <div className="card"><div className="chips"><span className="chip ok">OK</span></div><p style={{marginTop:8}}>{ok}</p></div>}
+      {err && <div className="card"><div className="chips"><span className="chip err">Fehler</span></div><p style={{marginTop:8}}>{err}</p></div>}
 
-      <form onSubmit={handleCreate} className="form-grid">
-        <label>
-          Name
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="z. B. Armin"
-          />
-        </label>
-
-        <label>
-          Rolle
-          <select value={role} onChange={(e) => setRole(e.target.value)}>
-            {ROLES.map(r => (
-              <option key={r.value} value={r.value}>{r.label}</option>
-            ))}
+      <form className="card form" onSubmit={handleSubmit} style={{maxWidth:560}}>
+        <div className="row">
+          <label className="label">Name</label>
+          <input className="input" value={name} onChange={e=>setName(e.target.value)} required />
+        </div>
+        <div className="row">
+          <label className="label">Rolle</label>
+          <select className="input" value={role} onChange={e => setRole(e.target.value)}>
+            <option value="mitarbeiter">Mitarbeiter</option>
+            <option value="teamleiter">Teamleiter</option>
+            <option value="admin">Admin</option>
           </select>
-        </label>
-
-        <label>
-          PIN (4–6 Ziffern)
-          <input
-            value={pin}
-            onChange={(e) => setPin(e.target.value)}
-            inputMode="numeric"
-            placeholder="1234"
-          />
-        </label>
-
-        <div>
-          <button type="submit" disabled={loading}>
-            {loading ? 'Anlegen…' : 'Anlegen'}
-          </button>
+        </div>
+        <div className="row">
+          <label className="label">Code</label>
+          <input className="input" value={code} onChange={e=>setCode(e.target.value)} />
+        </div>
+        <div className="row">
+          <label className="label">PIN</label>
+          <input className="input" type="password" value={pin} onChange={e=>setPin(e.target.value)} />
+        </div>
+        <div style={{display:"flex", gap:10}}>
+          <button className="btn">Speichern</button>
+          <button type="reset" className="btn-ghost" onClick={()=>{setName("");setRole("mitarbeiter");setCode("");setPin("");}}>Zurücksetzen</button>
         </div>
       </form>
-    </div>
+    </>
   );
 }

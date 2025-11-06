@@ -1,124 +1,138 @@
-// src/components/EmployeeList.jsx
-import { useEffect, useState } from 'react';
-import supabase from '../lib/supabase';
+import React, { useEffect, useState } from "react";
+import { supabase } from "../lib/supabase";
 
 export default function EmployeeList() {
   const [rows, setRows] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [msg, setMsg] = useState(null); // {type:'error'|'success', text:string}
+  const [loading, setLoading] = useState(false);
 
-  // --- Daten laden ----------------------------------------------------------
   async function load() {
     setLoading(true);
-    setMsg(null);
-    try {
-      const { data, error } = await supabase
-        .from('mitarbeiter')
-        .select('id, name, rolle, status, created_at')
-        .order('created_at', { ascending: false });
+    const { data, error } = await supabase
+      .from("employees")
+      .select("id, name, role, active, disabled, code")
+      .order("name", { ascending: true });
+    setLoading(false);
+    if (error) {
+      console.error(error);
+      alert("Fehler beim Laden der Mitarbeiter.");
+      return;
+    }
+    setRows(data || []);
+  }
 
-      if (error) throw error;
-      setRows(data || []);
-    } catch (err) {
-      setMsg({ type: 'error', text: err?.message || 'Laden fehlgeschlagen.' });
-      setRows([]);
-    } finally {
-      setLoading(false);
+  useEffect(() => {
+    load();
+  }, []);
+
+  // einfache PIN-Erzeugung
+  function generatePin() {
+    return String(Math.floor(1000 + Math.random() * 9000));
+  }
+
+  // Base64-Helper (Fallback für alte PIN-Felder)
+  function toBase64(s) {
+    try {
+      return btoa(s);
+    } catch {
+      return Buffer.from(s, "utf-8").toString("base64");
     }
   }
 
-  useEffect(() => { load(); }, []);
-
-  // --- Aktionen -------------------------------------------------------------
-  async function handleResetPin(id) {
-    const pin = prompt('Neue PIN (4–6 Ziffern):');
-    if (pin == null) return;
-    if (!/^\d{4,6}$/.test(pin)) return alert('Ungültige PIN.');
-
-    try {
-      const { error } = await supabase.rpc('reset_pin', { p_id: id, p_new_pin: pin });
-      if (error) throw error;
-      alert('PIN aktualisiert.');
-    } catch (err) {
-      alert(err?.message || 'Konnte PIN nicht ändern.');
+  async function resetPin(row) {
+    let newPin = prompt(
+      `Neue 4-stellige PIN für ${row.name} eingeben (leer lassen für Zufalls-PIN):`,
+      ""
+    );
+    if (newPin === null) return;
+    newPin = (newPin || "").trim() || generatePin();
+    if (!/^\d{4}$/.test(newPin)) {
+      alert("Bitte 4-stellige Ziffern eingeben!");
+      return;
     }
+
+    const { error } = await supabase
+      .from("employees")
+      .update({ pin: toBase64(newPin), pin_hash: null })
+      .eq("id", row.id);
+
+    if (error) {
+      console.error(error);
+      alert("PIN konnte nicht gespeichert werden!");
+      return;
+    }
+    alert(`Neue PIN für ${row.name}: ${newPin}`);
+    load();
   }
 
-  async function handleToggleAktiv(id, currentStatus) {
-    try {
-      const next = currentStatus === 'aktiv' ? 'inaktiv' : 'aktiv';
-      const { error } = await supabase.rpc('update_mitarbeiter', {
-        p_id: id,
-        p_status: next,
-      });
-      if (error) throw error;
-      await load();
-    } catch (err) {
-      setMsg({
-        type: 'error',
-        text: 'Aktiv-Status konnte nicht geändert werden. ' + (err?.message || ''),
-      });
+  async function remove(row) {
+    if (!confirm(`Mitarbeiter "${row.name}" wirklich löschen?`)) return;
+    const { error } = await supabase.from("employees").delete().eq("id", row.id);
+    if (error) {
+      console.error(error);
+      alert("Löschen fehlgeschlagen – ggf. Supabase RLS prüfen.");
+      return;
     }
+    load();
   }
-
-  async function handleDelete(id, name) {
-    if (!confirm(`Mitarbeiter „${name}“ wirklich löschen?`)) return;
-    try {
-      const { error } = await supabase.rpc('delete_mitarbeiter', { p_id: id });
-      if (error) throw error;
-      await load();
-    } catch (err) {
-      alert(err?.message || 'Löschen fehlgeschlagen.');
-    }
-  }
-
-  // --- Render ---------------------------------------------------------------
-  if (loading) return <div className="card">Lade Mitarbeiter…</div>;
 
   return (
-    <div className="card">
-      <h2>Mitarbeiter</h2>
+    <div className="rounded-xl bg-white/70 p-4 shadow">
+      <h2 className="text-lg font-semibold mb-3">Mitarbeiter</h2>
 
-      {msg && (
-        <p className="mt-1" style={{ color: msg.type === 'error' ? 'var(--danger)' : 'var(--brand-dark)' }}>
-          {msg.text}
-        </p>
-      )}
+      {loading && <p>Lade Mitarbeiter…</p>}
 
-      {rows.length === 0 ? (
-        <div>Keine Mitarbeiter vorhanden.</div>
-      ) : (
-        <div className="table">
-          <table>
-            <thead>
+      {!loading && (
+        <table className="w-full text-sm">
+          <thead className="bg-neutral-100 text-neutral-600">
+            <tr>
+              <th className="text-left px-3 py-2">Name</th>
+              <th className="text-left px-3 py-2">Rolle</th>
+              <th className="text-left px-3 py-2">Status</th>
+              <th className="text-left px-3 py-2">Code</th>
+              <th className="text-right px-3 py-2">Aktionen</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 && (
               <tr>
-                <th>Name</th>
-                <th>Rolle</th>
-                <th>Status</th>
-                <th>Seit</th>
-                <th>Aktionen</th>
+                <td colSpan="5" className="text-center py-3 text-neutral-500">
+                  Keine Mitarbeiter gefunden.
+                </td>
               </tr>
-            </thead>
-
-            <tbody>
-              {rows.map((r) => (
-                <tr key={r.id}>
-                  <td>{r.name}</td>
-                  <td>{r.rolle}</td>
-                  <td>{r.status === 'aktiv' ? 'Aktiv' : 'Inaktiv'}</td>
-                  <td>{new Date(r.created_at).toLocaleDateString()}</td>
-                  <td>
-                    <div className="btn-row">
-                      <button onClick={() => handleResetPin(r.id)}>PIN zurücksetzen</button>
-                      <button onClick={() => handleToggleAktiv(r.id, r.status)}>Aktiv wechseln</button>
-                      <button onClick={() => handleDelete(r.id, r.name)}>Löschen</button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+            )}
+            {rows.map((r) => (
+              <tr
+                key={r.id}
+                className="border-t border-neutral-200 hover:bg-neutral-50"
+              >
+                <td className="px-3 py-2">{r.name}</td>
+                <td className="px-3 py-2">{r.role}</td>
+                <td className="px-3 py-2">
+                  {r.disabled ? (
+                    <span className="text-red-600">inaktiv</span>
+                  ) : (
+                    <span className="text-green-700">aktiv</span>
+                  )}
+                </td>
+                <td className="px-3 py-2">{r.code}</td>
+                <td className="px-3 py-2 text-right space-x-2">
+                  <button
+                    onClick={() => resetPin(r)}
+                    className="px-2 py-1 text-xs rounded bg-amber-100 text-amber-800 hover:bg-amber-200"
+                  >
+                    PIN zurücksetzen
+                  </button>
+                  <button
+                    onClick={() => remove(r)}
+                    className="px-2 py-1 text-xs rounded bg-red-100 text-red-700 hover:bg-red-200"
+                  >
+                    Löschen
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       )}
     </div>
   );

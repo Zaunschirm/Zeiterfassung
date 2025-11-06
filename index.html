@@ -15,37 +15,11 @@
     <!-- Unser neues, vollständiges Stylesheet -->
     <link rel="stylesheet" href="/src/styles.css" />
   </head>
-  <body>
-    <header class="site-header">
-      <div class="header-left">
-        <!-- Dein Logo: /logo.png -->
-        <img src="/logo.png" alt="Holzbau Zaunschirm Logo" class="logo" />
-        <div class="brand">
-          <h1>Holzbau Zaunschirm GmbH</h1>
-          <span class="app-title">Zeiterfassung</span>
-        </div>
-      </div>
-      <!-- optionaler Platz rechts -->
-      <div class="header-right"></div>
-    </header>
+<body>
+  <!-- React Mount Point -->
+  <div id="root"></div>
 
-    <main class="container">
-      <!-- React mount point -->
-      <div id="root"></div>
-    </main>
-
-    <footer class="site-footer">
-      © <span data-year></span> Holzbau Zaunschirm GmbH · Distelhof 100, 8443
-      Gleinstätten
-    </footer>
-
-    <!-- Dein React/Vite Bundle -->
-    <script type="module" src="/src/main.jsx"></script>
-
-    <!-- Kleines Script, um das ©-Jahr zu setzen -->
-    <script>
-      const y = document.querySelector('[data-year]');
-      if (y) y.textContent = new Date().getFullYear();
-    </script>
-  </body>
+  <!-- Dein React/Vite Bundle -->
+  <script type="module" src="/src/main.jsx"></script>
+</body>
 </html>

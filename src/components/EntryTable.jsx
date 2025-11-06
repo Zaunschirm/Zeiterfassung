@@ -1,41 +1,102 @@
+// src/components/EntryTable.jsx
+import React, { useEffect, useMemo, useState } from "react";
+import { supabase } from "../lib/supabase";
 
-import React from 'react'
-import db from '../db'
-import { toLabel } from '../utils/time'
-import { pushEntries } from '../utils/sync'
+export default function EntryTable() {
+  const [rows, setRows] = useState([]);
+  const [busy, setBusy] = useState(false);
 
-export default function EntryTable({ session, user }) {
-  const [rows, setRows] = React.useState([])
-  async function load() { const data = await db.entries.orderBy('date').reverse().limit(300).toArray(); setRows(data) }
-  React.useEffect(() => { load() }, [])
-
-  async function remove(id) { if (!confirm('Eintrag löschen?')) return; await db.entries.delete(id); load() }
-  async function syncNow() {
+  // eingeloggter Mitarbeiter (aus LoginPanel in localStorage geschrieben)
+  const me = useMemo(() => {
     try {
-      const uid = user?.id || null
-      const n = await pushEntries(uid)
-      alert(`Sync ok: ${n} Einträge`)
-      load()
-    } catch (e) { alert('Sync-Fehler: ' + e.message) }
+      return JSON.parse(localStorage.getItem("employee") || "{}");
+    } catch {
+      return {};
+    }
+  }, []);
+  const role = me?.role || "mitarbeiter";
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function load() {
+    setBusy(true);
+
+    // Mitarbeiter: nur eigene Einträge
+    // Admin/Teamleiter: die letzten Einträge aller
+    let query = supabase
+      .from("time_entries")
+      .select("id, work_date, start_min, end_min, break_min, note, project, employee_id")
+      .order("created_at", { ascending: false })
+      .limit(role === "mitarbeiter" ? 10 : 20);
+
+    if (role === "mitarbeiter") {
+      query = query.eq("employee_id", me.id);
+    }
+
+    const { data, error } = await query;
+    setBusy(false);
+
+    if (!error) setRows(data || []);
   }
 
-  return (<div className="card">
-    <h2>Letzte Einträge</h2>
-    <div className="row"><button className="button secondary" onClick={syncNow}>Jetzt synchronisieren</button></div>
-    <table className="table">
-      <thead><tr>
-        <th>Datum</th><th>Mitarbeiter</th><th>Projekt</th><th>Start</th><th>Ende</th><th>Pause</th><th>Dauer</th><th>Synced</th><th></th>
-      </tr></thead>
-      <tbody>
-        {rows.map(r => (<tr key={r.id}>
-          <td>{r.date}</td><td>{r.employeeId}</td><td>{r.project}</td>
-          <td>{toLabel(r.startMin)}</td><td>{toLabel(r.endMin)}</td>
-          <td>{r.breakMin} min</td>
-          <td>{Math.max(0, (r.endMin - r.startMin) - r.breakMin)} min</td>
-          <td>{r.synced ? '✓' : '–'}</td>
-          <td><button className="button secondary" onClick={()=>remove(r.id)}>löschen</button></td>
-        </tr>))}
-      </tbody>
-    </table>
-  </div>)
+  async function remove(id) {
+    if (!confirm("Diesen Eintrag wirklich löschen?")) return;
+    const { error } = await supabase.from("time_entries").delete().eq("id", id);
+    if (error) {
+      alert(error.message || "Löschen fehlgeschlagen.");
+      return;
+    }
+    setRows((r) => r.filter((x) => x.id !== id));
+  }
+
+  return (
+    <div className="rounded-2xl bg-white/80 p-4 shadow">
+      <h3 className="text-lg font-semibold mb-3">Letzte Einträge</h3>
+
+      {busy && <div className="text-sm text-neutral-500">Lade…</div>}
+
+      {!busy && rows.length === 0 && (
+        <div className="text-sm text-neutral-500">Keine Einträge gefunden.</div>
+      )}
+
+      {!busy && rows.length > 0 && (
+        <ul className="space-y-2">
+          {rows.map((r) => {
+            const start = `${String(Math.floor(r.start_min / 60)).padStart(2, "0")}:${String(
+              r.start_min % 60
+            ).padStart(2, "0")}`;
+            const end = `${String(Math.floor(r.end_min / 60)).padStart(2, "0")}:${String(
+              r.end_min % 60
+            ).padStart(2, "0")}`;
+            const pause = r.break_min ?? 0;
+            return (
+              <li
+                key={r.id}
+                className="flex items-center justify-between rounded border border-neutral-200 px-3 py-2"
+              >
+                <div className="text-sm">
+                  <div className="font-medium">
+                    {r.project} • {r.work_date}
+                  </div>
+                  <div className="text-neutral-600">
+                    {start} – {end} • Pause {pause} min
+                    {r.note ? ` • ${r.note}` : ""}
+                  </div>
+                </div>
+                <button
+                  className="rounded bg-neutral-200 px-3 py-1 text-sm hover:bg-neutral-300"
+                  onClick={() => remove(r.id)}
+                >
+                  Löschen
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
 }
