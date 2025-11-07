@@ -97,7 +97,7 @@ export default function LoginPanel() {
       }
 
       // Weiterleiten
-      nav("/Zeiterfassung", { replace: true });
+      nav("/zeiterfassung", { replace: true });   // ✅ interne Route
     } finally {
       setLoading(false);
     }
