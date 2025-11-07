@@ -1,8 +1,7 @@
 // src/components/LoginPanel.jsx
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "../lib/supabase.js"; // ✅ Pfad angepasst!
-
+import { supabase } from "../lib/supabase.js";
 
 const UI = {
   card: {
@@ -47,7 +46,6 @@ const UI = {
 
 export default function LoginPanel() {
   const nav = useNavigate();
-
   const [code, setCode] = useState("");
   const [pin, setPin] = useState("");
   const [loading, setLoading] = useState(false);
@@ -65,13 +63,12 @@ export default function LoginPanel() {
 
     setLoading(true);
     try {
-      // 1) Mitarbeiter anhand CODE + PIN suchen
       const { data, error } = await supabase
         .from("mitarbeiter")
         .select("id, name, code, rolle, aktiv, notfall_admin, pin")
-        .eq("code", codeClean)
-        .eq("pin", pinClean)
-        .limit(1);
+        .ilike("code", codeClean) // 🔹 kein Case-Sensitivity-Problem
+        .eq("pin", pinClean.toString()) // 🔹 Vergleich als String erzwingen
+        .maybeSingle(); // 🔹 Kein Fehler, wenn leer
 
       if (error) {
         console.error(error);
@@ -79,31 +76,28 @@ export default function LoginPanel() {
         return;
       }
 
-      if (!data || data.length === 0) {
-        setMsg("PIN falsch.");
+      if (!data) {
+        setMsg("PIN oder Code falsch.");
         return;
       }
 
-      const u = data[0];
-
-      // 2) Aktiv-Status prüfen
-      if (u.aktiv === false) {
+      if (data.aktiv === false) {
         setMsg("Dieser Benutzer ist deaktiviert.");
         return;
       }
 
-      // 3) Lokale Session setzen
+      // Lokale Session speichern
       localStorage.setItem("isAuthed", "1");
-      localStorage.setItem("meId", u.id);
-      localStorage.setItem("meName", u.name || "");
-      localStorage.setItem("meCode", u.code || codeClean);
-      localStorage.setItem("meRole", (u.rolle || "mitarbeiter").toLowerCase());
-      if (typeof u.notfall_admin === "boolean") {
-        localStorage.setItem("meNotfallAdmin", u.notfall_admin ? "1" : "0");
+      localStorage.setItem("meId", data.id);
+      localStorage.setItem("meName", data.name || "");
+      localStorage.setItem("meCode", data.code || codeClean);
+      localStorage.setItem("meRole", (data.rolle || "mitarbeiter").toLowerCase());
+      if (typeof data.notfall_admin === "boolean") {
+        localStorage.setItem("meNotfallAdmin", data.notfall_admin ? "1" : "0");
       }
 
-      // 4) Weiterleiten
-      nav("/zeiterfassung", { replace: true });
+      // Weiterleiten
+      nav("/Zeiterfassung", { replace: true });
     } finally {
       setLoading(false);
     }
@@ -140,7 +134,7 @@ export default function LoginPanel() {
 
         <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
           <button type="submit" style={UI.btn} disabled={loading}>
-            {loading ? "Anmelden…" : "Login"}
+            {loading ? "Anmelden …" : "Login"}
           </button>
         </div>
       </form>
