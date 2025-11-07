@@ -1,69 +1,147 @@
 // src/components/LoginPanel.jsx
 import React, { useState } from "react";
-import { supabase } from "../lib/supabase.js";
 import { useNavigate } from "react-router-dom";
+import { supabase } from "../lib/supabase.js"; // ✅ Pfad angepasst!
 
-export default function LoginPanel(){
+
+const UI = {
+  card: {
+    maxWidth: 520,
+    margin: "80px auto",
+    background: "#fff",
+    borderRadius: 14,
+    boxShadow: "0 8px 30px rgba(0,0,0,.08)",
+    padding: 22,
+    border: "1px solid rgba(0,0,0,.06)",
+  },
+  label: { fontWeight: 700, marginBottom: 6, display: "block", color: "#4a3a2f" },
+  input: {
+    width: "100%",
+    border: "1px solid #d1c6bd",
+    borderRadius: 10,
+    padding: "10px 12px",
+    outline: "none",
+    fontSize: 15,
+    background: "#fffdfb",
+  },
+  btn: {
+    background: "#8B5E3C",
+    color: "#fff",
+    border: "none",
+    borderRadius: 10,
+    padding: "10px 16px",
+    cursor: "pointer",
+    fontWeight: 700,
+    minWidth: 110,
+  },
+  error: {
+    background: "#ffeaea",
+    color: "#7c1f1f",
+    border: "1px solid #f1c1c1",
+    borderRadius: 8,
+    padding: "10px 12px",
+    marginTop: 10,
+    fontSize: 14,
+  },
+};
+
+export default function LoginPanel() {
   const nav = useNavigate();
+
   const [code, setCode] = useState("");
-  const [pin,  setPin]  = useState("");
-  const [err,  setErr]  = useState("");
-  const [busy, setBusy] = useState(false);
+  const [pin, setPin] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [msg, setMsg] = useState("");
 
-  async function handleLogin(e){
+  const onSubmit = async (e) => {
     e.preventDefault();
-    setErr(""); setBusy(true);
+    setMsg("");
 
+    const codeClean = (code || "").trim().toUpperCase();
+    const pinClean = (pin || "").trim();
+
+    if (!codeClean) return setMsg("Bitte Code eingeben (z. B. ZS, MH …)");
+    if (!pinClean) return setMsg("Bitte PIN eingeben.");
+
+    setLoading(true);
     try {
-      // 1) Mitarbeiter mit CODE finden ( Groß/Kleinschreibung egal )
- const { data, error } = await supabase
-  .from('mitarbeiter')
-  .select('*')
-  .eq('code', code)
-  .eq('pin', pin);
+      // 1) Mitarbeiter anhand CODE + PIN suchen
+      const { data, error } = await supabase
+        .from("mitarbeiter")
+        .select("id, name, code, rolle, aktiv, notfall_admin, pin")
+        .eq("code", codeClean)
+        .eq("pin", pinClean)
+        .limit(1);
 
+      if (error) {
+        console.error(error);
+        setMsg("Serverfehler beim Login.");
+        return;
+      }
 
+      if (!data || data.length === 0) {
+        setMsg("PIN falsch.");
+        return;
+      }
 
-      if (error) throw error;
-      if (!data) throw new Error("Benutzer nicht gefunden.");
-      if (!data.pin) throw new Error("Keine PIN hinterlegt.");
-      if (String(pin).trim() !== String(data.pin).trim())
-        throw new Error("PIN falsch.");
+      const u = data[0];
 
-      // 2) Session lokal merken
-      localStorage.setItem("me", JSON.stringify(data));
-      localStorage.setItem("employee", JSON.stringify(data));
+      // 2) Aktiv-Status prüfen
+      if (u.aktiv === false) {
+        setMsg("Dieser Benutzer ist deaktiviert.");
+        return;
+      }
+
+      // 3) Lokale Session setzen
       localStorage.setItem("isAuthed", "1");
-      localStorage.setItem("meRole", (data.role || "").toLowerCase());
+      localStorage.setItem("meId", u.id);
+      localStorage.setItem("meName", u.name || "");
+      localStorage.setItem("meCode", u.code || codeClean);
+      localStorage.setItem("meRole", (u.rolle || "mitarbeiter").toLowerCase());
+      if (typeof u.notfall_admin === "boolean") {
+        localStorage.setItem("meNotfallAdmin", u.notfall_admin ? "1" : "0");
+      }
 
-      // 3) Start → Zeiterfassung
+      // 4) Weiterleiten
       nav("/zeiterfassung", { replace: true });
-    } catch (e) {
-      setErr(e.message || String(e));
     } finally {
-      setBusy(false);
+      setLoading(false);
     }
-  }
+  };
 
   return (
-    <div className="hbz-container" style={{display:"grid", placeItems:"center", minHeight:"70vh"}}>
-      <form onSubmit={handleLogin} className="hbz-card" style={{width:"min(420px, 92vw)"}}>
-        <div className="hbz-title" style={{marginBottom:10}}>Anmelden</div>
+    <div style={UI.card}>
+      <form onSubmit={onSubmit}>
+        <div style={{ marginBottom: 14 }}>
+          <label style={UI.label}>Code</label>
+          <input
+            style={UI.input}
+            placeholder="z. B. ZS, MH, AS …"
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            autoFocus
+          />
+        </div>
 
-        <div className="hbz-section" style={{padding:0}}>
-          <div className="hbz-label" style={{marginBottom:6}}>Code</div>
-          <input className="hbz-input" value={code} onChange={(e)=>setCode(e.target.value)} placeholder="z. B. MH" autoFocus />
+        <div style={{ marginBottom: 14 }}>
+          <label style={UI.label}>PIN</label>
+          <input
+            style={UI.input}
+            placeholder="••••"
+            value={pin}
+            onChange={(e) => setPin(e.target.value)}
+            type="password"
+            inputMode="numeric"
+            autoComplete="current-password"
+          />
+        </div>
 
-          <div className="hbz-label" style={{margin:"12px 0 6px"}}>PIN</div>
-          <input className="hbz-input" value={pin} onChange={(e)=>setPin(e.target.value)} placeholder="4-stellig" maxLength={6} type="password"/>
+        {msg && <div style={UI.error}>{msg}</div>}
 
-          {err && <div className="hbz-section error" style={{marginTop:12}}>{err}</div>}
-
-          <div style={{marginTop:14, display:"flex", justifyContent:"flex-end", gap:8}}>
-            <button className="hbz-btn primary" disabled={busy || !code.trim() || !pin.trim()}>
-              {busy ? "Prüfe…" : "Login"}
-            </button>
-          </div>
+        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
+          <button type="submit" style={UI.btn} disabled={loading}>
+            {loading ? "Anmelden…" : "Login"}
+          </button>
         </div>
       </form>
     </div>
