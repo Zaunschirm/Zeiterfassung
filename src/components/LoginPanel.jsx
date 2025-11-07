@@ -44,6 +44,27 @@ const UI = {
   },
 };
 
+// 🔹 Hilfsfunktion: versucht verschiedene Tabellennamen (public.mitarbeiter, mitarbeiter, Mitarbeiter)
+async function findUserByCodePin(supabase, codeClean, pinClean) {
+  const tables = ["public.mitarbeiter", "mitarbeiter", "Mitarbeiter"];
+  for (const tbl of tables) {
+    const { data, error } = await supabase
+      .from(tbl)
+      .select("id, name, code, rolle, aktiv, notfall_admin, pin")
+      .ilike("code", codeClean)
+      .eq("pin", pinClean.toString())
+      .maybeSingle();
+
+    // Falls Tabelle nicht existiert → nächste Variante probieren
+    if (error && /relation .* does not exist|not found in the schema cache/i.test(error.message)) {
+      continue;
+    }
+    if (error) return { data: null, error };
+    if (data) return { data, error: null };
+  }
+  return { data: null, error: null };
+}
+
 export default function LoginPanel() {
   const nav = useNavigate();
   const [code, setCode] = useState("");
@@ -63,12 +84,8 @@ export default function LoginPanel() {
 
     setLoading(true);
     try {
-      const { data, error } = await supabase
-       .from("public.mitarbeiter")   // ✅ eindeutig public
-        .select("id, name, code, rolle, aktiv, notfall_admin, pin")
-        .ilike("code", codeClean) // 🔹 kein Case-Sensitivity-Problem
-        .eq("pin", pinClean.toString()) // 🔹 Vergleich als String erzwingen
-        .maybeSingle(); // 🔹 Kein Fehler, wenn leer
+      // 🔹 Benutzer anhand Code + PIN in Tabelle suchen (mit Fallback)
+      const { data, error } = await findUserByCodePin(supabase, codeClean, pinClean);
 
       if (error) {
         console.error(error);
@@ -81,23 +98,26 @@ export default function LoginPanel() {
         return;
       }
 
-      if (data.aktiv === false) {
+      const u = data;
+
+      // 🔹 Aktiv-Status prüfen
+      if (u.aktiv === false) {
         setMsg("Dieser Benutzer ist deaktiviert.");
         return;
       }
 
-      // Lokale Session speichern
+      // 🔹 Lokale Session speichern
       localStorage.setItem("isAuthed", "1");
-      localStorage.setItem("meId", data.id);
-      localStorage.setItem("meName", data.name || "");
-      localStorage.setItem("meCode", data.code || codeClean);
-      localStorage.setItem("meRole", (data.rolle || "mitarbeiter").toLowerCase());
-      if (typeof data.notfall_admin === "boolean") {
-        localStorage.setItem("meNotfallAdmin", data.notfall_admin ? "1" : "0");
+      localStorage.setItem("meId", u.id);
+      localStorage.setItem("meName", u.name || "");
+      localStorage.setItem("meCode", u.code || codeClean);
+      localStorage.setItem("meRole", (u.rolle || "mitarbeiter").toLowerCase());
+      if (typeof u.notfall_admin === "boolean") {
+        localStorage.setItem("meNotfallAdmin", u.notfall_admin ? "1" : "0");
       }
 
-      // Weiterleiten
-      nav("/zeiterfassung", { replace: true });   // ✅ interne Route
+      // 🔹 Weiterleiten (klein, damit mit basename /Zeiterfassung funktioniert)
+      nav("/zeiterfassung", { replace: true });
     } finally {
       setLoading(false);
     }
