@@ -190,5 +190,11 @@ table.nice tr:nth-child(even) {
 }
 .nav-link:hover {
   background-color: #a5724c;
+}a {
+  color: inherit;
 }
+a:hover {
+  text-decoration: none;
+}
+
 
