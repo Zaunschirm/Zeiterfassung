@@ -1,34 +1,65 @@
 import React from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
+import "./styles.css"; // für Farben und Layout
 
-export default function NavBar(){
-  const nav = useNavigate();
-  const me = JSON.parse(localStorage.getItem("me") || "null");
-  const role = (me?.role || "").toLowerCase();
-  const isManager = role === "admin" || role === "teamleiter";
+export default function NavBar({ userRole, onLogout }) {
+  const navigate = useNavigate();
 
-  function logout(){
-    ["me","employee","isAuthed","meRole",
-     "activeEmployeeIds","activeEmployeeId_last","employee_names_map"
-    ].forEach(k=>localStorage.removeItem(k));
-    nav("/",{replace:true});
-  }
+  const handleLogout = () => {
+    // optional Supabase / Local Storage / Session clear
+    localStorage.removeItem("user");
+    if (onLogout) onLogout();
+    navigate("/login");
+  };
 
   return (
-    <header className="hbz-card" style={{backgroundColor:"var(--hbz-brown)",color:"#fff",marginBottom:"16px"}}>
-      <div className="hbz-container" style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-        <div className="hbz-title">Holzbau&nbsp;Zaunschirm</div>
-        <nav>
-          <Link className="hbz-btn" to="/zeiterfassung">Zeiterfassung</Link>
-          <Link className="hbz-btn" to="/monatsübersicht">Monatsübersicht</Link>
-          {isManager && <Link className="hbz-btn" to="/mitarbeiter">Mitarbeiter</Link>}
-          <Link className="hbz-btn" to="/projektfotos">Projektfotos</Link>
-        </nav>
-        <div>
-          {me && <span style={{marginRight:10,fontWeight:600}}>{me.name} ({role})</span>}
-          <button className="hbz-btn primary" onClick={logout}>Logout</button>
-        </div>
+    <nav
+      style={{
+        backgroundColor: "#8B5E3C",
+        color: "white",
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        padding: "10px 20px",
+        borderBottom: "4px solid #12100E",
+      }}
+    >
+      <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+        <span style={{ fontWeight: "bold", fontSize: "18px" }}>
+          Holzbau Zaunschirm
+        </span>
+        <Link to="/zeiterfassung" className="nav-link">
+          Zeiterfassung
+        </Link>
+        {(userRole === "admin" || userRole === "teamleiter") && (
+          <>
+            <Link to="/monatsuebersicht" className="nav-link">
+              Monatsübersicht
+            </Link>
+            <Link to="/mitarbeiter" className="nav-link">
+              Mitarbeiter
+            </Link>
+          </>
+        )}
+        <Link to="/projektfotos" className="nav-link">
+          Projektfotos
+        </Link>
       </div>
-    </header>
+
+      <button
+        onClick={handleLogout}
+        style={{
+          backgroundColor: "#12100E",
+          color: "white",
+          border: "none",
+          borderRadius: "6px",
+          padding: "6px 12px",
+          cursor: "pointer",
+          fontWeight: "600",
+        }}
+      >
+        Logout
+      </button>
+    </nav>
   );
 }
