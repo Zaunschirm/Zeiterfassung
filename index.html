@@ -2,24 +2,14 @@
 <html lang="de">
   <head>
     <meta charset="UTF-8" />
-    <meta
-      name="viewport"
-      content="width=device-width, initial-scale=1, viewport-fit=cover"
-    />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#8B5E3C" />
+    <link rel="icon" href="/favicon.ico" />
     <title>Holzbau Zaunschirm – Zeiterfassung</title>
-
-    <!-- PWA Manifest (falls vorhanden) -->
-    <link rel="manifest" href="/manifest.webmanifest" />
-    <meta name="theme-color" content="#B88C6A" />
-
-    <!-- Unser neues, vollständiges Stylesheet -->
-    <link rel="stylesheet" href="/src/styles.css" />
   </head>
-<body>
-  <!-- React Mount Point -->
-  <div id="root"></div>
-
-  <!-- Dein React/Vite Bundle -->
-  <script type="module" src="/src/main.jsx"></script>
-</body>
+  <body>
+    <div id="root"></div>
+    <!-- Vite kümmert sich um korrekte Pfade; NICHT "/Zeiterfassung" davor setzen -->
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
 </html>
