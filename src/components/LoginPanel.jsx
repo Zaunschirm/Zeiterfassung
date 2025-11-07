@@ -64,7 +64,7 @@ export default function LoginPanel() {
     setLoading(true);
     try {
       const { data, error } = await supabase
-        .from("mitarbeiter")
+       .from("public.mitarbeiter")   // ✅ eindeutig public
         .select("id, name, code, rolle, aktiv, notfall_admin, pin")
         .ilike("code", codeClean) // 🔹 kein Case-Sensitivity-Problem
         .eq("pin", pinClean.toString()) // 🔹 Vergleich als String erzwingen
