@@ -16,13 +16,13 @@ export default function LoginPanel(){
 
     try {
       // 1) Mitarbeiter mit CODE finden ( Groß/Kleinschreibung egal )
-      const { data, error } = await supabase
-        .from("employees")
-        .select("id,name,role,code,pin,active")
-        .ilike("code", code.trim())        // 'MH' == 'mh'
-        .eq("active", true)
-        .limit(1)
-        .maybeSingle();
+ const { data, error } = await supabase
+  .from('mitarbeiter')
+  .select('*')
+  .eq('code', code)
+  .eq('pin', pin);
+
+
 
       if (error) throw error;
       if (!data) throw new Error("Benutzer nicht gefunden.");
