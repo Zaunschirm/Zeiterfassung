@@ -3,12 +3,8 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
-// Basis-URL für GitHub Pages (Zeiterfassung)
-const RAW_BASE = process.env.VITE_BASE || '/Zeiterfassung'
-const BASE = RAW_BASE.endsWith('/') ? RAW_BASE : RAW_BASE + '/'
-
 export default defineConfig({
-  base: BASE,
+  base: '/Zeiterfassung/', // <-- ganz wichtig für GitHub Pages!
   plugins: [
     react(),
     VitePWA({
@@ -17,21 +13,19 @@ export default defineConfig({
       manifest: {
         name: 'Zeiterfassung Zaunschirm',
         short_name: 'Zeiterfassung',
-        start_url: BASE,
-        scope: BASE,
+        start_url: '/Zeiterfassung/',
+        scope: '/Zeiterfassung/',
         display: 'standalone',
+        description: 'Zeiterfassung – mobil & offline – Holzbau Zaunschirm',
         theme_color: '#8B5E3C',
-        background_color: '#E8DCC5',
+        background_color: '#12100E',
         icons: [
-          { src: `${BASE}icons/pwa-192x192.png`, sizes: '192x192', type: 'image/png' },
-          { src: `${BASE}icons/pwa-512x512.png`, sizes: '512x512', type: 'image/png' },
-          { src: `${BASE}icons/pwa-512x512-maskable.png`, sizes: '512x512', type: 'image/png', purpose: 'maskable' },
-        ],
-      },
-    }),
+          { src: 'icons/pwa-192x192.png', sizes: '192x192', type: 'image/png' },
+          { src: 'icons/pwa-512x512.png', sizes: '512x512', type: 'image/png' },
+          { src: 'icons/pwa-512x512-maskable.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' }
+        ]
+      }
+    })
   ],
-  build: {
-    outDir: 'dist',
-    sourcemap: true, // wichtig für Debug
-  },
+  build: { outDir: 'dist' }
 })
