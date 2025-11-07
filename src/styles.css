@@ -179,3 +179,16 @@ table.nice td {
 table.nice tr:nth-child(even) {
   background: #f9f5f0;
 }
+.nav-link {
+  color: white;
+  text-decoration: none;
+  font-weight: 500;
+  background-color: transparent;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: background-color 0.2s;
+}
+.nav-link:hover {
+  background-color: #a5724c;
+}
+
