@@ -1,55 +1,46 @@
-// src/App.jsx
-import React from "react";
-import { Routes, Route, Navigate } from "react-router-dom";
+// src/App.jsx  (1:1 ersetzen)
+import { useEffect, useState, createContext, useContext } from "react";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import NavBar from "./components/NavBar.jsx";
+import DaySlider from "./components/DaySlider.jsx";
+import MonthlyOverview from "./components/MonthlyOverview.jsx";
+import LoginPanel from "./components/LoginPanel.jsx";
+import { supabase } from "./lib/db.js";
 
-import NavBar from "./components/NavBar";
-import LoginPanel from "./components/LoginPanel";
-import DaySlider from "./components/DaySlider";
-import MonthlyOverview from "./components/MonthlyOverview";
-import EmployeeList from "./components/EmployeeList";
-import ProjectPhotos from "./components/ProjectPhotos";
-
-// ---- Helpers (wie gehabt) ----
-function isAuthed() { return localStorage.getItem("isAuthed") === "1"; }
-function role() { return (localStorage.getItem("meRole") || "mitarbeiter").toLowerCase(); }
-function isManager() { const r = role(); return r === "admin" || r === "teamleiter"; }
-
-function Private({ children }) { return isAuthed() ? children : <Navigate to="/" replace />; }
-function OnlyManager({ children }) { return isManager() ? children : <Navigate to="/zeiterfassung" replace />; }
+export const RoleCtx = createContext({ user: null, role: "mitarbeiter", id: null });
 
 export default function App() {
-  const handleLogout = () => {
-    localStorage.clear();
-    window.location.href = "#/"; // HashRouter
-  };
+  const [session, setSession] = useState(null);
+  const [profile, setProfile] = useState(null); // {id, name, code, role}
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => setSession(data.session ?? null));
+  }, []);
+
+  // wir haben PIN-Login ohne Supabase-Auth → wir speichern im localStorage
+  useEffect(() => {
+    const raw = localStorage.getItem("hz_login");
+    if (raw) setProfile(JSON.parse(raw));
+  }, []);
+
+  const ctx = { user: profile, role: profile?.role ?? "mitarbeiter", id: profile?.id ?? null };
+
+  if (!profile) return <LoginPanel onLoggedIn={setProfile} />;
 
   return (
-    <>
-      {isAuthed() && <NavBar userRole={role()} onLogout={handleLogout} />}
-
-      <Routes>
-        {/* Login */}
-        <Route path="/" element={<LoginPanel />} />
-
-        {/* Zeiterfassung (alle) */}
-        <Route path="/zeiterfassung" element={<Private><DaySlider /></Private>} />
-
-        {/* Monatsübersicht (editierbar für Admin/Teamleiter) */}
-        <Route path="/monatsübersicht" element={
-          <Private><OnlyManager><MonthlyOverview /></OnlyManager></Private>
-        }/>
-
-        {/* Mitarbeiter (nur Admin/Teamleiter) */}
-        <Route path="/mitarbeiter" element={
-          <Private><OnlyManager><EmployeeList /></OnlyManager></Private>
-        }/>
-
-        {/* Projektfotos (alle Eingeloggten) */}
-        <Route path="/projektfotos" element={<Private><ProjectPhotos /></Private>} />
-
-        {/* Fallback */}
-        <Route path="*" element={<Navigate to={isAuthed() ? "/zeiterfassung" : "/"} replace />} />
-      </Routes>
-    </>
+    <RoleCtx.Provider value={ctx}>
+      <BrowserRouter basename="/Zeiterfassung">
+        <NavBar />
+        <Routes>
+          <Route path="/" element={<Navigate to="/zeiterfassung" replace />} />
+          <Route path="/zeiterfassung" element={<DaySlider />} />
+          <Route path="/monatsuebersicht" element={<MonthlyOverview />} />
+          {/* Platzhalter: Projekte, Fotos, Admin könnt ihr später anhängen */}
+          <Route path="*" element={<Navigate to="/zeiterfassung" replace />} />
+        </Routes>
+      </BrowserRouter>
+    </RoleCtx.Provider>
   );
 }
+
+export const useRole = () => useContext(RoleCtx);

@@ -88,14 +88,18 @@ export default function LoginPanel() {
       }
 
       // 🔑 Session ins LocalStorage
-      localStorage.setItem("isAuthed", "1");
-      localStorage.setItem("meId", u.id);
-      localStorage.setItem("meName", u.name || "");
-      localStorage.setItem("meCode", u.code || codeClean);
-      localStorage.setItem("meRole", (u.rolle || "mitarbeiter").toLowerCase());
-      if (typeof u.notfall_admin === "boolean") {
-        localStorage.setItem("meNotfallAdmin", u.notfall_admin ? "1" : "0");
-      }
+localStorage.setItem("isAuthed", "1");
+localStorage.setItem("meId", u.id);
+localStorage.setItem("meName", u.name || "");
+localStorage.setItem("meCode", u.code || codeClean);
+
+// ACHTUNG: richtiges Feld heißt "role" (nicht "rolle")
+localStorage.setItem("meRole", (u.role || "mitarbeiter").toLowerCase());
+
+if (typeof u.notfall_admin === "boolean") {
+  localStorage.setItem("meNotfallAdmin", u.notfall_admin ? "1" : "0");
+}
+
 
       // 🚀 Weiterleiten (intern; bei HashRouter ergibt das #/zeiterfassung)
       nav("/zeiterfassung", { replace: true });
