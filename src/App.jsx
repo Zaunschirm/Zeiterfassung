@@ -1,3 +1,4 @@
+// src/App.jsx
 import React from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 
@@ -8,7 +9,7 @@ import MonthlyOverview from "./components/MonthlyOverview";
 import EmployeeList from "./components/EmployeeList";
 import ProjectPhotos from "./components/ProjectPhotos";
 
-// --------- einfache Helpers (wie bisher bei dir) ----------
+// --------- einfache Helpers ----------
 function isAuthed() {
   return localStorage.getItem("isAuthed") === "1";
 }
@@ -30,20 +31,16 @@ function OnlyManager({ children }) {
 
 export default function App() {
   const handleLogout = () => {
-    // optional weitere Keys hier löschen (z. B. userId, token, etc.)
     localStorage.clear();
-    // harte Weiterleitung (Browser-Refresh, verhindert "Zurück" ins App-UI)
-    window.location.href = "/";
+    window.location.href = "#/"; // ✅ HashRouter kompatibel
   };
 
   return (
     <>
-      {isAuthed() && (
-        <NavBar userRole={role()} onLogout={handleLogout} />
-      )}
+      {isAuthed() && <NavBar userRole={role()} onLogout={handleLogout} />}
 
       <Routes>
-        {/* Login */}
+        {/* Start / Login */}
         <Route path="/" element={<LoginPanel />} />
 
         {/* Zeiterfassung */}
@@ -90,7 +87,7 @@ export default function App() {
           }
         />
 
-        {/* Fallback */}
+        {/* Fallback-Route */}
         <Route
           path="*"
           element={
