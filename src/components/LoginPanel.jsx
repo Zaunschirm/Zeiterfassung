@@ -63,9 +63,10 @@ export default function LoginPanel() {
 
     setLoading(true);
     try {
-      // 🔒 Stabile Auth über RPC – unabhängig von Schema-Cache/Tabellennamen
-      const { data, error } = await supabase
-        .rpc("login_lookup", { p_code: codeClean, p_pin: pinClean });
+      const { data, error } = await supabase.rpc("login_lookup", {
+        p_code: codeClean,
+        p_pin: pinClean,
+      });
 
       if (error) {
         console.error("[Login] Supabase-Error:", error);
@@ -77,31 +78,24 @@ export default function LoginPanel() {
       }
 
       const u = Array.isArray(data) ? data[0] : null;
-      if (!u) {
-        setMsg("PIN oder Code falsch.");
-        return;
+      if (!u) return setMsg("PIN oder Code falsch.");
+      if (u.aktiv === false) return setMsg("Dieser Benutzer ist deaktiviert.");
+
+      // ✅ Wichtig: Feld heißt 'role', nicht 'rolle'
+      const role = (u.role || "mitarbeiter").toLowerCase();
+
+      // Session / Profile in localStorage (deine App liest diese Keys)
+      localStorage.setItem("isAuthed", "1");
+      localStorage.setItem("meId", String(u.id ?? ""));
+      localStorage.setItem("meName", u.name || "");
+      localStorage.setItem("meCode", u.code || codeClean);
+      localStorage.setItem("meRole", role);
+
+      // Optionaler Notfall-Admin (falls in deiner RPC/DB vorhanden)
+      if (typeof u.notfall_admin === "boolean") {
+        localStorage.setItem("meNotfallAdmin", u.notfall_admin ? "1" : "0");
       }
 
-      if (u.aktiv === false) {
-        setMsg("Dieser Benutzer ist deaktiviert.");
-        return;
-      }
-
-      // 🔑 Session ins LocalStorage
-localStorage.setItem("isAuthed", "1");
-localStorage.setItem("meId", u.id);
-localStorage.setItem("meName", u.name || "");
-localStorage.setItem("meCode", u.code || codeClean);
-
-// ACHTUNG: richtiges Feld heißt "role" (nicht "rolle")
-localStorage.setItem("meRole", (u.role || "mitarbeiter").toLowerCase());
-
-if (typeof u.notfall_admin === "boolean") {
-  localStorage.setItem("meNotfallAdmin", u.notfall_admin ? "1" : "0");
-}
-
-
-      // 🚀 Weiterleiten (intern; bei HashRouter ergibt das #/zeiterfassung)
       nav("/zeiterfassung", { replace: true });
     } finally {
       setLoading(false);
