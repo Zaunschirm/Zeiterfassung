@@ -9,30 +9,18 @@ import MonthlyOverview from "./components/MonthlyOverview";
 import EmployeeList from "./components/EmployeeList";
 import ProjectPhotos from "./components/ProjectPhotos";
 
-// --------- einfache Helpers ----------
-function isAuthed() {
-  return localStorage.getItem("isAuthed") === "1";
-}
-function role() {
-  return (localStorage.getItem("meRole") || "mitarbeiter").toLowerCase();
-}
-function isManager() {
-  const r = role();
-  return r === "admin" || r === "teamleiter";
-}
+// ---- Helpers (wie gehabt) ----
+function isAuthed() { return localStorage.getItem("isAuthed") === "1"; }
+function role() { return (localStorage.getItem("meRole") || "mitarbeiter").toLowerCase(); }
+function isManager() { const r = role(); return r === "admin" || r === "teamleiter"; }
 
-// Route-Guards
-function Private({ children }) {
-  return isAuthed() ? children : <Navigate to="/" replace />;
-}
-function OnlyManager({ children }) {
-  return isManager() ? children : <Navigate to="/zeiterfassung" replace />;
-}
+function Private({ children }) { return isAuthed() ? children : <Navigate to="/" replace />; }
+function OnlyManager({ children }) { return isManager() ? children : <Navigate to="/zeiterfassung" replace />; }
 
 export default function App() {
   const handleLogout = () => {
     localStorage.clear();
-    window.location.href = "#/"; // ✅ HashRouter kompatibel
+    window.location.href = "#/"; // HashRouter
   };
 
   return (
@@ -40,63 +28,27 @@ export default function App() {
       {isAuthed() && <NavBar userRole={role()} onLogout={handleLogout} />}
 
       <Routes>
-        {/* Start / Login */}
+        {/* Login */}
         <Route path="/" element={<LoginPanel />} />
 
-        {/* Zeiterfassung */}
-        <Route
-          path="/zeiterfassung"
-          element={
-            <Private>
-              <DaySlider />
-            </Private>
-          }
-        />
+        {/* Zeiterfassung (alle) */}
+        <Route path="/zeiterfassung" element={<Private><DaySlider /></Private>} />
 
-        {/* Monatsübersicht (editierbar für admin & teamleiter) */}
-        <Route
-          path="/monatsübersicht"
-          element={
-            <Private>
-              <OnlyManager>
-                <MonthlyOverview />
-              </OnlyManager>
-            </Private>
-          }
-        />
+        {/* Monatsübersicht (editierbar für Admin/Teamleiter) */}
+        <Route path="/monatsübersicht" element={
+          <Private><OnlyManager><MonthlyOverview /></OnlyManager></Private>
+        }/>
 
-        {/* Mitarbeiterverwaltung (nur admin & teamleiter) */}
-        <Route
-          path="/mitarbeiter"
-          element={
-            <Private>
-              <OnlyManager>
-                <EmployeeList />
-              </OnlyManager>
-            </Private>
-          }
-        />
+        {/* Mitarbeiter (nur Admin/Teamleiter) */}
+        <Route path="/mitarbeiter" element={
+          <Private><OnlyManager><EmployeeList /></OnlyManager></Private>
+        }/>
 
-        {/* Projektfotos (für alle eingeloggten) */}
-        <Route
-          path="/projektfotos"
-          element={
-            <Private>
-              <ProjectPhotos />
-            </Private>
-          }
-        />
+        {/* Projektfotos (alle Eingeloggten) */}
+        <Route path="/projektfotos" element={<Private><ProjectPhotos /></Private>} />
 
-        {/* Fallback-Route */}
-        <Route
-          path="*"
-          element={
-            <Navigate
-              to={isAuthed() ? "/zeiterfassung" : "/"}
-              replace
-            />
-          }
-        />
+        {/* Fallback */}
+        <Route path="*" element={<Navigate to={isAuthed() ? "/zeiterfassung" : "/"} replace />} />
       </Routes>
     </>
   );
