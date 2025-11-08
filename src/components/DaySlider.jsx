@@ -1,282 +1,312 @@
+// components/DaySlider.jsx
 import React, { useEffect, useMemo, useState } from "react";
-import { supabase } from "../lib/supabase.js";
+import { supabase } from "../lib/supabase";
+import { getSession } from "../lib/session";
+import EmployeeList from "./EmployeeList.jsx";
 
-const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));
-const pad=(n)=>String(n).padStart(2,"0");
-const toHHMM=(m)=>`${pad(Math.floor(m/60))}:${pad(m%60)}`;
-const minutesBetween=(s,e)=>Math.max(0,e-s);
-const snap15=(m)=>Math.round(m/15)*15;
-const DAY_START=5*60, DAY_END=19*60+30;
-const todayISO=(d=new Date())=>{const t=new Date(d); t.setHours(0,0,0,0); return t.toISOString().slice(0,10);};
+// Helper: Minuten <-> "HH:MM"
+const toHM = (m) => {
+  const h = Math.floor(m / 60);
+  const mm = m % 60;
+  return `${String(h).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+};
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
-export default function DaySlider(){
-  const me = JSON.parse(localStorage.getItem("me") || "null");
-  const role = (me?.role || "").toLowerCase();
-  const isManager = role==="admin" || role==="teamleiter";
+export default function DaySlider() {
+  const session = getSession(); // { code, role, name }
+  const isStaff = session?.role === "mitarbeiter";
+  const isManager = session && !isStaff; // admin | teamleiter
 
-  // Mitarbeiterliste nur für Manager
-  const [employees,setEmployees]=useState([]);
-  useEffect(()=>{
-    if(!isManager) return;
-    let ig=false;
-    (async()=>{
-      const { data, error } = await supabase
-        .from("employees").select("id,name,active")
-        .eq("active",true).order("name");
-      if(!ig && data){ setEmployees(data); }
-      if(error) console.error(error);
-    })();
-    return ()=>{ig=true};
-  },[isManager]);
-
-  // Auswahl: Mitarbeiter = eigene ID
-  const [selectedIds,setSelectedIds]=useState(()=>{
-    if(!isManager) return me?.id ? [me.id] : [];
-    try { return JSON.parse(localStorage.getItem("activeEmployeeIds") || "[]"); }
-    catch { return me?.id ? [me.id] : []; }
+  // UI-States
+  const [date, setDate] = useState(() => {
+    const d = new Date();
+    // yyyy-mm-dd
+    const iso = d.toISOString().slice(0, 10);
+    return iso;
   });
-  useEffect(()=>{
-    if(isManager){
-      localStorage.setItem("activeEmployeeIds", JSON.stringify(selectedIds));
-    } else {
-      const own = me?.id ? [me.id] : [];
-      if(JSON.stringify(selectedIds)!==JSON.stringify(own)) setSelectedIds(own);
-    }
-  },[isManager, me?.id, selectedIds]);
 
-  const toggleEmp=id=>{
-    if(!isManager) return;
-    setSelectedIds(p=>{const s=new Set(p); s.has(id)?s.delete(id):s.add(id); return [...s];});
-  };
+  // Slider in Minuten seit 00:00
+  const [fromMin, setFromMin] = useState(7 * 60);        // 07:00
+  const [toMin, setToMin] = useState(16 * 60 + 30);      // 16:30
+  const [breakMin, setBreakMin] = useState(30);          // 30
+  const [note, setNote] = useState("");
 
-  const [refDate,setRefDate]=useState(()=>new Date());
-  const [loading,setLoading]=useState(false);
-  const [busy,setBusy]=useState(false);
-  const [err,setErr]=useState("");
-  const [ok,setOk]=useState("");
+  // Projekte
+  const [projects, setProjects] = useState([]);
+  const [projectId, setProjectId] = useState(null);
 
-  const [entryId,setEntryId]=useState(null);
-  const [startMin,setStartMin]=useState(snap15(7*60));
-  const [endMin,setEndMin]=useState(snap15(16*60+30));
-  const [breakMin,setBreakMin]=useState(30);
-  const [note,setNote]=useState("");
-  const [projects,setProjects]=useState([]);
-  const [projectId,setProjectId]=useState(null);
+  // Mitarbeiter (nur sichtbar/laden wenn admin/teamleiter)
+  const [employees, setEmployees] = useState([]);
+  const [selectedCode, setSelectedCode] = useState(
+    isStaff ? session?.code ?? null : null
+  );
 
-  useEffect(()=>{
-    (async()=>{
-      const {data,error} = await supabase.from("projects")
-        .select("id,name,active").eq("active",true).order("name");
-      if(data) setProjects(data);
-      if(error) console.error(error);
+  // aktuellen Mitarbeiter-Datensatz (id, name, code, role)
+  const [employeeRow, setEmployeeRow] = useState(null);
+
+  // --- Laden: Projekte (aktiv + nicht disabled), nach Name
+  useEffect(() => {
+    (async () => {
+      const { data, error } = await supabase
+        .from("projects")
+        .select("id, code, name, active, disabled")
+        .order("name", { ascending: true });
+
+      if (!error) {
+        const list = (data || []).filter(
+          (p) => (p.active ?? true) === true && (p.disabled ?? false) === false
+        );
+        setProjects(list);
+        if (list.length && !projectId) setProjectId(list[0].id);
+      } else {
+        console.error("projects load error:", error);
+      }
     })();
-  },[]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const duration=useMemo(()=>Math.max(0, minutesBetween(startMin,endMin)-(breakMin||0)),[startMin,endMin,breakMin]);
+  // --- Laden: Mitarbeiterliste (nur Manager)
+  useEffect(() => {
+    if (!isManager) return;
+    (async () => {
+      const { data, error } = await supabase
+        .from("employees")
+        .select("id, code, name, role, active, disabled")
+        .eq("active", true)
+        .eq("disabled", false)
+        .order("name", { ascending: true });
 
-  async function loadEntry(dateIso){
-    setErr(""); setOk(""); setLoading(true);
-    const targetId = isManager ? (selectedIds[0] || null) : (me?.id || null);
-    if(!targetId){ setEntryId(null); setLoading(false); return; }
+      if (!error) {
+        setEmployees(data || []);
+        if (!selectedCode && data && data.length > 0) {
+          // Kein vorgewählter → none (User soll drücken) – oder nimm den ersten:
+          // setSelectedCode(data[0].code);
+        }
+      } else {
+        console.error("employees load error:", error);
+      }
+    })();
+  }, [isManager, selectedCode]);
 
-    const { data, error } = await supabase
-      .from("time_entries")
-      .select("id,start_min,end_min,break_min,note,project_id")
-      .eq("employee_id", targetId).eq("work_date", dateIso)
-      .limit(1).maybeSingle();
+  // --- Mitarbeiter-Datensatz ermitteln (von selectedCode oder Session)
+  useEffect(() => {
+    (async () => {
+      const code = isStaff ? session?.code : selectedCode;
+      if (!code) {
+        setEmployeeRow(null);
+        return;
+      }
+      const { data, error } = await supabase
+        .from("employees")
+        .select("id, code, name, role, active, disabled")
+        .eq("code", code)
+        .limit(1)
+        .maybeSingle();
 
-    if(error){ setErr("Fehler beim Laden: "+error.message); setEntryId(null); }
-    else if(data){
-      setEntryId(data.id);
-      setStartMin(snap15(clamp(data.start_min??7*60,DAY_START,DAY_END)));
-      setEndMin(snap15(clamp(data.end_min??16*60+30,DAY_START,DAY_END)));
-      setBreakMin(Number.isFinite(data.break_min)?data.break_min:30);
-      setNote(data.note||"");
-      setProjectId(data.project_id || null);
-    } else {
-      setEntryId(null);
-      setStartMin(snap15(7*60)); setEndMin(snap15(16*60+30)); setBreakMin(30); setNote("");
-      setProjectId(null);
+      if (!error && data) {
+        setEmployeeRow(data);
+      } else {
+        console.error("employee fetch error:", error);
+        setEmployeeRow(null);
+      }
+    })();
+  }, [isStaff, selectedCode, session?.code]);
+
+  // --- Berechnung der Tagesarbeitszeit
+  const totalMin = useMemo(() => {
+    const raw = clamp(toMin - fromMin, 0, 24 * 60);
+    const total = clamp(raw - breakMin, 0, 24 * 60);
+    return total;
+  }, [fromMin, toMin, breakMin]);
+
+  const handleSave = async () => {
+    if (!employeeRow) {
+      alert("Bitte zuerst Mitarbeiter auswählen.");
+      return;
     }
-    setLoading(false);
-  }
-  useEffect(()=>{ loadEntry(todayISO(refDate)); /* eslint-disable-next-line */ },[refDate, JSON.stringify(selectedIds), isManager]);
+    const prj = projects.find((p) => p.id === projectId) || null;
 
-  async function upsertForEmployee(empId, dateIso){
-    // robust: erst prüfen, dann update/insert
+    // Serverseitige Sperre: Mitarbeiter dürfen NUR für sich speichern
+    if (isStaff && employeeRow.code !== session.code) {
+      alert("Nicht erlaubt: Mitarbeiter dürfen nur ihre eigene Zeit erfassen.");
+      return;
+    }
+
     const payload = {
-      employee_id: empId,
-      work_date: dateIso,
-      start_min: snap15(clamp(startMin,DAY_START,DAY_END)),
-      end_min:   snap15(clamp(endMin,  DAY_START,DAY_END)),
-      break_min: clamp(parseInt(breakMin||0,10),0,240),
-      note: note || "",
-      project_id: projectId || null
+      work_date: date, // date
+      employee_id: employeeRow.id,             // int8
+      employee_name: employeeRow.name,         // text (für den schnellen Überblick)
+      project_id: prj ? prj.id : null,         // uuid | null
+      project_code: prj ? prj.code : null,     // text | null
+      project_name: prj ? prj.name : null,     // text | null
+      from_min: fromMin,                       // int
+      to_min: toMin,                           // int
+      break_min: breakMin,                     // int
+      total_min: totalMin,                     // int
+      note: note?.trim() || null               // text | null
     };
 
-    const { data: ex, error: selErr } = await supabase
-      .from("time_entries").select("id")
-      .eq("employee_id",empId).eq("work_date",dateIso)
-      .limit(1).maybeSingle();
-    if(selErr) throw selErr;
-
-    if(ex?.id){
-      const { error, status } = await supabase
-        .from("time_entries").update(payload).eq("id", ex.id);
-      if(error) throw error;
-      return { id: ex.id, status };
-    } else {
-      const { data, error, status } = await supabase
-        .from("time_entries").insert(payload).select("id").maybeSingle();
-      if(error) throw error;
-      return { id: data?.id ?? null, status };
+    const { error } = await supabase.from("time_entries").insert(payload);
+    if (error) {
+      console.error("save error", error);
+      alert("Speichern fehlgeschlagen.");
+      return;
     }
-  }
-
-  async function verifyWritten(empId, dateIso){
-    // liest zurück und prüft, ob die Werte wirklich so in der DB stehen
-    const { data, error } = await supabase
-      .from("time_entries")
-      .select("id,start_min,end_min,break_min,note,project_id")
-      .eq("employee_id", empId).eq("work_date", dateIso)
-      .limit(1).maybeSingle();
-    if(error) throw error;
-    if(!data) throw new Error("Kein Datensatz gefunden – vermutlich RLS blockiert oder Insert fehlgeschlagen.");
-    // einfache Plausibilitätsprüfung
-    const same =
-      data.start_min===snap15(clamp(startMin,DAY_START,DAY_END)) &&
-      data.end_min  ===snap15(clamp(endMin,DAY_START,DAY_END))   &&
-      (data.break_min||0)===clamp(parseInt(breakMin||0,10),0,240) &&
-      String(data.note||"")===String(note||"") &&
-      (data.project_id||null)===(projectId||null);
-    if(!same) throw new Error("Werte stimmen nach dem Speichern nicht überein (RLS/Trigger?).");
-    return true;
-  }
-
-  async function save(){
-    setErr(""); setOk("");
-    const dateIso = todayISO(refDate);
-    const targets = isManager ? selectedIds : (me?.id ? [me.id] : []);
-    if(!targets.length){ setErr("Bitte Mitarbeiter auswählen."); return; }
-    if(endMin<=startMin){ setErr("Ende muss nach Start liegen."); return; }
-
-    setBusy(true);
-    try{
-      for(const id of targets){
-        // speichern
-        await upsertForEmployee(id, dateIso);
-        // nachkontrolle
-        await verifyWritten(id, dateIso);
-      }
-      setOk(`Gespeichert${isManager?` für ${targets.length} MA`:""}`);
-      await loadEntry(dateIso);
-    }catch(e){
-      setErr("Speichern nicht übernommen: "+(e.message||e));
-    }finally{
-      setBusy(false);
-    }
-  }
-
-  async function removeEntry(){
-    if(!entryId) return;
-    // Mitarbeiter löscht nur eigenen Eintrag (durch selectedIds ohnehin eingeschränkt)
-    setBusy(true); setErr(""); setOk("");
-    try{
-      const { error } = await supabase.from("time_entries").delete().eq("id", entryId);
-      if(error) throw error;
-      // Verify gelöscht
-      const { data } = await supabase
-        .from("time_entries").select("id").eq("id", entryId).maybeSingle();
-      if(data?.id) throw new Error("Eintrag wurde nicht gelöscht (RLS?).");
-      setOk("Eintrag gelöscht"); setEntryId(null);
-    }catch(e){ setErr("Löschen fehlgeschlagen: "+(e.message||e)); }
-    finally{ setBusy(false); }
-  }
-
-  const onStart = v => { const m=snap15(clamp(+v,DAY_START,DAY_END)); setStartMin(m); if(endMin<m+15) setEndMin(snap15(m+15)); };
-  const onEnd   = v => { const m=snap15(clamp(+v,DAY_START,DAY_END)); setEndMin(m); if(m<startMin+15) setStartMin(snap15(m-15)); };
-  const onBreak = v => setBreakMin(clamp(+v,0,240));
-  const prevDay = ()=>{ const d=new Date(refDate); d.setDate(d.getDate()-1); setRefDate(d); };
-  const nextDay = ()=>{ const d=new Date(refDate); d.setDate(d.getDate()+1); setRefDate(d); };
+    // Reset/Feedback
+    setNote("");
+    alert("Gespeichert.");
+  };
 
   return (
-    <div className="hbz-container">
-      <div className="hbz-toolbar">
-        <div className="group">
-          <button className="hbz-btn" onClick={prevDay}>&laquo;</button>
-          <input type="date" className="hbz-input" value={todayISO(refDate)} onChange={(e)=>setRefDate(new Date(e.target.value))}/>
-          <button className="hbz-btn" onClick={nextDay}>&raquo;</button>
-        </div>
+    <div className="max-w-screen-lg mx-auto">
+      {/* Datum */}
+      <div className="flex gap-2 mb-3">
+        <button
+          className="px-3 py-1 rounded border"
+          onClick={() => {
+            const d = new Date(date);
+            d.setDate(d.getDate() - 1);
+            setDate(d.toISOString().slice(0, 10));
+          }}
+        >
+          «
+        </button>
 
-        {isManager && (
-          <div className="group" style={{marginLeft:"auto", alignItems:"flex-start"}}>
-            <div style={{display:"grid", gap:6}}>
-              <div className="hbz-label">Mitarbeiter auswählen (mehrere möglich)</div>
-              <div className="hbz-pills">
-                {employees.map(e=>{
-                  const active = selectedIds.includes(e.id);
-                  return (
-                    <button key={e.id} className={`hbz-pill ${active?"active":""}`} onClick={()=>toggleEmp(e.id)}>
-                      {e.name}
-                    </button>
-                  );
-                })}
+        <input
+          type="date"
+          className="px-3 py-1 rounded border"
+          value={date}
+          onChange={(e) => setDate(e.target.value)}
+        />
+
+        <button
+          className="px-3 py-1 rounded border"
+          onClick={() => {
+            const d = new Date(date);
+            d.setDate(d.getDate() + 1);
+            setDate(d.toISOString().slice(0, 10));
+          }}
+        >
+          »
+        </button>
+      </div>
+
+      {/* Mitarbeiter-Wahl nur für Admin/Teamleiter */}
+      {isManager && (
+        <div className="mb-4">
+          <EmployeeList
+            employees={employees}
+            selected={selectedCode}
+            onSelect={(code) => setSelectedCode(code)}
+          />
+        </div>
+      )}
+
+      {/* Karte */}
+      <div
+        className="rounded-xl shadow"
+        style={{
+          background: "#fff",
+          border: "1px solid #d9c9b6",
+        }}
+      >
+        <div className="p-4">
+          {/* Projekt */}
+          <div className="mb-4">
+            <label className="block mb-1 font-semibold">Projekt</label>
+            <select
+              className="w-full px-3 py-2 rounded border"
+              value={projectId ?? ""}
+              onChange={(e) => setProjectId(e.target.value || null)}
+            >
+              <option value="">— ohne Projekt —</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Slider Start/Ende/Pause */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* Start */}
+            <div>
+              <div className="font-semibold mb-1">Start</div>
+              <input
+                type="range"
+                min={5 * 60}
+                max={19 * 60 + 30}
+                step={15}
+                value={fromMin}
+                onChange={(e) => setFromMin(Number(e.target.value))}
+                className="w-full"
+              />
+              <div className="mt-2 text-2xl font-bold">{toHM(fromMin)}</div>
+            </div>
+
+            {/* Ende */}
+            <div>
+              <div className="font-semibold mb-1">Ende</div>
+              <input
+                type="range"
+                min={5 * 60}
+                max={19 * 60 + 30}
+                step={15}
+                value={toMin}
+                onChange={(e) => setToMin(Number(e.target.value))}
+                className="w-full"
+              />
+              <div className="mt-2 text-2xl font-bold">{toHM(toMin)}</div>
+            </div>
+
+            {/* Pause */}
+            <div>
+              <div className="font-semibold mb-1">Pause</div>
+              <input
+                type="range"
+                min={0}
+                max={180}
+                step={5}
+                value={breakMin}
+                onChange={(e) => setBreakMin(Number(e.target.value))}
+                className="w-full"
+              />
+              <div className="mt-2 text-2xl font-bold">
+                {breakMin} min
               </div>
             </div>
           </div>
-        )}
-      </div>
 
-      {err && <div className="hbz-section error">{err}</div>}
-      {ok  && <div className="hbz-section ok">{ok}</div>}
-
-      <div className="hbz-card hbz-section">
-        {/* Projekt */}
-        <div style={{marginBottom:10}}>
-          <div className="hbz-label" style={{marginBottom:6}}>Projekt</div>
-          <select className="hbz-input" value={projectId||""} onChange={e=>setProjectId(e.target.value||null)}>
-            <option value="">— ohne Projekt —</option>
-            {projects.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
-        </div>
-
-        {/* Zeiten */}
-        <div className="hbz-grid hbz-grid-3">
-          <div>
-            <div className="hbz-label" style={{marginBottom:6}}>Start</div>
-            <input type="range" min={DAY_START} max={DAY_END} step={15} value={startMin} onChange={(e)=>onStart(e.target.value)} style={{width:"100%"}}/>
-            <div style={{marginTop:8,fontSize:22,fontWeight:700}}>{toHHMM(startMin)}</div>
+          <div className="mt-4">
+            <div className="text-sm">
+              <span className="font-semibold">Arbeitszeit heute:</span>{" "}
+              {Math.floor(totalMin / 60)}h {totalMin % 60}m
+            </div>
           </div>
-          <div>
-            <div className="hbz-label" style={{marginBottom:6}}>Ende</div>
-            <input type="range" min={DAY_START} max={DAY_END} step={15} value={endMin} onChange={(e)=>onEnd(e.target.value)} style={{width:"100%"}}/>
-            <div style={{marginTop:8,fontSize:22,fontWeight:700}}>{toHHMM(endMin)}</div>
+
+          {/* Notiz */}
+          <div className="mt-4">
+            <label className="block mb-1 font-semibold">Notiz</label>
+            <textarea
+              className="w-full h-24 rounded border px-3 py-2"
+              placeholder="z. B. Tätigkeit, Besonderheiten…"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+            />
           </div>
-          <div>
-            <div className="hbz-label" style={{marginBottom:6}}>Pause</div>
-            <input type="range" min={0} max={240} step={5} value={breakMin} onChange={(e)=>onBreak(e.target.value)} style={{width:"100%"}}/>
-            <div style={{marginTop:8,fontSize:22,fontWeight:700}}>{breakMin} min</div>
+
+          <div className="mt-4">
+            <button
+              onClick={handleSave}
+              className="px-4 py-2 rounded text-white"
+              style={{ background: "#7b4a2d" }}
+              disabled={!employeeRow}
+              title={!employeeRow ? "Bitte Mitarbeiter auswählen" : "Speichern"}
+            >
+              Speichern
+            </button>
           </div>
-        </div>
-
-        <div className="hbz-kpi" style={{marginTop:14}}>
-          <b>Arbeitszeit heute:</b> {Math.floor(duration/60)}h {pad(duration%60)}m
-        </div>
-
-        <div style={{marginTop:14}}>
-          <div className="hbz-label" style={{marginBottom:6}}>Notiz</div>
-          <textarea className="hbz-textarea" rows={3} value={note} onChange={(e)=>setNote(e.target.value)} placeholder="z. B. Tätigkeit, Besonderheiten…"/>
-        </div>
-
-        <div style={{marginTop:14, display:"flex", gap:8, alignItems:"center"}}>
-          <button className="hbz-btn primary" onClick={save} disabled={busy||loading||(!me?.id)}>
-            Speichern
-          </button>
-          {entryId && (
-            <button className="hbz-btn" onClick={removeEntry} disabled={busy}>Eintrag löschen</button>
-          )}
-          {loading && <span className="hbz-label">Lade …</span>}
-          {busy && <span className="hbz-label">Speichere …</span>}
         </div>
       </div>
     </div>

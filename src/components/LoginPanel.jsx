@@ -1,79 +1,76 @@
-// src/LoginPanel.jsx
-import React, { useState } from 'react'
-import { supabase } from './lib/supabase'
-import { setSession } from './lib/session'
-import './styles.css'
+import React, { useState } from "react";
+import { supabase } from "../lib/supabase";
+import { setSession } from "../lib/session";
+import "../styles.css";
 
 export default function LoginPanel({ onLogin }) {
-  const [code, setCode] = useState('')
-  const [pin, setPin] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
+  const [code, setCode] = useState("");
+  const [pin, setPin] = useState("");
+  const [error, setError] = useState("");
 
   async function handleLogin(e) {
-    e.preventDefault()
-    setError('')
-    if (!code || !pin) {
-      setError('Bitte Code und PIN eingeben.')
-      return
+    e.preventDefault();
+
+    // Direktabfrage auf Supabase RPC (login_lookup)
+    const { data, error } = await supabase.rpc("login_lookup", {
+      p_code: code,
+      p_pin: pin,
+    });
+
+    if (error || !data || data.length === 0) {
+      console.error(error);
+      setError("Falscher Code oder PIN");
+      return;
     }
-    setLoading(true)
-    try {
-      // >>> 4-stellige Klartext-PIN; login_lookup liefert genau 1 Zeile oder 0 Zeilen
-      const { data, error: rpcError } = await supabase
-        .rpc('login_lookup', { p_code: code, p_pin: pin })
 
-      if (rpcError) throw rpcError
-      if (!data || data.length === 0) {
-        setError('PIN oder Code falsch.')
-        return
-      }
+    const user = data[0];
+    if (!user) {
+      setError("Ungültige Anmeldedaten");
+      return;
+    }
 
-      // Erwartete Spalten: id, name, code, role, active
-      const row = data[0]
-      const session = {
-        user: {
-          id: row.id,
-          name: row.name,
-          code: row.code,
-          role: row.role,      // 'admin' | 'teamleiter' | 'mitarbeiter'
-          active: row.active === true,
-        },
-      }
-      setSession(session)
-      if (typeof onLogin === 'function') onLogin(session.user)
-    } catch (err) {
-      console.error('[Login]', err)
-      setError('Anmeldung fehlgeschlagen.')
-    } finally {
-      setLoading(false)
+    // Session lokal speichern
+    setSession({ user });
+
+    if (onLogin) {
+      onLogin(user);
+    } else {
+      window.location.hash = "#/zeiterfassung";
     }
   }
 
   return (
-    <div className="login-panel">
-      <form onSubmit={handleLogin}>
-        <label>Code</label>
-        <input
-          autoFocus
-          value={code}
-          onChange={(e) => setCode(e.target.value)}
-          placeholder="z. B. ZS"
-        />
-        <label>PIN</label>
-        <input
-          type="password"
-          inputMode="numeric"
-          maxLength={4}
-          value={pin}
-          onChange={(e) => setPin(e.target.value)}
-          placeholder="••••"
-        />
-        {error && <div className="alert alert-error">{error}</div>}
-        <button className="btn" disabled={loading}>
-          {loading ? 'Login…' : 'Login'}
-        </button>
+    <div className="login-container">
+      <h2>Login</h2>
+      <form onSubmit={handleLogin} className="login-form">
+        <label>
+          Mitarbeiter-Code:
+          <input
+            type="text"
+            value={code}
+            onChange={(e) => setCode(e.target.value.toUpperCase())}
+            placeholder="z. B. ZS"
+            required
+          />
+        </label>
+
+        <label>
+          PIN:
+          <input
+            type="password"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            value={pin}
+            onChange={(e) => setPin(e.target.value)}
+            placeholder="4-stellig"
+            required
+          />
+        </label>
+
+        {error && <p className="error-text">{error}</p>}
+
+        <button type="submit">Anmelden</button>
       </form>
     </div>
-  )
+  );
 }

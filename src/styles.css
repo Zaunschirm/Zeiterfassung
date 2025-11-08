@@ -196,5 +196,13 @@ table.nice tr:nth-child(even) {
 a:hover {
   text-decoration: none;
 }
+.topbar{display:flex;align-items:center;gap:16px;padding:10px 14px;background:#efdfc5;border-bottom:1px solid #d2bfa1}
+.topbar .brand{font-weight:700}
+.topbar .menu a{margin:0 8px;text-decoration:none;color:#3b2a20}
+.topbar .menu a.active{font-weight:700;border-bottom:2px solid #3b2a20}
+.topbar .userbox{margin-left:auto;display:flex;align-items:center;gap:10px}
+.topbar .role{font-weight:400;color:#7a6a5e}
+.btn-small{padding:6px 10px;font-size:.9rem}
+
 
 

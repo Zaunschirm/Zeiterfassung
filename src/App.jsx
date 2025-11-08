@@ -1,73 +1,94 @@
 // src/App.jsx
-import React from 'react'
-import { Routes, Route, Navigate } from 'react-router-dom'
-import NavBar from './NavBar'
-import LoginPanel from './LoginPanel'
-import DaySlider from './DaySlider'
-import MonthlyOverview from './MonthlyOverview'
-// (Optional: weitere Seiten)
-import { getSession } from './lib/session'
+import React, { useEffect, useState } from "react";
+import { HashRouter, Routes, Route, Navigate } from "react-router-dom";
 
-function RequireAuth({ children, roles }) {
-  const session = getSession()
-  const user = session?.user
-  if (!user) return <Navigate to="/login" replace />
-  if (roles && roles.length > 0 && !roles.includes(user.role)) {
-    return <Navigate to="/zeiterfassung" replace />
-  }
-  return children
+import NavBar from "./components/NavBar";
+import LoginPanel from "./components/LoginPanel";
+
+import DaySlider from "./components/DaySlider";
+import MonthlyOverview from "./components/MonthlyOverview";
+import EmployeeList from "./components/EmployeeList";
+import EmployeeCreate from "./components/EmployeeCreate";
+import ProjectPhotos from "./components/ProjectPhotos";
+import ProjectPhotoUpload from "./components/ProjectPhotoUpload";
+import ProjectAdmin from "./components/ProjectAdmin";
+
+import { getSession, currentUser, hasRole } from "./lib/session";
+
+function Guard({ children, allow = "mitarbeiter" }) {
+  // allow: "mitarbeiter" | "teamleiter" | "admin"
+  if (allow === "admin" && !hasRole("admin")) return <Navigate to="/zeiterfassung" replace />;
+  if (allow === "teamleiter" && !hasRole("teamleiter")) return <Navigate to="/zeiterfassung" replace />;
+  return children;
 }
 
 export default function App() {
-  const session = getSession()
-  const isLoggedIn = Boolean(session?.user)
+  const [ready, setReady] = useState(false);
+  const [session, setSession] = useState(null);
+
+  useEffect(() => {
+    setSession(getSession());
+    setReady(true);
+  }, []);
+
+  if (!ready) return null;
+
+  const user = currentUser();
 
   return (
-    <div className="app">
-      {isLoggedIn && <NavBar />}
+    <HashRouter>
+      {user ? <NavBar /> : null}
 
       <Routes>
-        <Route path="/login" element={<LoginPanel onLogin={() => window.location.hash = '#/zeiterfassung'} />} />
+        {/* Login */}
+        <Route path="/" element={user ? <Navigate to="/zeiterfassung" replace /> : <LoginPanel />} />
 
-        <Route
-          path="/zeiterfassung"
-          element={
-            <RequireAuth>
-              <DaySlider />
-            </RequireAuth>
-          }
-        />
+        {/* Zeiterfassung für alle */}
+        <Route path="/zeiterfassung" element={<DaySlider user={user} />} />
 
+        {/* Projektfotos */}
+        <Route path="/projektfotos" element={<ProjectPhotos user={user} />} />
+        <Route path="/projektfotos/upload" element={<ProjectPhotoUpload user={user} />} />
+
+        {/* Teamleiter + Admin */}
         <Route
           path="/monatsuebersicht"
           element={
-            <RequireAuth roles={['admin', 'teamleiter', 'mitarbeiter']}>
-              <MonthlyOverview />
-            </RequireAuth>
-          }
-        />
-
-        {/* Admin/Teamleiter-Bereiche */}
-        <Route
-          path="/projektfotos"
-          element={
-            <RequireAuth roles={['admin', 'teamleiter']}>
-              <div style={{padding:'1rem'}}>Projektfotos (bestehende Funktionen bleiben)</div>
-            </RequireAuth>
+            <Guard allow="teamleiter">
+              <MonthlyOverview user={user} />
+            </Guard>
           }
         />
         <Route
           path="/mitarbeiter"
           element={
-            <RequireAuth roles={['admin', 'teamleiter']}>
-              <div style={{padding:'1rem'}}>Mitarbeiter (bestehende Funktionen bleiben)</div>
-            </RequireAuth>
+            <Guard allow="teamleiter">
+              <EmployeeList user={user} />
+            </Guard>
+          }
+        />
+        <Route
+          path="/mitarbeiter/create"
+          element={
+            <Guard allow="teamleiter">
+              <EmployeeCreate user={user} />
+            </Guard>
           }
         />
 
-        {/* Standard-Redirect */}
-        <Route path="*" element={<Navigate to={isLoggedIn ? '/zeiterfassung' : '/login'} replace />} />
+        {/* Admin */}
+        <Route
+          path="/project-admin"
+          element={
+            <Guard allow="admin">
+              <ProjectAdmin user={user} />
+            </Guard>
+          }
+        />
+
+        {/* Fallback */}
+        <Route path="*" element={<Navigate to={user ? "/zeiterfassung" : "/"} replace />} />
       </Routes>
-    </div>
-  )
+    </HashRouter>
+  );
 }

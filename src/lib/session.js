@@ -1,19 +1,34 @@
 // src/lib/session.js
-const KEY = 'hbz_session'
+const KEY = "hbz_session_v1";
+
+export function setSession(payload) {
+  localStorage.setItem(KEY, JSON.stringify(payload));
+}
 
 export function getSession() {
+  const raw = localStorage.getItem(KEY);
   try {
-    const raw = localStorage.getItem(KEY)
-    return raw ? JSON.parse(raw) : null
+    return raw ? JSON.parse(raw) : null;
   } catch {
-    return null
+    localStorage.removeItem(KEY);
+    return null;
   }
 }
 
-export function setSession(session) {
-  localStorage.setItem(KEY, JSON.stringify(session))
+export function clearSession() {
+  localStorage.removeItem(KEY);
 }
 
-export function clearSession() {
-  localStorage.removeItem(KEY)
+export function currentUser() {
+  const s = getSession();
+  return s?.user ?? null;
+}
+
+export function hasRole(role) {
+  const u = currentUser();
+  if (!u) return false;
+  const r = (u.role || "").toLowerCase();
+  if (role === "admin") return r === "admin";
+  if (role === "teamleiter") return r === "admin" || r === "teamleiter";
+  return true; // "mitarbeiter"
 }

@@ -1,41 +1,64 @@
-// src/NavBar.jsx
-import React from 'react'
-import { getSession, clearSession } from './lib/session'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
+// src/components/NavBar.jsx
+import React from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { currentUser, clearSession, hasRole } from "../lib/session";
 
 export default function NavBar() {
-  const nav = useNavigate()
-  const loc = useLocation()
-  const session = getSession()
-  const role = session?.user?.role || 'mitarbeiter'
-  const name = session?.user?.name || ''
+  const loc = useLocation();
+  const navigate = useNavigate();
+  const user = currentUser();
+  const role = (user?.role || "").toLowerCase();
 
-  const canManage = role === 'admin' || role === 'teamleiter'
+  if (!user) return null; // nicht eingeloggt => keine Navbar
 
-  function logout() {
-    clearSession()
-    nav('/login')
-  }
+  const isActive = (hashPath) => loc.pathname === hashPath;
 
-  const isActive = (path) => (loc.pathname.startsWith(path) ? 'active' : '')
+  const logout = () => {
+    clearSession();
+    navigate("/", { replace: true });
+    // HashRouter: zur Login-Seite
+    window.location.hash = "#/";
+  };
 
   return (
-    <header className="topbar">
-      <div className="brand">Holzbau&nbsp;Zaunschirm</div>
-      <nav>
-        <Link className={isActive('/zeiterfassung')} to="/zeiterfassung">Zeiterfassung</Link>
-        {canManage && (
+    <div className="topbar">
+      <div className="brand">Holzbau Zaunschirm</div>
+
+      <nav className="menu">
+        <Link className={isActive("/zeiterfassung") ? "active" : ""} to="/zeiterfassung">
+          Zeiterfassung
+        </Link>
+
+        <Link className={isActive("/projektfotos") ? "active" : ""} to="/projektfotos">
+          Projektfotos
+        </Link>
+
+        {hasRole("teamleiter") && (
           <>
-            <Link className={isActive('/projektfotos')} to="/projektfotos">Projektfotos</Link>
-            <Link className={isActive('/mitarbeiter')} to="/mitarbeiter">Mitarbeiter</Link>
+            <Link className={isActive("/monatsuebersicht") ? "active" : ""} to="/monatsuebersicht">
+              Monatsübersicht
+            </Link>
+            <Link className={isActive("/mitarbeiter") ? "active" : ""} to="/mitarbeiter">
+              Mitarbeiter
+            </Link>
           </>
         )}
-        <Link className={isActive('/monatsuebersicht')} to="/monatsuebersicht">Monatsübersicht</Link>
+
+        {hasRole("admin") && (
+          <>
+            <Link className={isActive("/project-admin") ? "active" : ""} to="/project-admin">
+              Projekte
+            </Link>
+          </>
+        )}
       </nav>
-      <div className="session">
-        <span className="user">{name} ({role})</span>
+
+      <div className="userbox">
+        <span className="user">
+          {user.name ?? user.code} <span className="role">({role})</span>
+        </span>
         <button className="btn btn-small" onClick={logout}>Logout</button>
       </div>
-    </header>
-  )
+    </div>
+  );
 }
