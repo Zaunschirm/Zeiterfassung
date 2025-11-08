@@ -44,27 +44,6 @@ const UI = {
   },
 };
 
-// 🔹 Hilfsfunktion: versucht verschiedene Tabellennamen (public.mitarbeiter, mitarbeiter, Mitarbeiter)
-async function findUserByCodePin(supabase, codeClean, pinClean) {
-  const tables = ["public.mitarbeiter", "mitarbeiter", "Mitarbeiter"];
-  for (const tbl of tables) {
-    const { data, error } = await supabase
-      .from(tbl)
-      .select("id, name, code, rolle, aktiv, notfall_admin, pin")
-      .ilike("code", codeClean)
-      .eq("pin", pinClean.toString())
-      .maybeSingle();
-
-    // Falls Tabelle nicht existiert → nächste Variante probieren
-    if (error && /relation .* does not exist|not found in the schema cache/i.test(error.message)) {
-      continue;
-    }
-    if (error) return { data: null, error };
-    if (data) return { data, error: null };
-  }
-  return { data: null, error: null };
-}
-
 export default function LoginPanel() {
   const nav = useNavigate();
   const [code, setCode] = useState("");
@@ -84,29 +63,31 @@ export default function LoginPanel() {
 
     setLoading(true);
     try {
-      // 🔹 Benutzer anhand Code + PIN in Tabelle suchen (mit Fallback)
-      const { data, error } = await findUserByCodePin(supabase, codeClean, pinClean);
+      // 🔒 Stabile Auth über RPC – unabhängig von Schema-Cache/Tabellennamen
+      const { data, error } = await supabase
+        .rpc("login_lookup", { p_code: codeClean, p_pin: pinClean });
 
       if (error) {
-        console.error(error);
-        setMsg("Serverfehler beim Login.");
+        console.error("[Login] Supabase-Error:", error);
+        const text =
+          (error?.message || error?.hint || error?.details || "").toString().trim() ||
+          "Serverfehler beim Login.";
+        setMsg(text);
         return;
       }
 
-      if (!data) {
+      const u = Array.isArray(data) ? data[0] : null;
+      if (!u) {
         setMsg("PIN oder Code falsch.");
         return;
       }
 
-      const u = data;
-
-      // 🔹 Aktiv-Status prüfen
       if (u.aktiv === false) {
         setMsg("Dieser Benutzer ist deaktiviert.");
         return;
       }
 
-      // 🔹 Lokale Session speichern
+      // 🔑 Session ins LocalStorage
       localStorage.setItem("isAuthed", "1");
       localStorage.setItem("meId", u.id);
       localStorage.setItem("meName", u.name || "");
@@ -116,7 +97,7 @@ export default function LoginPanel() {
         localStorage.setItem("meNotfallAdmin", u.notfall_admin ? "1" : "0");
       }
 
-      // 🔹 Weiterleiten (klein, damit mit basename /Zeiterfassung funktioniert)
+      // 🚀 Weiterleiten (intern; bei HashRouter ergibt das #/zeiterfassung)
       nav("/zeiterfassung", { replace: true });
     } finally {
       setLoading(false);
