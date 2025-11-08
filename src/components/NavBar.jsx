@@ -1,55 +1,41 @@
-// src/components/NavBar.jsx
-import React from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
-
-const btn = (active) => ({
-  padding: "8px 12px",
-  borderRadius: 8,
-  border: "1px solid #cdb9a7",
-  background: active ? "#8B5E3C" : "#fff5ee",
-  color: active ? "#fff" : "#4a3a2f",
-  fontWeight: 700,
-  marginRight: 10,
-  textDecoration: "none",
-});
+// src/NavBar.jsx
+import React from 'react'
+import { getSession, clearSession } from './lib/session'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 
 export default function NavBar() {
-  const loc = useLocation();
-  const nav = useNavigate();
+  const nav = useNavigate()
+  const loc = useLocation()
+  const session = getSession()
+  const role = session?.user?.role || 'mitarbeiter'
+  const name = session?.user?.name || ''
 
-  const role = (localStorage.getItem("meRole") || "mitarbeiter").toLowerCase();
-  const isAdminOrTL = role === "admin" || role === "teamleiter";
+  const canManage = role === 'admin' || role === 'teamleiter'
 
-  const logout = () => {
-    localStorage.removeItem("isAuthed");
-    localStorage.removeItem("meId");
-    localStorage.removeItem("meName");
-    localStorage.removeItem("meCode");
-    localStorage.removeItem("meRole");
-    localStorage.removeItem("meNotfallAdmin");
-    nav("/", { replace: true });
-  };
+  function logout() {
+    clearSession()
+    nav('/login')
+  }
+
+  const isActive = (path) => (loc.pathname.startsWith(path) ? 'active' : '')
 
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: 10 }}>
-      <Link to="/zeiterfassung" style={btn(loc.pathname.includes("/zeiterfassung"))}>
-        Zeiterfassung
-      </Link>
-
-      <Link to="/monatsuebersicht" style={btn(loc.pathname.includes("/monatsuebersicht"))}>
-        Monatsübersicht
-      </Link>
-
-      {/* Beispiel: Admin/Teamleiter bekommen einen Mitarbeiter-Tab */}
-      {isAdminOrTL && (
-        <Link to="/mitarbeiter" style={btn(loc.pathname.includes("/mitarbeiter"))}>
-          Mitarbeiter
-        </Link>
-      )}
-
-      <div style={{ marginLeft: "auto" }}>
-        <button onClick={logout} style={btn(false)}>Logout</button>
+    <header className="topbar">
+      <div className="brand">Holzbau&nbsp;Zaunschirm</div>
+      <nav>
+        <Link className={isActive('/zeiterfassung')} to="/zeiterfassung">Zeiterfassung</Link>
+        {canManage && (
+          <>
+            <Link className={isActive('/projektfotos')} to="/projektfotos">Projektfotos</Link>
+            <Link className={isActive('/mitarbeiter')} to="/mitarbeiter">Mitarbeiter</Link>
+          </>
+        )}
+        <Link className={isActive('/monatsuebersicht')} to="/monatsuebersicht">Monatsübersicht</Link>
+      </nav>
+      <div className="session">
+        <span className="user">{name} ({role})</span>
+        <button className="btn btn-small" onClick={logout}>Logout</button>
       </div>
-    </div>
-  );
+    </header>
+  )
 }

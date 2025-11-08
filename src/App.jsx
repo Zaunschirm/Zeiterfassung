@@ -1,52 +1,73 @@
 // src/App.jsx
-import { useEffect, useState, createContext, useContext } from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import NavBar from "./components/NavBar.jsx";
-import DaySlider from "./components/DaySlider.jsx";
-import MonthlyOverview from "./components/MonthlyOverview.jsx";
-import LoginPanel from "./components/LoginPanel.jsx";
+import React from 'react'
+import { Routes, Route, Navigate } from 'react-router-dom'
+import NavBar from './NavBar'
+import LoginPanel from './LoginPanel'
+import DaySlider from './DaySlider'
+import MonthlyOverview from './MonthlyOverview'
+// (Optional: weitere Seiten)
+import { getSession } from './lib/session'
 
-export const RoleCtx = createContext({ user: null, role: "mitarbeiter", id: null });
-
-export default function App() {
-  const [profile, setProfile] = useState(null);
-
-  // Profil aus localStorage ziehen (wird in LoginPanel gesetzt)
-  useEffect(() => {
-    const isAuthed = localStorage.getItem("isAuthed") === "1";
-    if (!isAuthed) return;
-    const p = {
-      id: localStorage.getItem("meId"),
-      name: localStorage.getItem("meName"),
-      code: localStorage.getItem("meCode"),
-      role: (localStorage.getItem("meRole") || "mitarbeiter").toLowerCase(),
-      notfallAdmin: localStorage.getItem("meNotfallAdmin") === "1",
-    };
-    setProfile(p);
-  }, []);
-
-  const ctx = {
-    user: profile,
-    role: profile?.role ?? "mitarbeiter",
-    id: profile?.id ?? null,
-  };
-
-  if (!profile) return <LoginPanel onLoggedIn={setProfile} />;
-
-  return (
-    <RoleCtx.Provider value={ctx}>
-      <BrowserRouter basename="/Zeiterfassung">
-        <NavBar />
-        <Routes>
-          <Route path="/" element={<Navigate to="/zeiterfassung" replace />} />
-          <Route path="/zeiterfassung" element={<DaySlider />} />
-          <Route path="/monatsuebersicht" element={<MonthlyOverview />} />
-          {/* weitere Routen können bleiben/ergänzt werden */}
-          <Route path="*" element={<Navigate to="/zeiterfassung" replace />} />
-        </Routes>
-      </BrowserRouter>
-    </RoleCtx.Provider>
-  );
+function RequireAuth({ children, roles }) {
+  const session = getSession()
+  const user = session?.user
+  if (!user) return <Navigate to="/login" replace />
+  if (roles && roles.length > 0 && !roles.includes(user.role)) {
+    return <Navigate to="/zeiterfassung" replace />
+  }
+  return children
 }
 
-export const useRole = () => useContext(RoleCtx);
+export default function App() {
+  const session = getSession()
+  const isLoggedIn = Boolean(session?.user)
+
+  return (
+    <div className="app">
+      {isLoggedIn && <NavBar />}
+
+      <Routes>
+        <Route path="/login" element={<LoginPanel onLogin={() => window.location.hash = '#/zeiterfassung'} />} />
+
+        <Route
+          path="/zeiterfassung"
+          element={
+            <RequireAuth>
+              <DaySlider />
+            </RequireAuth>
+          }
+        />
+
+        <Route
+          path="/monatsuebersicht"
+          element={
+            <RequireAuth roles={['admin', 'teamleiter', 'mitarbeiter']}>
+              <MonthlyOverview />
+            </RequireAuth>
+          }
+        />
+
+        {/* Admin/Teamleiter-Bereiche */}
+        <Route
+          path="/projektfotos"
+          element={
+            <RequireAuth roles={['admin', 'teamleiter']}>
+              <div style={{padding:'1rem'}}>Projektfotos (bestehende Funktionen bleiben)</div>
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/mitarbeiter"
+          element={
+            <RequireAuth roles={['admin', 'teamleiter']}>
+              <div style={{padding:'1rem'}}>Mitarbeiter (bestehende Funktionen bleiben)</div>
+            </RequireAuth>
+          }
+        />
+
+        {/* Standard-Redirect */}
+        <Route path="*" element={<Navigate to={isLoggedIn ? '/zeiterfassung' : '/login'} replace />} />
+      </Routes>
+    </div>
+  )
+}
