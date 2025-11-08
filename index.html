@@ -6,6 +6,15 @@
     <meta name="theme-color" content="#8B5E3C" />
     <link rel="icon" href="/favicon.ico" />
     <title>Holzbau Zaunschirm – Zeiterfassung</title>
+
+    <script>
+      // Wenn kein Hash vorhanden ist → automatisch auf "#/" umleiten
+      (function () {
+        if (!location.hash) {
+          location.replace(location.pathname + location.search + '#/');
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
