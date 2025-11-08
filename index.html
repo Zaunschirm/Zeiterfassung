@@ -7,16 +7,17 @@
     <title>Holzbau Zaunschirm – Zeiterfassung</title>
     <link rel="icon" type="image/png" href="./favicon.ico" />
 
-    <!-- Redirect auf Hash, falls jemand /Zeiterfassung ohne #/ öffnet -->
+    <!-- Automatische Weiterleitung auf #/, falls kein Hash vorhanden -->
     <script>
       if (!location.hash) {
         location.replace(location.pathname + location.search + '#/');
       }
     </script>
   </head>
+
   <body>
     <div id="root"></div>
-    <!-- 🔧 Wichtig: relativer Pfad -->
+    <!-- ⚠️  Wichtig: relative Pfadangabe -->
     <script type="module" src="./src/main.jsx"></script>
   </body>
 </html>
