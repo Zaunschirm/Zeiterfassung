@@ -1,391 +1,526 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { supabase } from "../lib/supabase.js";
+import { supabase } from "../lib/supabase";
+import { getSession } from "../lib/session";
+import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
 
-const pad = (n) => String(n).padStart(2, "0");
-const hm  = (m) => `${Math.floor(m/60)}h ${pad(m%60)}m`;
-const toHH  = (m) => `${(m/60).toFixed(2).replace(".", ",")} h`;
-const toHHMM = (m) => `${pad(Math.floor(m/60))}:${pad(m%60)}`;
-const first = (d) => new Date(d.getFullYear(), d.getMonth(), 1);
-const last  = (d) => new Date(d.getFullYear(), d.getMonth()+1, 0);
-const iso   = (d) => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
-
-function startOfWeek(d){ const x=new Date(d); const day=(x.getDay()+6)%7; x.setDate(x.getDate()-day); x.setHours(0,0,0,0); return x; }
-function weekKey(dateStr){
-  const d=new Date(dateStr); const ws=startOfWeek(d); const we=new Date(ws); we.setDate(ws.getDate()+6);
-  return { key:`${ws.getFullYear()}-${pad(ws.getMonth()+1)}-${pad(ws.getDate())}`, label:`${ws.toLocaleDateString()} – ${we.toLocaleDateString()}` };
+// ---------- Utils ----------
+const toHM = (m) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+const hmToMin = (hm) => {
+  if (!hm) return 0;
+  const [h, m] = String(hm).split(":").map((x) => parseInt(x || "0", 10));
+  return (isNaN(h) ? 0 : h) * 60 + (isNaN(m) ? 0 : m);
+};
+const h2 = (m) => Math.round((m / 60) * 100) / 100; // Minuten -> Stunden (2 Nachkommastellen)
+const entryMinutes = (e) => {
+  const start = e.start_min ?? e.from_min ?? 0;
+  const end = e.end_min ?? e.to_min ?? 0;
+  const pause = e.break_min || 0;
+  return Math.max(end - start - pause, 0);
+};
+// ISO-Week helpers (Mo=1..So=7)
+function parseYMD(ymd) { const [y, m, d] = ymd.split("-").map((n) => parseInt(n, 10)); return new Date(y, m - 1, d); }
+function isoWeek(d) {
+  const dt = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const dayNum = dt.getUTCDay() || 7;
+  dt.setUTCDate(dt.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(dt.getUTCFullYear(), 0, 1));
+  const weekNo = Math.ceil((((dt - yearStart) / 86400000) + 1) / 7);
+  return { week: weekNo, year: dt.getUTCFullYear() };
 }
+const weekKey = (ymd) => {
+  const id = isoWeek(parseYMD(ymd));
+  return `${id.year}-W${String(id.week).padStart(2, "0")}`;
+};
 
-export default function MonthlyOverview(){
-  const me   = JSON.parse(localStorage.getItem("me") || "null");
-  const role = (me?.role || "").toLowerCase();
-  const isManager = role==="admin" || role==="teamleiter";
+// ---------- Component ----------
+export default function MonthlyOverview() {
+  const session = getSession()?.user || null;
+  const role = (session?.role || "mitarbeiter").toLowerCase();
+  const isStaff = role === "mitarbeiter";
+  const isManager = !isStaff;
 
-  /* Zeitraum */
-  const [refDate, setRefDate] = useState(()=>{ const x=new Date(); x.setDate(1); x.setHours(0,0,0,0); return x;});
-  const start = first(refDate), end = last(refDate);
-  const prevMonth = ()=>{ const d=new Date(refDate); d.setMonth(d.getMonth()-1); setRefDate(d); };
-  const nextMonth = ()=>{ const d=new Date(refDate); d.setMonth(d.getMonth()+1); setRefDate(d); };
-
-  /* Mitarbeiterliste + Auswahl (Pills) */
-  const [employees, setEmployees] = useState([]);
-  useEffect(()=>{ (async()=>{
-    const { data } = await supabase.from("employees").select("id,name,active").eq("active", true).order("name");
-    if (data) setEmployees(data);
-  })();},[]);
-  const [selectedIds, setSelectedIds] = useState(()=>{
-    try { return JSON.parse(localStorage.getItem("activeEmployeeIds") || "[]"); }
-    catch { return me?.id ? [me.id] : []; }
+  // Monat (YYYY-MM)
+  const [month, setMonth] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
   });
-  useEffect(()=>localStorage.setItem("activeEmployeeIds", JSON.stringify(selectedIds)), [selectedIds]);
-  const toggleEmp = id => setSelectedIds(p=>{const s=new Set(p); s.has(id)?s.delete(id):s.add(id); return [...s];});
-  const selectAll = ()=> setSelectedIds(employees.map(e=>e.id));
-  const selectMe  = ()=> me?.id && setSelectedIds([me.id]);
-  const clearSel  = ()=> setSelectedIds([]);
 
-  /* Daten */
-  const [rows, setRows] = useState([]);
+  // Stammdaten/Filter
+  const [employees, setEmployees] = useState([]);
+  const [projects, setProjects] = useState([]);
+  const [selectedCodes, setSelectedCodes] = useState(isStaff ? [session?.code].filter(Boolean) : []);
+  const [selectedProjectId, setSelectedProjectId] = useState("");
+
+  // Daten
   const [loading, setLoading] = useState(false);
-  const [q, setQ] = useState("");
+  const [rows, setRows] = useState([]);  // v_time_entries_expanded
+  const [editId, setEditId] = useState(null);
+  const [editState, setEditState] = useState(null);
 
-  const [projects,setProjects]=useState([]);
-  useEffect(()=>{ (async()=>{
-    const { data } = await supabase.from("projects").select("id,name,active").eq("active",true).order("name");
-    if (data) setProjects(data);
-  })(); },[]);
+  // ----- Stammdaten -----
+  useEffect(() => {
+    (async () => {
+      // Employees
+      if (isManager) {
+        const { data, error } = await supabase
+          .from("employees")
+          .select("id, code, name, role, active, disabled")
+          .eq("active", true)
+          .eq("disabled", false)
+          .order("name", { ascending: true });
+        if (!error) {
+          setEmployees(data || []);
+          if ((data || []).length && selectedCodes.length === 0) {
+            setSelectedCodes(data.map((e) => e.code));
+          }
+        }
+      } else {
+        const { data, error } = await supabase
+          .from("employees")
+          .select("id, code, name, role, active, disabled")
+          .eq("code", session?.code)
+          .limit(1)
+          .maybeSingle();
+        if (!error && data) {
+          setEmployees([data]);
+          setSelectedCodes([data.code]);
+        }
+      }
 
-  async function fetchData(){
-    setLoading(true);
-    let data=[];
-    const { data: viewData } = await supabase
-      .from("v_time_entries_expanded")
-      .select("id,work_date,start_min,end_min,break_min,note,project_id,project_name,employee_name,employee_id")
-      .gte("work_date", iso(start)).lte("work_date", iso(end))
-      .order("work_date",{ascending:true});
+      // Projects
+      const tryList = async (source) => {
+        const { data, error } = await supabase.from(source).select("*").order("name", { ascending: true });
+        if (error) return { ok: false, data: [] };
+        return { ok: true, data: data || [] };
+      };
+      let prj = await tryList("projects");
+      if (!prj.ok || prj.data.length === 0) {
+        for (const fb of ["v_projects", "projects_view", "projects_all"]) {
+          const r = await tryList(fb);
+          if (r.ok && r.data.length > 0) { prj = r; break; }
+        }
+      }
+      setProjects((prj.data || []).filter((p) => p?.disabled !== true));
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isManager]);
 
-    if(viewData){
-      data = viewData.map(r=>({
-        id:r.id, date:r.work_date, start_min:r.start_min, end_min:r.end_min,
-        break_min:r.break_min, note:r.note||"", project:r.project_name||"",
-        project_id:r.project_id||null, employee:r.employee_name||"", employee_id:r.employee_id
-      }));
+  // ----- Monatsdaten laden -----
+  useEffect(() => { loadMonth(); /* eslint-disable-next-line */ }, [month, selectedCodes, selectedProjectId, isManager]);
+
+  async function loadMonth() {
+    try {
+      setLoading(true);
+      const [y, m] = month.split("-");
+      const from = `${y}-${m}-01`;
+      const lastDay = new Date(parseInt(y, 10), parseInt(m, 10), 0).getDate();
+      const to = `${y}-${m}-${String(lastDay).padStart(2, "0")}`;
+
+      let ids = [];
+      if (isManager) {
+        ids = employees.filter((e) => selectedCodes.includes(e.code)).map((e) => e.id);
+        if (!ids.length) { setRows([]); setLoading(false); return; }
+      }
+
+      let q = supabase
+        .from("v_time_entries_expanded")
+        .select("*")
+        .gte("work_date", from)
+        .lte("work_date", to);
+
+      if (isManager) q = q.in("employee_id", ids);
+      else {
+        const me = employees[0];
+        if (me?.id) q = q.eq("employee_id", me.id);
+      }
+      if (selectedProjectId) q = q.eq("project_id", selectedProjectId);
+
+      let { data, error } = await q.order("employee_name", { ascending: true }).order("work_date", { ascending: true });
+      if (error?.code === "42703") {
+        const retry = await q.order("work_date", { ascending: true }).order("id", { ascending: true });
+        data = retry.data; error = retry.error;
+      }
+      if (error) throw error;
+      setRows(data || []);
+    } catch (e) {
+      console.error("month load error:", e);
+      setRows([]);
+    } finally {
+      setLoading(false);
     }
-
-    if (role === "mitarbeiter") data = data.filter(r => r.employee_id === me?.id);
-    else if (selectedIds.length){ const s=new Set(selectedIds); data = data.filter(r => s.has(r.employee_id)); }
-
-    setRows(data); setLoading(false);
   }
-  useEffect(()=>{ fetchData(); /* eslint-disable-next-line */ }, [refDate, JSON.stringify(selectedIds)]);
 
-  /* Textfilter */
-  const filtered = useMemo(()=>{
-    if(!q.trim()) return rows;
-    const s=q.trim().toLowerCase();
-    return rows.filter(r =>
-      (r.project||"").toLowerCase().includes(s) ||
-      (r.employee||"").toLowerCase().includes(s) ||
-      (r.note||"").toLowerCase().includes(s)
+  // ----- Gruppierungen -----
+  // Tagesweise (pro Mitarbeiter+Datum zusammengefasst)
+  const grouped = useMemo(() => {
+    const g = {};
+    for (const r of rows) {
+      const key = `${r.employee_name || r.employee_id}||${r.work_date}`;
+      const mins = entryMinutes(r);
+      if (!g[key]) g[key] = { ...r, _mins: 0, items: [] };
+      g[key]._mins += mins;
+      g[key].items.push(r);
+    }
+    return Object.values(g).sort((a, b) =>
+      (a.employee_name || "").localeCompare(b.employee_name || "") ||
+      a.work_date.localeCompare(b.work_date)
     );
-  },[rows,q]);
+  }, [rows]);
 
-  /* Dauer + Tages-ÜS (>9h) */
-  const augmented = useMemo(()=>filtered.map(r=>{
-    const dur = Math.max(0,(r.end_min - r.start_min) - (r.break_min||0));
-    const dayOT = Math.max(0, dur - 9*60);
-    return {...r, duration_min: dur, day_ot_min: dayOT};
-  }),[filtered]);
-
-  /* Wochen-Übersicht (Mo–So) & Woche-ÜS (>39h) */
-  const weekly = useMemo(()=>{
-    const byWeek = new Map();
-    for(const r of augmented){
-      const { key, label } = weekKey(r.date);
-      if(!byWeek.has(key)) byWeek.set(key, { key, label, total:0, dayOT:0 });
-      const w = byWeek.get(key);
-      w.total += r.duration_min;
-      w.dayOT += r.day_ot_min;
+  // Wochenweise (ISO Woche; pro Mitarbeiter & Woche)
+  const weekly = useMemo(() => {
+    const w = {};
+    for (const r of grouped) {
+      const wk = weekKey(r.work_date);
+      const emp = r.employee_name || r.employee_id;
+      const key = `${emp}||${wk}`;
+      if (!w[key]) w[key] = { employee: emp, weekKey: wk, days: [], _mins: 0 };
+      w[key].days.push(r);
+      w[key]._mins += r._mins;
     }
-    for(const w of byWeek.values()){ w.weekOT = Math.max(0, w.total - 39*60); }
-    return [...byWeek.values()].sort((a,b)=>a.key.localeCompare(b.key));
-  },[augmented]);
+    return Object.values(w).sort((a, b) =>
+      a.employee.localeCompare(b.employee) || a.weekKey.localeCompare(b.weekKey)
+    );
+  }, [grouped]);
 
-  const sumTotalMin  = useMemo(()=>augmented.reduce((a,b)=>a+b.duration_min,0),[augmented]);
-  const sumDayOTMin  = useMemo(()=>augmented.reduce((a,b)=>a+b.day_ot_min,0),[augmented]);
-  const sumWeekOTMin = useMemo(()=>weekly.reduce((a,b)=>a+b.weekOT,0),[weekly]);
-
-  /* ---- NEU: Projekt-Aggregate ---- */
-  // 1) Monat gesamt je Projekt
-  const projectTotals = useMemo(()=>{
-    const map = new Map(); // projectName -> minutes
-    for(const r of augmented){
-      const key = r.project || "— ohne Projekt —";
-      map.set(key, (map.get(key)||0) + r.duration_min);
+  // Summen pro MA über den ganzen Monat
+  const totalsByEmployee = useMemo(() => {
+    const t = {};
+    for (const r of grouped) {
+      const name = r.employee_name || r.employee_id;
+      const hrs = h2(r._mins);
+      const ot = Math.max(hrs - 9, 0); // Tages-OT fürs Reporting; Monats-Summe zeigt Summe(hrs) + Summe(tägliche OT) informativ
+      if (!t[name]) t[name] = { hrs: 0, ot: 0 };
+      t[name].hrs += hrs;
+      t[name].ot += ot;
     }
-    return [...map.entries()].map(([project,minutes])=>({project, minutes})).sort((a,b)=>a.project.localeCompare(b.project));
-  },[augmented]);
+    return t;
+  }, [grouped]);
 
-  // 2) Wochen (Pivot) je Projekt
-  const projectWeekly = useMemo(()=>{
-    // weeks ordered
-    const weekOrder = weekly.map(w=>w.key);
-    const weekLabels = Object.fromEntries(weekly.map(w=>[w.key,w.label]));
-    const map = new Map(); // project -> { [weekKey]: minutes , _total }
-    for(const r of augmented){
-      const p = r.project || "— ohne Projekt —";
-      const w = weekKey(r.date).key;
-      if(!map.has(p)) map.set(p,{});
-      map.get(p)[w] = (map.get(p)[w]||0) + r.duration_min;
-      map.get(p)._total = (map.get(p)._total||0) + r.duration_min;
-    }
-    // build rows sorted by project
-    const rows = [...map.entries()].map(([project,vals])=>{
-      const row = { project, total: vals._total||0, weeks:{} };
-      for(const wk of weekOrder){ row.weeks[wk] = vals[wk]||0; }
-      return row;
-    }).sort((a,b)=>a.project.localeCompare(b.project));
-    return { rows, weekOrder, weekLabels };
-  },[augmented, weekly]);
-
-  /* Bearbeiten/Löschen */
-  const [projectsList,setProjectsList]=useState([]); // for editor select
-  useEffect(()=>{ (async()=>{ const {data}=await supabase.from("projects").select("id,name,active").eq("active",true).order("name"); if(data) setProjectsList(data); })(); },[]);
-  const [editId,setEditId]=useState(null);
-  const [eStart,setEStart]=useState(7*60);
-  const [eEnd,setEEnd]=useState(16*60+30);
-  const [eBreak,setEBreak]=useState(30);
-  const [eNote,setENote]=useState("");
-  const [eProj,setEProj]=useState(null);
-  const [busy,setBusy]=useState(false);
-  const [err,setErr]=useState("");
-
-  function openEditor(row){ setEditId(row.id); setEStart(row.start_min); setEEnd(row.end_min); setEBreak(row.break_min||0); setENote(row.note||""); setEProj(row.project_id||""); }
-  function cancelEdit(){ setEditId(null); setErr(""); }
-  async function saveEdit(){
-    if(!isManager || !editId) return;
-    if(eEnd<=eStart){ setErr("Ende muss nach Start liegen."); return; }
-    setBusy(true); setErr("");
-    try{
-      const payload={ start_min:eStart, end_min:eEnd, break_min:eBreak, note:eNote, project_id: eProj || null };
-      const { error } = await supabase.from("time_entries").update(payload).eq("id", editId);
-      if(error) throw error;
-      setRows(rs=>rs.map(r=> r.id===editId ? {...r, ...payload, project: (projectsList.find(p=>p.id===eProj)?.name || r.project)} : r));
-      setEditId(null);
-    }catch(e){ setErr("Speichern fehlgeschlagen: "+(e.message||e)); }
-    finally{ setBusy(false); }
+  // ----- Bearbeiten / Löschen -----
+  function startEdit(row) {
+    if (!isManager) return;
+    const start = row.start_min ?? row.from_min ?? 0;
+    const end = row.end_min ?? row.to_min ?? 0;
+    setEditId(row.id);
+    setEditState({
+      id: row.id,
+      employee_name: row.employee_name,
+      project_id: row.project_id,
+      from_hm: toHM(start),
+      to_hm: toHM(end),
+      break_min: row.break_min ?? 0,
+      note: row.note ?? "",
+    });
   }
-  async function removeRow(id){ if(!isManager) return; await supabase.from("time_entries").delete().eq("id", id); setRows(r=>r.filter(x=>x.id!==id)); }
+  function cancelEdit() { setEditId(null); setEditState(null); }
 
-  /* Export */
-  function exportCSV(){
-    const header=["Datum","Mitarbeiter","Projekt","Start","Ende","Pause","Dauer","Tages-ÜS (>9h)","Notiz"];
-    const lines=augmented.map(r=>[
-      r.date, r.employee, r.project, toHHMM(r.start_min), toHHMM(r.end_min),
-      `${r.break_min||0} min`, hm(r.duration_min), hm(r.day_ot_min), (r.note||"").replace(/\r?\n/g," ")
-    ].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(";"));
-    const csv=[header.join(";"),...lines, "", `Gesamt; ; ; ; ; ;${hm(sumTotalMin)};${hm(sumDayOTMin)};`].join("\n");
-    const blob=new Blob([csv],{type:"text/csv;charset=utf-8"}); const url=URL.createObjectURL(blob);
-    const a=document.createElement("a"); a.href=url; a.download=`Monatsübersicht_${refDate.getFullYear()}-${pad(refDate.getMonth()+1)}.csv`; a.click(); URL.revokeObjectURL(url);
+  async function saveEdit() {
+    if (!isManager || !editId || !editState) return;
+    const from_m = hmToMin(editState.from_hm);
+    const to_m = hmToMin(editState.to_hm);
+    const br_m = parseInt(editState.break_min || "0", 10);
+    const prj = projects.find((p) => p.id === editState.project_id) || null;
+
+    const { error } = await supabase
+      .from("time_entries")
+      .update({
+        project_id: prj ? prj.id : null,
+        start_min: from_m,
+        end_min: to_m,
+        break_min: isNaN(br_m) ? 0 : br_m,
+        note: (editState.note || "").trim() || null,
+      })
+      .eq("id", editId);
+
+    if (error) { console.error("update error:", error); alert("Aktualisieren fehlgeschlagen."); return; }
+    await loadMonth();
+    cancelEdit();
   }
-  function exportPDF(){ window.print(); }
 
-  const timeInput=(val,setVal)=>(
-    <input type="time"
-      value={`${pad(Math.floor(val/60))}:${pad(val%60)}`}
-      onChange={e=>{ const [h,m]=e.target.value.split(":").map(Number); setVal(h*60+m); }}
-      className="hbz-input" style={{maxWidth:110}}
-    />
-  );
+  async function deleteEntry(id) {
+    if (!isManager) return;
+    if (!confirm("Eintrag wirklich löschen?")) return;
+    const { error } = await supabase.from("time_entries").delete().eq("id", id);
+    if (error) { console.error("delete error:", error); alert("Löschen fehlgeschlagen."); return; }
+    await loadMonth();
+  }
 
+  // ----- Export: CSV -----
+  function exportCSV() {
+    const headers = ["Datum", "Mitarbeiter", "Projekt", "Start", "Ende", "Pause (min)", "Stunden", "Überstunden", "Notiz"];
+    const lines = [headers.join(";")];
+    for (const r of grouped) {
+      const hrs = h2(r._mins);
+      const ot = Math.max(hrs - 9, 0);
+      lines.push([
+        r.work_date,
+        (r.employee_name || ""),
+        (r.project_name || ""),
+        toHM(r.start_min ?? r.from_min ?? 0),
+        toHM(r.end_min ?? r.to_min ?? 0),
+        r.break_min ?? 0,
+        hrs.toFixed(2),
+        ot.toFixed(2),
+        (r.note || "").replace(/[\r\n;]/g, " "),
+      ].join(";"));
+    }
+    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `Monatsübersicht_${month}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // ----- Export: PDF (mit Wochenblöcken + Wochen-OT>39h) -----
+  function exportPDF() {
+    const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
+    const title = `Monatsübersicht ${month}`;
+    doc.setFontSize(16);
+    doc.text(title, 40, 40);
+
+    // 1) Haupttabelle Tageswerte
+    const head = [["Datum", "Mitarbeiter", "Projekt", "Start", "Ende", "Pause (min)", "Stunden", "Überstunden", "Notiz"]];
+    const body = grouped.map((r) => {
+      const hrs = h2(r._mins);
+      const ot = Math.max(hrs - 9, 0);
+      return [
+        r.work_date,
+        r.employee_name || "",
+        r.project_name || "",
+        toHM(r.start_min ?? r.from_min ?? 0),
+        toHM(r.end_min ?? r.to_min ?? 0),
+        r.break_min ?? 0,
+        hrs.toFixed(2),
+        ot.toFixed(2),
+        (r.note || "").replace(/\r?\n/g, " "),
+      ];
+    });
+
+    autoTable(doc, {
+      head,
+      body,
+      startY: 60,
+      styles: { fontSize: 9, cellPadding: 3, overflow: "linebreak" },
+      headStyles: { fillColor: [123, 74, 45] },
+      didDrawPage: () => {
+        doc.setFontSize(9);
+        const pageWidth = doc.internal.pageSize.getWidth();
+        doc.text(`Erstellt am ${new Date().toLocaleDateString("de-AT")}`, pageWidth - 40, 30, { align: "right" });
+      },
+      margin: { left: 40, right: 40 },
+    });
+
+    // 2) Mitarbeiter-Summen
+    const sumHead = [["Mitarbeiter", "Stunden gesamt", "Überstunden (Summe Tages-Ü>9h)"]];
+    const sumBody = Object.entries(totalsByEmployee).map(([name, t]) => [
+      name, t.hrs.toFixed(2), t.ot.toFixed(2),
+    ]);
+    autoTable(doc, {
+      head: sumHead,
+      body: sumBody,
+      startY: doc.lastAutoTable.finalY + 20,
+      styles: { fontSize: 10, cellPadding: 4 },
+      headStyles: { fillColor: [200, 200, 200] },
+      margin: { left: 40, right: 40 },
+    });
+
+    // 3) Wochenblöcke (Mo–So) pro Mitarbeiter
+    let y = doc.lastAutoTable.finalY + 30;
+    doc.setFontSize(14);
+    doc.text("Wochenübersicht (ISO, Mo–So) – Wochen-Ü > 39,00 h", 40, y);
+    y += 10;
+
+    weekly.forEach((wk, idx) => {
+      const tableHead = [["Woche", "Mitarbeiter", "Datum", "Projekt", "Start", "Ende", "Pause (min)", "Stunden", "Ü (>9h/Tag)"]];
+      const tableBody = [];
+      wk.days.forEach((r) => {
+        const hrs = h2(r._mins);
+        const ot = Math.max(hrs - 9, 0);
+        tableBody.push([
+          wk.weekKey,
+          wk.employee,
+          r.work_date,
+          r.project_name || "",
+          toHM(r.start_min ?? r.from_min ?? 0),
+          toHM(r.end_min ?? r.to_min ?? 0),
+          r.break_min ?? 0,
+          hrs.toFixed(2),
+          ot.toFixed(2),
+        ]);
+      });
+      const weekHours = h2(wk._mins);
+      const weekOT = Math.max(weekHours - 39, 0); // Wochen-Überstunden
+
+      autoTable(doc, {
+        head: tableHead,
+        body: tableBody,
+        startY: y + 10,
+        styles: { fontSize: 9, cellPadding: 3, overflow: "linebreak" },
+        headStyles: { fillColor: [235, 235, 235] },
+        margin: { left: 40, right: 40 },
+        didDrawPage: () => {},
+      });
+
+      y = doc.lastAutoTable.finalY + 5;
+      doc.setFontSize(10);
+      doc.text(
+        `Wochensumme ${wk.weekKey} – ${wk.employee}: ${weekHours.toFixed(2)} h  |  Wochen-Ü (>39h): ${weekOT.toFixed(2)} h`,
+        40, y
+      );
+      y += 18;
+
+      // Seitenumbruch bei Bedarf
+      if (y > doc.internal.pageSize.getHeight() - 80 && idx < weekly.length - 1) {
+        doc.addPage();
+        y = 40;
+      }
+    });
+
+    doc.save(`Monatsübersicht_${month}.pdf`);
+  }
+
+  // ----- UI -----
   return (
-    <div className="hbz-container">
-      {/* Toolbar */}
-      <div className="hbz-toolbar">
-        <div className="group">
-          <button className="hbz-btn" onClick={prevMonth}>&laquo;</button>
-          <div className="hbz-title">{refDate.toLocaleDateString(undefined,{month:"long",year:"numeric"})}</div>
-          <button className="hbz-btn" onClick={nextMonth}>&raquo;</button>
+    <div className="max-w-screen-xl mx-auto">
+      <div className="flex flex-wrap items-end gap-3 mb-4">
+        <div>
+          <label className="block text-sm font-semibold">Monat</label>
+          <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} className="px-3 py-2 rounded border" />
         </div>
-        <div className="group" style={{marginLeft:"auto"}}>
-          <input className="hbz-input" placeholder="Filter: Projekt/Mitarbeiter/Notiz" value={q} onChange={(e)=>setQ(e.target.value)}/>
-          <button className="hbz-btn" onClick={exportCSV}>CSV</button>
-          <button className="hbz-btn" onClick={exportPDF}>PDF</button>
+
+        <div>
+          <label className="block text-sm font-semibold">Projekt</label>
+          <select value={selectedProjectId} onChange={(e) => setSelectedProjectId(e.target.value)} className="px-3 py-2 rounded border min-w-[220px]">
+            <option value="">Alle</option>
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>{p.code ? `${p.code} · ${p.name}` : p.name}</option>
+            ))}
+          </select>
+        </div>
+
+        {isManager && (
+          <div className="flex-1">
+            <label className="block text-sm font-semibold">Mitarbeiter (Mehrfachauswahl)</label>
+            <div className="mt-1 flex flex-wrap gap-2">
+              {employees.map((e) => {
+                const active = selectedCodes.includes(e.code);
+                return (
+                  <button
+                    key={e.id}
+                    className={`px-2 py-1 rounded border ${active ? "bg-[#7b4a2d] text-white" : ""}`}
+                    onClick={() => {
+                      setSelectedCodes((prev) =>
+                        prev.includes(e.code) ? prev.filter((c) => c !== e.code) : [...prev, e.code]
+                      );
+                    }}
+                  >
+                    {e.name}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        <div className="ml-auto flex gap-2">
+          <button onClick={exportPDF} className="px-3 py-2 rounded border">PDF export</button>
+          <button onClick={exportCSV} className="px-3 py-2 rounded border">CSV export</button>
         </div>
       </div>
 
-      {/* Mitarbeiter-Filter */}
-      <div className="hbz-card">
-        <div className="hbz-label" style={{marginBottom:6}}>Mitarbeiter filtern (mehrere möglich)</div>
-        <div className="hbz-pills" style={{marginBottom:8}}>
-          {employees.map(e=>{
-            const active = selectedIds.includes(e.id);
-            return <button key={e.id} className={`hbz-pill ${active?"active":""}`} onClick={()=>toggleEmp(e.id)}>{e.name}</button>;
-          })}
+      <div className="rounded-xl shadow" style={{ background: "#fff", border: "1px solid #d9c9b6" }}>
+        <div className="px-4 py-3 font-semibold" style={{ background: "#f6eee4" }}>
+          {loading ? "Lade…" : `Einträge ${month}`}
         </div>
-        <div className="group">
-          <button className="hbz-btn" onClick={selectAll}>Alle</button>
-          <button className="hbz-btn" onClick={selectMe}>Nur ich</button>
-          <button className="hbz-btn" onClick={clearSel}>Leeren</button>
-        </div>
-      </div>
 
-      {/* KPIs */}
-      <div className="hbz-card hbz-section">
-        <div className="hbz-grid" style={{gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))"}}>
-          <div className="hbz-kpi"><b>Gesamtstunden</b><div>{hm(sumTotalMin)} <span className="hbz-label">({toHH(sumTotalMin)})</span></div></div>
-          <div className="hbz-kpi"><b>Tages-Überstunden (&gt;9h)</b><div>{hm(sumDayOTMin)}</div></div>
-          <div className="hbz-kpi"><b>Wochen-Überstunden (&gt;39h)</b><div>{hm(sumWeekOTMin)}</div></div>
-        </div>
-      </div>
-
-      {/* Einzeltabelle */}
-      <div className="hbz-card hbz-section print-card">
-        <table className="nice print-table">
-          <thead>
-            <tr>
-              <th>Datum</th><th>Mitarbeiter</th><th>Projekt</th>
-              <th>Start</th><th>Ende</th><th>Pause</th><th>Dauer</th><th>Tages-ÜS</th><th>Notiz</th>
-              {isManager && <th className="no-print">Aktion</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {!loading && augmented.length===0 && (
-              <tr><td colSpan={isManager?10:9} className="hbz-label">Keine Einträge.</td></tr>
-            )}
-            {augmented.map(r=>(
-              <React.Fragment key={r.id}>
+        <div className="p-3 overflow-auto">
+          {grouped.length === 0 ? (
+            <div className="text-sm opacity-70">Keine Einträge.</div>
+          ) : (
+            <table className="w-full min-w-[1100px]">
+              <thead>
                 <tr>
-                  <td>{new Date(r.date).toLocaleDateString()}</td>
-                  <td>{r.employee}</td>
-                  <td>{r.project}</td>
-                  <td>{toHHMM(r.start_min)}</td>
-                  <td>{toHHMM(r.end_min)}</td>
-                  <td>{(r.break_min||0)} min</td>
-                  <td>{hm(r.duration_min)}</td>
-                  <td>{hm(r.day_ot_min)}</td>
-                  <td className="note-cell">{r.note}</td>
-                  {isManager && (
-                    <td className="no-print">
-                      <button className="hbz-btn" onClick={()=>openEditor(r)}>Bearbeiten</button>
-                      <button className="hbz-btn" onClick={()=>removeRow(r.id)} style={{marginLeft:6}}>Löschen</button>
-                    </td>
-                  )}
+                  <th style={{ textAlign: "left" }}>Datum</th>
+                  <th style={{ textAlign: "left" }}>Mitarbeiter</th>
+                  <th style={{ textAlign: "left" }}>Projekt</th>
+                  <th>Start</th>
+                  <th>Ende</th>
+                  <th>Pause</th>
+                  <th>Stunden</th>
+                  <th>Überstunden</th>
+                  <th style={{ textAlign: "left" }}>Notiz</th>
+                  <th style={{ width: 160 }}></th>
                 </tr>
+              </thead>
+              <tbody>
+                {grouped.map((r) => {
+                  const start = r.start_min ?? r.from_min ?? 0;
+                  const end = r.end_min ?? r.to_min ?? 0;
+                  const hrs = h2(r._mins);
+                  const ot = Math.max(hrs - 9, 0);
+                  const isEditing = editId === r.id;
 
-                {isManager && editId===r.id && (
-                  <tr className="no-print">
-                    <td colSpan={isManager?10:9} style={{background:"#fffaf5"}}>
-                      <div className="hbz-grid" style={{gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))", gap:10}}>
-                        <div><div className="hbz-label">Projekt</div>
-                          <select className="hbz-input" value={eProj||""} onChange={e=>setEProj(e.target.value||"")}>
-                            <option value="">— ohne —</option>
-                            {projectsList.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
-                          </select>
-                        </div>
-                        <div><div className="hbz-label">Start</div>{timeInput(eStart,setEStart)}</div>
-                        <div><div className="hbz-label">Ende</div>{timeInput(eEnd,setEEnd)}</div>
-                        <div><div className="hbz-label">Pause (min)</div>
-                          <input type="number" className="hbz-input" value={eBreak} onChange={e=>setEBreak(Math.max(0,parseInt(e.target.value||0,10)))} />
-                        </div>
-                        <div style={{gridColumn:"1/-1"}}>
-                          <div className="hbz-label">Notiz</div>
-                          <textarea className="hbz-textarea" rows={2} value={eNote} onChange={e=>setENote(e.target.value)} />
-                        </div>
-                      </div>
-                      {err && <div className="hbz-section error" style={{marginTop:8}}>{err}</div>}
-                      <div style={{marginTop:10, display:"flex", gap:8}}>
-                        <button className="hbz-btn primary" onClick={saveEdit} disabled={busy}>{busy?"Speichere…":"Speichern"}</button>
-                        <button className="hbz-btn" onClick={cancelEdit}>Abbrechen</button>
-                      </div>
-                    </td>
-                  </tr>
-                )}
-              </React.Fragment>
-            ))}
-          </tbody>
-          <tfoot>
-            <tr>
-              <td colSpan={6} className="hbz-label">Gesamt</td>
-              <td>{hm(sumTotalMin)}</td>
-              <td>{hm(sumDayOTMin)}</td>
-              <td />
-              {isManager && <td className="no-print" />}
-            </tr>
-          </tfoot>
-        </table>
-      </div>
+                  if (!isEditing) {
+                    return (
+                      <tr key={`${r.id}-${r.work_date}`}>
+                        <td>{r.work_date}</td>
+                        <td>{r.employee_name}</td>
+                        <td>{r.project_name || "—"}</td>
+                        <td>{toHM(start)}</td>
+                        <td>{toHM(end)}</td>
+                        <td>{r.break_min ?? 0} min</td>
+                        <td>{hrs.toFixed(2)}</td>
+                        <td>{ot.toFixed(2)}</td>
+                        <td>{r.note || ""}</td>
+                        <td style={{ textAlign: "right" }}>
+                          {isManager ? (
+                            <>
+                              <button className="px-2 py-1 rounded border mr-2" onClick={() => startEdit(r)}>Bearbeiten</button>
+                              <button className="px-2 py-1 rounded border" onClick={() => deleteEntry(r.id)}>Löschen</button>
+                            </>
+                          ) : <span className="text-xs opacity-60">nur Anzeige</span>}
+                        </td>
+                      </tr>
+                    );
+                  }
 
-      {/* Wochenübersicht (Mo–So) */}
-      <div className="hbz-card hbz-section print-card">
-        <div className="hbz-label" style={{marginBottom:8}}>Wochenübersicht (Mo–So)</div>
-        <table className="nice print-table">
-          <thead>
-            <tr>
-              <th>Woche</th><th>Gesamt</th><th>Tages-ÜS-Summe</th><th>Wochen-ÜS (&gt;39h)</th>
-            </tr>
-          </thead>
-          <tbody>
-            {weekly.map(w=>(
-              <tr key={w.key}><td>{w.label}</td><td>{hm(w.total)}</td><td>{hm(w.dayOT)}</td><td>{hm(w.weekOT)}</td></tr>
-            ))}
-          </tbody>
-          <tfoot>
-            <tr><td className="hbz-label">Summe</td><td>{hm(sumTotalMin)}</td><td>{hm(sumDayOTMin)}</td><td>{hm(sumWeekOTMin)}</td></tr>
-          </tfoot>
-        </table>
-      </div>
-
-      {/* NEU: Projektübersicht (Monat gesamt) */}
-      <div className="hbz-card hbz-section print-card">
-        <div className="hbz-label" style={{marginBottom:8}}>Projektübersicht – Monat gesamt</div>
-        <table className="nice print-table">
-          <thead>
-            <tr><th>Projekt</th><th>Stunden</th></tr>
-          </thead>
-          <tbody>
-            {projectTotals.map(p=>(
-              <tr key={p.project}><td>{p.project}</td><td>{hm(p.minutes)}</td></tr>
-            ))}
-          </tbody>
-          <tfoot>
-            <tr><td className="hbz-label">Summe</td><td>{hm(sumTotalMin)}</td></tr>
-          </tfoot>
-        </table>
-      </div>
-
-      {/* NEU: Projekt-Wochenübersicht (Pivot) */}
-      <div className="hbz-card hbz-section print-card">
-        <div className="hbz-label" style={{marginBottom:8}}>Projekt-Wochenübersicht (Mo–So)</div>
-        <table className="nice print-table">
-          <thead>
-            <tr>
-              <th>Projekt</th>
-              {projectWeekly.weekOrder.map(wk=>(
-                <th key={wk}>{projectWeekly.weekLabels[wk]}</th>
-              ))}
-              <th>Gesamt</th>
-            </tr>
-          </thead>
-        <tbody>
-          {projectWeekly.rows.map(row=>(
-            <tr key={row.project}>
-              <td>{row.project}</td>
-              {projectWeekly.weekOrder.map(wk=>(
-                <td key={wk}>{hm(row.weeks[wk])}</td>
-              ))}
-              <td>{hm(row.total)}</td>
-            </tr>
-          ))}
-        </tbody>
-        <tfoot>
-          <tr>
-            <td className="hbz-label">Summe</td>
-            {projectWeekly.weekOrder.map(wk=>(
-              <td key={wk}>{hm(projectWeekly.rows.reduce((a,b)=>a+(b.weeks[wk]||0),0))}</td>
-            ))}
-            <td>{hm(sumTotalMin)}</td>
-          </tr>
-        </tfoot>
-        </table>
+                  // Edit-Zeile
+                  return (
+                    <tr key={`${r.id}-edit`}>
+                      <td>{r.work_date}</td>
+                      <td>{r.employee_name}</td>
+                      <td>
+                        <select className="px-2 py-1 rounded border" value={editState.project_id ?? ""} onChange={(e) => setEditState((s) => ({ ...s, project_id: e.target.value || null }))}>
+                          <option value="">— ohne Projekt —</option>
+                          {projects.map((p) => <option key={p.id} value={p.id}>{p.code ? `${p.code} · ${p.name}` : p.name}</option>)}
+                        </select>
+                      </td>
+                      <td><input type="time" className="px-2 py-1 rounded border" value={editState.from_hm} onChange={(e) => setEditState((s) => ({ ...s, from_hm: e.target.value }))} /></td>
+                      <td><input type="time" className="px-2 py-1 rounded border" value={editState.to_hm} onChange={(e) => setEditState((s) => ({ ...s, to_hm: e.target.value }))} /></td>
+                      <td><input type="number" min={0} step={5} className="px-2 py-1 rounded border w-24" value={editState.break_min} onChange={(e) => setEditState((s) => ({ ...s, break_min: e.target.value }))} /></td>
+                      <td colSpan={2}>
+                        {(() => {
+                          const minsLive = Math.max(hmToMin(editState.to_hm) - hmToMin(editState.from_hm) - (parseInt(editState.break_min || "0", 10) || 0), 0);
+                          const hrsLive = h2(minsLive);
+                          const otLive = Math.max(hrsLive - 9, 0);
+                          return `${hrsLive.toFixed(2)} h / Ü: ${otLive.toFixed(2)} h`;
+                        })()}
+                      </td>
+                      <td><input type="text" className="px-2 py-1 rounded border w-full" value={editState.note} onChange={(e) => setEditState((s) => ({ ...s, note: e.target.value }))} /></td>
+                      <td style={{ textAlign: "right" }}>
+                        <button className="px-2 py-1 rounded border mr-2" onClick={saveEdit}>Speichern</button>
+                        <button className="px-2 py-1 rounded border" onClick={cancelEdit}>Abbrechen</button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
       </div>
     </div>
   );
