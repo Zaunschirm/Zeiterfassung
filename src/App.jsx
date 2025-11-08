@@ -5,7 +5,8 @@ import NavBar from "./components/NavBar.jsx";
 import DaySlider from "./components/DaySlider.jsx";
 import MonthlyOverview from "./components/MonthlyOverview.jsx";
 import LoginPanel from "./components/LoginPanel.jsx";
-import { supabase } from "./lib/db.js";
+import { supabase } from './lib/supabase'
+
 
 export const RoleCtx = createContext({ user: null, role: "mitarbeiter", id: null });
 
