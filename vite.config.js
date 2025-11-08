@@ -12,7 +12,7 @@ export default defineConfig({
       manifest: {
         name: 'Zeiterfassung Zaunschirm',
         short_name: 'Zeiterfassung',
-        start_url: '/Zeiterfassung/',
+        start_url: '/Zeiterfassung/#/',
         scope: '/Zeiterfassung/',
         display: 'standalone',
         theme_color: '#8B5E3C',
