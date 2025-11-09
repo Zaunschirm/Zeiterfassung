@@ -3,13 +3,13 @@ import { HashRouter, Routes, Route } from 'react-router-dom';
 import { AuthProvider, useAuth } from './auth/AuthProvider';
 import RequireAuth from './auth/RequireAuth';
 
-// Beispiel-Imports – bitte an deine Komponenten anpassen:
-import LoginPanel from "./components/LoginPanel.jsx";              // <- anpassen/erstellen
-import Zeiterfassung from './components/Zeiterfassung.jsx';// <- anpassen
-import Monatsuebersicht from './components/Monatsuebersicht.jsx'; // <- anpassen
-import Projektfotos from './components/Projektfotos.jsx';  // <- anpassen
-import Mitarbeiter from './components/Mitarbeiter.jsx';    // <- anpassen
-import NavBar from './components/NavBar.jsx';              // <- anpassen
+import LoginPanel from "./components/LoginPanel.jsx";
+import Monatsuebersicht from "./components/Monatsuebersicht.jsx";
+import ProjectPhotos from "./components/ProjectPhotos.jsx";
+import EmployeeList from "./components/EmployeeList.jsx";
+import NavBar from "./components/NavBar.jsx";
+import DaySlider from "./components/DaySlider.jsx"; // evtl. dein Zeiterfassungsmodul
+
 
 function Layout({ children }) {
   const { ready, user } = useAuth();
