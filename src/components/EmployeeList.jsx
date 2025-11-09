@@ -4,136 +4,120 @@ import { supabase } from "../lib/supabase";
 export default function EmployeeList() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState("");
+
+  // Formular
+  const [name, setName] = useState("");
+  const [code, setCode] = useState("");
+  const [role, setRole] = useState("mitarbeiter");
+  const [saving, setSaving] = useState(false);
 
   async function load() {
-    setLoading(true);
+    setErr(""); setLoading(true);
     const { data, error } = await supabase
       .from("employees")
-      .select("id, name, role, active, disabled, code")
+      .select("id, name, role, disabled, code")
       .order("name", { ascending: true });
     setLoading(false);
-    if (error) {
-      console.error(error);
-      alert("Fehler beim Laden der Mitarbeiter.");
-      return;
-    }
+    if (error) { setErr(error.message); return; }
     setRows(data || []);
   }
+  useEffect(() => { load(); }, []);
 
-  useEffect(() => {
-    load();
-  }, []);
-
-  // einfache PIN-Erzeugung
-  function generatePin() {
-    return String(Math.floor(1000 + Math.random() * 9000));
-  }
-
-  // Base64-Helper (Fallback für alte PIN-Felder)
-  function toBase64(s) {
-    try {
-      return btoa(s);
-    } catch {
-      return Buffer.from(s, "utf-8").toString("base64");
-    }
-  }
+  // 4-stellige PIN generieren
+  function randomPin() { return String(Math.floor(1000 + Math.random() * 9000)); }
+  function b64(s){ try { return btoa(s); } catch { return Buffer.from(s, "utf-8").toString("base64"); } }
 
   async function resetPin(row) {
-    let newPin = prompt(
-      `Neue 4-stellige PIN für ${row.name} eingeben (leer lassen für Zufalls-PIN):`,
-      ""
-    );
-    if (newPin === null) return;
-    newPin = (newPin || "").trim() || generatePin();
-    if (!/^\d{4}$/.test(newPin)) {
-      alert("Bitte 4-stellige Ziffern eingeben!");
-      return;
-    }
-
+    let pin = prompt(`Neue 4-stellige PIN für ${row.name}:`, "");
+    if (pin === null) return;
+    pin = (pin || "").trim() || randomPin();
+    if (!/^\d{4}$/.test(pin)) { alert("Bitte genau 4 Ziffern eingeben."); return; }
     const { error } = await supabase
       .from("employees")
-      .update({ pin: toBase64(newPin), pin_hash: null })
+      .update({ pin: b64(pin), pin_hash: null })
       .eq("id", row.id);
-
-    if (error) {
-      console.error(error);
-      alert("PIN konnte nicht gespeichert werden!");
-      return;
-    }
-    alert(`Neue PIN für ${row.name}: ${newPin}`);
+    if (error) { alert("PIN konnte nicht gespeichert werden."); return; }
+    alert(`Neue PIN für ${row.name}: ${pin}`);
     load();
   }
 
   async function remove(row) {
-    if (!confirm(`Mitarbeiter "${row.name}" wirklich löschen?`)) return;
+    if (!confirm(`Mitarbeiter „${row.name}“ wirklich löschen?`)) return;
     const { error } = await supabase.from("employees").delete().eq("id", row.id);
-    if (error) {
-      console.error(error);
-      alert("Löschen fehlgeschlagen – ggf. Supabase RLS prüfen.");
-      return;
-    }
+    if (error) { alert("Löschen fehlgeschlagen (RLS prüfen)."); return; }
     load();
   }
 
+  async function createEmployee(e){
+    e.preventDefault();
+    setErr(""); setSaving(true);
+    try{
+      const { error } = await supabase.from("employees").insert([{ name, code, role }]);
+      if (error) throw error;
+      setName(""); setCode(""); setRole("mitarbeiter");
+      await load();
+    }catch(e2){ setErr(String(e2?.message || e2)); }
+    finally{ setSaving(false); }
+  }
+
   return (
-    <div className="rounded-xl bg-white/70 p-4 shadow">
-      <h2 className="text-lg font-semibold mb-3">Mitarbeiter</h2>
+    <div className="hbz-container">
+      <div className="hbz-card">
+        <h2 className="hbz-title" style={{ color: "var(--hbz-brown)" }}>Mitarbeiter anlegen</h2>
+        <form onSubmit={createEmployee} className="hbz-grid hbz-grid-3" style={{ marginTop: 10 }}>
+          <div>
+            <label className="hbz-label">Name</label>
+            <input className="hbz-input" value={name} onChange={e=>setName(e.target.value)} required />
+          </div>
+          <div>
+            <label className="hbz-label">Code</label>
+            <input className="hbz-input" value={code} onChange={e=>setCode(e.target.value)} required />
+          </div>
+          <div>
+            <label className="hbz-label">Rolle</label>
+            <select className="hbz-input" value={role} onChange={e=>setRole(e.target.value)}>
+              <option value="mitarbeiter">Mitarbeiter</option>
+              <option value="teamleiter">Teamleiter</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
+          <div style={{ gridColumn: "1 / -1" }}>
+            <button className="save-btn" disabled={saving}>{saving ? "Speichere…" : "Anlegen"}</button>
+          </div>
+          {err && <div className="hbz-section error" style={{ gridColumn: "1 / -1" }}>{err}</div>}
+        </form>
+      </div>
 
-      {loading && <p>Lade Mitarbeiter…</p>}
+      <div className="hbz-card">
+        <h3 style={{ marginTop: 0, color: "var(--hbz-brown)" }}>Mitarbeiterliste</h3>
 
-      {!loading && (
-        <table className="w-full text-sm">
-          <thead className="bg-neutral-100 text-neutral-600">
-            <tr>
-              <th className="text-left px-3 py-2">Name</th>
-              <th className="text-left px-3 py-2">Rolle</th>
-              <th className="text-left px-3 py-2">Status</th>
-              <th className="text-left px-3 py-2">Code</th>
-              <th className="text-right px-3 py-2">Aktionen</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length === 0 && (
-              <tr>
-                <td colSpan="5" className="text-center py-3 text-neutral-500">
-                  Keine Mitarbeiter gefunden.
-                </td>
-              </tr>
-            )}
-            {rows.map((r) => (
-              <tr
-                key={r.id}
-                className="border-t border-neutral-200 hover:bg-neutral-50"
-              >
-                <td className="px-3 py-2">{r.name}</td>
-                <td className="px-3 py-2">{r.role}</td>
-                <td className="px-3 py-2">
-                  {r.disabled ? (
-                    <span className="text-red-600">inaktiv</span>
-                  ) : (
-                    <span className="text-green-700">aktiv</span>
-                  )}
-                </td>
-                <td className="px-3 py-2">{r.code}</td>
-                <td className="px-3 py-2 text-right space-x-2">
-                  <button
-                    onClick={() => resetPin(r)}
-                    className="px-2 py-1 text-xs rounded bg-amber-100 text-amber-800 hover:bg-amber-200"
-                  >
-                    PIN zurücksetzen
-                  </button>
-                  <button
-                    onClick={() => remove(r)}
-                    className="px-2 py-1 text-xs rounded bg-red-100 text-red-700 hover:bg-red-200"
-                  >
-                    Löschen
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+        {loading && <div>Lade Mitarbeiter…</div>}
+        {!loading && (
+          <table className="nice">
+            <thead>
+              <tr><th>Name</th><th>Code</th><th>Rolle</th><th>Status</th><th style={{ textAlign:"right" }}>Aktionen</th></tr>
+            </thead>
+            <tbody>
+              {rows.length === 0 && (
+                <tr><td colSpan={5} style={{ textAlign:"center", padding:"8px" }}>Keine Mitarbeiter gefunden.</td></tr>
+              )}
+              {rows.map(r=>(
+                <tr key={r.id}>
+                  <td>{r.name}</td>
+                  <td>{r.code}</td>
+                  <td>{r.role}</td>
+                  <td>{r.disabled ? "inaktiv" : "aktiv"}</td>
+                  <td style={{ textAlign:"right" }}>
+                    <button className="hbz-btn btn-small" onClick={()=>resetPin(r)}>PIN zurücksetzen</button>{" "}
+                    <button className="hbz-btn btn-small" onClick={()=>remove(r)}>Löschen</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
     </div>
   );
 }
