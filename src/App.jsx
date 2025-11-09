@@ -11,6 +11,10 @@ import DaySlider from "./components/DaySlider.jsx";
 
 import "./styles.css";
 
+// ▼▼▼ Neu: feste App-Version (frei anpassbar)
+const APP_VERSION = "v1.0.0";
+const BUILD_STAMP = new Date().toLocaleDateString("de-AT");
+
 export default function App() {
   // einfache App-Session (NavBar prüft zusätzlich currentUser/role)
   const [currentView, setCurrentView] = useState("login");
@@ -79,6 +83,15 @@ export default function App() {
         />
       )}
       <main>{renderView()}</main>
+
+      {/* ▼▼▼ Neu: feste Fußzeile mit Version + Datum */}
+      <footer className="app-footer">
+        <span>Holzbau Zaunschirm · Zeiterfassung</span>
+        <span className="sep">•</span>
+        <span>Version {APP_VERSION}</span>
+        <span className="sep">•</span>
+        <span>Build {BUILD_STAMP}</span>
+      </footer>
     </div>
   );
 }
