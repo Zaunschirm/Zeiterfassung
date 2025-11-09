@@ -8,10 +8,11 @@ import ProjectPhotos from "./components/ProjectPhotos.jsx";
 import EmployeeList from "./components/EmployeeList.jsx";
 import NavBar from "./components/NavBar.jsx";
 import DaySlider from "./components/DaySlider.jsx";
+import ProjectAdmin from "./components/ProjectAdmin.jsx"; // ➕ NEU: Projekte-Seite einbinden
 
 import "./styles.css";
 
-// ▼▼▼ Neu: feste App-Version (frei anpassbar)
+// ▼▼▼ feste App-Version
 const APP_VERSION = "v1.0.0";
 const BUILD_STAMP = new Date().toLocaleDateString("de-AT");
 
@@ -28,6 +29,8 @@ export default function App() {
     switch (path) {
       case "/zeiterfassung":
         return "zeiterfassung";
+      case "/projekte":                // ➕ NEU: Route für Projekte
+        return "projekte";
       case "/monatsuebersicht":
       case "/monthly": // Fallback für alte Route
         return "monatsuebersicht";
@@ -63,6 +66,8 @@ export default function App() {
     switch (currentView) {
       case "zeiterfassung":
         return <DaySlider />;
+      case "projekte":                 // ➕ NEU: Darstellung der Projektseite
+        return <ProjectAdmin />;
       case "monatsuebersicht":
         return <MonthlyOverview />;
       case "projektfotos":
@@ -84,7 +89,7 @@ export default function App() {
       )}
       <main>{renderView()}</main>
 
-      {/* ▼▼▼ Neu: feste Fußzeile mit Version + Datum */}
+      {/* ▼▼▼ feste Fußzeile mit Version + Datum */}
       <footer className="app-footer">
         <span>Holzbau Zaunschirm · Zeiterfassung</span>
         <span className="sep">•</span>
