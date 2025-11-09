@@ -2,16 +2,16 @@ import React from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 
 /**
- * NavBar – 1:1 mit allen Funktionen, nichts entfernt:
- * - onLogout (Pflicht): wird beim Logout-Button aufgerufen
- * - setCurrentView (optional): wird zusätzlich zu navigate() gesetzt (Abwärtskompatibilität)
- * - currentUser (optional): Anzeige/Platzhalter
- * - role (optional): 'admin' | 'teamleiter' | 'mitarbeiter' – steuert Sichtbarkeit
+ * NavBar – alle bisherigen Funktionen bleiben erhalten:
+ * - onLogout (Pflicht)
+ * - setCurrentView (optional, wird zusätzlich zu navigate() aufgerufen)
+ * - currentUser (optional Anzeige)
+ * - role (optional: 'admin' | 'teamleiter' | 'mitarbeiter') steuert Sichtbarkeit
  */
 export default function NavBar({ onLogout, setCurrentView, currentUser, role }) {
   const navigate = useNavigate();
 
-  // einheitlicher Click-Handler, behält alte setCurrentView-Logik bei
+  // Zentraler Navigations-Handler: Router + alte View-Logik
   const go = (path, viewKey) => {
     navigate(path);
     if (typeof setCurrentView === "function" && viewKey) {
@@ -19,16 +19,8 @@ export default function NavBar({ onLogout, setCurrentView, currentUser, role }) 
     }
   };
 
-  const linkStyle = ({ isActive }) => ({
-    padding: "6px 10px",
-    textDecoration: "none",
-    color: "inherit",
-    borderRadius: "8px",
-    fontWeight: isActive ? 700 : 500,
-    background: isActive ? "rgba(0,0,0,0.08)" : "transparent",
-    marginRight: 6,
-    display: "inline-block",
-  });
+  const linkClass = ({ isActive }) =>
+    "nav-btn" + (isActive ? " nav-btn-active" : "");
 
   const canSeeAdmin = role === "admin" || role === "teamleiter";
 
@@ -41,15 +33,15 @@ export default function NavBar({ onLogout, setCurrentView, currentUser, role }) 
         justifyContent: "space-between",
         gap: 12,
         padding: "8px 10px",
-        background: "var(--hbz-nav-bg, #ead8c3)", // bleibt CI-freundlich
+        background: "var(--hbz-nav-bg, #ead8c3)",
         borderBottom: "1px solid rgba(0,0,0,0.1)",
       }}
     >
       {/* Links */}
-      <div className="hbz-nav-left" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+      <div className="hbz-nav-left" style={{ display: "flex", gap: 6, alignItems: "center" }}>
         <NavLink
           to="/zeiterfassung"
-          style={linkStyle}
+          className={linkClass}
           onClick={() => go("/zeiterfassung", "zeiterfassung")}
         >
           Zeiterfassung
@@ -57,7 +49,7 @@ export default function NavBar({ onLogout, setCurrentView, currentUser, role }) 
 
         <NavLink
           to="/projektfotos"
-          style={linkStyle}
+          className={linkClass}
           onClick={() => go("/projektfotos", "projektfotos")}
         >
           Projektfotos
@@ -65,7 +57,7 @@ export default function NavBar({ onLogout, setCurrentView, currentUser, role }) 
 
         <NavLink
           to="/monatsuebersicht"
-          style={linkStyle}
+          className={linkClass}
           onClick={() => go("/monatsuebersicht", "monatsuebersicht")}
         >
           Monatsübersicht
@@ -75,7 +67,7 @@ export default function NavBar({ onLogout, setCurrentView, currentUser, role }) 
           <>
             <NavLink
               to="/projekte"
-              style={linkStyle}
+              className={linkClass}
               onClick={() => go("/projekte", "projekte")}
             >
               Projekte
@@ -83,7 +75,7 @@ export default function NavBar({ onLogout, setCurrentView, currentUser, role }) 
 
             <NavLink
               to="/mitarbeiter"
-              style={linkStyle}
+              className={linkClass}
               onClick={() => go("/mitarbeiter", "mitarbeiter")}
             >
               Mitarbeiter
@@ -92,7 +84,7 @@ export default function NavBar({ onLogout, setCurrentView, currentUser, role }) 
         )}
       </div>
 
-      {/* Rechts: User + Logout */}
+      {/* Rechts: Userinfo + Logout */}
       <div className="hbz-nav-right" style={{ display: "flex", alignItems: "center", gap: 8 }}>
         {currentUser && (
           <span
@@ -103,7 +95,6 @@ export default function NavBar({ onLogout, setCurrentView, currentUser, role }) 
             {role ? ` (${role})` : ""}
           </span>
         )}
-
         <button
           type="button"
           className="nav-btn"
@@ -121,4 +112,16 @@ export default function NavBar({ onLogout, setCurrentView, currentUser, role }) 
       </div>
     </nav>
   );
+}.nav-btn {
+  padding: 6px 10px;
+  text-decoration: none;
+  color: inherit;
+  border-radius: 8px;
+  display: inline-block;
 }
+.nav-btn-active {
+  font-weight: 700;
+  text-decoration: underline;
+  background: rgba(0,0,0,0.08);
+}
+
