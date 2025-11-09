@@ -1,82 +1,56 @@
-// src/App.jsx
-import { HashRouter, Routes, Route } from 'react-router-dom';
-import { AuthProvider, useAuth } from './auth/AuthProvider';
-import RequireAuth from './auth/RequireAuth';
-
+import React, { useState } from "react";
 import LoginPanel from "./components/LoginPanel.jsx";
 import Monatsuebersicht from "./components/Monatsuebersicht.jsx";
 import ProjectPhotos from "./components/ProjectPhotos.jsx";
 import EmployeeList from "./components/EmployeeList.jsx";
 import NavBar from "./components/NavBar.jsx";
-import DaySlider from "./components/DaySlider.jsx"; // evtl. dein Zeiterfassungsmodul
+import DaySlider from "./components/DaySlider.jsx"; // dein Zeiterfassungsmodul
+import "./styles.css";
 
+function App() {
+  const [currentView, setCurrentView] = useState("login");
+  const [loggedIn, setLoggedIn] = useState(false);
 
-function Layout({ children }) {
-  const { ready, user } = useAuth();
-  // Leiste/Navi nur zeigen, wenn Session ermittelt und eingeloggt
+  const handleLogin = () => {
+    setLoggedIn(true);
+    setCurrentView("zeiterfassung");
+  };
+
+  const handleLogout = () => {
+    setLoggedIn(false);
+    setCurrentView("login");
+  };
+
+  const renderView = () => {
+    if (!loggedIn) {
+      return <LoginPanel onLogin={handleLogin} />;
+    }
+
+    switch (currentView) {
+      case "zeiterfassung":
+        return <DaySlider />;
+      case "monatsuebersicht":
+        return <Monatsuebersicht />;
+      case "projektfotos":
+        return <ProjectPhotos />;
+      case "mitarbeiter":
+        return <EmployeeList />;
+      default:
+        return <DaySlider />;
+    }
+  };
+
   return (
-    <>
-      {ready && user && <NavBar />}
-      {children}
-    </>
+    <div className="App">
+      {loggedIn && (
+        <NavBar
+          setCurrentView={setCurrentView}
+          onLogout={handleLogout}
+        />
+      )}
+      <main>{renderView()}</main>
+    </div>
   );
 }
 
-export default function App() {
-  return (
-    <AuthProvider>
-      <HashRouter>
-        <Layout>
-          <Routes>
-            {/* Öffentlich */}
-            <Route path="/login" element={<LoginPanel />} />
-
-            {/* Geschützt */}
-            <Route
-              path="/zeiterfassung"
-              element={
-                <RequireAuth>
-                  <Zeiterfassung />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/monatsuebersicht"
-              element={
-                <RequireAuth>
-                  <Monatsuebersicht />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/projektfotos"
-              element={
-                <RequireAuth>
-                  <Projektfotos />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/mitarbeiter"
-              element={
-                <RequireAuth>
-                  <Mitarbeiter />
-                </RequireAuth>
-              }
-            />
-
-            {/* Default: geschützt auf Zeiterfassung */}
-            <Route
-              path="*"
-              element={
-                <RequireAuth>
-                  <Zeiterfassung />
-                </RequireAuth>
-              }
-            />
-          </Routes>
-        </Layout>
-      </HashRouter>
-    </AuthProvider>
-  );
-}
+export default App;
