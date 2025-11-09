@@ -1,97 +1,211 @@
 import React, { useEffect, useState } from "react";
-import { supabase } from "../lib/supabase";
+import { createClient } from "@supabase/supabase-js";
 
-function PhotoCard({ p, onDelete }) {
-  const publicUrl = supabase.storage.from("project-photos").getPublicUrl(p.file_path).data
-    ?.publicUrl;
+const supabase =
+  window.supabase ??
+  createClient(
+    import.meta.env.VITE_SUPABASE_URL,
+    import.meta.env.VITE_SUPABASE_ANON_KEY
+  );
+
+export default function ProjectPhotos() {
+  const [projects, setProjects] = useState([]);
+  const [selectedProject, setSelectedProject] = useState("");
+  const [photos, setPhotos] = useState([]);
+  const [uploading, setUploading] = useState(false);
+  const [message, setMessage] = useState("");
+
+  // Projekte laden
+  useEffect(() => {
+    loadProjects();
+  }, []);
+
+  async function loadProjects() {
+    const { data, error } = await supabase
+      .from("projects")
+      .select("id, name")
+      .order("name", { ascending: true });
+    if (error) console.error(error);
+    else setProjects(data || []);
+  }
+
+  // Fotos eines Projekts laden
+  useEffect(() => {
+    if (selectedProject) loadPhotos(selectedProject);
+  }, [selectedProject]);
+
+  async function loadPhotos(projectId) {
+    setMessage("");
+    const { data, error } = await supabase
+      .storage
+      .from("project_photos")
+      .list(projectId + "/", { limit: 100, sortBy: { column: "created_at", order: "desc" } });
+    if (error) {
+      setMessage("❌ Fehler beim Laden der Fotos: " + error.message);
+    } else {
+      setPhotos(data || []);
+    }
+  }
+
+  async function handleUpload(e) {
+    const files = e.target.files;
+    if (!files?.length || !selectedProject) return;
+    setUploading(true);
+    setMessage("");
+
+    for (const file of files) {
+      const filePath = `${selectedProject}/${Date.now()}_${file.name}`;
+      const { error } = await supabase.storage.from("project_photos").upload(filePath, file);
+      if (error) {
+        console.error(error);
+        setMessage("❌ Fehler beim Hochladen: " + error.message);
+        setUploading(false);
+        return;
+      }
+    }
+
+    setUploading(false);
+    setMessage("✅ Upload erfolgreich!");
+    loadPhotos(selectedProject);
+  }
+
+  async function handleDelete(photo) {
+    if (!confirm(`Foto "${photo.name}" wirklich löschen?`)) return;
+    const filePath = `${selectedProject}/${photo.name}`;
+    const { error } = await supabase.storage.from("project_photos").remove([filePath]);
+    if (error) {
+      setMessage("❌ Fehler beim Löschen: " + error.message);
+    } else {
+      setMessage("🗑️ Foto gelöscht.");
+      loadPhotos(selectedProject);
+    }
+  }
+
+  async function getPublicURL(photo) {
+    const filePath = `${selectedProject}/${photo.name}`;
+    const { data } = supabase.storage.from("project_photos").getPublicUrl(filePath);
+    return data?.publicUrl;
+  }
 
   return (
-    <div className="border rounded-md p-2 flex flex-col">
-      {publicUrl ? (
-        <img src={publicUrl} alt={p.caption || p.file_path} className="w-full object-cover rounded-md aspect-[4/3]" />
-      ) : (
-        <div className="h-32 bg-gray-100 rounded-md" />
-      )}
-      <div className="mt-2 text-sm">
-        <div className="font-medium">{p.project}</div>
-        <div className="text-gray-600">{p.caption || p.file_path}</div>
+    <div className="hbz-container">
+      <div className="hbz-card" style={{ marginTop: 10 }}>
+        <h3>Projektfotos</h3>
+
+        {/* Projekt-Auswahl */}
+        <div style={{ marginBottom: 12 }}>
+          <label>Projekt auswählen:</label>
+          <select
+            className="hbz-input"
+            value={selectedProject}
+            onChange={(e) => setSelectedProject(e.target.value)}
+          >
+            <option value="">– Projekt wählen –</option>
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Uploadfeld */}
+        {selectedProject && (
+          <div style={{ marginBottom: 16 }}>
+            <label>Fotos hochladen:</label>
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={handleUpload}
+              disabled={uploading}
+              className="hbz-input"
+            />
+            {uploading && <p>Lade hoch…</p>}
+          </div>
+        )}
+
+        {message && (
+          <div
+            className="hbz-card"
+            style={{
+              background: "#f5f5f5",
+              padding: "6px 10px",
+              marginBottom: 10,
+            }}
+          >
+            {message}
+          </div>
+        )}
+
+        {/* Fotoübersicht */}
+        {selectedProject && (
+          <div>
+            <h4>Fotos im Projekt:</h4>
+            {photos.length === 0 && <p>Keine Fotos vorhanden.</p>}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))",
+                gap: 10,
+                marginTop: 10,
+              }}
+            >
+              {photos.map((photo) => (
+                <PhotoCard
+                  key={photo.id || photo.name}
+                  photo={photo}
+                  selectedProject={selectedProject}
+                  getPublicURL={getPublicURL}
+                  onDelete={handleDelete}
+                />
+              ))}
+            </div>
+          </div>
+        )}
       </div>
-      <button
-        onClick={() => onDelete(p)}
-        className="mt-2 text-red-600 text-sm px-2 py-1 border border-red-200 rounded-md"
-      >
-        Löschen
-      </button>
     </div>
   );
 }
 
-export default function ProjectPhotos() {
-  const [project, setProject] = useState("");
-  const [projects, setProjects] = useState([]);
-  const [list, setList] = useState([]);
-
-  async function loadProjects() {
-    const { data } = await supabase.from("projects").select("code,name,active").order("code");
-    setProjects(data || []);
-  }
-  async function loadPhotos() {
-    const q = supabase.from("project_photos").select("*").order("created_at", { ascending: false });
-    const { data, error } = project ? await q.eq("project", project) : await q.limit(40);
-    if (!error) setList(data || []);
-  }
+// Kleine Unterkomponente für Fotoanzeige
+function PhotoCard({ photo, selectedProject, getPublicURL, onDelete }) {
+  const [url, setUrl] = useState(null);
 
   useEffect(() => {
-    loadProjects();
-  }, []);
-  useEffect(() => {
-    loadPhotos();
-  }, [project]);
-
-  async function onDelete(p) {
-    if (!confirm("Foto wirklich löschen?")) return;
-    // 1) DB
-    const { error: dberr } = await supabase.from("project_photos").delete().eq("id", p.id);
-    if (dberr) {
-      alert("Löschen fehlgeschlagen.");
-      return;
-    }
-    // 2) Storage
-    await supabase.storage.from("project-photos").remove([p.file_path]);
-    await loadPhotos();
-  }
+    (async () => {
+      const publicUrl = await getPublicURL(photo);
+      setUrl(publicUrl);
+    })();
+  }, [photo, selectedProject]);
 
   return (
-    <div className="max-w-[1000px] mx-auto p-3 md:p-4">
-      <div className="rounded-2xl shadow-md bg-white/90 p-4 space-y-3">
-        <h2 className="text-xl font-semibold">Projektfotos</h2>
-
-        <label className="block max-w-[420px]">
-          <div className="text-sm text-gray-600">Projekt filtern</div>
-          <select
-            className="w-full mt-1 rounded-md border border-amber-200 p-2"
-            value={project}
-            onChange={(e) => setProject(e.target.value)}
-          >
-            <option value="">Alle</option>
-            {projects.map((p) => (
-              <option key={p.code} value={p.code}>
-                {p.code} – {p.name}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-          {list.map((p) => (
-            <PhotoCard key={p.id} p={p} onDelete={onDelete} />
-          ))}
-        </div>
-
-        {!list.length && (
-          <div className="text-sm text-gray-500">Keine Fotos vorhanden.</div>
-        )}
-      </div>
+    <div
+      className="hbz-card"
+      style={{
+        padding: 6,
+        textAlign: "center",
+        background: "#fff",
+        border: "1px solid rgba(0,0,0,0.1)",
+      }}
+    >
+      {url ? (
+        <img
+          src={url}
+          alt={photo.name}
+          style={{ width: "100%", height: 120, objectFit: "cover", borderRadius: 6 }}
+        />
+      ) : (
+        <div style={{ height: 120, background: "#ddd" }} />
+      )}
+      <div style={{ fontSize: 12, marginTop: 4 }}>{photo.name}</div>
+      <button
+        className="hbz-btn btn-small"
+        style={{ marginTop: 4 }}
+        onClick={() => onDelete(photo)}
+      >
+        Löschen
+      </button>
     </div>
   );
 }

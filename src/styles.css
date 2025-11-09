@@ -179,3 +179,17 @@ a { color: inherit; } a:hover { text-decoration: none; }
 .kbd { background:#fff; border:1px solid #d6c6b1; border-bottom-width:2px; padding:1px 6px; border-radius:6px; font-size:12px; }
 .save-bar { display:flex; justify-content:flex-end; margin-top:10px; }
 .save-btn.lg { min-width: 220px; }
+/* === NavBar Buttons (für NavBar.jsx) === */
+.nav-btn {
+  padding: 6px 10px;
+  text-decoration: none;
+  color: inherit;
+  border-radius: 8px;
+  display: inline-block;
+}
+.nav-btn-active {
+  font-weight: 700;
+  text-decoration: underline;
+  background: rgba(0,0,0,0.08);
+}
+

@@ -112,16 +112,4 @@ export default function NavBar({ onLogout, setCurrentView, currentUser, role }) 
       </div>
     </nav>
   );
-}.nav-btn {
-  padding: 6px 10px;
-  text-decoration: none;
-  color: inherit;
-  border-radius: 8px;
-  display: inline-block;
 }
-.nav-btn-active {
-  font-weight: 700;
-  text-decoration: underline;
-  background: rgba(0,0,0,0.08);
-}
-
