@@ -4,7 +4,7 @@ import { AuthProvider, useAuth } from './auth/AuthProvider';
 import RequireAuth from './auth/RequireAuth';
 
 // Beispiel-Imports – bitte an deine Komponenten anpassen:
-import Login from './components/Login.jsx';                // <- anpassen/erstellen
+import LoginPanel from "./components/LoginPanel.jsx";              // <- anpassen/erstellen
 import Zeiterfassung from './components/Zeiterfassung.jsx';// <- anpassen
 import Monatsuebersicht from './components/Monatsuebersicht.jsx'; // <- anpassen
 import Projektfotos from './components/Projektfotos.jsx';  // <- anpassen
@@ -29,7 +29,7 @@ export default function App() {
         <Layout>
           <Routes>
             {/* Öffentlich */}
-            <Route path="/login" element={<Login />} />
+            <Route path="/login" element={<LoginPanel />} />
 
             {/* Geschützt */}
             <Route
