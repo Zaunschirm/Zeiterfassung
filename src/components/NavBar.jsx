@@ -3,7 +3,7 @@ import React from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { currentUser, clearSession, hasRole } from "../lib/session";
 
-export default function NavBar() {
+export default function NavBar({ onLogout }) {           // ⬅️ onLogout vom Parent annehmen
   const loc = useLocation();
   const navigate = useNavigate();
   const user = currentUser();
@@ -15,9 +15,11 @@ export default function NavBar() {
 
   const logout = () => {
     clearSession();
-    navigate("/", { replace: true });
-    // HashRouter: zur Login-Seite
-    window.location.hash = "#/";
+    if (typeof onLogout === "function") {
+      onLogout();                                         // ⬅️ App-Status auf loggedOut setzen
+    } else {
+      navigate("/", { replace: true });                   // Fallback
+    }
   };
 
   return (
