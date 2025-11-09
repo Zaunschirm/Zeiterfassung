@@ -1,26 +1,31 @@
 import React, { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+
+// ✅ exakte Dateinamen (Linux/Vercel case-sensitiv!)
 import LoginPanel from "./components/LoginPanel.jsx";
-import MonthlyOverview from "./components/MonthlyOverview.jsx"; // ✅ richtiger Import
+import MonthlyOverview from "./components/MonthlyOverview.jsx";
 import ProjectPhotos from "./components/ProjectPhotos.jsx";
 import EmployeeList from "./components/EmployeeList.jsx";
 import NavBar from "./components/NavBar.jsx";
 import DaySlider from "./components/DaySlider.jsx";
+
 import "./styles.css";
 
-function App() {
+export default function App() {
+  // einfache App-Session (NavBar prüft zusätzlich currentUser/role)
   const [currentView, setCurrentView] = useState("login");
   const [loggedIn, setLoggedIn] = useState(false);
 
   const location = useLocation();
   const navigate = useNavigate();
 
+  // URL → View-Mapping (keine Funktionen entfernt)
   const pathToView = (path) => {
     switch (path) {
       case "/zeiterfassung":
         return "zeiterfassung";
       case "/monatsuebersicht":
-      case "/monthly": // ✅ Fallback – alte englische Route funktioniert weiter
+      case "/monthly": // Fallback für alte Route
         return "monatsuebersicht";
       case "/projektfotos":
         return "projektfotos";
@@ -31,6 +36,7 @@ function App() {
     }
   };
 
+  // Reagiere auf URL/Loginstatuts
   useEffect(() => {
     setCurrentView(pathToView(location.pathname));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -54,7 +60,7 @@ function App() {
       case "zeiterfassung":
         return <DaySlider />;
       case "monatsuebersicht":
-        return <MonthlyOverview />; // ✅ korrigiert
+        return <MonthlyOverview />;
       case "projektfotos":
         return <ProjectPhotos />;
       case "mitarbeiter":
@@ -68,13 +74,11 @@ function App() {
     <div className="App">
       {loggedIn && (
         <NavBar
-          setCurrentView={setCurrentView}
-          onLogout={handleLogout}
+          setCurrentView={setCurrentView}  // bleibt für Abwärtskompatibilität
+          onLogout={handleLogout}          // wichtig: setzt loggedIn=false
         />
       )}
       <main>{renderView()}</main>
     </div>
   );
 }
-
-export default App;
