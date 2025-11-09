@@ -1,94 +1,82 @@
 // src/App.jsx
-import React, { useEffect, useState } from "react";
-import { HashRouter, Routes, Route, Navigate } from "react-router-dom";
+import { HashRouter, Routes, Route } from 'react-router-dom';
+import { AuthProvider, useAuth } from './auth/AuthProvider';
+import RequireAuth from './auth/RequireAuth';
 
-import NavBar from "./components/NavBar";
-import LoginPanel from "./components/LoginPanel";
+// Beispiel-Imports – bitte an deine Komponenten anpassen:
+import Login from './components/Login.jsx';                // <- anpassen/erstellen
+import Zeiterfassung from './components/Zeiterfassung.jsx';// <- anpassen
+import Monatsuebersicht from './components/Monatsuebersicht.jsx'; // <- anpassen
+import Projektfotos from './components/Projektfotos.jsx';  // <- anpassen
+import Mitarbeiter from './components/Mitarbeiter.jsx';    // <- anpassen
+import NavBar from './components/NavBar.jsx';              // <- anpassen
 
-import DaySlider from "./components/DaySlider";
-import MonthlyOverview from "./components/MonthlyOverview";
-import EmployeeList from "./components/EmployeeList";
-import EmployeeCreate from "./components/EmployeeCreate";
-import ProjectPhotos from "./components/ProjectPhotos";
-import ProjectPhotoUpload from "./components/ProjectPhotoUpload";
-import ProjectAdmin from "./components/ProjectAdmin";
-
-import { getSession, currentUser, hasRole } from "./lib/session";
-
-function Guard({ children, allow = "mitarbeiter" }) {
-  // allow: "mitarbeiter" | "teamleiter" | "admin"
-  if (allow === "admin" && !hasRole("admin")) return <Navigate to="/zeiterfassung" replace />;
-  if (allow === "teamleiter" && !hasRole("teamleiter")) return <Navigate to="/zeiterfassung" replace />;
-  return children;
+function Layout({ children }) {
+  const { ready, user } = useAuth();
+  // Leiste/Navi nur zeigen, wenn Session ermittelt und eingeloggt
+  return (
+    <>
+      {ready && user && <NavBar />}
+      {children}
+    </>
+  );
 }
 
 export default function App() {
-  const [ready, setReady] = useState(false);
-  const [session, setSession] = useState(null);
-
-  useEffect(() => {
-    setSession(getSession());
-    setReady(true);
-  }, []);
-
-  if (!ready) return null;
-
-  const user = currentUser();
-
   return (
-    <HashRouter>
-      {user ? <NavBar /> : null}
+    <AuthProvider>
+      <HashRouter>
+        <Layout>
+          <Routes>
+            {/* Öffentlich */}
+            <Route path="/login" element={<Login />} />
 
-      <Routes>
-        {/* Login */}
-        <Route path="/" element={user ? <Navigate to="/zeiterfassung" replace /> : <LoginPanel />} />
+            {/* Geschützt */}
+            <Route
+              path="/zeiterfassung"
+              element={
+                <RequireAuth>
+                  <Zeiterfassung />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/monatsuebersicht"
+              element={
+                <RequireAuth>
+                  <Monatsuebersicht />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/projektfotos"
+              element={
+                <RequireAuth>
+                  <Projektfotos />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/mitarbeiter"
+              element={
+                <RequireAuth>
+                  <Mitarbeiter />
+                </RequireAuth>
+              }
+            />
 
-        {/* Zeiterfassung für alle */}
-        <Route path="/zeiterfassung" element={<DaySlider user={user} />} />
-
-        {/* Projektfotos */}
-        <Route path="/projektfotos" element={<ProjectPhotos user={user} />} />
-        <Route path="/projektfotos/upload" element={<ProjectPhotoUpload user={user} />} />
-
-        {/* Teamleiter + Admin */}
-        <Route
-          path="/monatsuebersicht"
-          element={
-            <Guard allow="teamleiter">
-              <MonthlyOverview user={user} />
-            </Guard>
-          }
-        />
-        <Route
-          path="/mitarbeiter"
-          element={
-            <Guard allow="teamleiter">
-              <EmployeeList user={user} />
-            </Guard>
-          }
-        />
-        <Route
-          path="/mitarbeiter/create"
-          element={
-            <Guard allow="teamleiter">
-              <EmployeeCreate user={user} />
-            </Guard>
-          }
-        />
-
-        {/* Admin */}
-        <Route
-          path="/project-admin"
-          element={
-            <Guard allow="admin">
-              <ProjectAdmin user={user} />
-            </Guard>
-          }
-        />
-
-        {/* Fallback */}
-        <Route path="*" element={<Navigate to={user ? "/zeiterfassung" : "/"} replace />} />
-      </Routes>
-    </HashRouter>
+            {/* Default: geschützt auf Zeiterfassung */}
+            <Route
+              path="*"
+              element={
+                <RequireAuth>
+                  <Zeiterfassung />
+                </RequireAuth>
+              }
+            />
+          </Routes>
+        </Layout>
+      </HashRouter>
+    </AuthProvider>
   );
 }
