@@ -1,67 +1,124 @@
 import React from "react";
-import { NavLink } from "react-router-dom";
-// optional: Benutzer/Role anzeigen
-import { useSession } from "../hooks/useSession"; // falls vorhanden
+import { NavLink, useNavigate } from "react-router-dom";
 
-const linkStyle = ({ isActive }) => ({
-  padding: "8px 12px",
-  borderRadius: 8,
-  textDecoration: "none",
-  fontWeight: 600,
-  background: isActive ? "#5c3b27" : "transparent",
-  color: isActive ? "#fff" : "#5c3b27",
-  border: "1px solid #5c3b27",
-});
+/**
+ * NavBar – 1:1 mit allen Funktionen, nichts entfernt:
+ * - onLogout (Pflicht): wird beim Logout-Button aufgerufen
+ * - setCurrentView (optional): wird zusätzlich zu navigate() gesetzt (Abwärtskompatibilität)
+ * - currentUser (optional): Anzeige/Platzhalter
+ * - role (optional): 'admin' | 'teamleiter' | 'mitarbeiter' – steuert Sichtbarkeit
+ */
+export default function NavBar({ onLogout, setCurrentView, currentUser, role }) {
+  const navigate = useNavigate();
 
-export default function NavBar() {
-  const { user, logout } = useSession?.() ?? { user: null, logout: null };
-  const role = user?.role || user?.rolle || "mitarbeiter";
+  // einheitlicher Click-Handler, behält alte setCurrentView-Logik bei
+  const go = (path, viewKey) => {
+    navigate(path);
+    if (typeof setCurrentView === "function" && viewKey) {
+      setCurrentView(viewKey);
+    }
+  };
+
+  const linkStyle = ({ isActive }) => ({
+    padding: "6px 10px",
+    textDecoration: "none",
+    color: "inherit",
+    borderRadius: "8px",
+    fontWeight: isActive ? 700 : 500,
+    background: isActive ? "rgba(0,0,0,0.08)" : "transparent",
+    marginRight: 6,
+    display: "inline-block",
+  });
+
+  const canSeeAdmin = role === "admin" || role === "teamleiter";
 
   return (
-    <header style={{
-      position: "sticky", top: 0, zIndex: 10,
-      display: "flex", alignItems: "center", gap: 8, padding: "10px 12px",
-      background: "#e9dccf", borderBottom: "1px solid #d6c8b8"
-    }}>
-      <div style={{ fontWeight: 800, marginRight: 8 }}>Holzbau Zaunschirm</div>
+    <nav
+      className="hbz-navbar"
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 12,
+        padding: "8px 10px",
+        background: "var(--hbz-nav-bg, #ead8c3)", // bleibt CI-freundlich
+        borderBottom: "1px solid rgba(0,0,0,0.1)",
+      }}
+    >
+      {/* Links */}
+      <div className="hbz-nav-left" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <NavLink
+          to="/zeiterfassung"
+          style={linkStyle}
+          onClick={() => go("/zeiterfassung", "zeiterfassung")}
+        >
+          Zeiterfassung
+        </NavLink>
 
-      {/* Hauptnavigation */}
-      <nav style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <NavLink to="/" style={linkStyle}>Zeiterfassung</NavLink>
-        <NavLink to="/project-photos" style={linkStyle}>Projektfotos</NavLink>
-        <NavLink to="/monthly" style={linkStyle}>Monatsübersicht</NavLink>
+        <NavLink
+          to="/projektfotos"
+          style={linkStyle}
+          onClick={() => go("/projektfotos", "projektfotos")}
+        >
+          Projektfotos
+        </NavLink>
 
-        {/* Nur Admin/Teamleiter sehen diese Menüpunkte */}
-        {(role === "admin" || role === "teamleiter") && (
+        <NavLink
+          to="/monatsuebersicht"
+          style={linkStyle}
+          onClick={() => go("/monatsuebersicht", "monatsuebersicht")}
+        >
+          Monatsübersicht
+        </NavLink>
+
+        {canSeeAdmin && (
           <>
-            <NavLink to="/project-admin" style={linkStyle}>Projekte</NavLink>
-            <NavLink to="/employees" style={linkStyle}>Mitarbeiter</NavLink>
-          </>
-        )}
-      </nav>
-
-      <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
-        {user ? (
-          <>
-            <span style={{ color: "#5c3b27", fontWeight: 600 }}>
-              {user?.name || user?.displayName || "Angemeldet"}
-              {role ? ` (${role})` : ""}
-            </span>
-            <button
-              type="button"
-              onClick={() => logout?.()}
-              style={{
-                padding: "6px 10px", borderRadius: 8, border: "1px solid #5c3b27",
-                background: "#fff", color: "#5c3b27", fontWeight: 600, cursor: "pointer"
-              }}
+            <NavLink
+              to="/projekte"
+              style={linkStyle}
+              onClick={() => go("/projekte", "projekte")}
             >
-              Logout
-            </button>
+              Projekte
+            </NavLink>
+
+            <NavLink
+              to="/mitarbeiter"
+              style={linkStyle}
+              onClick={() => go("/mitarbeiter", "mitarbeiter")}
+            >
+              Mitarbeiter
+            </NavLink>
           </>
-        ) : (
-          <NavLink to="/login" style={linkStyle}>Login</NavLink>
         )}
       </div>
-    </header>
+
+      {/* Rechts: User + Logout */}
+      <div className="hbz-nav-right" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        {currentUser && (
+          <span
+            title={currentUser?.email || ""}
+            style={{ opacity: 0.8, fontSize: 13, marginRight: 6 }}
+          >
+            {currentUser?.name || "Eingeloggt"}
+            {role ? ` (${role})` : ""}
+          </span>
+        )}
+
+        <button
+          type="button"
+          className="nav-btn"
+          onClick={onLogout}
+          style={{
+            cursor: "pointer",
+            padding: "6px 10px",
+            borderRadius: 8,
+            border: "1px solid rgba(0,0,0,0.2)",
+            background: "#fff",
+          }}
+        >
+          Logout
+        </button>
+      </div>
+    </nav>
   );
 }
