@@ -1,195 +1,101 @@
-/* === HOLZBAU ZAUNSCHIRM CORPORATE DESIGN === */
-:root {
-  --hbz-brown: #5C3A21;
-  --hbz-beige: #E8DCC5;
-  --hbz-accent: #CBB89B;
-  --hbz-text: #2B1A0E;
-}
-
+/* === Standard App Layout === */
 body {
-  background-color: var(--hbz-beige);
-  color: var(--hbz-text);
-  font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   margin: 0;
-  padding: 0;
+  font-family: system-ui, sans-serif;
+  background: #f9f9f9;
+  color: #222;
 }
 
-/* Kopfzeile */
-header.hbz-card {
-  background-color: var(--hbz-brown);
-  color: #fff;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+.App {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
 }
 
-.hbz-title {
-  font-size: 20px;
-  font-weight: 700;
-  letter-spacing: 0.5px;
-  color: #fff;
+main {
+  flex: 1;
+  padding: 10px;
 }
 
-/* Navigation & Buttons */
-.hbz-btn {
-  background-color: var(--hbz-accent);
-  color: var(--hbz-text);
-  border: none;
-  border-radius: 8px;
-  padding: 6px 14px;
-  margin-right: 6px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background-color 0.25s ease;
-}
-
-.hbz-btn:hover {
-  background-color: var(--hbz-brown);
-  color: #fff;
-}
-
-.hbz-btn.primary {
-  background-color: var(--hbz-brown);
-  color: #fff;
-}
-
-.hbz-btn.primary:hover {
-  background-color: #3f2615;
-}
-
-/* Mitarbeiter-Pills */
-.hbz-pills { display: flex; flex-wrap: wrap; gap: 8px; }
-.hbz-pill {
-  background: var(--hbz-accent);
-  border: 1px solid var(--hbz-brown);
-  color: var(--hbz-text);
-  border-radius: 20px;
-  padding: 5px 12px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-.hbz-pill:hover { background: var(--hbz-brown); color: #fff; }
-.hbz-pill.active { background: var(--hbz-brown); color: #fff; border-color: #3f2615; }
-
-/* Eingaben */
-.hbz-input, .hbz-textarea {
-  background: #fff;
-  border: 1px solid var(--hbz-accent);
-  border-radius: 8px;
-  padding: 8px 10px;
-  color: var(--hbz-text);
-  width: 100%;
-}
-.hbz-textarea:focus, .hbz-input:focus { outline: 2px solid var(--hbz-brown); }
-input[type="range"] { accent-color: var(--hbz-brown); }
-
-/* Karten & Abschnitte */
-.hbz-card {
-  background: #fff;
-  border-radius: 12px;
-  padding: 16px 18px;
-  box-shadow: 0 3px 10px rgba(0,0,0,0.1);
-  margin-bottom: 12px;
-}
-.hbz-section { margin-top: 12px; }
-.hbz-label { font-weight: 600; color: var(--hbz-text); }
-.hbz-container { max-width: 1200px; margin: 0 auto; padding: 0 12px; }
-.hbz-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
-
-/* Tabellen & Grid */
-.hbz-grid { display: grid; gap: 12px; }
-.hbz-grid-3 { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
-
-/* Statusmeldungen */
-.hbz-section.ok {
-  background: #ecf8ef; border: 1px solid #b7ebc6; color: #1c472f; border-radius: 10px;
-}
-.hbz-section.error {
-  background: #fff4f3; border: 1px solid #ffd6d2; color: #7a1f1f; border-radius: 10px;
-}
-
-/* Tabellen */
-table.nice { width: 100%; border-collapse: collapse; font-size: 15px; }
-table.nice th { background: var(--hbz-brown); color: #fff; text-align: left; padding: 6px 8px; }
-table.nice td { border-bottom: 1px solid var(--hbz-accent); padding: 6px 8px; }
-table.nice tr:nth-child(even) { background: #f9f5f0; }
-
-/* Links/Navi */
-.nav-link { color: white; text-decoration: none; font-weight: 500; background-color: transparent; padding: 4px 8px; border-radius: 6px; transition: background-color 0.2s; }
-.nav-link:hover { background-color: #a5724c; }
-a { color: inherit; } a:hover { text-decoration: none; }
-.topbar{display:flex;align-items:center;gap:16px;padding:10px 14px;background:#efdfc5;border-bottom:1px solid #d2bfa1}
-.topbar .brand{font-weight:700}
-.topbar .menu a{margin:0 8px;text-decoration:none;color:#3b2a20}
-.topbar .menu a.active{font-weight:700;border-bottom:2px solid #3b2a20}
-.topbar .userbox{margin-left:auto;display:flex;align-items:center;gap:10px}
-.topbar .role{font-weight:400;color:#7a6a5e}
-.btn-small{padding:6px 10px;font-size:.9rem}
-
-/* === Mobile Save-Button (HBZ Design) === */
-.save-btn-wrapper { width: 100%; }
-.save-btn {
-  width: 100%; min-height: 52px; padding: 14px 18px; font-size: 16px; font-weight: 600;
-  border: none; border-radius: 12px; background-color: var(--hbz-brown); color: #fff;
-  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-  box-shadow: 0 4px 14px rgba(0,0,0,0.2); transition: transform 0.05s ease, background-color 0.25s ease;
-  -webkit-tap-highlight-color: transparent;
-}
-.btn-icon { font-size: 20px; }
-.save-btn:hover { background-color: #3f2615; }
-.save-btn:active { transform: translateY(1px) scale(0.98); }
-.save-btn:disabled { opacity: 0.6; pointer-events: none; }
-
-@media (max-width: 640px) {
-  .save-btn-wrapper {
-    position: sticky; bottom: 8px; z-index: 50; background: var(--hbz-beige);
-    padding-top: 6px; padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
-  }
-  .save-btn { font-size: 17px; border-radius: 14px; }
-  .btn-icon { font-size: 22px; }
-}
-
-/* === Footer (Version) === */
 .app-footer {
-  position: fixed; left: 0; bottom: 0; width: 100%;
-  background: var(--hbz-brown); color: #fff;
-  display: flex; gap: 8px; align-items: center; justify-content: center;
-  padding: 6px 8px; font-size: 13px; font-weight: 500; border-top: 2px solid rgba(255,255,255,0.25);
-  z-index: 200;
+  text-align: center;
+  font-size: 12px;
+  padding: 10px 0;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+  background: #f3f3f3;
 }
-.app-footer .sep { opacity: .6; }
-@media (max-width: 640px) {
-  .app-footer { font-size: 12px; padding: 8px 8px calc(8px + env(safe-area-inset-bottom, 0px)); }
-}
-/* ——— Zeiterfassung · kompakter, „Vormittag“-Look ——— */
-.hbz-card.tight { padding: 14px 16px; }
-.hbz-section-title { font-weight: 700; color: var(--hbz-brown); font-size: 16px; margin: 6px 0 8px; }
-.hbz-row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
-.hbz-col { flex:1 1 240px; min-width:220px; }
-.hbz-col-auto { flex:0 0 auto; }
-.hr-soft { height:1px; background: rgba(92,58,33,.15); border:0; margin:10px 0; }
-.hbz-chipbar { display:flex; flex-wrap:wrap; gap:8px; }
-.hbz-chip {
-  background:#fff; border:1px solid var(--hbz-brown); color: var(--hbz-brown);
-  border-radius:18px; padding:4px 10px; font-weight:600; cursor:pointer; transition:.15s ease;
-}
-.hbz-chip:hover { background: var(--hbz-brown); color:#fff; }
-.hbz-chip.active { background: var(--hbz-brown); color:#fff; box-shadow:0 2px 8px rgba(0,0,0,.08); }
-.help { font-size:12px; opacity:.8; }
-.field-inline label { font-weight:600; margin-right:6px; }
-.kbd { background:#fff; border:1px solid #d6c6b1; border-bottom-width:2px; padding:1px 6px; border-radius:6px; font-size:12px; }
-.save-bar { display:flex; justify-content:flex-end; margin-top:10px; }
-.save-btn.lg { min-width: 220px; }
-/* === NavBar Buttons (für NavBar.jsx) === */
+
+/* === NavBar Buttons === */
 .nav-btn {
   padding: 6px 10px;
   text-decoration: none;
   color: inherit;
   border-radius: 8px;
   display: inline-block;
+  transition: background 0.2s ease;
 }
+
+.nav-btn:hover {
+  background: rgba(0, 0, 0, 0.08);
+}
+
 .nav-btn-active {
   font-weight: 700;
   text-decoration: underline;
-  background: rgba(0,0,0,0.08);
+  background: rgba(0, 0, 0, 0.1);
 }
 
+/* === HBZ Cards & Layout === */
+.hbz-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 10px;
+}
+
+.hbz-card {
+  background: #fff;
+  border-radius: 10px;
+  padding: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  margin-bottom: 10px;
+}
+
+.hbz-input,
+.hbz-textarea,
+select {
+  width: 100%;
+  padding: 6px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  box-sizing: border-box;
+}
+
+.hbz-btn {
+  background: #fff;
+  border: 1px solid #bbb;
+  border-radius: 6px;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+
+.hbz-btn:hover {
+  background: #eee;
+}
+
+.btn-small {
+  font-size: 12px;
+  padding: 3px 6px;
+}
+
+.save-btn {
+  background: #9a6b3c;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.save-btn:hover {
+  background: #815b30;
+}

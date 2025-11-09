@@ -2,16 +2,17 @@ import React from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 
 /**
- * NavBar – alle bisherigen Funktionen bleiben erhalten:
- * - onLogout (Pflicht)
- * - setCurrentView (optional, wird zusätzlich zu navigate() aufgerufen)
- * - currentUser (optional Anzeige)
- * - role (optional: 'admin' | 'teamleiter' | 'mitarbeiter') steuert Sichtbarkeit
+ * NavBar – 1:1 Version mit allen Funktionen:
+ * - onLogout
+ * - setCurrentView (optional, alte Kompatibilität)
+ * - currentUser (optional)
+ * - role (admin | teamleiter | mitarbeiter)
+ * - navigate() + aktive Markierung
  */
 export default function NavBar({ onLogout, setCurrentView, currentUser, role }) {
   const navigate = useNavigate();
 
-  // Zentraler Navigations-Handler: Router + alte View-Logik
+  // Navigation mit alter View-Kompatibilität
   const go = (path, viewKey) => {
     navigate(path);
     if (typeof setCurrentView === "function" && viewKey) {
@@ -37,7 +38,7 @@ export default function NavBar({ onLogout, setCurrentView, currentUser, role }) 
         borderBottom: "1px solid rgba(0,0,0,0.1)",
       }}
     >
-      {/* Links */}
+      {/* Navigation Links */}
       <div className="hbz-nav-left" style={{ display: "flex", gap: 6, alignItems: "center" }}>
         <NavLink
           to="/zeiterfassung"
@@ -84,7 +85,7 @@ export default function NavBar({ onLogout, setCurrentView, currentUser, role }) 
         )}
       </div>
 
-      {/* Rechts: Userinfo + Logout */}
+      {/* Benutzer & Logout */}
       <div className="hbz-nav-right" style={{ display: "flex", alignItems: "center", gap: 8 }}>
         {currentUser && (
           <span
