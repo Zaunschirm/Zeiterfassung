@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useSession } from "../hooks/useSession";
 import { supabase } from "../lib/supabase";
-
 import DaySlider from "./DaySlider";
 import EntryTable from "./EntryTable";
 
@@ -32,16 +31,13 @@ export default function TimeTracking() {
 
   const durationMin = useMemo(() => Math.max(toMin - fromMin, 0), [fromMin, toMin]);
 
-  /** Stammdaten laden (Supabase) */
+  // Stammdaten laden
   useEffect(() => {
     (async () => {
       try {
         const { data: proj } = await supabase.from("projects").select("id, name").order("name");
         setProjects(proj || []);
-        const { data: emp } = await supabase
-          .from("employees")
-          .select("id, name, code, role")
-          .order("name");
+        const { data: emp } = await supabase.from("employees").select("id, name, code, role").order("name");
         setEmployees(emp || []);
       } catch (e) {
         console.warn("[TimeTracking] Stammdaten Fallback:", e);
@@ -53,7 +49,7 @@ export default function TimeTracking() {
     // eslint-disable-next-line
   }, []);
 
-  /** Tagesliste laden */
+  // Tagesliste laden
   const loadEntriesForDay = async () => {
     try {
       const { data } = await supabase
@@ -62,14 +58,14 @@ export default function TimeTracking() {
         .eq("date", date)
         .order("created_at", { ascending: false });
       setEntriesToday(data || []);
-    } catch (e) {
+    } catch {
       const raw = localStorage.getItem("hbz_entries") || "[]";
       setEntriesToday(JSON.parse(raw).filter((r) => r.date === date));
     }
   };
   useEffect(() => { loadEntriesForDay(); }, [date]);
 
-  /** Mitarbeiter Mehrfachauswahl (Pills) */
+  // Mitarbeiter-Pills
   const toggleEmp = (emp) => {
     const key = emp.id ?? emp.code ?? emp.name;
     setSelectedEmployees((prev) =>
@@ -79,7 +75,7 @@ export default function TimeTracking() {
     );
   };
 
-  /** Speichern */
+  // Speichern
   const save = async () => {
     setError("");
     if (!projectId) return setError("Bitte ein Projekt auswählen.");
@@ -109,7 +105,6 @@ export default function TimeTracking() {
         const { error } = await supabase.from("time_entries").insert(rows);
         if (error) throw error;
       } catch (dbErr) {
-        // Fallback LocalStorage – blockiert die UI nicht
         const raw = localStorage.getItem("hbz_entries") || "[]";
         localStorage.setItem("hbz_entries", JSON.stringify([...rows, ...JSON.parse(raw)]));
         console.warn("[TimeTracking] LocalStorage-Fallback:", dbErr);
@@ -126,12 +121,10 @@ export default function TimeTracking() {
 
   return (
     <div className="hbz-container">
-      {/* Kopf (kompakt) */}
+      {/* EINZIGE Eingabemaske */}
       <div className="hbz-card tight">
         <div className="hbz-row">
-          <h2 className="hbz-title" style={{ color: "var(--hbz-brown)", margin: 0 }}>
-            Zeiterfassung
-          </h2>
+          <h2 className="hbz-title" style={{ color: "var(--hbz-brown)", margin: 0 }}>Zeiterfassung</h2>
           <div className="hbz-col-auto">
             <div className="field-inline">
               <label>Datum</label>
@@ -148,73 +141,43 @@ export default function TimeTracking() {
 
         <hr className="hr-soft" />
 
-        {/* Projekt + Tätigkeit in einer Zeile */}
         <div className="hbz-row">
           <div className="hbz-col">
             <label className="hbz-label">Projekt</label>
-            <select
-              className="hbz-input"
-              value={projectId}
-              onChange={(e) => setProjectId(e.target.value)}
-            >
+            <select className="hbz-input" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
               <option value="">— Projekt wählen —</option>
               {projects.map((p) => (
-                <option key={p.id ?? p.name} value={p.id ?? p.name}>
-                  {p.name ?? p.title ?? p.id}
-                </option>
+                <option key={p.id ?? p.name} value={p.id ?? p.name}>{p.name ?? p.title ?? p.id}</option>
               ))}
             </select>
           </div>
           <div className="hbz-col">
             <label className="hbz-label">Tätigkeit</label>
-            <input
-              className="hbz-input"
-              value={activity}
-              onChange={(e) => setActivity(e.target.value)}
-              placeholder="z. B. Montage"
-            />
+            <input className="hbz-input" value={activity} onChange={(e) => setActivity(e.target.value)} placeholder="z. B. Montage" />
           </div>
         </div>
 
         <hr className="hr-soft" />
 
-        {/* Zeit: Inputs + Slider */}
         <div className="hbz-section-title">Zeit</div>
         <div className="hbz-row" style={{ alignItems: "flex-end" }}>
           <div className="hbz-col">
             <div className="field-inline">
               <label>Start</label>
-              <input
-                type="time"
-                className="hbz-input"
-                value={fmt(fromMin)}
-                onChange={(e) => {
-                  const [h, m] = e.target.value.split(":").map((v) => parseInt(v, 10));
-                  setFromMin(clamp(h * 60 + m, 0, 24 * 60));
-                }}
-                style={{ maxWidth: 120 }}
-              />
+              <input type="time" className="hbz-input" value={fmt(fromMin)}
+                onChange={(e) => { const [h,m]=e.target.value.split(":").map(Number); setFromMin(clamp(h*60+m,0,24*60)); }}
+                style={{ maxWidth: 120 }} />
             </div>
           </div>
           <div className="hbz-col">
             <div className="field-inline">
               <label>Ende</label>
-              <input
-                type="time"
-                className="hbz-input"
-                value={fmt(toMin)}
-                onChange={(e) => {
-                  const [h, m] = e.target.value.split(":").map((v) => parseInt(v, 10));
-                  setToMin(clamp(h * 60 + m, 0, 24 * 60));
-                }}
-                style={{ maxWidth: 120 }}
-              />
+              <input type="time" className="hbz-input" value={fmt(toMin)}
+                onChange={(e) => { const [h,m]=e.target.value.split(":").map(Number); setToMin(clamp(h*60+m,0,24*60)); }}
+                style={{ maxWidth: 120 }} />
             </div>
           </div>
-          <div className="hbz-col-auto">
-            <span className="kbd">Dauer</span>&nbsp;
-            <b>{Math.floor(durationMin / 60)} h {durationMin % 60} min</b>
-          </div>
+          <div className="hbz-col-auto"><span className="kbd">Dauer</span>&nbsp;<b>{Math.floor(durationMin/60)} h {durationMin%60} min</b></div>
         </div>
 
         <div style={{ marginTop: 8 }}>
@@ -222,39 +185,24 @@ export default function TimeTracking() {
             fromMin={fromMin}
             toMin={toMin}
             step={15}
-            onChange={({ from, to }) => {
-              setFromMin(clamp(from, 0, 24 * 60));
-              setToMin(clamp(to, 0, 24 * 60));
-            }}
+            onChange={({ from, to }) => { setFromMin(clamp(from,0,24*60)); setToMin(clamp(to,0,24*60)); }}
           />
         </div>
 
         <hr className="hr-soft" />
 
-        {/* Mitarbeiter: Alle/Keine + Pills */}
         <div className="hbz-section-title">Mitarbeiter</div>
         <div className="hbz-row" style={{ marginBottom: 6 }}>
-          <button type="button" className="hbz-btn btn-small" onClick={() => setSelectedEmployees(employees)}>
-            Alle
-          </button>
-          <button type="button" className="hbz-btn btn-small" onClick={() => setSelectedEmployees([])}>
-            Keine
-          </button>
+          <button type="button" className="hbz-btn btn-small" onClick={() => setSelectedEmployees(employees)}>Alle</button>
+          <button type="button" className="hbz-btn btn-small" onClick={() => setSelectedEmployees([])}>Keine</button>
           <div className="help">{selectedEmployees.length} / {employees.length} gewählt</div>
         </div>
-
         <div className="hbz-chipbar">
           {employees.map((emp) => {
             const key = emp.id ?? emp.code ?? emp.name;
             const active = selectedEmployees.some((e) => (e.id ?? e.code ?? e.name) === key);
             return (
-              <button
-                key={key}
-                type="button"
-                className={`hbz-chip ${active ? "active" : ""}`}
-                onClick={() => toggleEmp(emp)}
-                title={emp.role ? `Rolle: ${emp.role}` : emp.name}
-              >
+              <button key={key} type="button" className={`hbz-chip ${active ? "active" : ""}`} onClick={() => toggleEmp(emp)}>
                 {emp.name ?? key}
               </button>
             );
@@ -263,39 +211,22 @@ export default function TimeTracking() {
 
         <hr className="hr-soft" />
 
-        {/* Notiz */}
         <div className="hbz-col" style={{ marginTop: 4 }}>
           <label className="hbz-label">Notiz</label>
-          <textarea
-            className="hbz-textarea"
-            rows={3}
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            placeholder="Optionale Besonderheiten…"
-          />
+          <textarea className="hbz-textarea" rows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optionale Besonderheiten…" />
         </div>
 
-        {/* Fehler */}
-        {error && (
-          <div className="hbz-section error" style={{ marginTop: 10 }}>
-            <strong>Fehler:</strong> {error}
-          </div>
-        )}
+        {error && <div className="hbz-section error" style={{ marginTop: 10 }}><strong>Fehler:</strong> {error}</div>}
 
-        {/* Speichern */}
         <div className="save-bar">
-          <button className="save-btn lg" onClick={save} disabled={saving}>
-            {saving ? "Speichere…" : "Speichern"}
-          </button>
+          <button className="save-btn lg" onClick={save} disabled={saving}>{saving ? "Speichere…" : "Speichern"}</button>
         </div>
       </div>
 
-      {/* Tagesliste */}
+      {/* NUR EINE Liste unten */}
       <div className="hbz-card tight" style={{ marginTop: 12 }}>
         <div className="hbz-row" style={{ justifyContent: "space-between" }}>
-          <div className="hbz-section-title" style={{ margin: 0 }}>
-            Einträge {date}
-          </div>
+          <div className="hbz-section-title" style={{ margin: 0 }}>Einträge {date}</div>
         </div>
         <div style={{ marginTop: 8 }}>
           <EntryTable entries={entriesToday} />
