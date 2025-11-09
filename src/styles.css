@@ -204,5 +204,46 @@ a:hover {
 .topbar .role{font-weight:400;color:#7a6a5e}
 .btn-small{padding:6px 10px;font-size:.9rem}
 
+/* === Mobile Save-Button (HBZ Design) – hinzugefügt === */
+.save-btn-wrapper {
+  width: 100%;
+}
 
+.save-btn {
+  width: 100%;
+  min-height: 52px;
+  padding: 14px 18px;
+  font-size: 16px;
+  font-weight: 600;
+  border: none;
+  border-radius: 12px;
+  background-color: var(--hbz-brown);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.2);
+  transition: transform 0.05s ease, background-color 0.25s ease;
+  -webkit-tap-highlight-color: transparent;
+}
 
+.btn-icon { font-size: 20px; }
+
+.save-btn:hover { background-color: #3f2615; }
+.save-btn:active { transform: translateY(1px) scale(0.98); }
+.save-btn:disabled { opacity: 0.6; pointer-events: none; }
+
+/* Sticky unten am Handy-Bildschirm */
+@media (max-width: 640px) {
+  .save-btn-wrapper {
+    position: sticky;
+    bottom: 8px;
+    z-index: 50;
+    background: var(--hbz-beige);
+    padding-top: 6px;
+    padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+  }
+  .save-btn { font-size: 17px; border-radius: 14px; }
+  .btn-icon { font-size: 22px; }
+}

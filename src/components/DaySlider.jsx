@@ -340,8 +340,15 @@ export default function DaySlider() {
             <textarea className="w-full h-24 rounded border px-3 py-2" placeholder="z. B. Tätigkeit, Besonderheiten…" value={note} onChange={(e) => setNote(e.target.value)} />
           </div>
 
-          <div className="mt-4">
-            <button onClick={handleSave} className="px-4 py-2 rounded text-white" style={{ background: "#7b4a2d" }} disabled={isManager ? selectedCodes.length === 0 : !employeeRow}>
+          {/* ✅ Mobilfreundlicher Speichern-Button (sticky) – FUNKTION UNVERÄNDERT */}
+          <div className="mt-4 save-btn-wrapper">
+            <button
+              onClick={handleSave}
+              className="save-btn"
+              disabled={isManager ? selectedCodes.length === 0 : !employeeRow}
+              aria-busy={false}
+            >
+              <span className="btn-icon" aria-hidden="true">💾</span>
               Speichern
             </button>
           </div>
