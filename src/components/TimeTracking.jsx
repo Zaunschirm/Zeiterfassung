@@ -11,11 +11,8 @@ const fmt = (m) => `${String(Math.floor(m / 60)).padStart(2,"0")}:${String(m % 6
 export default function TimeTracking() {
   const { user, isAuthenticated } = useSession();
 
-  // Stammdaten
   const [projects, setProjects] = useState([]);
   const [employees, setEmployees] = useState([]);
-
-  // Auswahl/State
   const [date, setDate] = useState(todayISO());
   const [projectId, setProjectId] = useState("");
   const [activity, setActivity] = useState("");
@@ -23,15 +20,12 @@ export default function TimeTracking() {
   const [toMin, setToMin] = useState(16 * 60 + 30);
   const [note, setNote] = useState("");
   const [selectedEmployees, setSelectedEmployees] = useState([]);
-
-  // Anzeige/Status
   const [entriesToday, setEntriesToday] = useState([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
   const durationMin = useMemo(() => Math.max(toMin - fromMin, 0), [fromMin, toMin]);
 
-  // Stammdaten laden
   useEffect(() => {
     (async () => {
       try {
@@ -40,16 +34,15 @@ export default function TimeTracking() {
         const { data: emp } = await supabase.from("employees").select("id, name, code, role").order("name");
         setEmployees(emp || []);
       } catch (e) {
-        console.warn("[TimeTracking] Stammdaten Fallback:", e);
+        console.warn("[TimeTracking] Stammdaten-Fallback:", e);
         setProjects([{ id: "demo-1", name: "Allgemein" }]);
         setEmployees(user?.code ? [{ id: user.code, name: user.code }] : []);
         setError(String(e?.message || e));
       }
     })();
-    // eslint-disable-next-line
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Tagesliste laden
   const loadEntriesForDay = async () => {
     try {
       const { data } = await supabase
@@ -65,7 +58,6 @@ export default function TimeTracking() {
   };
   useEffect(() => { loadEntriesForDay(); }, [date]);
 
-  // Mitarbeiter-Pills
   const toggleEmp = (emp) => {
     const key = emp.id ?? emp.code ?? emp.name;
     setSelectedEmployees((prev) =>
@@ -75,7 +67,6 @@ export default function TimeTracking() {
     );
   };
 
-  // Speichern
   const save = async () => {
     setError("");
     if (!projectId) return setError("Bitte ein Projekt auswählen.");
@@ -121,7 +112,7 @@ export default function TimeTracking() {
 
   return (
     <div className="hbz-container">
-      {/* EINZIGE Eingabemaske */}
+      {/* EINZIGE Maske */}
       <div className="hbz-card tight">
         <div className="hbz-row">
           <h2 className="hbz-title" style={{ color: "var(--hbz-brown)", margin: 0 }}>Zeiterfassung</h2>
@@ -223,7 +214,7 @@ export default function TimeTracking() {
         </div>
       </div>
 
-      {/* NUR EINE Liste unten */}
+      {/* nur EINE Liste */}
       <div className="hbz-card tight" style={{ marginTop: 12 }}>
         <div className="hbz-row" style={{ justifyContent: "space-between" }}>
           <div className="hbz-section-title" style={{ margin: 0 }}>Einträge {date}</div>
