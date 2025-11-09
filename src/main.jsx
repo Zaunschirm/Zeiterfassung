@@ -1,11 +1,12 @@
+// src/main.jsx
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { HashRouter } from "react-router-dom";
 import App from "./App.jsx";
 import "./styles.css";
 
-// PWA optional
-if ("serviceWorker" in navigator) {
+// SW NUR in Production registrieren (verhindert leere Seite im Dev)
+if (import.meta.env.PROD && "serviceWorker" in navigator) {
   import("./pwa-register.ts")
     .then((m) => m?.registerPWA && m.registerPWA())
     .catch(() => {});
