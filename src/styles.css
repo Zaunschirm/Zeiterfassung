@@ -1,5 +1,4 @@
 /* === HOLZBAU ZAUNSCHIRM CORPORATE DESIGN === */
-
 :root {
   --hbz-brown: #5C3A21;
   --hbz-beige: #E8DCC5;
@@ -57,12 +56,7 @@ header.hbz-card {
 }
 
 /* Mitarbeiter-Pills */
-.hbz-pills {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
+.hbz-pills { display: flex; flex-wrap: wrap; gap: 8px; }
 .hbz-pill {
   background: var(--hbz-accent);
   border: 1px solid var(--hbz-brown);
@@ -73,21 +67,11 @@ header.hbz-card {
   cursor: pointer;
   transition: all 0.2s ease;
 }
-
-.hbz-pill:hover {
-  background: var(--hbz-brown);
-  color: #fff;
-}
-
-.hbz-pill.active {
-  background: var(--hbz-brown);
-  color: #fff;
-  border-color: #3f2615;
-}
+.hbz-pill:hover { background: var(--hbz-brown); color: #fff; }
+.hbz-pill.active { background: var(--hbz-brown); color: #fff; border-color: #3f2615; }
 
 /* Eingaben */
-.hbz-input,
-.hbz-textarea {
+.hbz-input, .hbz-textarea {
   background: #fff;
   border: 1px solid var(--hbz-accent);
   border-radius: 8px;
@@ -95,15 +79,8 @@ header.hbz-card {
   color: var(--hbz-text);
   width: 100%;
 }
-
-.hbz-textarea:focus,
-.hbz-input:focus {
-  outline: 2px solid var(--hbz-brown);
-}
-
-input[type="range"] {
-  accent-color: var(--hbz-brown);
-}
+.hbz-textarea:focus, .hbz-input:focus { outline: 2px solid var(--hbz-brown); }
+input[type="range"] { accent-color: var(--hbz-brown); }
 
 /* Karten & Abschnitte */
 .hbz-card {
@@ -113,89 +90,33 @@ input[type="range"] {
   box-shadow: 0 3px 10px rgba(0,0,0,0.1);
   margin-bottom: 12px;
 }
-
 .hbz-section { margin-top: 12px; }
-
 .hbz-label { font-weight: 600; color: var(--hbz-text); }
-
-.hbz-container {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 0 12px;
-}
-
-.hbz-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 10px;
-}
+.hbz-container { max-width: 1200px; margin: 0 auto; padding: 0 12px; }
+.hbz-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
 
 /* Tabellen & Grid */
-.hbz-grid {
-  display: grid;
-  gap: 12px;
-}
-
-.hbz-grid-3 {
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-}
+.hbz-grid { display: grid; gap: 12px; }
+.hbz-grid-3 { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
 
 /* Statusmeldungen */
 .hbz-section.ok {
-  background: #ecf8ef;
-  border: 1px solid #b7ebc6;
-  color: #1c472f;
-  border-radius: 10px;
+  background: #ecf8ef; border: 1px solid #b7ebc6; color: #1c472f; border-radius: 10px;
 }
-
 .hbz-section.error {
-  background: #fff4f3;
-  border: 1px solid #ffd6d2;
-  color: #7a1f1f;
-  border-radius: 10px;
+  background: #fff4f3; border: 1px solid #ffd6d2; color: #7a1f1f; border-radius: 10px;
 }
 
 /* Tabellen */
-table.nice {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 15px;
-}
+table.nice { width: 100%; border-collapse: collapse; font-size: 15px; }
+table.nice th { background: var(--hbz-brown); color: #fff; text-align: left; padding: 6px 8px; }
+table.nice td { border-bottom: 1px solid var(--hbz-accent); padding: 6px 8px; }
+table.nice tr:nth-child(even) { background: #f9f5f0; }
 
-table.nice th {
-  background: var(--hbz-brown);
-  color: #fff;
-  text-align: left;
-  padding: 6px 8px;
-}
-
-table.nice td {
-  border-bottom: 1px solid var(--hbz-accent);
-  padding: 6px 8px;
-}
-
-table.nice tr:nth-child(even) {
-  background: #f9f5f0;
-}
-.nav-link {
-  color: white;
-  text-decoration: none;
-  font-weight: 500;
-  background-color: transparent;
-  padding: 4px 8px;
-  border-radius: 6px;
-  transition: background-color 0.2s;
-}
-.nav-link:hover {
-  background-color: #a5724c;
-}a {
-  color: inherit;
-}
-a:hover {
-  text-decoration: none;
-}
+/* Links/Navi */
+.nav-link { color: white; text-decoration: none; font-weight: 500; background-color: transparent; padding: 4px 8px; border-radius: 6px; transition: background-color 0.2s; }
+.nav-link:hover { background-color: #a5724c; }
+a { color: inherit; } a:hover { text-decoration: none; }
 .topbar{display:flex;align-items:center;gap:16px;padding:10px 14px;background:#efdfc5;border-bottom:1px solid #d2bfa1}
 .topbar .brand{font-weight:700}
 .topbar .menu a{margin:0 8px;text-decoration:none;color:#3b2a20}
@@ -204,24 +125,13 @@ a:hover {
 .topbar .role{font-weight:400;color:#7a6a5e}
 .btn-small{padding:6px 10px;font-size:.9rem}
 
-/* === Mobile Save-Button (HBZ Design) – hinzugefügt === */
+/* === Mobile Save-Button (HBZ Design) === */
 .save-btn-wrapper { width: 100%; }
 .save-btn {
-  width: 100%;
-  min-height: 52px;
-  padding: 14px 18px;
-  font-size: 16px;
-  font-weight: 600;
-  border: none;
-  border-radius: 12px;
-  background-color: var(--hbz-brown);
-  color: #fff;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  box-shadow: 0 4px 14px rgba(0,0,0,0.2);
-  transition: transform 0.05s ease, background-color 0.25s ease;
+  width: 100%; min-height: 52px; padding: 14px 18px; font-size: 16px; font-weight: 600;
+  border: none; border-radius: 12px; background-color: var(--hbz-brown); color: #fff;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.2); transition: transform 0.05s ease, background-color 0.25s ease;
   -webkit-tap-highlight-color: transparent;
 }
 .btn-icon { font-size: 20px; }
@@ -229,42 +139,24 @@ a:hover {
 .save-btn:active { transform: translateY(1px) scale(0.98); }
 .save-btn:disabled { opacity: 0.6; pointer-events: none; }
 
-/* Sticky unten am Handy-Bildschirm */
 @media (max-width: 640px) {
   .save-btn-wrapper {
-    position: sticky;
-    bottom: 8px;
-    z-index: 50;
-    background: var(--hbz-beige);
-    padding-top: 6px;
-    padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+    position: sticky; bottom: 8px; z-index: 50; background: var(--hbz-beige);
+    padding-top: 6px; padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
   }
   .save-btn { font-size: 17px; border-radius: 14px; }
   .btn-icon { font-size: 22px; }
 }
 
-/* === NEU: Footer für die Versionsanzeige === */
+/* === Footer (Version) === */
 .app-footer {
-  position: fixed;
-  left: 0;
-  bottom: 0;
-  width: 100%;
-  background: var(--hbz-brown);
-  color: #fff;
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  justify-content: center;
-  padding: 6px 8px;
-  font-size: 13px;
-  font-weight: 500;
-  border-top: 2px solid rgba(255,255,255,0.25);
+  position: fixed; left: 0; bottom: 0; width: 100%;
+  background: var(--hbz-brown); color: #fff;
+  display: flex; gap: 8px; align-items: center; justify-content: center;
+  padding: 6px 8px; font-size: 13px; font-weight: 500; border-top: 2px solid rgba(255,255,255,0.25);
   z-index: 200;
 }
 .app-footer .sep { opacity: .6; }
 @media (max-width: 640px) {
-  .app-footer {
-    font-size: 12px;
-    padding: 8px 8px calc(8px + env(safe-area-inset-bottom, 0px));
-  }
+  .app-footer { font-size: 12px; padding: 8px 8px calc(8px + env(safe-area-inset-bottom, 0px)); }
 }
