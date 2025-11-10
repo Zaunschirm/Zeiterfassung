@@ -152,7 +152,6 @@ export default function MonthlyOverview() {
   }
 
   // ----- Gruppierungen -----
-  // Tagesweise (pro Mitarbeiter+Datum zusammengefasst)
   const grouped = useMemo(() => {
     const g = {};
     for (const r of rows) {
@@ -168,7 +167,6 @@ export default function MonthlyOverview() {
     );
   }, [rows]);
 
-  // Wochenweise (ISO Woche; pro Mitarbeiter & Woche)
   const weekly = useMemo(() => {
     const w = {};
     for (const r of grouped) {
@@ -184,13 +182,12 @@ export default function MonthlyOverview() {
     );
   }, [grouped]);
 
-  // Summen pro MA über den ganzen Monat
   const totalsByEmployee = useMemo(() => {
     const t = {};
     for (const r of grouped) {
       const name = r.employee_name || r.employee_id;
       const hrs = h2(r._mins);
-      const ot = Math.max(hrs - 9, 0); // Tages-OT fürs Reporting; Monats-Summe zeigt Summe(hrs) + Summe(tägliche OT) informativ
+      const ot = Math.max(hrs - 9, 0);
       if (!t[name]) t[name] = { hrs: 0, ot: 0 };
       t[name].hrs += hrs;
       t[name].ot += ot;
@@ -274,14 +271,13 @@ export default function MonthlyOverview() {
     URL.revokeObjectURL(url);
   }
 
-  // ----- Export: PDF (mit Wochenblöcken + Wochen-OT>39h) -----
+  // ----- Export: PDF -----
   function exportPDF() {
     const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
     const title = `Monatsübersicht ${month}`;
     doc.setFontSize(16);
     doc.text(title, 40, 40);
 
-    // 1) Haupttabelle Tageswerte
     const head = [["Datum", "Mitarbeiter", "Projekt", "Start", "Ende", "Pause (min)", "Stunden", "Überstunden", "Notiz"]];
     const body = grouped.map((r) => {
       const hrs = h2(r._mins);
@@ -313,7 +309,6 @@ export default function MonthlyOverview() {
       margin: { left: 40, right: 40 },
     });
 
-    // 2) Mitarbeiter-Summen
     const sumHead = [["Mitarbeiter", "Stunden gesamt", "Überstunden (Summe Tages-Ü>9h)"]];
     const sumBody = Object.entries(totalsByEmployee).map(([name, t]) => [
       name, t.hrs.toFixed(2), t.ot.toFixed(2),
@@ -327,7 +322,6 @@ export default function MonthlyOverview() {
       margin: { left: 40, right: 40 },
     });
 
-    // 3) Wochenblöcke (Mo–So) pro Mitarbeiter
     let y = doc.lastAutoTable.finalY + 30;
     doc.setFontSize(14);
     doc.text("Wochenübersicht (ISO, Mo–So) – Wochen-Ü > 39,00 h", 40, y);
@@ -352,7 +346,7 @@ export default function MonthlyOverview() {
         ]);
       });
       const weekHours = h2(wk._mins);
-      const weekOT = Math.max(weekHours - 39, 0); // Wochen-Überstunden
+      const weekOT = Math.max(weekHours - 39, 0);
 
       autoTable(doc, {
         head: tableHead,
@@ -361,7 +355,6 @@ export default function MonthlyOverview() {
         styles: { fontSize: 9, cellPadding: 3, overflow: "linebreak" },
         headStyles: { fillColor: [235, 235, 235] },
         margin: { left: 40, right: 40 },
-        didDrawPage: () => {},
       });
 
       y = doc.lastAutoTable.finalY + 5;
@@ -372,7 +365,6 @@ export default function MonthlyOverview() {
       );
       y += 18;
 
-      // Seitenumbruch bei Bedarf
       if (y > doc.internal.pageSize.getHeight() - 80 && idx < weekly.length - 1) {
         doc.addPage();
         y = 40;
@@ -431,28 +423,29 @@ export default function MonthlyOverview() {
         </div>
       </div>
 
-      <div className="rounded-xl shadow" style={{ background: "#fff", border: "1px solid #d9c9b6" }}>
-        <div className="px-4 py-3 font-semibold" style={{ background: "#f6eee4" }}>
+      {/* Card + Scrollwrap */}
+      <div className="hbz-card">
+        <div className="px-2 py-2 font-semibold" style={{ background: "#f6eee4", borderRadius: 8 }}>
           {loading ? "Lade…" : `Einträge ${month}`}
         </div>
 
-        <div className="p-3 overflow-auto">
+        <div className="mo-wrap">
           {grouped.length === 0 ? (
-            <div className="text-sm opacity-70">Keine Einträge.</div>
+            <div className="text-sm opacity-70 p-3">Keine Einträge.</div>
           ) : (
-            <table className="w-full min-w-[1100px]">
+            <table className="nice mo-table">
               <thead>
                 <tr>
-                  <th style={{ textAlign: "left" }}>Datum</th>
-                  <th style={{ textAlign: "left" }}>Mitarbeiter</th>
-                  <th style={{ textAlign: "left" }}>Projekt</th>
-                  <th>Start</th>
-                  <th>Ende</th>
-                  <th>Pause</th>
-                  <th>Stunden</th>
-                  <th>Überstunden</th>
-                  <th style={{ textAlign: "left" }}>Notiz</th>
-                  <th style={{ width: 160 }}></th>
+                  <th className="mo-col-date">Datum</th>
+                  <th className="mo-col-emp">Mitarbeiter</th>
+                  <th className="mo-col-prj">Projekt</th>
+                  <th className="mo-col-time">Start</th>
+                  <th className="mo-col-time">Ende</th>
+                  <th className="mo-col-pause">Pause</th>
+                  <th className="mo-col-hrs">Stunden</th>
+                  <th className="mo-col-ot">Überstunden</th>
+                  <th className="mo-col-note">Notiz</th>
+                  <th className="mo-col-actions"></th>
                 </tr>
               </thead>
               <tbody>
@@ -469,17 +462,17 @@ export default function MonthlyOverview() {
                         <td>{r.work_date}</td>
                         <td>{r.employee_name}</td>
                         <td>{r.project_name || "—"}</td>
-                        <td>{toHM(start)}</td>
-                        <td>{toHM(end)}</td>
-                        <td>{r.break_min ?? 0} min</td>
-                        <td>{hrs.toFixed(2)}</td>
-                        <td>{ot.toFixed(2)}</td>
+                        <td style={{ textAlign: "center" }}>{toHM(start)}</td>
+                        <td style={{ textAlign: "center" }}>{toHM(end)}</td>
+                        <td style={{ textAlign: "right" }}>{r.break_min ?? 0} min</td>
+                        <td style={{ textAlign: "right" }}>{hrs.toFixed(2)}</td>
+                        <td style={{ textAlign: "right" }}>{ot.toFixed(2)}</td>
                         <td>{r.note || ""}</td>
                         <td style={{ textAlign: "right" }}>
                           {isManager ? (
                             <>
-                              <button className="px-2 py-1 rounded border mr-2" onClick={() => startEdit(r)}>Bearbeiten</button>
-                              <button className="px-2 py-1 rounded border" onClick={() => deleteEntry(r.id)}>Löschen</button>
+                              <button className="hbz-btn btn-small" onClick={() => startEdit(r)}>Bearbeiten</button>
+                              <button className="hbz-btn btn-small" onClick={() => deleteEntry(r.id)}>Löschen</button>
                             </>
                           ) : <span className="text-xs opacity-60">nur Anzeige</span>}
                         </td>
@@ -493,15 +486,15 @@ export default function MonthlyOverview() {
                       <td>{r.work_date}</td>
                       <td>{r.employee_name}</td>
                       <td>
-                        <select className="px-2 py-1 rounded border" value={editState.project_id ?? ""} onChange={(e) => setEditState((s) => ({ ...s, project_id: e.target.value || null }))}>
+                        <select className="hbz-input" value={editState.project_id ?? ""} onChange={(e) => setEditState((s) => ({ ...s, project_id: e.target.value || null }))}>
                           <option value="">— ohne Projekt —</option>
                           {projects.map((p) => <option key={p.id} value={p.id}>{p.code ? `${p.code} · ${p.name}` : p.name}</option>)}
                         </select>
                       </td>
-                      <td><input type="time" className="px-2 py-1 rounded border" value={editState.from_hm} onChange={(e) => setEditState((s) => ({ ...s, from_hm: e.target.value }))} /></td>
-                      <td><input type="time" className="px-2 py-1 rounded border" value={editState.to_hm} onChange={(e) => setEditState((s) => ({ ...s, to_hm: e.target.value }))} /></td>
-                      <td><input type="number" min={0} step={5} className="px-2 py-1 rounded border w-24" value={editState.break_min} onChange={(e) => setEditState((s) => ({ ...s, break_min: e.target.value }))} /></td>
-                      <td colSpan={2}>
+                      <td style={{ textAlign: "center" }}><input type="time" className="hbz-input" value={editState.from_hm} onChange={(e) => setEditState((s) => ({ ...s, from_hm: e.target.value }))} /></td>
+                      <td style={{ textAlign: "center" }}><input type="time" className="hbz-input" value={editState.to_hm} onChange={(e) => setEditState((s) => ({ ...s, to_hm: e.target.value }))} /></td>
+                      <td style={{ textAlign: "right" }}><input type="number" min={0} step={5} className="hbz-input" value={editState.break_min} onChange={(e) => setEditState((s) => ({ ...s, break_min: e.target.value }))} /></td>
+                      <td colSpan={2} style={{ textAlign: "right" }}>
                         {(() => {
                           const minsLive = Math.max(hmToMin(editState.to_hm) - hmToMin(editState.from_hm) - (parseInt(editState.break_min || "0", 10) || 0), 0);
                           const hrsLive = h2(minsLive);
@@ -509,10 +502,10 @@ export default function MonthlyOverview() {
                           return `${hrsLive.toFixed(2)} h / Ü: ${otLive.toFixed(2)} h`;
                         })()}
                       </td>
-                      <td><input type="text" className="px-2 py-1 rounded border w-full" value={editState.note} onChange={(e) => setEditState((s) => ({ ...s, note: e.target.value }))} /></td>
+                      <td><input type="text" className="hbz-input" value={editState.note} onChange={(e) => setEditState((s) => ({ ...s, note: e.target.value }))} /></td>
                       <td style={{ textAlign: "right" }}>
-                        <button className="px-2 py-1 rounded border mr-2" onClick={saveEdit}>Speichern</button>
-                        <button className="px-2 py-1 rounded border" onClick={cancelEdit}>Abbrechen</button>
+                        <button className="hbz-btn btn-small" onClick={saveEdit}>Speichern</button>
+                        <button className="hbz-btn btn-small" onClick={cancelEdit}>Abbrechen</button>
                       </td>
                     </tr>
                   );

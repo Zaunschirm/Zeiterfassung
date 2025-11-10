@@ -103,35 +103,93 @@ select {
 /* === Schönere Tabellen-Optik (mehr Abstand) === */
 table.nice {
   width: 100%;
-  border-collapse: separate;      /* erlaubt Zeilenabstände */
-  border-spacing: 0 6px;          /* Abstand zwischen den Zeilen */
+  border-collapse: separate;
+  border-spacing: 0 6px;
 }
 
 table.nice thead th {
-  background: #f2e2cf;            /* zarter HBZ-Beige-Ton */
+  background: #f2e2cf;
   color: #3b2a1a;
   text-align: left;
   font-weight: 700;
   padding: 10px 12px;
-  border-radius: 8px;              /* oben abgerundet */
+  border-radius: 8px;
 }
 
 table.nice tbody tr {
-  background: #fff;                /* „Karten“-Look pro Zeile */
-  box-shadow: 0 1px 2px rgba(0,0,0,.06);
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
 }
 
 table.nice td {
-  padding: 10px 12px;              /* mehr Innenabstand */
+  padding: 10px 12px;
   vertical-align: middle;
 }
 
 table.nice tbody tr:hover {
-  background: #faf6f1;             /* dezenter Hover */
+  background: #faf6f1;
 }
 
-/* Buttons in Tabellen etwas luftiger */
 table.nice .hbz-btn,
 table.nice .btn-small {
   margin-right: 6px;
 }
+
+/* === Monatsübersicht Tabelle === */
+.mo-wrap {
+  overflow-x: auto;
+  padding: 8px 4px;
+}
+
+.mo-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+/* Spaltenbreiten und Ausrichtung */
+.mo-col-date {
+  width: 110px;
+}
+.mo-col-emp {
+  width: 220px;
+}
+.mo-col-prj {
+  width: 220px;
+}
+.mo-col-time {
+  width: 86px;
+  text-align: center;
+}
+.mo-col-pause {
+  width: 110px;
+  text-align: right;
+}
+.mo-col-hrs {
+  width: 100px;
+  text-align: right;
+}
+.mo-col-ot {
+  width: 120px;
+  text-align: right;
+}
+.mo-col-note {
+  min-width: 280px;
+}
+.mo-col-actions {
+  width: 180px;
+  text-align: right;
+}
+/* Zebra-Streifen für alle Tabellen mit class="nice" */
+table.nice tbody tr:nth-child(even) {
+  background: #f9f5ef;           /* sehr helles Beige */
+}
+table.nice tbody tr:nth-child(odd) {
+  background: #ffffff;
+}
+
+/* Hover soll weiterhin gut sichtbar sein */
+table.nice tbody tr:hover {
+  background: #faf0e3;           /* etwas kräftiger beim Hover */
+}
+
