@@ -13,10 +13,17 @@ export default function ProjectPhotoUpload({ me }) {
   const [photos, setPhotos] = useState([]);
   const [deletingId, setDeletingId] = useState(null);
 
-  // Projekt aus URL übernehmen
+  // Projekt-ID aus URL (funktioniert sowohl mit BrowserRouter als auch HashRouter)
   useEffect(() => {
-    const p = new URLSearchParams(window.location.search).get("project");
-    if (p) setProjectId(p);
+    const rawSearch =
+      window.location.search ||
+      (window.location.hash.includes("?")
+        ? "?" + window.location.hash.split("?")[1]
+        : "");
+    if (rawSearch) {
+      const p = new URLSearchParams(rawSearch).get("project");
+      if (p) setProjectId(p);
+    }
   }, []);
 
   // Projekte laden
@@ -38,6 +45,7 @@ export default function ProjectPhotoUpload({ me }) {
       }
     }
     load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // nur beim Mount
 
   // Fotos laden (bei Projektwechsel)
@@ -77,7 +85,6 @@ export default function ProjectPhotoUpload({ me }) {
       const { error: upErr } = await supabase.storage
         .from(BUCKET)
         .upload(path, file, { cacheControl: "3600", upsert: false });
-
       if (upErr) throw upErr;
 
       // 2) DB-Zeile anlegen
@@ -249,7 +256,7 @@ function PhotoThumb({ path }) {
   const [url, setUrl] = useState("");
 
   useEffect(() => {
-    const { data } = supabase.storage.from("project-photos").getPublicUrl(path);
+    const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
     setUrl(data?.publicUrl || "");
   }, [path]);
 
@@ -268,7 +275,7 @@ function OpenButton({ path }) {
   const [url, setUrl] = useState("");
 
   useEffect(() => {
-    const { data } = supabase.storage.from("project-photos").getPublicUrl(path);
+    const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
     setUrl(data?.publicUrl || "");
   }, [path]);
 
