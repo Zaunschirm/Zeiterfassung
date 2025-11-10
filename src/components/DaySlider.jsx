@@ -340,8 +340,8 @@ export default function DaySlider() {
             <textarea className="w-full h-24 rounded border px-3 py-2" placeholder="z. B. Tätigkeit, Besonderheiten…" value={note} onChange={(e) => setNote(e.target.value)} />
           </div>
 
-          {/* ✅ Mobilfreundlicher Speichern-Button (sticky) – FUNKTION UNVERÄNDERT */}
-          <div className="mt-4 save-btn-wrapper">
+          {/* Mobilfreundlicher Speichern-Button – FUNKTION UNVERÄNDERT */}
+          <div className="mt-4">
             <button
               onClick={handleSave}
               className="save-btn"
@@ -365,18 +365,19 @@ export default function DaySlider() {
           {entries.length === 0 ? (
             <div className="text-sm opacity-70">Keine Einträge.</div>
           ) : (
-            <table className="w-full min-w-[1000px]">
+            /* >>> Nur Optik geändert: nice + zt-table + Spaltenklassen */
+            <table className="nice zt-table">
               <thead>
                 <tr>
-                  <th style={{ textAlign: "left" }}>Mitarbeiter</th>
-                  <th style={{ textAlign: "left" }}>Projekt</th>
-                  <th>Start</th>
-                  <th>Ende</th>
-                  <th>Pause</th>
-                  <th>Stunden</th>
-                  <th>Überstunden</th>
-                  <th style={{ textAlign: "left" }}>Notiz</th>
-                  <th style={{ width: 180 }}></th>
+                  <th className="zt-col-emp" style={{ textAlign: "left" }}>Mitarbeiter</th>
+                  <th className="zt-col-prj" style={{ textAlign: "left" }}>Projekt</th>
+                  <th className="zt-col-time">Start</th>
+                  <th className="zt-col-time">Ende</th>
+                  <th className="zt-col-pause">Pause</th>
+                  <th className="zt-col-hrs">Stunden</th>
+                  <th className="zt-col-ot">Überstunden</th>
+                  <th className="zt-col-note" style={{ textAlign: "left" }}>Notiz</th>
+                  <th className="zt-col-actions"></th>
                 </tr>
               </thead>
               <tbody>
@@ -393,17 +394,17 @@ export default function DaySlider() {
                       <tr key={r.id}>
                         <td>{r.employee_name}</td>
                         <td>{r.project_name || "—"}</td>
-                        <td>{toHM(start)}</td>
-                        <td>{toHM(end)}</td>
-                        <td>{r.break_min ?? 0} min</td>
-                        <td>{hours.toFixed(2)}</td>
-                        <td>{overtime.toFixed(2)}</td>
+                        <td style={{ textAlign: "center" }}>{toHM(start)}</td>
+                        <td style={{ textAlign: "center" }}>{toHM(end)}</td>
+                        <td style={{ textAlign: "right" }}>{r.break_min ?? 0} min</td>
+                        <td style={{ textAlign: "right" }}>{hours.toFixed(2)}</td>
+                        <td style={{ textAlign: "right" }}>{overtime.toFixed(2)}</td>
                         <td>{r.note || ""}</td>
                         <td style={{ textAlign: "right" }}>
                           {isManager ? (
                             <>
-                              <button className="px-2 py-1 rounded border mr-2" onClick={() => startEdit(r)}>Bearbeiten</button>
-                              <button className="px-2 py-1 rounded border" onClick={() => deleteEntry(r.id)}>Löschen</button>
+                              <button className="hbz-btn btn-small" onClick={() => startEdit(r)}>Bearbeiten</button>
+                              <button className="hbz-btn btn-small" onClick={() => deleteEntry(r.id)}>Löschen</button>
                             </>
                           ) : (
                             <span className="text-xs opacity-60">nur Anzeige</span>
@@ -413,31 +414,57 @@ export default function DaySlider() {
                     );
                   }
 
-                  // Edit-Zeile
+                  // Edit-Zeile (Logik 1:1, nur Klassen für Optik)
                   return (
                     <tr key={r.id}>
                       <td>{r.employee_name}</td>
                       <td>
-                        <select className="px-2 py-1 rounded border" value={editState.project_id ?? ""} onChange={(e) => setEditState((s) => ({ ...s, project_id: e.target.value || null }))}>
+                        <select
+                          className="hbz-input"
+                          value={editState.project_id ?? ""}
+                          onChange={(e) => setEditState((s) => ({ ...s, project_id: e.target.value || null }))}
+                        >
                           <option value="">— ohne Projekt —</option>
                           {projects.map((p) => (
-                            <option key={p.id} value={p.id}>{p.code ? `${p.code} · ${p.name}` : p.name}</option>
+                            <option key={p.id} value={p.id}>
+                              {p.code ? `${p.code} · ${p.name}` : p.name}
+                            </option>
                           ))}
                         </select>
                       </td>
-                      <td>
-                        <input type="time" className="px-2 py-1 rounded border" value={editState.from_hm} onChange={(e) => setEditState((s) => ({ ...s, from_hm: e.target.value }))} />
+                      <td style={{ textAlign: "center" }}>
+                        <input
+                          type="time"
+                          className="hbz-input"
+                          value={editState.from_hm}
+                          onChange={(e) => setEditState((s) => ({ ...s, from_hm: e.target.value }))}
+                        />
                       </td>
-                      <td>
-                        <input type="time" className="px-2 py-1 rounded border" value={editState.to_hm} onChange={(e) => setEditState((s) => ({ ...s, to_hm: e.target.value }))} />
+                      <td style={{ textAlign: "center" }}>
+                        <input
+                          type="time"
+                          className="hbz-input"
+                          value={editState.to_hm}
+                          onChange={(e) => setEditState((s) => ({ ...s, to_hm: e.target.value }))}
+                        />
                       </td>
-                      <td>
-                        <input type="number" min={0} step={5} className="px-2 py-1 rounded border w-24" value={editState.break_min} onChange={(e) => setEditState((s) => ({ ...s, break_min: e.target.value }))} />
+                      <td style={{ textAlign: "right" }}>
+                        <input
+                          type="number"
+                          min={0}
+                          step={5}
+                          className="hbz-input"
+                          value={editState.break_min}
+                          onChange={(e) => setEditState((s) => ({ ...s, break_min: e.target.value }))}
+                          style={{ maxWidth: 90 }}
+                        />
                       </td>
-                      <td colSpan={2}>
+                      <td colSpan={2} style={{ textAlign: "right" }}>
                         {(() => {
                           const mins = Math.max(
-                            hmToMin(editState.to_hm) - hmToMin(editState.from_hm) - (parseInt(editState.break_min || "0", 10) || 0),
+                            hmToMin(editState.to_hm) -
+                              hmToMin(editState.from_hm) -
+                              (parseInt(editState.break_min || "0", 10) || 0),
                             0
                           );
                           const hrs = h2(mins);
@@ -446,11 +473,16 @@ export default function DaySlider() {
                         })()}
                       </td>
                       <td>
-                        <input type="text" className="px-2 py-1 rounded border w-full" value={editState.note} onChange={(e) => setEditState((s) => ({ ...s, note: e.target.value }))} />
+                        <input
+                          type="text"
+                          className="hbz-input"
+                          value={editState.note}
+                          onChange={(e) => setEditState((s) => ({ ...s, note: e.target.value }))}
+                        />
                       </td>
                       <td style={{ textAlign: "right" }}>
-                        <button className="px-2 py-1 rounded border mr-2" onClick={saveEdit}>Speichern</button>
-                        <button className="px-2 py-1 rounded border" onClick={cancelEdit}>Abbrechen</button>
+                        <button className="hbz-btn btn-small" onClick={saveEdit}>Speichern</button>
+                        <button className="hbz-btn btn-small" onClick={cancelEdit}>Abbrechen</button>
                       </td>
                     </tr>
                   );
@@ -463,3 +495,4 @@ export default function DaySlider() {
     </div>
   );
 }
+ 

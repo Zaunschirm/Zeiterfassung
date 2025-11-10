@@ -192,4 +192,16 @@ table.nice tbody tr:nth-child(odd) {
 table.nice tbody tr:hover {
   background: #faf0e3;           /* etwas kräftiger beim Hover */
 }
+/* === Zeiterfassung – Spaltenbreiten/Ausrichtung === */
+.zt-table      { min-width: 1000px; }
+.zt-col-emp    { width: 220px; }
+.zt-col-prj    { width: 220px; }
+.zt-col-time   { width: 86px;  text-align: center; }
+.zt-col-pause  { width: 110px; text-align: right; }
+.zt-col-hrs    { width: 100px; text-align: right; }
+.zt-col-ot     { width: 120px; text-align: right; }
+.zt-col-note   { min-width: 280px; }
+.zt-col-actions{ width: 180px; text-align: right; }
+
+/* Zebra-Streifen sind schon für table.nice gesetzt */
 

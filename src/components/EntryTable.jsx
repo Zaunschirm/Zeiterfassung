@@ -28,7 +28,9 @@ export default function EntryTable() {
     // Admin/Teamleiter: die letzten Einträge aller
     let query = supabase
       .from("time_entries")
-      .select("id, work_date, start_min, end_min, break_min, note, project, employee_id")
+      .select(
+        "id, work_date, start_min, end_min, break_min, note, project, employee_id"
+      )
       .order("created_at", { ascending: false })
       .limit(role === "mitarbeiter" ? 10 : 20);
 
@@ -52,8 +54,13 @@ export default function EntryTable() {
     setRows((r) => r.filter((x) => x.id !== id));
   }
 
+  const toHM = (mins = 0) =>
+    `${String(Math.floor((mins ?? 0) / 60)).padStart(2, "0")}:${String(
+      (mins ?? 0) % 60
+    ).padStart(2, "0")}`;
+
   return (
-    <div className="rounded-2xl bg-white/80 p-4 shadow">
+    <div className="hbz-card">
       <h3 className="text-lg font-semibold mb-3">Letzte Einträge</h3>
 
       {busy && <div className="text-sm text-neutral-500">Lade…</div>}
@@ -63,39 +70,43 @@ export default function EntryTable() {
       )}
 
       {!busy && rows.length > 0 && (
-        <ul className="space-y-2">
-          {rows.map((r) => {
-            const start = `${String(Math.floor(r.start_min / 60)).padStart(2, "0")}:${String(
-              r.start_min % 60
-            ).padStart(2, "0")}`;
-            const end = `${String(Math.floor(r.end_min / 60)).padStart(2, "0")}:${String(
-              r.end_min % 60
-            ).padStart(2, "0")}`;
-            const pause = r.break_min ?? 0;
-            return (
-              <li
-                key={r.id}
-                className="flex items-center justify-between rounded border border-neutral-200 px-3 py-2"
-              >
-                <div className="text-sm">
-                  <div className="font-medium">
-                    {r.project} • {r.work_date}
-                  </div>
-                  <div className="text-neutral-600">
-                    {start} – {end} • Pause {pause} min
-                    {r.note ? ` • ${r.note}` : ""}
-                  </div>
-                </div>
-                <button
-                  className="rounded bg-neutral-200 px-3 py-1 text-sm hover:bg-neutral-300"
-                  onClick={() => remove(r.id)}
-                >
-                  Löschen
-                </button>
-              </li>
-            );
-          })}
-        </ul>
+        <div className="mo-wrap">
+          <table className="nice">
+            <thead>
+              <tr>
+                <th style={{ width: 110 }}>Datum</th>
+                <th style={{ width: 220 }}>Projekt</th>
+                <th style={{ width: 90, textAlign: "center" }}>Start</th>
+                <th style={{ width: 90, textAlign: "center" }}>Ende</th>
+                <th style={{ width: 110, textAlign: "right" }}>Pause</th>
+                <th style={{ minWidth: 280 }}>Notiz</th>
+                <th style={{ width: 140, textAlign: "right" }}>Aktion</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.id}>
+                  <td>{r.work_date}</td>
+                  <td>{r.project || "—"}</td>
+                  <td style={{ textAlign: "center" }}>{toHM(r.start_min)}</td>
+                  <td style={{ textAlign: "center" }}>{toHM(r.end_min)}</td>
+                  <td style={{ textAlign: "right" }}>
+                    {(r.break_min ?? 0).toString()} min
+                  </td>
+                  <td>{r.note || ""}</td>
+                  <td style={{ textAlign: "right" }}>
+                    <button
+                      className="hbz-btn btn-small"
+                      onClick={() => remove(r.id)}
+                    >
+                      Löschen
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );
