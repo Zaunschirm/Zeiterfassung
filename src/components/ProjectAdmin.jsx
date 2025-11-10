@@ -1,4 +1,3 @@
-// src/components/ProjectAdmin.jsx
 import React, { useEffect, useState, useMemo } from "react";
 import { createClient } from "@supabase/supabase-js";
 
@@ -11,10 +10,7 @@ const supabase =
 
 const emptyForm = {
   name: "",
-  client: "",
-  code: "",
   cost_center: "",
-  note: "",
   active: true,
 };
 
@@ -26,6 +22,8 @@ export default function ProjectAdmin() {
   const [editId, setEditId] = useState(null);
   const [search, setSearch] = useState("");
   const [message, setMessage] = useState("");
+  const [sortField, setSortField] = useState("name");
+  const [sortDir, setSortDir] = useState("asc");
 
   useEffect(() => {
     fetchProjects();
@@ -48,14 +46,27 @@ export default function ProjectAdmin() {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return projects;
-    return projects.filter(
-      (p) =>
-        p.name?.toLowerCase().includes(q) ||
-        p.client?.toLowerCase().includes(q) ||
-        p.code?.toLowerCase().includes(q)
-    );
-  }, [projects, search]);
+    let list = projects;
+
+    // Suche nach Name oder Kostenstelle
+    if (q) {
+      list = list.filter(
+        (p) =>
+          p.name?.toLowerCase().includes(q) ||
+          p.cost_center?.toLowerCase().includes(q)
+      );
+    }
+
+    // Sortierung
+    list = [...list].sort((a, b) => {
+      const dir = sortDir === "asc" ? 1 : -1;
+      const valA = (a[sortField] || "").toString().toLowerCase();
+      const valB = (b[sortField] || "").toString().toLowerCase();
+      return valA.localeCompare(valB) * dir;
+    });
+
+    return list;
+  }, [projects, search, sortField, sortDir]);
 
   function onChange(e) {
     const { name, value, type, checked } = e.target;
@@ -69,16 +80,18 @@ export default function ProjectAdmin() {
 
     const payload = {
       name: form.name?.trim(),
-      client: form.client?.trim() || null,
-      code: form.code?.trim() || null,
       cost_center: form.cost_center?.trim() || null,
-      note: form.note?.trim() || null,
       active: !!form.active,
     };
 
     let res;
     if (editId) {
-      res = await supabase.from("projects").update(payload).eq("id", editId).select().single();
+      res = await supabase
+        .from("projects")
+        .update(payload)
+        .eq("id", editId)
+        .select()
+        .single();
     } else {
       res = await supabase.from("projects").insert(payload).select().single();
     }
@@ -112,13 +125,25 @@ export default function ProjectAdmin() {
     setEditId(p.id);
     setForm({
       name: p.name || "",
-      client: p.client || "",
-      code: p.code || "",
       cost_center: p.cost_center || "",
-      note: p.note || "",
       active: !!p.active,
     });
     window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  // Sortierung durch Klick auf Spaltenüberschrift ändern
+  function toggleSort(field) {
+    if (sortField === field) {
+      setSortDir(sortDir === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortDir("asc");
+    }
+  }
+
+  function sortArrow(field) {
+    if (sortField !== field) return "";
+    return sortDir === "asc" ? " 🔼" : " 🔽";
   }
 
   return (
@@ -127,7 +152,7 @@ export default function ProjectAdmin() {
         <h3>{editId ? "Projekt bearbeiten" : "Projekt anlegen"}</h3>
 
         <form onSubmit={onSubmit} className="hbz-grid hbz-grid-2">
-          <div>
+          <div style={{ gridColumn: "1 / -1" }}>
             <label>Projektname *</label>
             <input
               className="hbz-input"
@@ -137,26 +162,8 @@ export default function ProjectAdmin() {
               required
             />
           </div>
-          <div>
-            <label>Kunde</label>
-            <input
-              className="hbz-input"
-              name="client"
-              value={form.client}
-              onChange={onChange}
-            />
-          </div>
-          <div>
-            <label>Projektcode</label>
-            <input
-              className="hbz-input"
-              name="code"
-              value={form.code}
-              onChange={onChange}
-              placeholder="z. B. BV-ÖWG"
-            />
-          </div>
-          <div>
+
+          <div style={{ gridColumn: "1 / -1" }}>
             <label>Kostenstelle</label>
             <input
               className="hbz-input"
@@ -166,16 +173,7 @@ export default function ProjectAdmin() {
               placeholder="optional"
             />
           </div>
-          <div style={{ gridColumn: "1 / -1" }}>
-            <label>Notiz</label>
-            <textarea
-              className="hbz-textarea"
-              name="note"
-              rows={3}
-              value={form.note}
-              onChange={onChange}
-            />
-          </div>
+
           <div style={{ gridColumn: "1 / -1" }}>
             <input
               type="checkbox"
@@ -185,6 +183,7 @@ export default function ProjectAdmin() {
             />{" "}
             Projekt aktiv
           </div>
+
           <div style={{ gridColumn: "1 / -1" }}>
             <button className="save-btn" disabled={saving}>
               💾 {saving ? "Speichert..." : editId ? "Änderungen speichern" : "Projekt anlegen"}
@@ -207,13 +206,16 @@ export default function ProjectAdmin() {
       </div>
 
       {message && (
-        <div className="hbz-card" style={{ marginTop: 10, background: "#f5f5f5", padding: "6px 10px" }}>
+        <div
+          className="hbz-card"
+          style={{ marginTop: 10, background: "#f5f5f5", padding: "6px 10px" }}
+        >
           {message}
         </div>
       )}
 
       <div className="hbz-card" style={{ marginTop: 10 }}>
-        <div className="hbz-toolbar">
+        <div className="hbz-toolbar" style={{ display: "flex", justifyContent: "space-between" }}>
           <strong>Projekte</strong>
           <input
             className="hbz-input"
@@ -230,9 +232,12 @@ export default function ProjectAdmin() {
           <table className="nice">
             <thead>
               <tr>
-                <th>Name</th>
-                <th>Kunde</th>
-                <th>Code</th>
+                <th onClick={() => toggleSort("name")} style={{ cursor: "pointer" }}>
+                  Name{sortArrow("name")}
+                </th>
+                <th onClick={() => toggleSort("cost_center")} style={{ cursor: "pointer" }}>
+                  Kostenstelle{sortArrow("cost_center")}
+                </th>
                 <th>Aktiv</th>
                 <th>Aktion</th>
               </tr>
@@ -241,8 +246,7 @@ export default function ProjectAdmin() {
               {filtered.map((p) => (
                 <tr key={p.id}>
                   <td>{p.name}</td>
-                  <td>{p.client || "—"}</td>
-                  <td>{p.code || "—"}</td>
+                  <td>{p.cost_center || "—"}</td>
                   <td>{p.active ? "Ja" : "Nein"}</td>
                   <td>
                     <button className="hbz-btn btn-small" onClick={() => onEdit(p)}>
@@ -260,7 +264,7 @@ export default function ProjectAdmin() {
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={5} style={{ opacity: 0.6 }}>
+                  <td colSpan={4} style={{ opacity: 0.6 }}>
                     Keine Projekte gefunden
                   </td>
                 </tr>
