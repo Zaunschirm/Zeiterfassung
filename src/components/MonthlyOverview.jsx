@@ -55,7 +55,9 @@ export default function MonthlyOverview() {
   // Stammdaten/Filter
   const [employees, setEmployees] = useState([]);
   const [projects, setProjects] = useState([]);
-  const [selectedCodes, setSelectedCodes] = useState(isStaff ? [session?.code].filter(Boolean) : []);
+  const [selectedCodes, setSelectedCodes] = useState(
+    isStaff ? [session?.code].filter(Boolean) : []
+  );
   const [selectedProjectId, setSelectedProjectId] = useState("");
 
   // Daten
@@ -63,6 +65,12 @@ export default function MonthlyOverview() {
   const [rows, setRows] = useState([]);  // v_time_entries_expanded
   const [editId, setEditId] = useState(null);
   const [editState, setEditState] = useState(null);
+
+  // Abgeleitete Liste der aktuell ausgewählten Mitarbeiter (für Anzeige wie bei Zeiterfassung)
+  const selectedEmployees = useMemo(
+    () => employees.filter((e) => selectedCodes.includes(e.code)),
+    [employees, selectedCodes]
+  );
 
   // ----- Stammdaten -----
   useEffect(() => {
@@ -77,8 +85,13 @@ export default function MonthlyOverview() {
           .order("name", { ascending: true });
         if (!error) {
           setEmployees(data || []);
-          if ((data || []).length && selectedCodes.length === 0) {
-            setSelectedCodes(data.map((e) => e.code));
+          // NEU: Standard nur sich selbst anzeigen (wie Zeiterfassung),
+          // NICHT mehr alle Mitarbeiter automatisch auswählen.
+          if ((data || []).length && selectedCodes.length === 0 && session?.code) {
+            const me = (data || []).find((e) => e.code === session.code);
+            if (me) {
+              setSelectedCodes([me.code]);
+            }
           }
         }
       } else {
@@ -125,7 +138,9 @@ export default function MonthlyOverview() {
 
       let ids = [];
       if (isManager) {
-        ids = employees.filter((e) => selectedCodes.includes(e.code)).map((e) => e.id);
+        ids = employees
+          .filter((e) => selectedCodes.includes(e.code))
+          .map((e) => e.id);
         if (!ids.length) { setRows([]); setLoading(false); return; }
       }
 
@@ -142,9 +157,13 @@ export default function MonthlyOverview() {
       }
       if (selectedProjectId) q = q.eq("project_id", selectedProjectId);
 
-      let { data, error } = await q.order("employee_name", { ascending: true }).order("work_date", { ascending: true });
+      let { data, error } = await q
+        .order("employee_name", { ascending: true })
+        .order("work_date", { ascending: true });
       if (error?.code === "42703") {
-        const retry = await q.order("work_date", { ascending: true }).order("id", { ascending: true });
+        const retry = await q
+          .order("work_date", { ascending: true })
+          .order("id", { ascending: true });
         data = retry.data; error = retry.error;
       }
       if (error) throw error;
@@ -156,6 +175,23 @@ export default function MonthlyOverview() {
       setLoading(false);
     }
   }
+
+  // Handy/Browser: bei Rückkehr in die App Monatsdaten neu laden
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        loadMonth();
+      }
+    };
+
+    window.addEventListener("focus", handleVisibility);
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    return () => {
+      window.removeEventListener("focus", handleVisibility);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, []); // nur einmal registrieren
 
   // ----- Gruppierungen -----
   const grouped = useMemo(() => {
@@ -219,7 +255,7 @@ export default function MonthlyOverview() {
     };
   }, [grouped]);
 
-  // ----- Bearbeiten / Löschen (unverändert außer Anzeige) -----
+  // ----- Bearbeiten / Löschen -----
   function startEdit(row) {
     if (!isManager) return;
     const start = row.start_min ?? row.from_min ?? 0;
@@ -233,7 +269,7 @@ export default function MonthlyOverview() {
       to_hm: toHM(end),
       break_min: row.break_min ?? 0,
       note: row.note ?? "",
-      travel_minutes: getTravel(row) || 0, // für spätere Erweiterung (falls Edit von Fahrzeit gewünscht)
+      travel_minutes: getTravel(row) || 0,
     });
   }
   function cancelEdit() { setEditId(null); setEditState(null); }
@@ -252,7 +288,6 @@ export default function MonthlyOverview() {
       break_min: isNaN(br_m) ? 0 : br_m,
       note: (editState.note || "").trim() || null,
     };
-    // Wenn Spalte vorhanden, mit updaten – falls nicht, ignoriert Supabase
     if (typeof editState.travel_minutes !== "undefined") {
       update.travel_minutes = parseInt(editState.travel_minutes || "0", 10);
     }
@@ -271,7 +306,7 @@ export default function MonthlyOverview() {
     await loadMonth();
   }
 
-  // ----- Export: CSV (Fahrzeit separat + in Summe enthalten) -----
+  // ----- Export: CSV -----
   function exportCSV() {
     const headers = ["Datum", "Mitarbeiter", "Projekt", "Start", "Ende", "Pause (min)", "Fahrzeit (min)", "Stunden (inkl. Fahrzeit)", "Überstunden", "Notiz"];
     const lines = [headers.join(";")];
@@ -293,7 +328,6 @@ export default function MonthlyOverview() {
         (r.note || "").replace(/[\r\n;]/g, " "),
       ].join(";"));
     }
-    // Monats-Summenzeile
     lines.push(["", "", "", "", "", "Fahrzeit gesamt (h)", monthTotals.travelHrs.toFixed(2), "Gesamt inkl. Fahrzeit (h)", monthTotals.totalHrs.toFixed(2), ""].join(";"));
 
     const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
@@ -304,7 +338,7 @@ export default function MonthlyOverview() {
     URL.revokeObjectURL(url);
   }
 
-  // ----- Export: PDF (Fahrzeit-Spalte + Summenblock) -----
+  // ----- Export: PDF -----
   function exportPDF() {
     const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
     const title = `Monatsübersicht ${month}`;
@@ -345,7 +379,6 @@ export default function MonthlyOverview() {
       margin: { left: 40, right: 40 },
     });
 
-    // Summen pro Mitarbeiter (inkl. Fahrzeit + extra Fahrzeit)
     const sumHead = [["Mitarbeiter", "Stunden gesamt (inkl. Fahrzeit)", "Fahrzeit gesamt (h)", "Überstunden (Summe Tages-Ü>9h)"]];
     const sumBody = Object.entries(totalsByEmployee).map(([name, t]) => [
       name, t.hrs.toFixed(2), t.travel.toFixed(2), t.ot.toFixed(2),
@@ -359,7 +392,6 @@ export default function MonthlyOverview() {
       margin: { left: 40, right: 40 },
     });
 
-    // Monats-Gesamtblock
     const y0 = doc.lastAutoTable.finalY + 22;
     doc.setFontSize(12);
     doc.text(
@@ -367,7 +399,6 @@ export default function MonthlyOverview() {
       40, y0
     );
 
-    // Wochenblöcke (unverändert, nur Summe beinhaltet jetzt Fahrzeit)
     let y = y0 + 16;
     doc.setFontSize(14);
     doc.text("Wochenübersicht (ISO, Mo–So) – Wochen-Ü > 39,00 h", 40, y);
@@ -429,32 +460,82 @@ export default function MonthlyOverview() {
       <div className="flex flex-wrap items-end gap-3 mb-4">
         <div>
           <label className="block text-sm font-semibold">Monat</label>
-          <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} className="px-3 py-2 rounded border" />
+          <input
+            type="month"
+            value={month}
+            onChange={(e) => setMonth(e.target.value)}
+            className="px-3 py-2 rounded border"
+          />
         </div>
 
         <div>
           <label className="block text-sm font-semibold">Projekt</label>
-          <select value={selectedProjectId} onChange={(e) => setSelectedProjectId(e.target.value)} className="px-3 py-2 rounded border min-w-[220px]">
+          <select
+            value={selectedProjectId}
+            onChange={(e) => setSelectedProjectId(e.target.value)}
+            className="px-3 py-2 rounded border min-w-[220px]"
+          >
             <option value="">Alle</option>
             {projects.map((p) => (
-              <option key={p.id} value={p.id}>{p.code ? `${p.code} · ${p.name}` : p.name}</option>
+              <option key={p.id} value={p.id}>
+                {p.code ? `${p.code} · ${p.name}` : p.name}
+              </option>
             ))}
           </select>
         </div>
 
         {isManager && (
           <div className="flex-1">
-            <label className="block text-sm font-semibold">Mitarbeiter (Mehrfachauswahl)</label>
+            <label className="block text-sm font-semibold">
+              Mitarbeiter (Mehrfachauswahl)
+            </label>
+
+            {/* NEU: Steuerleiste wie bei Zeiterfassung */}
+            <div className="mt-1 mb-1 flex items-center gap-2 text-xs">
+              <button
+                type="button"
+                className="hbz-btn btn-small"
+                onClick={() => setSelectedCodes(employees.map((e) => e.code))}
+              >
+                Alle
+              </button>
+              <button
+                type="button"
+                className="hbz-btn btn-small"
+                onClick={() => setSelectedCodes([])}
+              >
+                Keine
+              </button>
+              <span className="opacity-70">
+                {selectedEmployees.length} / {employees.length} gewählt
+                {selectedEmployees.length > 0 && (
+                  <>
+                    {" "}
+                    (
+                    {selectedEmployees
+                      .map((e) => e.name || e.code)
+                      .join(", ")}
+                    )
+                  </>
+                )}
+              </span>
+            </div>
+
+            {/* Chips wie bisher, nur mit obiger Info */}
             <div className="mt-1 flex flex-wrap gap-2">
               {employees.map((e) => {
                 const active = selectedCodes.includes(e.code);
                 return (
                   <button
                     key={e.id}
-                    className={`px-2 py-1 rounded border ${active ? "bg-[#7b4a2d] text-white" : ""}`}
+                    className={`px-2 py-1 rounded border ${
+                      active ? "bg-[#7b4a2d] text-white" : ""
+                    }`}
                     onClick={() => {
                       setSelectedCodes((prev) =>
-                        prev.includes(e.code) ? prev.filter((c) => c !== e.code) : [...prev, e.code]
+                        prev.includes(e.code)
+                          ? prev.filter((c) => c !== e.code)
+                          : [...prev, e.code]
                       );
                     }}
                   >
@@ -467,19 +548,34 @@ export default function MonthlyOverview() {
         )}
 
         <div className="ml-auto flex gap-2">
-          <button onClick={exportPDF} className="px-3 py-2 rounded border">PDF export</button>
-          <button onClick={exportCSV} className="px-3 py-2 rounded border">CSV export</button>
+          <button
+            onClick={exportPDF}
+            className="px-3 py-2 rounded border"
+          >
+            PDF export
+          </button>
+          <button
+            onClick={exportCSV}
+            className="px-3 py-2 rounded border"
+          >
+            CSV export
+          </button>
         </div>
       </div>
 
       <div className="hbz-card">
-        <div className="px-2 py-2 font-semibold" style={{ background: "#f6eee4", borderRadius: 8 }}>
+        <div
+          className="px-2 py-2 font-semibold"
+          style={{ background: "#f6eee4", borderRadius: 8 }}
+        >
           {loading ? "Lade…" : `Einträge ${month}`}
         </div>
 
         <div className="mo-wrap">
           {grouped.length === 0 ? (
-            <div className="text-sm opacity-70 p-3">Keine Einträge.</div>
+            <div className="text-sm opacity-70 p-3">
+              Keine Einträge.
+            </div>
           ) : (
             <table className="nice mo-table">
               <thead>
@@ -490,7 +586,7 @@ export default function MonthlyOverview() {
                   <th className="mo-col-time">Start</th>
                   <th className="mo-col-time">Ende</th>
                   <th className="mo-col-pause">Pause</th>
-                  <th className="mo-col-pause">Fahrzeit</th>{/* NEU */}
+                  <th className="mo-col-pause">Fahrzeit</th>
                   <th className="mo-col-hrs">Stunden (inkl. Fahrzeit)</th>
                   <th className="mo-col-ot">Überstunden</th>
                   <th className="mo-col-note">Notiz</th>
@@ -511,20 +607,46 @@ export default function MonthlyOverview() {
                         <td>{r.work_date}</td>
                         <td>{r.employee_name}</td>
                         <td>{r.project_name || "—"}</td>
-                        <td style={{ textAlign: "center" }}>{toHM(start)}</td>
-                        <td style={{ textAlign: "center" }}>{toHM(end)}</td>
-                        <td style={{ textAlign: "right" }}>{r.break_min ?? 0} min</td>
-                        <td style={{ textAlign: "right" }}>{r._travel ?? 0} min</td>
-                        <td style={{ textAlign: "right" }}>{hrs.toFixed(2)}</td>
-                        <td style={{ textAlign: "right" }}>{ot.toFixed(2)}</td>
+                        <td style={{ textAlign: "center" }}>
+                          {toHM(start)}
+                        </td>
+                        <td style={{ textAlign: "center" }}>
+                          {toHM(end)}
+                        </td>
+                        <td style={{ textAlign: "right" }}>
+                          {r.break_min ?? 0} min
+                        </td>
+                        <td style={{ textAlign: "right" }}>
+                          {r._travel ?? 0} min
+                        </td>
+                        <td style={{ textAlign: "right" }}>
+                          {hrs.toFixed(2)}
+                        </td>
+                        <td style={{ textAlign: "right" }}>
+                          {ot.toFixed(2)}
+                        </td>
                         <td>{r.note || ""}</td>
                         <td style={{ textAlign: "right" }}>
                           {isManager ? (
                             <>
-                              <button className="hbz-btn btn-small" onClick={() => startEdit(r)}>Bearbeiten</button>
-                              <button className="hbz-btn btn-small" onClick={() => deleteEntry(r.id)}>Löschen</button>
+                              <button
+                                className="hbz-btn btn-small"
+                                onClick={() => startEdit(r)}
+                              >
+                                Bearbeiten
+                              </button>
+                              <button
+                                className="hbz-btn btn-small"
+                                onClick={() => deleteEntry(r.id)}
+                              >
+                                Löschen
+                              </button>
                             </>
-                          ) : <span className="text-xs opacity-60">nur Anzeige</span>}
+                          ) : (
+                            <span className="text-xs opacity-60">
+                              nur Anzeige
+                            </span>
+                          )}
                         </td>
                       </tr>
                     );
@@ -536,29 +658,134 @@ export default function MonthlyOverview() {
                       <td>{r.work_date}</td>
                       <td>{r.employee_name}</td>
                       <td>
-                        <select className="hbz-input" value={editState.project_id ?? ""} onChange={(e) => setEditState((s) => ({ ...s, project_id: e.target.value || null }))}>
+                        <select
+                          className="hbz-input"
+                          value={editState.project_id ?? ""}
+                          onChange={(e) =>
+                            setEditState((s) => ({
+                              ...s,
+                              project_id: e.target.value || null,
+                            }))
+                          }
+                        >
                           <option value="">— ohne Projekt —</option>
-                          {projects.map((p) => <option key={p.id} value={p.id}>{p.code ? `${p.code} · ${p.name}` : p.name}</option>)}
+                          {projects.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.code
+                                ? `${p.code} · ${p.name}`
+                                : p.name}
+                            </option>
+                          ))}
                         </select>
                       </td>
-                      <td style={{ textAlign: "center" }}><input type="time" className="hbz-input" value={editState.from_hm} onChange={(e) => setEditState((s) => ({ ...s, from_hm: e.target.value }))} /></td>
-                      <td style={{ textAlign: "center" }}><input type="time" className="hbz-input" value={editState.to_hm} onChange={(e) => setEditState((s) => ({ ...s, to_hm: e.target.value }))} /></td>
-                      <td style={{ textAlign: "right" }}><input type="number" min={0} step={5} className="hbz-input" value={editState.break_min} onChange={(e) => setEditState((s) => ({ ...s, break_min: e.target.value }))} /></td>
+                      <td style={{ textAlign: "center" }}>
+                        <input
+                          type="time"
+                          className="hbz-input"
+                          value={editState.from_hm}
+                          onChange={(e) =>
+                            setEditState((s) => ({
+                              ...s,
+                              from_hm: e.target.value,
+                            }))
+                          }
+                        />
+                      </td>
+                      <td style={{ textAlign: "center" }}>
+                        <input
+                          type="time"
+                          className="hbz-input"
+                          value={editState.to_hm}
+                          onChange={(e) =>
+                            setEditState((s) => ({
+                              ...s,
+                              to_hm: e.target.value,
+                            }))
+                          }
+                        />
+                      </td>
                       <td style={{ textAlign: "right" }}>
-                        <input type="number" min={0} step={15} className="hbz-input" value={editState.travel_minutes ?? 0} onChange={(e) => setEditState((s) => ({ ...s, travel_minutes: e.target.value }))} />
+                        <input
+                          type="number"
+                          min={0}
+                          step={5}
+                          className="hbz-input"
+                          value={editState.break_min}
+                          onChange={(e) =>
+                            setEditState((s) => ({
+                              ...s,
+                              break_min: e.target.value,
+                            }))
+                          }
+                        />
+                      </td>
+                      <td style={{ textAlign: "right" }}>
+                        <input
+                          type="number"
+                          min={0}
+                          step={15}
+                          className="hbz-input"
+                          value={editState.travel_minutes ?? 0}
+                          onChange={(e) =>
+                            setEditState((s) => ({
+                              ...s,
+                              travel_minutes: e.target.value,
+                            }))
+                          }
+                        />
                       </td>
                       <td colSpan={1} style={{ textAlign: "right" }}>
                         {(() => {
-                          const minsLive = Math.max(hmToMin(editState.to_hm) - hmToMin(editState.from_hm) - (parseInt(editState.break_min || "0", 10) || 0), 0) + (parseInt(editState.travel_minutes || "0", 10) || 0);
+                          const minsLive =
+                            Math.max(
+                              hmToMin(editState.to_hm) -
+                                hmToMin(editState.from_hm) -
+                                (parseInt(
+                                  editState.break_min || "0",
+                                  10
+                                ) || 0),
+                              0
+                            ) +
+                            (parseInt(
+                              editState.travel_minutes || "0",
+                              10
+                            ) || 0);
                           const hrsLive = h2(minsLive);
-                          const otLive = Math.max(hrsLive - 9, 0);
-                          return `${hrsLive.toFixed(2)} h / Ü: ${otLive.toFixed(2)} h`;
+                          const otLive = Math.max(
+                            hrsLive - 9,
+                            0
+                          );
+                          return `${hrsLive.toFixed(
+                            2
+                          )} h / Ü: ${otLive.toFixed(2)} h`;
                         })()}
                       </td>
-                      <td><input type="text" className="hbz-input" value={editState.note} onChange={(e) => setEditState((s) => ({ ...s, note: e.target.value }))} /></td>
+                      <td>
+                        <input
+                          type="text"
+                          className="hbz-input"
+                          value={editState.note}
+                          onChange={(e) =>
+                            setEditState((s) => ({
+                              ...s,
+                              note: e.target.value,
+                            }))
+                          }
+                        />
+                      </td>
                       <td style={{ textAlign: "right" }}>
-                        <button className="hbz-btn btn-small" onClick={saveEdit}>Speichern</button>
-                        <button className="hbz-btn btn-small" onClick={cancelEdit}>Abbrechen</button>
+                        <button
+                          className="hbz-btn btn-small"
+                          onClick={saveEdit}
+                        >
+                          Speichern
+                        </button>
+                        <button
+                          className="hbz-btn btn-small"
+                          onClick={cancelEdit}
+                        >
+                          Abbrechen
+                        </button>
                       </td>
                     </tr>
                   );
