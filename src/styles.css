@@ -204,4 +204,144 @@ table.nice tbody tr:hover {
 .zt-col-actions{ width: 180px; text-align: right; }
 
 /* Zebra-Streifen sind schon für table.nice gesetzt */
+/* === Mobile-Optimierung Zeiterfassung / Monatsübersicht / NavBar === */
+
+/* Größere Slider-Griffe für Start/Ende/Pause (v. a. iPhone) */
+input[type="range"] {
+  width: 100%;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  height: 22px;
+  width: 22px;
+  border-radius: 999px;
+  border: 2px solid #9a6b3c;
+  background: #ffffff;
+}
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 999px;
+  background: #ddd;
+}
+input[type="range"]::-moz-range-thumb {
+  height: 22px;
+  width: 22px;
+  border-radius: 999px;
+  border: 2px solid #9a6b3c;
+  background: #ffffff;
+}
+input[type="range"]::-moz-range-track {
+  height: 4px;
+  border-radius: 999px;
+  background: #ddd;
+}
+
+/* Icon im Speichern-Button (DaySlider) etwas Abstand */
+.btn-icon {
+  margin-right: 6px;
+}
+
+/* ---------- Breakpoint: Handy / kleines Tablet ---------- */
+@media (max-width: 768px) {
+  main {
+    padding: 6px;
+  }
+
+  /* NavBar fix oben, horizontal scrollbar wenn viele Menüpunkte */
+  .hbz-navbar {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .hbz-nav-left {
+    display: flex;
+    gap: 4px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 2px;
+  }
+  .nav-btn {
+    white-space: nowrap;
+    padding-inline: 8px;
+  }
+
+  /* Karten & Container enger machen */
+  .hbz-container {
+    padding: 8px 4px;
+  }
+  .hbz-card {
+    padding: 10px;
+  }
+
+  /* Form-Zeilen untereinander statt nebeneinander */
+  .hbz-row {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 8px;
+  }
+  .hbz-col,
+  .hbz-col-auto {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+  .field-inline label {
+    display: block;
+    margin-bottom: 2px;
+  }
+
+  /* Mitarbeiter-Chips: besser scrollbar */
+  .hbz-chipbar {
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    gap: 6px;
+    padding-bottom: 4px;
+  }
+  .hbz-chip {
+    flex-shrink: 0;
+  }
+
+  /* Großer, fingerfreundlicher Speichern-Button
+     (TimeTracking: .save-bar / .save-btn.lg und
+      DaySlider: .save-btn) */
+  .save-bar {
+    position: sticky;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding-top: 8px;
+    padding-bottom: 8px;
+    background: linear-gradient(
+      to top,
+      rgba(249, 245, 239, 0.96),
+      rgba(249, 245, 239, 0.3)
+    );
+  }
+  .save-btn,
+  .save-btn.lg {
+    width: 100%;
+    padding: 10px 14px;
+    font-size: 16px;
+  }
+
+  /* Tabellen etwas kompakter und besser scrollbar */
+  .mo-wrap {
+    margin: 0 -4px;
+    padding: 8px 4px 8px 0;
+  }
+  table.nice thead th {
+    padding: 6px 8px;
+    font-size: 11px;
+  }
+  table.nice td {
+    padding: 6px 8px;
+    font-size: 12px;
+  }
+  .zt-table {
+    min-width: 760px; /* auf Handy schneller komplett sichtbar per Horizontal-Scroll */
+  }
+}
 

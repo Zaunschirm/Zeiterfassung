@@ -9,6 +9,7 @@ import NavBar from "./components/NavBar.jsx";
 import DaySlider from "./components/DaySlider.jsx";
 import ProjectAdmin from "./components/ProjectAdmin.jsx";
 
+import { APP_VERSION } from "./version";
 import "./styles.css";
 
 export default function App() {
@@ -105,7 +106,8 @@ export default function App() {
       </Routes>
 
       <footer className="app-footer">
-        <span>Holzbau Zaunschirm · Zeiterfassung</span>
+        <div>Holzbau Zaunschirm · Zeiterfassung</div>
+        <div>Version: {APP_VERSION}</div>
       </footer>
     </div>
   );

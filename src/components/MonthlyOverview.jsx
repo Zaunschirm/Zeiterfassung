@@ -11,14 +11,20 @@ const hmToMin = (hm) => {
   const [h, m] = String(hm).split(":").map((x) => parseInt(x || "0", 10));
   return (isNaN(h) ? 0 : h) * 60 + (isNaN(m) ? 0 : m);
 };
-const h2 = (m) => Math.round((m / 60) * 100) / 100; // Minuten -> Stunden (2 Nachkommastellen)
+const h2 = (m) => Math.round((m / 60) * 100) / 100;
+
+// Minuten einer Zeile (Arbeitszeit + Fahrzeit; Pause wird abgezogen)
+const getTravel = (e) => e.travel_minutes ?? e.travel_min ?? 0;
 const entryMinutes = (e) => {
   const start = e.start_min ?? e.from_min ?? 0;
   const end = e.end_min ?? e.to_min ?? 0;
   const pause = e.break_min || 0;
-  return Math.max(end - start - pause, 0);
+  const work = Math.max(end - start - pause, 0);
+  const travel = getTravel(e);
+  return work + (travel || 0);
 };
-// ISO-Week helpers (Mo=1..So=7)
+
+// ISO-Week helpers
 function parseYMD(ymd) { const [y, m, d] = ymd.split("-").map((n) => parseInt(n, 10)); return new Date(y, m - 1, d); }
 function isoWeek(d) {
   const dt = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
@@ -88,7 +94,7 @@ export default function MonthlyOverview() {
         }
       }
 
-      // Projects
+      // Projects (robust, wie vorhanden)
       const tryList = async (source) => {
         const { data, error } = await supabase.from(source).select("*").order("name", { ascending: true });
         if (error) return { ok: false, data: [] };
@@ -157,8 +163,10 @@ export default function MonthlyOverview() {
     for (const r of rows) {
       const key = `${r.employee_name || r.employee_id}||${r.work_date}`;
       const mins = entryMinutes(r);
-      if (!g[key]) g[key] = { ...r, _mins: 0, items: [] };
+      const travel = getTravel(r);
+      if (!g[key]) g[key] = { ...r, _mins: 0, _travel: 0, items: [] };
       g[key]._mins += mins;
+      g[key]._travel += travel || 0;
       g[key].items.push(r);
     }
     return Object.values(g).sort((a, b) =>
@@ -173,9 +181,10 @@ export default function MonthlyOverview() {
       const wk = weekKey(r.work_date);
       const emp = r.employee_name || r.employee_id;
       const key = `${emp}||${wk}`;
-      if (!w[key]) w[key] = { employee: emp, weekKey: wk, days: [], _mins: 0 };
+      if (!w[key]) w[key] = { employee: emp, weekKey: wk, days: [], _mins: 0, _travel: 0 };
       w[key].days.push(r);
       w[key]._mins += r._mins;
+      w[key]._travel += r._travel;
     }
     return Object.values(w).sort((a, b) =>
       a.employee.localeCompare(b.employee) || a.weekKey.localeCompare(b.weekKey)
@@ -187,15 +196,30 @@ export default function MonthlyOverview() {
     for (const r of grouped) {
       const name = r.employee_name || r.employee_id;
       const hrs = h2(r._mins);
+      const travelHrs = h2(r._travel);
       const ot = Math.max(hrs - 9, 0);
-      if (!t[name]) t[name] = { hrs: 0, ot: 0 };
+      if (!t[name]) t[name] = { hrs: 0, travel: 0, ot: 0 };
       t[name].hrs += hrs;
+      t[name].travel += travelHrs;
       t[name].ot += ot;
     }
     return t;
   }, [grouped]);
 
-  // ----- Bearbeiten / Löschen -----
+  const monthTotals = useMemo(() => {
+    let workPlusTravel = 0;
+    let travel = 0;
+    for (const r of grouped) {
+      workPlusTravel += r._mins;
+      travel += r._travel;
+    }
+    return {
+      totalHrs: h2(workPlusTravel),
+      travelHrs: h2(travel),
+    };
+  }, [grouped]);
+
+  // ----- Bearbeiten / Löschen (unverändert außer Anzeige) -----
   function startEdit(row) {
     if (!isManager) return;
     const start = row.start_min ?? row.from_min ?? 0;
@@ -209,6 +233,7 @@ export default function MonthlyOverview() {
       to_hm: toHM(end),
       break_min: row.break_min ?? 0,
       note: row.note ?? "",
+      travel_minutes: getTravel(row) || 0, // für spätere Erweiterung (falls Edit von Fahrzeit gewünscht)
     });
   }
   function cancelEdit() { setEditId(null); setEditState(null); }
@@ -220,17 +245,19 @@ export default function MonthlyOverview() {
     const br_m = parseInt(editState.break_min || "0", 10);
     const prj = projects.find((p) => p.id === editState.project_id) || null;
 
-    const { error } = await supabase
-      .from("time_entries")
-      .update({
-        project_id: prj ? prj.id : null,
-        start_min: from_m,
-        end_min: to_m,
-        break_min: isNaN(br_m) ? 0 : br_m,
-        note: (editState.note || "").trim() || null,
-      })
-      .eq("id", editId);
+    const update = {
+      project_id: prj ? prj.id : null,
+      start_min: from_m,
+      end_min: to_m,
+      break_min: isNaN(br_m) ? 0 : br_m,
+      note: (editState.note || "").trim() || null,
+    };
+    // Wenn Spalte vorhanden, mit updaten – falls nicht, ignoriert Supabase
+    if (typeof editState.travel_minutes !== "undefined") {
+      update.travel_minutes = parseInt(editState.travel_minutes || "0", 10);
+    }
 
+    const { error } = await supabase.from("time_entries").update(update).eq("id", editId);
     if (error) { console.error("update error:", error); alert("Aktualisieren fehlgeschlagen."); return; }
     await loadMonth();
     cancelEdit();
@@ -244,25 +271,31 @@ export default function MonthlyOverview() {
     await loadMonth();
   }
 
-  // ----- Export: CSV -----
+  // ----- Export: CSV (Fahrzeit separat + in Summe enthalten) -----
   function exportCSV() {
-    const headers = ["Datum", "Mitarbeiter", "Projekt", "Start", "Ende", "Pause (min)", "Stunden", "Überstunden", "Notiz"];
+    const headers = ["Datum", "Mitarbeiter", "Projekt", "Start", "Ende", "Pause (min)", "Fahrzeit (min)", "Stunden (inkl. Fahrzeit)", "Überstunden", "Notiz"];
     const lines = [headers.join(";")];
     for (const r of grouped) {
+      const start = r.start_min ?? r.from_min ?? 0;
+      const end = r.end_min ?? r.to_min ?? 0;
       const hrs = h2(r._mins);
       const ot = Math.max(hrs - 9, 0);
       lines.push([
         r.work_date,
         (r.employee_name || ""),
         (r.project_name || ""),
-        toHM(r.start_min ?? r.from_min ?? 0),
-        toHM(r.end_min ?? r.to_min ?? 0),
+        toHM(start),
+        toHM(end),
         r.break_min ?? 0,
+        r._travel ?? 0,
         hrs.toFixed(2),
         ot.toFixed(2),
         (r.note || "").replace(/[\r\n;]/g, " "),
       ].join(";"));
     }
+    // Monats-Summenzeile
+    lines.push(["", "", "", "", "", "Fahrzeit gesamt (h)", monthTotals.travelHrs.toFixed(2), "Gesamt inkl. Fahrzeit (h)", monthTotals.totalHrs.toFixed(2), ""].join(";"));
+
     const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -271,24 +304,27 @@ export default function MonthlyOverview() {
     URL.revokeObjectURL(url);
   }
 
-  // ----- Export: PDF -----
+  // ----- Export: PDF (Fahrzeit-Spalte + Summenblock) -----
   function exportPDF() {
     const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
     const title = `Monatsübersicht ${month}`;
     doc.setFontSize(16);
     doc.text(title, 40, 40);
 
-    const head = [["Datum", "Mitarbeiter", "Projekt", "Start", "Ende", "Pause (min)", "Stunden", "Überstunden", "Notiz"]];
+    const head = [["Datum", "Mitarbeiter", "Projekt", "Start", "Ende", "Pause (min)", "Fahrzeit (min)", "Stunden (inkl. Fahrzeit)", "Überstunden", "Notiz"]];
     const body = grouped.map((r) => {
+      const start = r.start_min ?? r.from_min ?? 0;
+      const end = r.end_min ?? r.to_min ?? 0;
       const hrs = h2(r._mins);
       const ot = Math.max(hrs - 9, 0);
       return [
         r.work_date,
         r.employee_name || "",
         r.project_name || "",
-        toHM(r.start_min ?? r.from_min ?? 0),
-        toHM(r.end_min ?? r.to_min ?? 0),
+        toHM(start),
+        toHM(end),
         r.break_min ?? 0,
+        r._travel ?? 0,
         hrs.toFixed(2),
         ot.toFixed(2),
         (r.note || "").replace(/\r?\n/g, " "),
@@ -309,9 +345,10 @@ export default function MonthlyOverview() {
       margin: { left: 40, right: 40 },
     });
 
-    const sumHead = [["Mitarbeiter", "Stunden gesamt", "Überstunden (Summe Tages-Ü>9h)"]];
+    // Summen pro Mitarbeiter (inkl. Fahrzeit + extra Fahrzeit)
+    const sumHead = [["Mitarbeiter", "Stunden gesamt (inkl. Fahrzeit)", "Fahrzeit gesamt (h)", "Überstunden (Summe Tages-Ü>9h)"]];
     const sumBody = Object.entries(totalsByEmployee).map(([name, t]) => [
-      name, t.hrs.toFixed(2), t.ot.toFixed(2),
+      name, t.hrs.toFixed(2), t.travel.toFixed(2), t.ot.toFixed(2),
     ]);
     autoTable(doc, {
       head: sumHead,
@@ -322,15 +359,26 @@ export default function MonthlyOverview() {
       margin: { left: 40, right: 40 },
     });
 
-    let y = doc.lastAutoTable.finalY + 30;
+    // Monats-Gesamtblock
+    const y0 = doc.lastAutoTable.finalY + 22;
+    doc.setFontSize(12);
+    doc.text(
+      `Monatssummen – Fahrzeit: ${monthTotals.travelHrs.toFixed(2)} h | Gesamt inkl. Fahrzeit: ${monthTotals.totalHrs.toFixed(2)} h`,
+      40, y0
+    );
+
+    // Wochenblöcke (unverändert, nur Summe beinhaltet jetzt Fahrzeit)
+    let y = y0 + 16;
     doc.setFontSize(14);
     doc.text("Wochenübersicht (ISO, Mo–So) – Wochen-Ü > 39,00 h", 40, y);
     y += 10;
 
     weekly.forEach((wk, idx) => {
-      const tableHead = [["Woche", "Mitarbeiter", "Datum", "Projekt", "Start", "Ende", "Pause (min)", "Stunden", "Ü (>9h/Tag)"]];
+      const tableHead = [["Woche", "Mitarbeiter", "Datum", "Projekt", "Start", "Ende", "Pause (min)", "Fahrzeit (min)", "Stunden (inkl. Fahrzeit)", "Ü (>9h/Tag)"]];
       const tableBody = [];
       wk.days.forEach((r) => {
+        const start = r.start_min ?? r.from_min ?? 0;
+        const end = r.end_min ?? r.to_min ?? 0;
         const hrs = h2(r._mins);
         const ot = Math.max(hrs - 9, 0);
         tableBody.push([
@@ -338,9 +386,10 @@ export default function MonthlyOverview() {
           wk.employee,
           r.work_date,
           r.project_name || "",
-          toHM(r.start_min ?? r.from_min ?? 0),
-          toHM(r.end_min ?? r.to_min ?? 0),
+          toHM(start),
+          toHM(end),
           r.break_min ?? 0,
+          r._travel ?? 0,
           hrs.toFixed(2),
           ot.toFixed(2),
         ]);
@@ -423,7 +472,6 @@ export default function MonthlyOverview() {
         </div>
       </div>
 
-      {/* Card + Scrollwrap */}
       <div className="hbz-card">
         <div className="px-2 py-2 font-semibold" style={{ background: "#f6eee4", borderRadius: 8 }}>
           {loading ? "Lade…" : `Einträge ${month}`}
@@ -442,7 +490,8 @@ export default function MonthlyOverview() {
                   <th className="mo-col-time">Start</th>
                   <th className="mo-col-time">Ende</th>
                   <th className="mo-col-pause">Pause</th>
-                  <th className="mo-col-hrs">Stunden</th>
+                  <th className="mo-col-pause">Fahrzeit</th>{/* NEU */}
+                  <th className="mo-col-hrs">Stunden (inkl. Fahrzeit)</th>
                   <th className="mo-col-ot">Überstunden</th>
                   <th className="mo-col-note">Notiz</th>
                   <th className="mo-col-actions"></th>
@@ -465,6 +514,7 @@ export default function MonthlyOverview() {
                         <td style={{ textAlign: "center" }}>{toHM(start)}</td>
                         <td style={{ textAlign: "center" }}>{toHM(end)}</td>
                         <td style={{ textAlign: "right" }}>{r.break_min ?? 0} min</td>
+                        <td style={{ textAlign: "right" }}>{r._travel ?? 0} min</td>
                         <td style={{ textAlign: "right" }}>{hrs.toFixed(2)}</td>
                         <td style={{ textAlign: "right" }}>{ot.toFixed(2)}</td>
                         <td>{r.note || ""}</td>
@@ -494,9 +544,12 @@ export default function MonthlyOverview() {
                       <td style={{ textAlign: "center" }}><input type="time" className="hbz-input" value={editState.from_hm} onChange={(e) => setEditState((s) => ({ ...s, from_hm: e.target.value }))} /></td>
                       <td style={{ textAlign: "center" }}><input type="time" className="hbz-input" value={editState.to_hm} onChange={(e) => setEditState((s) => ({ ...s, to_hm: e.target.value }))} /></td>
                       <td style={{ textAlign: "right" }}><input type="number" min={0} step={5} className="hbz-input" value={editState.break_min} onChange={(e) => setEditState((s) => ({ ...s, break_min: e.target.value }))} /></td>
-                      <td colSpan={2} style={{ textAlign: "right" }}>
+                      <td style={{ textAlign: "right" }}>
+                        <input type="number" min={0} step={15} className="hbz-input" value={editState.travel_minutes ?? 0} onChange={(e) => setEditState((s) => ({ ...s, travel_minutes: e.target.value }))} />
+                      </td>
+                      <td colSpan={1} style={{ textAlign: "right" }}>
                         {(() => {
-                          const minsLive = Math.max(hmToMin(editState.to_hm) - hmToMin(editState.from_hm) - (parseInt(editState.break_min || "0", 10) || 0), 0);
+                          const minsLive = Math.max(hmToMin(editState.to_hm) - hmToMin(editState.from_hm) - (parseInt(editState.break_min || "0", 10) || 0), 0) + (parseInt(editState.travel_minutes || "0", 10) || 0);
                           const hrsLive = h2(minsLive);
                           const otLive = Math.max(hrsLive - 9, 0);
                           return `${hrsLive.toFixed(2)} h / Ü: ${otLive.toFixed(2)} h`;
@@ -513,6 +566,13 @@ export default function MonthlyOverview() {
               </tbody>
             </table>
           )}
+        </div>
+
+        {/* Monats-Summenleiste */}
+        <div className="px-3 py-2 text-sm opacity-80">
+          <b>Monatssummen:</b>&nbsp;
+          Fahrzeit: {monthTotals.travelHrs.toFixed(2)} h &nbsp;|&nbsp;
+          Gesamt inkl. Fahrzeit: {monthTotals.totalHrs.toFixed(2)} h
         </div>
       </div>
     </div>
