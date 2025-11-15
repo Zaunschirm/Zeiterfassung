@@ -8,6 +8,7 @@ import EmployeeList from "./components/EmployeeList.jsx";
 import NavBar from "./components/NavBar.jsx";
 import DaySlider from "./components/DaySlider.jsx";
 import ProjectAdmin from "./components/ProjectAdmin.jsx";
+import YearOverview from "./components/YearOverview.jsx";
 
 import { APP_VERSION } from "./version";
 import "./styles.css";
@@ -35,7 +36,7 @@ export default function App() {
 
   useEffect(() => {
     // Wenn bereits eingeloggt, auf Zeiterfassung weiterleiten
-    if (loggedIn && location.pathname === "/") {
+    if (loggedIn && (location.pathname === "/" || location.pathname === "/login")) {
       navigate("/zeiterfassung", { replace: true });
     }
   }, [loggedIn, location.pathname, navigate]);
@@ -88,6 +89,9 @@ export default function App() {
 
             {/* Projekte anlegen / verwalten */}
             <Route path="/projekte" element={<ProjectAdmin />} />
+
+            {/* Jahresübersicht (nur Admin – zusätzlicher Check in der Komponente) */}
+            <Route path="/jahresuebersicht" element={<YearOverview />} />
 
             {/* Monatsübersicht */}
             <Route path="/monatsuebersicht" element={<MonthlyOverview />} />

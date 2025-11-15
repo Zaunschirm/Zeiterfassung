@@ -23,6 +23,7 @@ export default function NavBar({ onLogout, setCurrentView, currentUser, role }) 
   const linkClass = ({ isActive }) =>
     "nav-btn" + (isActive ? " nav-btn-active" : "");
 
+  const isAdmin = role === "admin";
   const canSeeAdmin = role === "admin" || role === "teamleiter";
 
   return (
@@ -39,7 +40,10 @@ export default function NavBar({ onLogout, setCurrentView, currentUser, role }) 
       }}
     >
       {/* Navigation Links */}
-      <div className="hbz-nav-left" style={{ display: "flex", gap: 6, alignItems: "center" }}>
+      <div
+        className="hbz-nav-left"
+        style={{ display: "flex", gap: 6, alignItems: "center" }}
+      >
         <NavLink
           to="/zeiterfassung"
           className={linkClass}
@@ -81,12 +85,25 @@ export default function NavBar({ onLogout, setCurrentView, currentUser, role }) 
             >
               Mitarbeiter
             </NavLink>
+
+            {isAdmin && (
+              <NavLink
+                to="/jahresuebersicht"
+                className={linkClass}
+                onClick={() => go("/jahresuebersicht", "jahresuebersicht")}
+              >
+                Jahresübersicht
+              </NavLink>
+            )}
           </>
         )}
       </div>
 
       {/* Benutzer & Logout */}
-      <div className="hbz-nav-right" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <div
+        className="hbz-nav-right"
+        style={{ display: "flex", alignItems: "center", gap: 8 }}
+      >
         {currentUser && (
           <span
             title={currentUser?.email || ""}
