@@ -4,7 +4,11 @@ import { getSession } from "../lib/session";
 import EmployeePicker from "./EmployeePicker.jsx";
 
 // Utils
-const toHM = (m) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+const toHM = (m) =>
+  `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(
+    2,
+    "0"
+  )}`;
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const hmToMin = (hm) => {
   if (!hm) return 0;
@@ -14,10 +18,11 @@ const hmToMin = (hm) => {
 // Minuten → Stunden (2 Nachkommastellen)
 const h2 = (m) => Math.round((m / 60) * 100) / 100;
 
-const logSbError = (prefix, error) =>
-  console.error(prefix, { message: error?.message, code: error?.code, details: error?.details, hint: error?.hint });
+// Fahrzeit-Auswahl (0–90 Minuten in 15er-Schritten)
+const TRAVEL_OPTIONS = [0, 15, 30, 45, 60, 75, 90];
 
-// ----------------------------------------------------
+const logSbError = (prefix, error) =>
+  console.error(prefix, error?.message || error);
 
 export default function DaySlider() {
   const session = getSession()?.user || null;
@@ -26,12 +31,15 @@ export default function DaySlider() {
   const isManager = !isStaff;
 
   // Datum
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(() =>
+    new Date().toISOString().slice(0, 10)
+  );
 
   // Slider (Neuanlage)
   const [fromMin, setFromMin] = useState(7 * 60);
   const [toMin, setToMin] = useState(16 * 60 + 30);
   const [breakMin, setBreakMin] = useState(30);
+  const [travelMin, setTravelMin] = useState(0);
   const [note, setNote] = useState("");
 
   // Projekte
@@ -41,158 +49,233 @@ export default function DaySlider() {
 
   // Mitarbeiter (Picker, Mehrfachauswahl für Manager)
   const [employees, setEmployees] = useState([]);
-  const [selectedCodes, setSelectedCodes] = useState(isStaff ? [session?.code].filter(Boolean) : []);
+  const [selectedCodes, setSelectedCodes] = useState(
+    isStaff ? [session?.code].filter(Boolean) : []
+  );
   const [employeeRow, setEmployeeRow] = useState(null);
 
   // Einträge + Bearbeitung
   const [entries, setEntries] = useState([]);
   const [editId, setEditId] = useState(null);
   const [editState, setEditState] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  // ---------------- Projekte laden (robust, inkl. Fallbacks) ----------------
+  const [error, setError] = useState("");
+
+  // ---------------- Projekte laden ----------------
   useEffect(() => {
-    (async () => {
-      setProjectLoadNote(null);
+    async function loadProjects() {
+      try {
+        const tryList = async (source) => {
+          const { data, error } = await supabase
+            .from(source)
+            .select("*")
+            .order("name", { ascending: true });
+          if (error) return { ok: false, data: [] };
+          return { ok: true, data: data || [] };
+        };
 
-      const tryList = async (source) => {
-        const { data, error } = await supabase.from(source).select("*").order("name", { ascending: true });
-        if (error) {
-          logSbError(`[DaySlider] ${source} load error:`, error);
-          return { ok: false, data: [], source };
+        let res = await tryList("projects");
+        if (!res.ok || res.data.length === 0) {
+          for (const fb of ["v_projects", "projects_view", "projects_all"]) {
+            const r = await tryList(fb);
+            if (r.ok && r.data.length > 0) {
+              res = r;
+              break;
+            }
+          }
         }
-        return { ok: true, data: data || [], source };
-      };
 
-      let res = await tryList("projects");
-      if (!res.ok || res.data.length === 0) {
-        for (const fb of ["v_projects", "projects_view", "projects_all"]) {
-          const r = await tryList(fb);
-          if (r.ok && r.data.length > 0) { res = r; break; }
+        if (!res.ok) {
+          setProjects([]);
+          setProjectLoadNote(
+            "Projekte konnten nicht geladen werden. Siehe Konsole."
+          );
+          return;
         }
-      }
 
-      if (!res.ok) {
-        setProjects([]);
-        setProjectLoadNote("Projekte konnten nicht geladen werden. Siehe Konsole (RLS/Policy/Spalten).");
-        return;
+        const list = (res.data || []).filter((p) => p?.disabled !== true);
+        setProjects(list);
+        if (!projectId && list.length === 1) {
+          setProjectId(list[0].id);
+        }
+      } catch (e) {
+        logSbError("[DaySlider] projects load error:", e);
+        setProjectLoadNote(
+          "Projekte konnten nicht geladen werden (Fehler, siehe Konsole)."
+        );
       }
+    }
 
-      const list = (res.data || []).filter((p) => p?.disabled !== true);
-      setProjects(list);
-      if (list.length && !projectId) setProjectId(list[0].id);
-      if (list.length === 0) setProjectLoadNote(`Keine Projekte gefunden (Quelle: ${res.source}). Prüfe Policies/Filter.`);
-    })();
+    loadProjects();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ---------------- Mitarbeiterliste (nur Manager) ----------------
+  // ---------------- Mitarbeiter laden ----------------
   useEffect(() => {
-    if (!isManager) return;
-    (async () => {
-      const { data, error } = await supabase
-        .from("employees")
-        .select("id, code, name, role, active, disabled")
-        .eq("active", true)
-        .eq("disabled", false)
-        .order("name", { ascending: true });
+    async function loadEmployees() {
+      try {
+        if (isManager) {
+          const { data, error } = await supabase
+            .from("employees")
+            .select("id, code, name, role, active, disabled")
+            .eq("active", true)
+            .eq("disabled", false)
+            .order("name", { ascending: true });
 
-      if (error) {
-        logSbError("employees load error:", error);
-        setEmployees([]);
-        return;
+          if (error) throw error;
+          setEmployees(data || []);
+          if (!selectedCodes.length && data && data.length) {
+            setSelectedCodes(data.map((e) => e.code));
+          }
+        } else {
+          const { data, error } = await supabase
+            .from("employees")
+            .select("id, code, name, role, active, disabled")
+            .eq("code", session?.code)
+            .limit(1)
+            .maybeSingle();
+          if (error) throw error;
+          if (data) {
+            setEmployees([data]);
+            setSelectedCodes([data.code]);
+            setEmployeeRow(data);
+          }
+        }
+      } catch (e) {
+        logSbError("[DaySlider] employees load error:", e);
       }
-      const list = data || [];
-      setEmployees(list);
-      if (list.length && selectedCodes.length === 0) setSelectedCodes(list.map((e) => e.code));
-    })();
-  }, [isManager]);
+    }
+
+    loadEmployees();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isManager, session?.code]);
 
   // ---------------- aktiver Mitarbeiter (für Mitarbeiterrolle) ----------------
   useEffect(() => {
-    const code = isStaff ? session?.code : selectedCodes[0];
-    if (!code) { setEmployeeRow(null); return; }
+    if (!isStaff) return;
+    if (!session?.code) return;
     (async () => {
-      const { data, error } = await supabase
-        .from("employees")
-        .select("id, code, name, role, active, disabled")
-        .eq("code", code)
-        .limit(1)
-        .maybeSingle();
-
-      if (!error && data) setEmployeeRow(data);
-      else { setEmployeeRow(null); if (error) logSbError("employee fetch error:", error); }
-    })();
-  }, [isStaff, selectedCodes, session?.code]);
-
-  // ---------------- Einträge laden ----------------
-  useEffect(() => {
-    loadEntries();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [employees, selectedCodes, employeeRow?.id, date, isManager, isStaff]);
-
-  async function fetchEntriesBase(filter) {
-    try {
-      let q = supabase.from("v_time_entries_expanded").select("*").eq("work_date", date);
-      if (filter.employee_id) q = q.eq("employee_id", filter.employee_id);
-      if (filter.employee_ids) q = q.in("employee_id", filter.employee_ids);
-      q = q.order("employee_name", { ascending: true }).order("start_min", { ascending: true });
-      const { data, error } = await q;
-      if (error) throw error;
-      return data || [];
-    } catch (err) {
-      if (err?.code !== "42703") throw err; // Spalte existiert nicht -> fallback
-      let q = supabase.from("v_time_entries_expanded").select("*").eq("work_date", date);
-      if (filter.employee_id) q = q.eq("employee_id", filter.employee_id);
-      if (filter.employee_ids) q = q.in("employee_id", filter.employee_ids);
-      const { data, error } = await q.order("id", { ascending: true });
-      if (error) throw error;
-      return data || [];
-    }
-  }
-
-  async function loadEntries() {
-    try {
-      if (isManager) {
-        if (!employees.length) return setEntries([]);
-        const ids = employees.filter((e) => selectedCodes.includes(e.code)).map((e) => e.id);
-        if (!ids.length) return setEntries([]);
-        const data = await fetchEntriesBase({ employee_ids: ids });
-        setEntries(data);
-        return;
+      try {
+        const { data, error } = await supabase
+          .from("employees")
+          .select("id, code, name, role, active, disabled")
+          .eq("code", session.code)
+          .limit(1)
+          .maybeSingle();
+        if (!error && data) setEmployeeRow(data);
+      } catch (e) {
+        logSbError("[DaySlider] employeeRow load error:", e);
       }
-      if (!employeeRow?.id) return setEntries([]);
-      const data = await fetchEntriesBase({ employee_id: employeeRow.id });
-      setEntries(data);
-    } catch (error) {
-      logSbError("entries load error:", error);
-      setEntries([]);
-    }
-  }
+    })();
+  }, [isStaff, session?.code]);
 
-  // ---------------- Tagesminuten (Anzeige) + Text oben ----------------
+  // ---------------- Anzeige: Tagesstunden + Überstunden ----------------
   const totalMin = useMemo(() => {
     const raw = clamp(toMin - fromMin, 0, 24 * 60);
     return clamp(raw - breakMin, 0, 24 * 60);
   }, [fromMin, toMin, breakMin]);
-  const totalHours = useMemo(() => h2(totalMin), [totalMin]);
-  const totalOvertime = useMemo(() => Math.max(totalHours - 9, 0), [totalHours]);
 
-  // ---------------- Speichern (Manager: Bulk für alle ausgewählten) ----------------
-  async function handleSave() {
+  const totalMinWithTravel = useMemo(
+    () => totalMin + (travelMin || 0),
+    [totalMin, travelMin]
+  );
+
+  const totalHours = useMemo(
+    () => h2(totalMinWithTravel),
+    [totalMinWithTravel]
+  );
+  const totalOvertime = useMemo(
+    () => Math.max(totalHours - 9, 0),
+    [totalHours]
+  );
+
+  // ---------------- Einträge laden ----------------
+  async function loadEntries() {
     try {
-      const prj = projects.find((p) => p.id === projectId) || null;
+      setLoading(true);
+      let query = supabase
+        .from("v_time_entries_expanded")
+        .select("*")
+        .eq("work_date", date)
+        .order("employee_name", { ascending: true })
+        .order("start_min", { ascending: true });
 
-      const base = {
-        work_date: date,
-        project_id: prj ? prj.id : null,
-        start_min: fromMin,   // Tabellenspalten
-        end_min: toMin,
-        break_min: breakMin,
-        note: note?.trim() || null,
-      };
+      if (isManager && selectedCodes.length) {
+        const selEmps = employees.filter((e) =>
+          selectedCodes.includes(e.code)
+        );
+        const ids = selEmps.map((e) => e.id);
+        if (ids.length) query = query.in("employee_id", ids);
+      } else if (isStaff && employeeRow?.id) {
+        query = query.eq("employee_id", employeeRow.id);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      setEntries(data || []);
+    } catch (e) {
+      logSbError("[DaySlider] entries load error:", e);
+      setEntries([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadEntries();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [date, isManager, selectedCodes, employeeRow?.id]);
+
+  // ---------------- Datum +/- ----------------
+  const shiftDate = (days) => {
+    setDate((old) => {
+      const d = new Date(old);
+      d.setDate(d.getDate() + days);
+      return d.toISOString().slice(0, 10);
+    });
+  };
+
+  // ---------------- Speichern ----------------
+  async function handleSave() {
+    setError("");
+
+    if (!projectId) {
+      setError("Bitte Projekt auswählen.");
+      return;
+    }
+
+    const prj = projects.find((p) => p.id === projectId) || null;
+
+    if (!prj) {
+      setError("Ungültiges Projekt.");
+      return;
+    }
+
+    if (toMin <= fromMin) {
+      setError("Ende muss nach Start liegen.");
+      return;
+    }
+
+    const base = {
+      work_date: date,
+      project_id: prj.id,
+      start_min: fromMin,
+      end_min: toMin,
+      break_min: breakMin,
+      travel_minutes: travelMin,
+      travel_cost_center: "FAHRZEIT",
+      note: note?.trim() || null,
+    };
+
+    try {
+      setSaving(true);
 
       if (isManager) {
-        const chosen = employees.filter((e) => selectedCodes.includes(e.code));
+        const chosen = employees.filter((e) =>
+          selectedCodes.includes(e.code)
+        );
         if (chosen.length === 0) {
           alert("Bitte mindestens einen Mitarbeiter auswählen.");
           return;
@@ -203,27 +286,33 @@ export default function DaySlider() {
         alert(`Gespeichert für ${rows.length} Mitarbeiter.`);
       } else {
         if (!employeeRow) {
-          alert("Bitte zuerst Mitarbeiter auswählen.");
+          alert("Mitarbeiterdaten konnten nicht geladen werden.");
           return;
         }
         if (employeeRow.code !== session.code) {
-          alert("Nicht erlaubt: Mitarbeiter dürfen nur für sich selbst buchen.");
+          alert("Nicht erlaubt: Mitarbeiter dürfen nur für sich buchen.");
           return;
         }
-        const { error } = await supabase.from("time_entries").insert({ ...base, employee_id: employeeRow.id });
+        const { error } = await supabase
+          .from("time_entries")
+          .insert({ ...base, employee_id: employeeRow.id });
         if (error) throw error;
         alert("Gespeichert.");
       }
 
       setNote("");
+      setBreakMin(30);
+      setTravelMin(0);
       await loadEntries();
     } catch (err) {
       logSbError("save error:", err);
-      alert("Speichern fehlgeschlagen.");
+      alert("Speichern fehlgeschlagen. Siehe Konsole.");
+    } finally {
+      setSaving(false);
     }
   }
 
-  // ---------------- Bearbeiten / Löschen (ohne total_min) ----------------
+  // ---------------- Bearbeiten / Löschen ----------------
   function startEdit(row) {
     if (!isManager) return;
     setEditId(row.id);
@@ -232,202 +321,348 @@ export default function DaySlider() {
       from_hm: toHM(row.start_min ?? row.from_min ?? 0),
       to_hm: toHM(row.end_min ?? row.to_min ?? 0),
       break_min: row.break_min ?? 0,
-      note: row.note ?? "",
+      travel_minutes: row.travel_minutes ?? row.travel_min ?? 0,
+      note: row.note || "",
     });
   }
-  function cancelEdit() { setEditId(null); setEditState(null); }
+
+  function cancelEdit() {
+    setEditId(null);
+    setEditState(null);
+  }
+
   async function saveEdit() {
     if (!isManager || !editId || !editState) return;
+
     const from_m = hmToMin(editState.from_hm);
     const to_m = hmToMin(editState.to_hm);
-    const br_m = parseInt(editState.break_min || "0", 10);
-    const prj = projects.find((p) => p.id === editState.project_id) || null;
+    if (to_m <= from_m) {
+      alert("Ende muss nach Start liegen.");
+      return;
+    }
 
-    const { error } = await supabase
-      .from("time_entries")
-      .update({
-        project_id: prj ? prj.id : null,
-        start_min: from_m,
-        end_min: to_m,
-        break_min: isNaN(br_m) ? 0 : br_m,
-        note: (editState.note || "").trim() || null,
-      })
-      .eq("id", editId);
+    const upd = {
+      project_id: editState.project_id || null,
+      start_min: from_m,
+      end_min: to_m,
+      break_min: parseInt(editState.break_min || "0", 10) || 0,
+      travel_minutes: parseInt(editState.travel_minutes || "0", 10) || 0,
+      note: editState.note?.trim() || null,
+    };
 
-    if (error) { logSbError("update error:", error); alert("Aktualisieren fehlgeschlagen."); return; }
-    await loadEntries();
-    cancelEdit();
+    try {
+      const { error } = await supabase
+        .from("time_entries")
+        .update(upd)
+        .eq("id", editId);
+      if (error) throw error;
+      await loadEntries();
+      cancelEdit();
+    } catch (e) {
+      logSbError("saveEdit error:", e);
+      alert("Änderung konnte nicht gespeichert werden.");
+    }
   }
+
   async function deleteEntry(id) {
     if (!isManager) return;
-    if (!confirm("Eintrag wirklich löschen?")) return;
-    const { error } = await supabase.from("time_entries").delete().eq("id", id);
-    if (error) { logSbError("delete error:", error); alert("Löschen fehlgeschlagen."); return; }
-    await loadEntries();
+    if (!window.confirm("Eintrag wirklich löschen?")) return;
+    try {
+      const { error } = await supabase
+        .from("time_entries")
+        .delete()
+        .eq("id", id);
+      if (error) throw error;
+      await loadEntries();
+    } catch (e) {
+      logSbError("deleteEntry error:", e);
+      alert("Löschen fehlgeschlagen.");
+    }
   }
 
-  // ---------------- UI ----------------
+  // ---------------- Render ----------------
   return (
-    <div className="max-w-screen-lg mx-auto">
-      {/* Datum */}
-      <div className="flex gap-2 mb-3">
-        <button
-          className="px-3 py-1 rounded border"
-          onClick={() => { const d = new Date(date); d.setDate(d.getDate() - 1); setDate(d.toISOString().slice(0, 10)); }}
-        >«</button>
-
-        <input type="date" className="px-3 py-1 rounded border" value={date} onChange={(e) => setDate(e.target.value)} />
-
-        <button
-          className="px-3 py-1 rounded border"
-          onClick={() => { const d = new Date(date); d.setDate(d.getDate() + 1); setDate(d.toISOString().slice(0, 10)); }}
-        >»</button>
-      </div>
-
-      {/* Mitarbeiter-Picker (nur Manager) */}
-      {isManager && (
-        <EmployeePicker employees={employees} selected={selectedCodes} onChange={setSelectedCodes} enableMulti={true} />
-      )}
-
-      {/* Hinweis, falls Projekte nicht geladen werden konnten */}
-      {projectLoadNote && (
-        <div className="mb-3 px-3 py-2 rounded border" style={{ background: "#fff6d6", borderColor: "#f2c94c" }}>
-          {projectLoadNote}
-        </div>
-      )}
-
-      {/* Karte: Neuer Eintrag */}
-      <div className="rounded-xl shadow mb-6" style={{ background: "#fff", border: "1px solid #d9c9b6" }}>
-        <div className="p-4">
-          {/* Projekt */}
-          <div className="mb-4">
-            <label className="block mb-1 font-semibold">Projekt</label>
-            <select className="w-full px-3 py-2 rounded border" value={projectId ?? ""} onChange={(e) => setProjectId(e.target.value || null)}>
-              <option value="">— ohne Projekt —</option>
-              {projects.map((p) => (
-                <option key={p.id} value={p.id}>{p.code ? `${p.code} · ${p.name}` : p.name}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Slider Start/Ende/Pause */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div>
-              <div className="font-semibold mb-1">Start</div>
-              <input type="range" min={5 * 60} max={19 * 60 + 30} step={15} value={fromMin} onChange={(e) => setFromMin(Number(e.target.value))} className="w-full" />
-              <div className="mt-2 text-2xl font-bold">{toHM(fromMin)}</div>
-            </div>
-            <div>
-              <div className="font-semibold mb-1">Ende</div>
-              <input type="range" min={5 * 60} max={19 * 60 + 30} step={15} value={toMin} onChange={(e) => setToMin(Number(e.target.value))} className="w-full" />
-              <div className="mt-2 text-2xl font-bold">{toHM(toMin)}</div>
-            </div>
-            <div>
-              <div className="font-semibold mb-1">Pause</div>
-              <input type="range" min={0} max={180} step={5} value={breakMin} onChange={(e) => setBreakMin(Number(e.target.value))} className="w-full" />
-              <div className="mt-2 text-2xl font-bold">{breakMin} min</div>
-            </div>
-          </div>
-
-          <div className="mt-4 text-sm">
-            <span className="font-semibold">Arbeitszeit heute:</span>{" "}
-            {totalHours.toFixed(2)} h {totalOvertime > 0 ? `(Ü: ${totalOvertime.toFixed(2)} h)` : ""}
-          </div>
-
-          {/* Notiz */}
-          <div className="mt-4">
-            <label className="block mb-1 font-semibold">Notiz</label>
-            <textarea className="w-full h-24 rounded border px-3 py-2" placeholder="z. B. Tätigkeit, Besonderheiten…" value={note} onChange={(e) => setNote(e.target.value)} />
-          </div>
-
-          {/* Mobilfreundlicher Speichern-Button – FUNKTION UNVERÄNDERT */}
-          <div className="mt-4">
+    <div className="hbz-container">
+      <div className="hbz-card">
+        {/* Kopf */}
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+          <h2 className="page-title">Zeiterfassung</h2>
+          <div className="flex items-center gap-2">
             <button
-              onClick={handleSave}
-              className="save-btn"
-              disabled={isManager ? selectedCodes.length === 0 : !employeeRow}
-              aria-busy={false}
+              className="hbz-btn btn-small"
+              type="button"
+              onClick={() => shiftDate(-1)}
             >
-              <span className="btn-icon" aria-hidden="true">💾</span>
-              Speichern
+              «
+            </button>
+            <input
+              type="date"
+              className="hbz-input"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              style={{ maxWidth: 160 }}
+            />
+            <button
+              className="hbz-btn btn-small"
+              type="button"
+              onClick={() => shiftDate(1)}
+            >
+              »
             </button>
           </div>
         </div>
-      </div>
 
-      {/* Liste + Bearbeiten */}
-      <div className="rounded-xl shadow" style={{ background: "#fff", border: "1px solid #d9c9b6" }}>
-        <div className="px-4 py-3 font-semibold" style={{ background: "#f6eee4" }}>
-          Einträge am {new Date(date).toLocaleDateString("de-AT")}
+        {/* Mitarbeiter-Picker (nur Manager) */}
+        {isManager && (
+          <EmployeePicker
+            employees={employees}
+            selected={selectedCodes}
+            onChange={setSelectedCodes}
+            enableMulti={true}
+          />
+        )}
+
+        {/* Hinweis, falls Projekte nicht geladen werden konnten */}
+        {projectLoadNote && (
+          <div className="text-xs text-red-700 mt-2">{projectLoadNote}</div>
+        )}
+
+        {/* Projekt */}
+        <div className="mb-4 mt-3">
+          <label className="block mb-1 font-semibold">Projekt</label>
+          <select
+            className="w-full px-3 py-2 rounded border"
+            value={projectId ?? ""}
+            onChange={(e) => setProjectId(e.target.value || null)}
+          >
+            <option value="">— ohne Projekt —</option>
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.code ? `${p.code} · ${p.name}` : p.name}
+              </option>
+            ))}
+          </select>
         </div>
 
-        <div className="p-3 overflow-auto">
-          {entries.length === 0 ? (
-            <div className="text-sm opacity-70">Keine Einträge.</div>
-          ) : (
-            /* >>> Nur Optik geändert: nice + zt-table + Spaltenklassen */
+        {/* Slider Start/Ende/Pause */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div>
+            <div className="font-semibold mb-1">Start</div>
+            <input
+              type="range"
+              min={5 * 60}
+              max={19 * 60 + 30}
+              step={15}
+              value={fromMin}
+              onChange={(e) => setFromMin(Number(e.target.value))}
+              className="w-full"
+            />
+            <div className="mt-2 text-2xl font-bold">{toHM(fromMin)}</div>
+          </div>
+          <div>
+            <div className="font-semibold mb-1">Ende</div>
+            <input
+              type="range"
+              min={5 * 60}
+              max={19 * 60 + 30}
+              step={15}
+              value={toMin}
+              onChange={(e) => setToMin(Number(e.target.value))}
+              className="w-full"
+            />
+            <div className="mt-2 text-2xl font-bold">{toHM(toMin)}</div>
+          </div>
+          <div>
+            <div className="font-semibold mb-1">Pause</div>
+            <input
+              type="range"
+              min={0}
+              max={180}
+              step={5}
+              value={breakMin}
+              onChange={(e) => setBreakMin(Number(e.target.value))}
+              className="w-full"
+            />
+            <div className="mt-2 text-2xl font-bold">{breakMin} min</div>
+          </div>
+        </div>
+
+        {/* Fahrzeit – Buttons */}
+        <div className="mt-4">
+          <div className="font-semibold mb-1">Fahrzeit</div>
+          <div className="hbz-chipbar">
+            {TRAVEL_OPTIONS.map((m) => {
+              const active = travelMin === m;
+              let label = `${m} min`;
+              if (m === 60) label = "1:00 h";
+              if (m === 75) label = "1:15 h";
+              if (m === 90) label = "1:30 h";
+              return (
+                <button
+                  key={m}
+                  type="button"
+                  className={`hbz-chip ${active ? "active" : ""}`}
+                  onClick={() => setTravelMin(m)}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+          <div className="text-xs opacity-70 mt-1">
+            Kostenstelle: <b>FAHRZEIT</b> – wird zur Arbeitszeit
+            dazugerechnet und in den Auswertungen separat ausgewiesen.
+          </div>
+        </div>
+
+        <div className="mt-4 text-sm">
+          <span className="font-semibold">Arbeitszeit heute:</span>{" "}
+          {totalHours.toFixed(2)} h{" "}
+          {totalOvertime > 0
+            ? `(Ü: ${totalOvertime.toFixed(2)} h)`
+            : "(keine Überstunden)"}
+        </div>
+
+        {/* Notiz */}
+        <div className="mt-3">
+          <label className="block mb-1 font-semibold">Notiz</label>
+          <textarea
+            className="w-full px-3 py-2 rounded border"
+            rows={3}
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="z. B. Tätigkeit, Besonderheiten…"
+          />
+        </div>
+
+        {error && (
+          <div className="mt-2 text-sm text-red-700">
+            <b>Hinweis:</b> {error}
+          </div>
+        )}
+
+        <div className="save-bar">
+          <button
+            type="button"
+            className="save-btn lg"
+            onClick={handleSave}
+            disabled={saving}
+          >
+            {saving ? "Speichere…" : "Speichern"}
+          </button>
+        </div>
+      </div>
+
+      {/* Tages-Einträge */}
+      <div className="hbz-card" style={{ marginTop: 12 }}>
+        <div className="flex items-center justify-between mb-2">
+          <div className="hbz-section-title">Einträge am {date}</div>
+          {loading && (
+            <span className="text-xs opacity-70">Lade Einträge…</span>
+          )}
+        </div>
+
+        {entries.length === 0 ? (
+          <div className="text-sm opacity-70">Keine Einträge.</div>
+        ) : (
+          <div className="mo-wrap">
             <table className="nice zt-table">
               <thead>
                 <tr>
-                  <th className="zt-col-emp" style={{ textAlign: "left" }}>Mitarbeiter</th>
-                  <th className="zt-col-prj" style={{ textAlign: "left" }}>Projekt</th>
+                  <th className="zt-col-emp">Mitarbeiter</th>
+                  <th className="zt-col-prj">Projekt</th>
                   <th className="zt-col-time">Start</th>
                   <th className="zt-col-time">Ende</th>
                   <th className="zt-col-pause">Pause</th>
+                  <th className="zt-col-pause">Fahrzeit</th>
                   <th className="zt-col-hrs">Stunden</th>
                   <th className="zt-col-ot">Überstunden</th>
-                  <th className="zt-col-note" style={{ textAlign: "left" }}>Notiz</th>
+                  <th className="zt-col-note">Notiz</th>
                   <th className="zt-col-actions"></th>
                 </tr>
               </thead>
               <tbody>
                 {entries.map((r) => {
+                  const start = r.start_min ?? r.from_min ?? 0;
+                  const end = r.end_min ?? r.to_min ?? 0;
+                  const breakM = r.break_min ?? 0;
+                  const travelM =
+                    r.travel_minutes ?? r.travel_min ?? r.travel ?? 0;
+                  const work = Math.max(end - start - breakM, 0);
+                  const total = work + (travelM || 0);
+                  const hrs = h2(total);
+                  const ot = Math.max(hrs - 9, 0);
                   const isEditing = editId === r.id;
-                  if (!isEditing) {
-                    const start = r.start_min ?? r.from_min ?? 0;
-                    const end = r.end_min ?? r.to_min ?? 0;
-                    const minutes = Math.max(end - start - (r.break_min || 0), 0);
-                    const hours = h2(minutes);
-                    const overtime = Math.max(hours - 9, 0);
 
+                  if (!isEditing) {
                     return (
                       <tr key={r.id}>
-                        <td>{r.employee_name}</td>
+                        <td>{r.employee_name || r.employee_id}</td>
                         <td>{r.project_name || "—"}</td>
                         <td style={{ textAlign: "center" }}>{toHM(start)}</td>
                         <td style={{ textAlign: "center" }}>{toHM(end)}</td>
-                        <td style={{ textAlign: "right" }}>{r.break_min ?? 0} min</td>
-                        <td style={{ textAlign: "right" }}>{hours.toFixed(2)}</td>
-                        <td style={{ textAlign: "right" }}>{overtime.toFixed(2)}</td>
+                        <td style={{ textAlign: "right" }}>
+                          {breakM} min
+                        </td>
+                        <td style={{ textAlign: "right" }}>
+                          {travelM} min
+                        </td>
+                        <td style={{ textAlign: "right" }}>
+                          {hrs.toFixed(2)}
+                        </td>
+                        <td style={{ textAlign: "right" }}>
+                          {ot.toFixed(2)}
+                        </td>
                         <td>{r.note || ""}</td>
                         <td style={{ textAlign: "right" }}>
                           {isManager ? (
                             <>
-                              <button className="hbz-btn btn-small" onClick={() => startEdit(r)}>Bearbeiten</button>
-                              <button className="hbz-btn btn-small" onClick={() => deleteEntry(r.id)}>Löschen</button>
+                              <button
+                                className="hbz-btn btn-small"
+                                type="button"
+                                onClick={() => startEdit(r)}
+                              >
+                                Bearbeiten
+                              </button>
+                              <button
+                                className="hbz-btn btn-small"
+                                type="button"
+                                onClick={() => deleteEntry(r.id)}
+                              >
+                                Löschen
+                              </button>
                             </>
                           ) : (
-                            <span className="text-xs opacity-60">nur Anzeige</span>
+                            <span className="text-xs opacity-60">
+                              nur Anzeige
+                            </span>
                           )}
                         </td>
                       </tr>
                     );
                   }
 
-                  // Edit-Zeile (Logik 1:1, nur Klassen für Optik)
+                  // Bearbeitungszeile
                   return (
-                    <tr key={r.id}>
-                      <td>{r.employee_name}</td>
+                    <tr key={`${r.id}-edit`}>
+                      <td>{r.employee_name || r.employee_id}</td>
                       <td>
                         <select
                           className="hbz-input"
                           value={editState.project_id ?? ""}
-                          onChange={(e) => setEditState((s) => ({ ...s, project_id: e.target.value || null }))}
+                          onChange={(e) =>
+                            setEditState((s) => ({
+                              ...s,
+                              project_id: e.target.value || null,
+                            }))
+                          }
                         >
                           <option value="">— ohne Projekt —</option>
                           {projects.map((p) => (
                             <option key={p.id} value={p.id}>
-                              {p.code ? `${p.code} · ${p.name}` : p.name}
+                              {p.code
+                                ? `${p.code} · ${p.name}`
+                                : p.name}
                             </option>
                           ))}
                         </select>
@@ -437,7 +672,12 @@ export default function DaySlider() {
                           type="time"
                           className="hbz-input"
                           value={editState.from_hm}
-                          onChange={(e) => setEditState((s) => ({ ...s, from_hm: e.target.value }))}
+                          onChange={(e) =>
+                            setEditState((s) => ({
+                              ...s,
+                              from_hm: e.target.value,
+                            }))
+                          }
                         />
                       </td>
                       <td style={{ textAlign: "center" }}>
@@ -445,7 +685,12 @@ export default function DaySlider() {
                           type="time"
                           className="hbz-input"
                           value={editState.to_hm}
-                          onChange={(e) => setEditState((s) => ({ ...s, to_hm: e.target.value }))}
+                          onChange={(e) =>
+                            setEditState((s) => ({
+                              ...s,
+                              to_hm: e.target.value,
+                            }))
+                          }
                         />
                       </td>
                       <td style={{ textAlign: "right" }}>
@@ -455,21 +700,47 @@ export default function DaySlider() {
                           step={5}
                           className="hbz-input"
                           value={editState.break_min}
-                          onChange={(e) => setEditState((s) => ({ ...s, break_min: e.target.value }))}
-                          style={{ maxWidth: 90 }}
+                          onChange={(e) =>
+                            setEditState((s) => ({
+                              ...s,
+                              break_min: e.target.value,
+                            }))
+                          }
                         />
                       </td>
-                      <td colSpan={2} style={{ textAlign: "right" }}>
+                      <td style={{ textAlign: "right" }}>
+                        <input
+                          type="number"
+                          min={0}
+                          step={5}
+                          className="hbz-input"
+                          value={editState.travel_minutes ?? 0}
+                          onChange={(e) =>
+                            setEditState((s) => ({
+                              ...s,
+                              travel_minutes: e.target.value,
+                            }))
+                          }
+                        />
+                      </td>
+                      <td colSpan={1} style={{ textAlign: "right" }}>
+                        {/* Live-Anzeige der Stunden */}
                         {(() => {
-                          const mins = Math.max(
-                            hmToMin(editState.to_hm) -
-                              hmToMin(editState.from_hm) -
-                              (parseInt(editState.break_min || "0", 10) || 0),
-                            0
-                          );
-                          const hrs = h2(mins);
-                          const ot = Math.max(hrs - 9, 0);
-                          return `${hrs.toFixed(2)} h / Ü: ${ot.toFixed(2)} h`;
+                          const startM = hmToMin(editState.from_hm);
+                          const endM = hmToMin(editState.to_hm);
+                          const br =
+                            parseInt(editState.break_min || "0", 10) || 0;
+                          const tr =
+                            parseInt(
+                              editState.travel_minutes || "0",
+                              10
+                            ) || 0;
+                          const w = Math.max(endM - startM - br, 0) + tr;
+                          const h = h2(w);
+                          const o = Math.max(h - 9, 0);
+                          return `${h.toFixed(2)} h / Ü: ${o.toFixed(
+                            2
+                          )} h`;
                         })()}
                       </td>
                       <td>
@@ -477,22 +748,38 @@ export default function DaySlider() {
                           type="text"
                           className="hbz-input"
                           value={editState.note}
-                          onChange={(e) => setEditState((s) => ({ ...s, note: e.target.value }))}
+                          onChange={(e) =>
+                            setEditState((s) => ({
+                              ...s,
+                              note: e.target.value,
+                            }))
+                          }
                         />
                       </td>
                       <td style={{ textAlign: "right" }}>
-                        <button className="hbz-btn btn-small" onClick={saveEdit}>Speichern</button>
-                        <button className="hbz-btn btn-small" onClick={cancelEdit}>Abbrechen</button>
+                        <button
+                          className="hbz-btn btn-small"
+                          type="button"
+                          onClick={saveEdit}
+                        >
+                          Speichern
+                        </button>
+                        <button
+                          className="hbz-btn btn-small"
+                          type="button"
+                          onClick={cancelEdit}
+                        >
+                          Abbrechen
+                        </button>
                       </td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );
 }
- 
