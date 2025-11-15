@@ -180,6 +180,7 @@ table.nice .btn-small {
   width: 180px;
   text-align: right;
 }
+
 /* Zebra-Streifen für alle Tabellen mit class="nice" */
 table.nice tbody tr:nth-child(even) {
   background: #f9f5ef;           /* sehr helles Beige */
@@ -192,6 +193,7 @@ table.nice tbody tr:nth-child(odd) {
 table.nice tbody tr:hover {
   background: #faf0e3;           /* etwas kräftiger beim Hover */
 }
+
 /* === Zeiterfassung – Spaltenbreiten/Ausrichtung === */
 .zt-table      { min-width: 1000px; }
 .zt-col-emp    { width: 220px; }
@@ -204,6 +206,7 @@ table.nice tbody tr:hover {
 .zt-col-actions{ width: 180px; text-align: right; }
 
 /* Zebra-Streifen sind schon für table.nice gesetzt */
+
 /* === Mobile-Optimierung Zeiterfassung / Monatsübersicht / NavBar === */
 
 /* Größere Slider-Griffe für Start/Ende/Pause (v. a. iPhone) */
@@ -345,3 +348,122 @@ input[type="range"]::-moz-range-track {
   }
 }
 
+/* ===== Monatsübersicht – Kartenansicht für Handy ===== */
+
+.mo-responsive {
+  width: 100%;
+}
+
+.mo-table-wrapper {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.mo-cards {
+  display: none; /* wird nur auf kleinen Screens aktiviert */
+}
+
+.mo-card {
+  border-radius: 12px;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  padding: 8px 10px;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  font-size: 13px;
+}
+
+.mo-card-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.mo-card-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mo-card-date {
+  font-weight: 600;
+}
+
+.mo-card-emp {
+  opacity: 0.8;
+}
+
+.mo-card-hours {
+  text-align: right;
+}
+
+.mo-card-mainhrs {
+  font-weight: 600;
+}
+
+.mo-card-ot {
+  font-size: 11px;
+  opacity: 0.75;
+}
+
+.mo-card-row {
+  margin-top: 4px;
+}
+
+.mo-card-meta,
+.mo-card-meta-edit {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 12px;
+  opacity: 0.9;
+}
+
+.mo-card-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 1 120px;
+  font-size: 11px;
+}
+
+.mo-card-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.mo-card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 6px;
+}
+
+.mo-card-summary {
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+/* Desktop/Tablet vs Handy-Umschaltung */
+@media (min-width: 769px) {
+  .mo-table-wrapper {
+    display: block;
+  }
+  .mo-cards {
+    display: none;
+  }
+}
+
+@media (max-width: 768px) {
+  .mo-table-wrapper {
+    display: none; /* Tabelle am Handy ausblenden */
+  }
+  .mo-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 8px;
+  }
+}
