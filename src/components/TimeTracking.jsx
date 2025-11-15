@@ -16,7 +16,7 @@ const toHM = (m) =>
 // Vorhandenes Pausenraster lassen wir wie gehabt – hier als Fallback:
 const PAUSE_OPTIONS = [0, 15, 30, 45, 60, 75, 90];
 
-// NEU: Fahrzeit-Optionen (0–90 in 15er-Schritten)
+// Fahrzeit-Optionen (0–90 in 15er-Schritten)
 const TRAVEL_OPTIONS = [0, 15, 30, 45, 60, 75, 90];
 
 // --------------------------------------------------
@@ -46,13 +46,21 @@ export default function TimeTracking() {
 
   const [breakMinutes, setBreakMinutes] = useState(0);
 
-  // NEU: Fahrzeit
+  // Fahrzeit
   const [travelMinutes, setTravelMinutes] = useState(0);
   const travelCostCenter = "FAHRZEIT"; // fix
 
   // Mehrfachauswahl Mitarbeiter
   const [selectedEmployees, setSelectedEmployees] = useState(
-    employeeFromLS?.code ? [{ id: employeeFromLS.id, code: employeeFromLS.code, name: employeeFromLS.name }] : []
+    employeeFromLS?.code
+      ? [
+          {
+            id: employeeFromLS.id,
+            code: employeeFromLS.code,
+            name: employeeFromLS.name,
+          },
+        ]
+      : []
   );
 
   const [note, setNote] = useState("");
@@ -147,20 +155,21 @@ export default function TimeTracking() {
   const save = async () => {
     setError("");
     if (!projectId) return setError("Bitte ein Projekt auswählen.");
-    if (!selectedEmployees.length) return setError("Bitte mindestens einen Mitarbeiter auswählen.");
+    if (!selectedEmployees.length)
+      return setError("Bitte mindestens einen Mitarbeiter auswählen.");
     if (toMin <= fromMin) return setError("Zeitspanne ungültig.");
 
     const base = {
       work_date: date,
       project_id: projectId,
-      // Start/Ende in Minuten (du nutzt diese Spalten bereits)
+      // Start/Ende in Minuten
       start_min: fromMin,
       end_min: toMin,
       break_min: breakMinutes ?? 0,
 
       note: (note || "").trim() || null,
 
-      // NEU: Fahrzeit
+      // Fahrzeit
       travel_minutes: travelMinutes ?? 0,
       travel_cost_center: travelCostCenter,
     };
@@ -189,11 +198,13 @@ export default function TimeTracking() {
         JSON.stringify([
           ...rows.map((r) => ({
             ...r,
-            id: `local-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+            id: `local-${Date.now()}-${Math.random()
+              .toString(36)
+              .slice(2)}`,
             created_at: new Date().toISOString(),
             employee_name:
-              employees.find((x) => (x.id ?? x.code ?? x.name) === r.employee_id)?.name ||
-              r.employee_id,
+              employees.find((x) => (x.id ?? x.code ?? x.name) === r.employee_id)
+                ?.name || r.employee_id,
             project_name:
               projects.find((x) => x.id === r.project_id)?.name || r.project_id,
           })),
@@ -214,7 +225,10 @@ export default function TimeTracking() {
     <div className="hbz-container">
       <div className="hbz-card tight">
         <div className="hbz-row">
-          <h2 className="hbz-title" style={{ color: "var(--hbz-brown)", margin: 0 }}>
+          <h2
+            className="hbz-title"
+            style={{ color: "var(--hbz-brown)", margin: 0 }}
+          >
             Zeiterfassung
           </h2>
           <div className="hbz-col-auto">
@@ -317,7 +331,7 @@ export default function TimeTracking() {
           />
         </div>
 
-        {/* PAUSE + FAHRZEIT nebeneinander, ohne irgendwas zu löschen */}
+        {/* PAUSE + FAHRZEIT nebeneinander */}
         <div className="hbz-row" style={{ marginTop: 10 }}>
           <div className="hbz-col" style={{ maxWidth: 220 }}>
             <label className="hbz-label">Pause (min)</label>
@@ -334,21 +348,33 @@ export default function TimeTracking() {
             </select>
           </div>
 
-          <div className="hbz-col" style={{ maxWidth: 220 }}>
-            <label className="hbz-label">Fahrzeit (min)</label>
-            <select
-              className="hbz-input"
-              value={travelMinutes}
-              onChange={(e) => setTravelMinutes(parseInt(e.target.value, 10))}
-            >
-              {TRAVEL_OPTIONS.map((m) => (
-                <option key={m} value={m}>
-                  {m} min
-                </option>
-              ))}
-            </select>
+          {/* NEU: Fahrzeit als Buttons */}
+          <div className="hbz-col" style={{ maxWidth: 260 }}>
+            <label className="hbz-label">Fahrzeit</label>
+            <div className="hbz-chipbar">
+              {TRAVEL_OPTIONS.map((m) => {
+                const active = travelMinutes === m;
+                // Schönerer Text ab 60 min
+                let label = `${m} min`;
+                if (m === 60) label = "1:00 h";
+                if (m === 75) label = "1:15 h";
+                if (m === 90) label = "1:30 h";
+
+                return (
+                  <button
+                    key={m}
+                    type="button"
+                    className={`hbz-chip ${active ? "active" : ""}`}
+                    onClick={() => setTravelMinutes(m)}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
             <div className="text-xs opacity-70" style={{ marginTop: 2 }}>
-              Kostenstelle: <b>FAHRZEIT</b> – wird zur Arbeitszeit dazugerechnet und separat ausgewiesen.
+              Kostenstelle: <b>FAHRZEIT</b> – wird zur Arbeitszeit dazugerechnet
+              und separat ausgewiesen.
             </div>
           </div>
 
@@ -365,10 +391,18 @@ export default function TimeTracking() {
         <div className="hbz-section-title">Mitarbeiter</div>
 
         <div className="hbz-row" style={{ marginBottom: 6, gap: 8 }}>
-          <button type="button" className="hbz-btn btn-small" onClick={selectAllEmps}>
+          <button
+            type="button"
+            className="hbz-btn btn-small"
+            onClick={selectAllEmps}
+          >
             Alle
           </button>
-          <button type="button" className="hbz-btn btn-small" onClick={selectNoneEmps}>
+          <button
+            type="button"
+            className="hbz-btn btn-small"
+            onClick={selectNoneEmps}
+          >
             Keine
           </button>
           <div className="help">
