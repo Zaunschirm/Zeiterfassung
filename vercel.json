@@ -1,6 +1,9 @@
 {
   "version": 2,
   "routes": [
+    { "src": "/manifest.webmanifest", "dest": "/manifest.webmanifest" },
+    { "src": "/icon-192.png", "dest": "/icon-192.png" },
+    { "src": "/icon-512.png", "dest": "/icon-512.png" },
     { "src": "/assets/(.*)", "dest": "/assets/$1" },
     { "src": "/(.*)", "dest": "/index.html" }
   ]
