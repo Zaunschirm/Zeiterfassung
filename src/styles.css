@@ -183,7 +183,7 @@ table.nice .btn-small {
 
 /* Zebra-Streifen für alle Tabellen mit class="nice" */
 table.nice tbody tr:nth-child(even) {
-  background: #f9f5ef;           /* sehr helles Beige */
+  background: #f9f5ef; /* sehr helles Beige */
 }
 table.nice tbody tr:nth-child(odd) {
   background: #ffffff;
@@ -191,25 +191,45 @@ table.nice tbody tr:nth-child(odd) {
 
 /* Hover soll weiterhin gut sichtbar sein */
 table.nice tbody tr:hover {
-  background: #faf0e3;           /* etwas kräftiger beim Hover */
+  background: #faf0e3; /* etwas kräftiger beim Hover */
 }
 
 /* === Zeiterfassung – Spaltenbreiten/Ausrichtung === */
-.zt-table      { min-width: 1000px; }
-.zt-col-emp    { width: 220px; }
-.zt-col-prj    { width: 220px; }
-.zt-col-time   { width: 86px;  text-align: center; }
-.zt-col-pause  { width: 110px; text-align: right; }
-.zt-col-hrs    { width: 100px; text-align: right; }
-.zt-col-ot     { width: 120px; text-align: right; }
-.zt-col-note   { min-width: 280px; }
-.zt-col-actions{ width: 180px; text-align: right; }
-
-/* Zebra-Streifen sind schon für table.nice gesetzt */
+.zt-table {
+  min-width: 1000px;
+}
+.zt-col-emp {
+  width: 220px;
+}
+.zt-col-prj {
+  width: 220px;
+}
+.zt-col-time {
+  width: 86px;
+  text-align: center;
+}
+.zt-col-pause {
+  width: 110px;
+  text-align: right;
+}
+.zt-col-hrs {
+  width: 100px;
+  text-align: right;
+}
+.zt-col-ot {
+  width: 120px;
+  text-align: right;
+}
+.zt-col-note {
+  min-width: 280px;
+}
+.zt-col-actions {
+  width: 180px;
+  text-align: right;
+}
 
 /* === Mobile-Optimierung Zeiterfassung / Monatsübersicht / NavBar === */
 
-/* Größere Slider-Griffe für Start/Ende/Pause (v. a. iPhone) */
 input[type="range"] {
   width: 100%;
 }
@@ -250,7 +270,6 @@ input[type="range"]::-moz-range-track {
     padding: 6px;
   }
 
-  /* NavBar fix oben, horizontal scrollbar wenn viele Menüpunkte */
   .hbz-navbar {
     position: sticky;
     top: 0;
@@ -270,7 +289,6 @@ input[type="range"]::-moz-range-track {
     padding-inline: 8px;
   }
 
-  /* Karten & Container enger machen */
   .hbz-container {
     padding: 8px 4px;
   }
@@ -278,7 +296,6 @@ input[type="range"]::-moz-range-track {
     padding: 10px;
   }
 
-  /* Form-Zeilen untereinander statt nebeneinander */
   .hbz-row {
     flex-direction: column !important;
     align-items: stretch !important;
@@ -294,7 +311,6 @@ input[type="range"]::-moz-range-track {
     margin-bottom: 2px;
   }
 
-  /* Mitarbeiter-Chips: besser scrollbar */
   .hbz-chipbar {
     display: flex;
     flex-wrap: nowrap;
@@ -307,9 +323,6 @@ input[type="range"]::-moz-range-track {
     flex-shrink: 0;
   }
 
-  /* Großer, fingerfreundlicher Speichern-Button
-     (TimeTracking: .save-bar / .save-btn.lg und
-      DaySlider: .save-btn) */
   .save-bar {
     position: sticky;
     bottom: 0;
@@ -330,7 +343,6 @@ input[type="range"]::-moz-range-track {
     font-size: 16px;
   }
 
-  /* Tabellen etwas kompakter und besser scrollbar */
   .mo-wrap {
     margin: 0 -4px;
     padding: 8px 4px 8px 0;
@@ -344,7 +356,7 @@ input[type="range"]::-moz-range-track {
     font-size: 12px;
   }
   .zt-table {
-    min-width: 760px; /* auf Handy schneller komplett sichtbar per Horizontal-Scroll */
+    min-width: 760px;
   }
 }
 
@@ -360,7 +372,7 @@ input[type="range"]::-moz-range-track {
 }
 
 .mo-cards {
-  display: none; /* wird nur auf kleinen Screens aktiviert */
+  display: none;
 }
 
 .mo-card {
@@ -446,7 +458,6 @@ input[type="range"]::-moz-range-track {
   opacity: 0.85;
 }
 
-/* Desktop/Tablet vs Handy-Umschaltung */
 @media (min-width: 769px) {
   .mo-table-wrapper {
     display: block;
@@ -458,12 +469,135 @@ input[type="range"]::-moz-range-track {
 
 @media (max-width: 768px) {
   .mo-table-wrapper {
-    display: none; /* Tabelle am Handy ausblenden */
+    display: none;
   }
   .mo-cards {
     display: flex;
     flex-direction: column;
     gap: 8px;
     margin-top: 8px;
+  }
+}
+
+/* === LOGIN IN FIRMENFARBEN – HOLZBAU ZAUNSCHIRM ==================== */
+
+.hbz-login-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 12px;
+  background: #f6eee4;
+}
+
+.hbz-login-card {
+  width: 100%;
+  max-width: 420px;
+  background: #ffffff;
+  border-radius: 18px;
+  padding: 22px 20px 18px;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.08);
+  border: 1px solid #e0c9aa;
+}
+
+.hbz-login-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.hbz-login-logo-wrap {
+  width: 62px;
+  height: 62px;
+  background: #7b4a2d;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.hbz-login-logo-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.hbz-login-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: #7b4a2d;
+}
+
+.hbz-login-subtitle {
+  font-size: 13px;
+  opacity: 0.75;
+}
+
+.hbz-login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.hbz-login-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #3b2a1a;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.hbz-login-input {
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #d1b89b;
+  font-size: 14px;
+}
+
+.hbz-login-input:focus {
+  border-color: #7b4a2d;
+  box-shadow: 0 0 0 1px rgba(123, 74, 45, 0.25);
+}
+
+.hbz-login-button {
+  margin-top: 6px;
+  padding: 10px 14px;
+  border-radius: 999px;
+  border: none;
+  background: #7b4a2d;
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.hbz-login-button:hover {
+  background: #694028;
+}
+
+.hbz-login-error {
+  padding: 8px;
+  background: #fce2e2;
+  color: #7a1f1f;
+  border-radius: 10px;
+  font-size: 13px;
+}
+
+.hbz-login-hint {
+  margin-top: 4px;
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+@media (max-width: 600px) {
+  .hbz-login-card {
+    padding: 18px 14px;
+    border-radius: 16px;
+  }
+  .hbz-login-title {
+    font-size: 18px;
   }
 }

@@ -10,15 +10,14 @@ export default function LoginPanel({ onLogin }) {
 
   async function handleLogin(e) {
     e.preventDefault();
+    setError("");
 
-    // Direktabfrage auf Supabase RPC (login_lookup)
-    const { data, error } = await supabase.rpc("login_lookup", {
-      p_code: code,
-      p_pin: pin,
+    const { data, error: rpcError } = await supabase.rpc("login_lookup", {
+      p_code: code.trim().toUpperCase(),
+      p_pin: pin.trim(),
     });
 
-    if (error || !data || data.length === 0) {
-      console.error(error);
+    if (rpcError || !data || data.length === 0) {
       setError("Falscher Code oder PIN");
       return;
     }
@@ -29,48 +28,70 @@ export default function LoginPanel({ onLogin }) {
       return;
     }
 
-    // Session lokal speichern
+    // Session speichern
     setSession({ user });
 
-    if (onLogin) {
-      onLogin(user);
-    } else {
-      window.location.hash = "#/zeiterfassung";
-    }
+    if (onLogin) onLogin(user);
   }
 
   return (
-    <div className="login-container">
-      <h2>Login</h2>
-      <form onSubmit={handleLogin} className="login-form">
-        <label>
-          Mitarbeiter-Code:
-          <input
-            type="text"
-            value={code}
-            onChange={(e) => setCode(e.target.value.toUpperCase())}
-            placeholder="z. B. ZS"
-            required
-          />
-        </label>
+    <div className="hbz-login-page">
+      <div className="hbz-login-card">
 
-        <label>
-          PIN:
-          <input
-            type="password"
-            inputMode="numeric"
-            pattern="[0-9]*"
-            value={pin}
-            onChange={(e) => setPin(e.target.value)}
-            placeholder="4-stellig"
-            required
-          />
-        </label>
+        {/* Logo */}
+        <div className="hbz-login-header">
+          <div className="hbz-login-logo-wrap">
+            <img
+              src="/icon-192.png"
+              alt="Holzbau Zaunschirm"
+              className="hbz-login-logo-img"
+            />
+          </div>
+          <div>
+            <div className="hbz-login-title">Holzbau Zaunschirm</div>
+            <div className="hbz-login-subtitle">Zeiterfassung · Anmeldung</div>
+          </div>
+        </div>
 
-        {error && <p className="error-text">{error}</p>}
+        {/* Formular */}
+        <form className="hbz-login-form" onSubmit={handleLogin}>
+          <label className="hbz-login-label">
+            Mitarbeiter-Code
+            <input
+              type="text"
+              className="hbz-login-input"
+              placeholder="z. B. ZS"
+              value={code}
+              onChange={(e) => setCode(e.target.value.toUpperCase())}
+              required
+            />
+          </label>
 
-        <button type="submit">Anmelden</button>
-      </form>
+          <label className="hbz-login-label">
+            PIN
+            <input
+              type="password"
+              className="hbz-login-input"
+              placeholder="4-stellig"
+              inputMode="numeric"
+              value={pin}
+              maxLength={4}
+              onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
+              required
+            />
+          </label>
+
+          {error && <div className="hbz-login-error">{error}</div>}
+
+          <button type="submit" className="hbz-login-button">
+            Anmelden
+          </button>
+
+          <div className="hbz-login-hint">
+            Einfach Code + PIN – keine E-Mail notwendig.
+          </div>
+        </form>
+      </div>
     </div>
   );
 }
