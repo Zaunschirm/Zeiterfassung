@@ -6,10 +6,9 @@ import autoTable from "jspdf-autotable";
 
 // ---- Helpers ----
 const h2 = (m) => Math.round((m / 60) * 100) / 100;
-const yRange = (year) => [`${year}-01-01`, `${year}-12-31`];
 
-// robust: aus Zeile Arbeits-/Fahr-/Gesamtminuten ermitteln
 function splitMinutes(r) {
+  // robust: aus vorhandenen Feldern rechnen
   let work = r.work_minutes;
   let travel =
     r.travel_minutes ?? r.travel_min ?? r.travel ?? 0;
@@ -27,13 +26,34 @@ function splitMinutes(r) {
   return { work, travel, total };
 }
 
+function getMonthRange(ym) {
+  // ym = "YYYY-MM"
+  if (!ym || !/^\d{4}-\d{2}$/.test(ym)) return null;
+  const [y, m] = ym.split("-").map((x) => parseInt(x, 10));
+  const lastDay = new Date(y, m, 0).getDate();
+  return {
+    year: y,
+    from: `${y}-${ym.slice(5)}-01`,
+    to: `${y}-${ym.slice(5)}-${String(lastDay).padStart(2, "0")}`,
+  };
+}
+
 export default function YearOverview() {
   const session = getSession()?.user || null;
   const role = (session?.role || "mitarbeiter").toLowerCase();
   const isAdmin = role === "admin";
 
   const now = new Date();
-  const [year, setYear] = useState(now.getFullYear());
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1;
+  const currentMonthStr = `${currentYear}-${String(currentMonth).padStart(
+    2,
+    "0"
+  )}`;
+
+  const [year, setYear] = useState(currentYear);
+  const [monthFilter, setMonthFilter] = useState(""); // "" = gesamtes Jahr
+
   const [employees, setEmployees] = useState([]);
   const [projects, setProjects] = useState([]);
   const [selectedCodes, setSelectedCodes] = useState([]);
@@ -67,6 +87,7 @@ export default function YearOverview() {
           .eq("active", true)
           .eq("disabled", false)
           .order("name");
+
         setEmployees(e || []);
         setSelectedCodes((e || []).map((x) => x.code));
 
@@ -74,6 +95,7 @@ export default function YearOverview() {
           .from("projects")
           .select("id, code, name, active")
           .order("name");
+
         setProjects((p || []).filter((x) => x?.active !== false));
       } catch (err) {
         console.error("Stammdaten Fehler:", err);
@@ -81,22 +103,34 @@ export default function YearOverview() {
     })();
   }, []);
 
-  // Jahresdaten laden
+  // Daten laden je nach Jahr/Monat/Filter
   useEffect(() => {
-    loadYear();
+    loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [year, selectedCodes, selectedProjectId]);
+  }, [year, monthFilter, selectedCodes, selectedProjectId]);
 
-  async function loadYear() {
+  async function loadData() {
     setLoading(true);
     setError("");
     try {
-      const [from, to] = yRange(year);
+      // Zeitraum bestimmen
+      let from, to, effectiveYear;
+      const mr = getMonthRange(monthFilter);
+      if (mr) {
+        from = mr.from;
+        to = mr.to;
+        effectiveYear = mr.year;
+      } else {
+        from = `${year}-01-01`;
+        to = `${year}-12-31`;
+        effectiveYear = year;
+      }
 
       // IDs der gewählten Mitarbeiter
       const ids = employees
         .filter((e) => selectedCodes.includes(e.code))
         .map((e) => e.id);
+
       if (!ids.length) {
         setRows([]);
         setLoading(false);
@@ -119,19 +153,28 @@ export default function YearOverview() {
       if (error) throw error;
       setRows(data || []);
     } catch (e) {
-      console.error("Year load error:", e);
+      console.error("YearOverview load error:", e);
       setRows([]);
       setError(
-        "Daten konnten nicht geladen werden. Bitte Konsole prüfen oder Jahr/Filter anpassen."
+        "Daten konnten nicht geladen werden. Bitte Konsole prüfen oder Filter anpassen."
       );
     } finally {
       setLoading(false);
     }
   }
 
+  // Aktueller Zeitraum-Text
+  const rangeLabel = useMemo(() => {
+    const mr = getMonthRange(monthFilter);
+    if (mr) {
+      return `Monat ${monthFilter}`;
+    }
+    return `Jahr ${year}`;
+  }, [monthFilter, year]);
+
   // Gruppierungen --------------------------------------------------
 
-  // je Projekt (unabhängig vom Mitarbeiter)
+  // je Projekt
   const byProject = useMemo(() => {
     const map = new Map();
     for (const r of rows) {
@@ -241,7 +284,7 @@ export default function YearOverview() {
   // CSV Export ------------------------------------------------------
   function exportCSV() {
     const lines = [];
-    lines.push(`Jahresübersicht ${year}`);
+    lines.push(`Auswertung ${rangeLabel}`);
     lines.push("");
 
     // Abschnitt Projekte
@@ -323,7 +366,7 @@ export default function YearOverview() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `Jahresuebersicht_${year}.csv`;
+    a.download = `Auswertung_${rangeLabel.replace(/\s+/g, "_")}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -336,7 +379,7 @@ export default function YearOverview() {
       format: "a4",
     });
     doc.setFontSize(16);
-    doc.text(`Jahresübersicht ${year}`, 40, 40);
+    doc.text(`Auswertung ${rangeLabel}`, 40, 40);
 
     // Tabelle 1: Projekte
     autoTable(doc, {
@@ -399,7 +442,7 @@ export default function YearOverview() {
       margin: { left: 40, right: 40 },
     });
 
-    // Tabelle 3: Mitarbeiter x Projekt (ggf. nächste Seite)
+    // Tabelle 3: Mitarbeiter x Projekt
     y = doc.lastAutoTable.finalY + 20;
     autoTable(doc, {
       head: [
@@ -426,13 +469,37 @@ export default function YearOverview() {
       margin: { left: 40, right: 40 },
     });
 
-    doc.save(`Jahresuebersicht_${year}.pdf`);
+    doc.save(`Auswertung_${rangeLabel.replace(/\s+/g, "_")}.pdf`);
   }
+
+  // Button-Handler --------------------------------------------------
+  const handleCurrentMonth = () => {
+    setMonthFilter(currentMonthStr);
+    setYear(currentYear);
+  };
+
+  const handleLastMonth = () => {
+    let y = currentYear;
+    let m = currentMonth - 1;
+    if (m === 0) {
+      m = 12;
+      y = currentYear - 1;
+    }
+    const val = `${y}-${String(m).padStart(2, "0")}`;
+    setMonthFilter(val);
+    setYear(y);
+  };
+
+  const handleCurrentYear = () => {
+    setYear(currentYear);
+    setMonthFilter("");
+  };
 
   // Render ----------------------------------------------------------
   return (
     <div className="max-w-screen-xl mx-auto">
       <div className="flex flex-wrap items-end gap-3 mb-4">
+        {/* Jahr-Auswahl */}
         <div>
           <label className="block text-sm font-semibold">Jahr</label>
           <select
@@ -440,16 +507,15 @@ export default function YearOverview() {
             onChange={(e) => setYear(parseInt(e.target.value, 10))}
             className="px-3 py-2 rounded border"
           >
-            {Array.from({ length: 8 }, (_, i) => now.getFullYear() - i).map(
-              (y) => (
-                <option key={y} value={y}>
-                  {y}
-                </option>
-              )
-            )}
+            {Array.from({ length: 8 }, (_, i) => currentYear - i).map((y) => (
+              <option key={y} value={y}>
+                {y}
+              </option>
+            ))}
           </select>
         </div>
 
+        {/* Projektfilter */}
         <div>
           <label className="block text-sm font-semibold">Projekt</label>
           <select
@@ -466,6 +532,7 @@ export default function YearOverview() {
           </select>
         </div>
 
+        {/* Mitarbeiterfilter */}
         <div className="flex-1">
           <label className="block text-sm font-semibold">
             Mitarbeiter (Mehrfachauswahl)
@@ -476,6 +543,7 @@ export default function YearOverview() {
               return (
                 <button
                   key={e.id}
+                  type="button"
                   className={`px-2 py-1 rounded border ${
                     active ? "bg-[#7b4a2d] text-white" : ""
                   }`}
@@ -494,7 +562,8 @@ export default function YearOverview() {
           </div>
         </div>
 
-        <div className="ml-auto flex gap-2">
+        {/* Export-Buttons */}
+        <div className="ml-auto flex flex-col gap-2">
           <button
             onClick={exportPDF}
             className="px-3 py-2 rounded border"
@@ -512,6 +581,58 @@ export default function YearOverview() {
         </div>
       </div>
 
+      {/* Zeitraum-Buttons */}
+      <div className="hbz-card" style={{ marginBottom: 10 }}>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="text-sm font-semibold">Zeitraum:</div>
+
+          <button
+            type="button"
+            className="hbz-btn btn-small"
+            onClick={handleCurrentMonth}
+          >
+            Aktueller Monat
+          </button>
+
+          <button
+            type="button"
+            className="hbz-btn btn-small"
+            onClick={handleLastMonth}
+          >
+            Letzter Monat
+          </button>
+
+          <div className="flex items-center gap-1">
+            <span className="text-xs opacity-75">Monat auswählbar:</span>
+            <input
+              type="month"
+              className="hbz-input"
+              style={{ maxWidth: 150 }}
+              value={monthFilter}
+              onChange={(e) => {
+                const v = e.target.value;
+                setMonthFilter(v);
+                const mr = getMonthRange(v);
+                if (mr) setYear(mr.year);
+              }}
+            />
+          </div>
+
+          <button
+            type="button"
+            className="hbz-btn btn-small"
+            onClick={handleCurrentYear}
+          >
+            Aktuelles Jahr
+          </button>
+
+          <div className="ml-auto text-sm opacity-80">
+            Aktuell: <b>{rangeLabel}</b>
+          </div>
+        </div>
+      </div>
+
+      {/* Hauptkarte mit Tabellen */}
       <div className="hbz-card">
         <div
           className="px-2 py-2 font-semibold"
@@ -519,7 +640,7 @@ export default function YearOverview() {
         >
           {loading
             ? "Lade…"
-            : `Jahressummen ${year} – Arbeit: ${totals.workH.toFixed(
+            : `Auswertung ${rangeLabel} – Arbeit: ${totals.workH.toFixed(
                 2
               )} h · Fahrzeit: ${totals.travelH.toFixed(
                 2
