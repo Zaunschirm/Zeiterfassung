@@ -73,6 +73,17 @@ export default function MonthlyOverview() {
   const [editId, setEditId] = useState(null);
   const [editState, setEditState] = useState(null);
 
+  // Desktop / Mobile Umschaltung für Tabelle vs. Karten
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth <= 768);
+    };
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
   // Abgeleitet: aktuell ausgewählte Mitarbeiter (für Anzeige wie bei Zeiterfassung)
   const selectedEmployees = useMemo(
     () => employees.filter((e) => selectedCodes.includes(e.code)),
@@ -705,88 +716,338 @@ export default function MonthlyOverview() {
           ) : (
             <div className="mo-responsive">
               {/* Desktop / Tablet: Tabelle */}
-              <div className="mo-table-wrapper">
-                <table className="nice mo-table">
-                  <thead>
-                    <tr>
-                      <th className="mo-col-date">Datum</th>
-                      <th className="mo-col-emp">Mitarbeiter</th>
-                      <th className="mo-col-prj">Projekt</th>
-                      <th className="mo-col-time">Start</th>
-                      <th className="mo-col-time">Ende</th>
-                      <th className="mo-col-pause">Pause</th>
-                      <th className="mo-col-pause">Fahrzeit</th>
-                      <th className="mo-col-hrs">Stunden (inkl. Fahrzeit)</th>
-                      <th className="mo-col-ot">Überstunden</th>
-                      <th className="mo-col-note">Notiz</th>
-                      <th className="mo-col-actions"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {grouped.map((r) => {
-                      const start = r.start_min ?? r.from_min ?? 0;
-                      const end = r.end_min ?? r.to_min ?? 0;
-                      const hrs = h2(r._mins);
-                      const ot = Math.max(hrs - 9, 0);
-                      const isEditing = editId === r.id;
+              {!isMobile && (
+                <div className="mo-table-wrapper">
+                  <table className="nice mo-table">
+                    <thead>
+                      <tr>
+                        <th className="mo-col-date">Datum</th>
+                        <th className="mo-col-emp">Mitarbeiter</th>
+                        <th className="mo-col-prj">Projekt</th>
+                        <th className="mo-col-time">Start</th>
+                        <th className="mo-col-time">Ende</th>
+                        <th className="mo-col-pause">Pause</th>
+                        <th className="mo-col-pause">Fahrzeit</th>
+                        <th className="mo-col-hrs">Stunden (inkl. Fahrzeit)</th>
+                        <th className="mo-col-ot">Überstunden</th>
+                        <th className="mo-col-note">Notiz</th>
+                        <th className="mo-col-actions"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {grouped.map((r) => {
+                        const start = r.start_min ?? r.from_min ?? 0;
+                        const end = r.end_min ?? r.to_min ?? 0;
+                        const hrs = h2(r._mins);
+                        const ot = Math.max(hrs - 9, 0);
+                        const isEditing = editId === r.id;
 
-                      if (!isEditing) {
+                        if (!isEditing) {
+                          return (
+                            <tr key={`${r.id}-${r.work_date}`}>
+                              <td>{r.work_date}</td>
+                              <td>{r.employee_name}</td>
+                              <td>{r.project_name || "—"}</td>
+                              <td style={{ textAlign: "center" }}>
+                                {toHM(start)}
+                              </td>
+                              <td style={{ textAlign: "center" }}>
+                                {toHM(end)}
+                              </td>
+                              <td style={{ textAlign: "right" }}>
+                                {r.break_min ?? 0} min
+                              </td>
+                              <td style={{ textAlign: "right" }}>
+                                {r._travel ?? 0} min
+                              </td>
+                              <td style={{ textAlign: "right" }}>
+                                {hrs.toFixed(2)}
+                              </td>
+                              <td style={{ textAlign: "right" }}>
+                                {ot.toFixed(2)}
+                              </td>
+                              <td>{r.note || ""}</td>
+                              <td style={{ textAlign: "right" }}>
+                                {isManager ? (
+                                  <>
+                                    <button
+                                      className="hbz-btn btn-small"
+                                      onClick={() => startEdit(r)}
+                                    >
+                                      Bearbeiten
+                                    </button>
+                                    <button
+                                      className="hbz-btn btn-small"
+                                      onClick={() => deleteEntry(r.id)}
+                                    >
+                                      Löschen
+                                    </button>
+                                  </>
+                                ) : (
+                                  <span className="text-xs opacity-60">
+                                    nur Anzeige
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        }
+
+                        // Edit-Zeile in der Tabelle
                         return (
-                          <tr key={`${r.id}-${r.work_date}`}>
+                          <tr key={`${r.id}-edit`}>
                             <td>{r.work_date}</td>
                             <td>{r.employee_name}</td>
-                            <td>{r.project_name || "—"}</td>
-                            <td style={{ textAlign: "center" }}>
-                              {toHM(start)}
+                            <td>
+                              <select
+                                className="hbz-input"
+                                value={editState.project_id ?? ""}
+                                onChange={(e) =>
+                                  setEditState((s) => ({
+                                    ...s,
+                                    project_id: e.target.value || null,
+                                  }))
+                                }
+                              >
+                                <option value="">— ohne Projekt —</option>
+                                {projects.map((p) => (
+                                  <option key={p.id} value={p.id}>
+                                    {p.code
+                                      ? `${p.code} · ${p.name}`
+                                      : p.name}
+                                  </option>
+                                ))}
+                              </select>
                             </td>
                             <td style={{ textAlign: "center" }}>
-                              {toHM(end)}
+                              <input
+                                type="time"
+                                className="hbz-input"
+                                value={editState.from_hm}
+                                onChange={(e) =>
+                                  setEditState((s) => ({
+                                    ...s,
+                                    from_hm: e.target.value,
+                                  }))
+                                }
+                              />
+                            </td>
+                            <td style={{ textAlign: "center" }}>
+                              <input
+                                type="time"
+                                className="hbz-input"
+                                value={editState.to_hm}
+                                onChange={(e) =>
+                                  setEditState((s) => ({
+                                    ...s,
+                                    to_hm: e.target.value,
+                                  }))
+                                }
+                              />
                             </td>
                             <td style={{ textAlign: "right" }}>
-                              {r.break_min ?? 0} min
+                              <input
+                                type="number"
+                                min={0}
+                                step={5}
+                                className="hbz-input"
+                                value={editState.break_min}
+                                onChange={(e) =>
+                                  setEditState((s) => ({
+                                    ...s,
+                                    break_min: e.target.value,
+                                  }))
+                                }
+                              />
                             </td>
                             <td style={{ textAlign: "right" }}>
-                              {r._travel ?? 0} min
+                              <input
+                                type="number"
+                                min={0}
+                                step={15}
+                                className="hbz-input"
+                                value={editState.travel_minutes ?? 0}
+                                onChange={(e) =>
+                                  setEditState((s) => ({
+                                    ...s,
+                                    travel_minutes: e.target.value,
+                                  }))
+                                }
+                              />
+                            </td>
+                            <td colSpan={1} style={{ textAlign: "right" }}>
+                              {(() => {
+                                const minsLive =
+                                  Math.max(
+                                    hmToMin(editState.to_hm) -
+                                      hmToMin(editState.from_hm) -
+                                      (parseInt(
+                                        editState.break_min || "0",
+                                        10
+                                      ) || 0),
+                                    0
+                                  ) +
+                                  (parseInt(
+                                    editState.travel_minutes || "0",
+                                    10
+                                  ) || 0);
+                                const hrsLive = h2(minsLive);
+                                const otLive = Math.max(hrsLive - 9, 0);
+                                return `${hrsLive.toFixed(
+                                  2
+                                )} h / Ü: ${otLive.toFixed(2)} h`;
+                              })()}
+                            </td>
+                            <td>
+                              <input
+                                type="text"
+                                className="hbz-input"
+                                value={editState.note}
+                                onChange={(e) =>
+                                  setEditState((s) => ({
+                                    ...s,
+                                    note: e.target.value,
+                                  }))
+                                }
+                              />
                             </td>
                             <td style={{ textAlign: "right" }}>
-                              {hrs.toFixed(2)}
-                            </td>
-                            <td style={{ textAlign: "right" }}>
-                              {ot.toFixed(2)}
-                            </td>
-                            <td>{r.note || ""}</td>
-                            <td style={{ textAlign: "right" }}>
-                              {isManager ? (
-                                <>
-                                  <button
-                                    className="hbz-btn btn-small"
-                                    onClick={() => startEdit(r)}
-                                  >
-                                    Bearbeiten
-                                  </button>
-                                  <button
-                                    className="hbz-btn btn-small"
-                                    onClick={() => deleteEntry(r.id)}
-                                  >
-                                    Löschen
-                                  </button>
-                                </>
-                              ) : (
-                                <span className="text-xs opacity-60">
-                                  nur Anzeige
-                                </span>
-                              )}
+                              <button
+                                className="hbz-btn btn-small"
+                                onClick={saveEdit}
+                              >
+                                Speichern
+                              </button>
+                              <button
+                                className="hbz-btn btn-small"
+                                onClick={cancelEdit}
+                              >
+                                Abbrechen
+                              </button>
                             </td>
                           </tr>
                         );
-                      }
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
 
-                      // Edit-Zeile in der Tabelle
+              {/* Handy: Karten-Ansicht */}
+              {isMobile && (
+                <div className="mo-cards">
+                  {grouped.map((r) => {
+                    const start = r.start_min ?? r.from_min ?? 0;
+                    const end = r.end_min ?? r.to_min ?? 0;
+                    const hrs = h2(r._mins);
+                    const ot = Math.max(hrs - 9, 0);
+                    const isEditing = editId === r.id;
+
+                    if (!isEditing) {
                       return (
-                        <tr key={`${r.id}-edit`}>
-                          <td>{r.work_date}</td>
-                          <td>{r.employee_name}</td>
-                          <td>
+                        <div
+                          key={`card-${r.id}-${r.work_date}`}
+                          className="mo-card"
+                        >
+                          <div className="mo-card-header">
+                            <div className="mo-card-title">
+                              <div className="mo-card-date">{r.work_date}</div>
+                              <div className="mo-card-emp">
+                                {r.employee_name}
+                              </div>
+                            </div>
+                            <div className="mo-card-hours">
+                              <div className="mo-card-mainhrs">
+                                {hrs.toFixed(2)} h
+                              </div>
+                              <div className="mo-card-ot">
+                                Ü: {ot.toFixed(2)} h
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="mo-card-row">
+                            <strong>Projekt: </strong>
+                            {r.project_name || "—"}
+                          </div>
+
+                          <div className="mo-card-row mo-card-meta">
+                            <span>Start: {toHM(start)}</span>
+                            <span>Ende: {toHM(end)}</span>
+                            <span>Pause: {r.break_min ?? 0} min</span>
+                            <span>Fahrzeit: {r._travel ?? 0} min</span>
+                          </div>
+
+                          {r.note && (
+                            <div className="mo-card-row">
+                              <strong>Notiz: </strong>
+                              {r.note}
+                            </div>
+                          )}
+
+                          <div className="mo-card-actions">
+                            {isManager ? (
+                              <>
+                                <button
+                                  className="hbz-btn btn-small"
+                                  onClick={() => startEdit(r)}
+                                >
+                                  Bearbeiten
+                                </button>
+                                <button
+                                  className="hbz-btn btn-small"
+                                  onClick={() => deleteEntry(r.id)}
+                                >
+                                  Löschen
+                                </button>
+                              </>
+                            ) : (
+                              <span className="text-xs opacity-60">
+                                nur Anzeige
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    // Edit-Karte auf Handy
+                    const minsLive =
+                      Math.max(
+                        hmToMin(editState.to_hm) -
+                          hmToMin(editState.from_hm) -
+                          (parseInt(editState.break_min || "0", 10) || 0),
+                        0
+                      ) +
+                      (parseInt(editState.travel_minutes || "0", 10) || 0);
+                    const hrsLive = h2(minsLive);
+                    const otLive = Math.max(hrsLive - 9, 0);
+
+                    return (
+                      <div
+                        key={`card-${r.id}-edit`}
+                        className="mo-card mo-card-edit"
+                      >
+                        <div className="mo-card-header">
+                          <div className="mo-card-title">
+                            <div className="mo-card-date">{r.work_date}</div>
+                            <div className="mo-card-emp">
+                              {r.employee_name}
+                            </div>
+                          </div>
+                          <div className="mo-card-hours">
+                            <div className="mo-card-mainhrs">
+                              {hrsLive.toFixed(2)} h
+                            </div>
+                            <div className="mo-card-ot">
+                              Ü: {otLive.toFixed(2)} h
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="mo-card-row">
+                          <label className="mo-card-label">
+                            Projekt
                             <select
                               className="hbz-input"
                               value={editState.project_id ?? ""}
@@ -806,8 +1067,12 @@ export default function MonthlyOverview() {
                                 </option>
                               ))}
                             </select>
-                          </td>
-                          <td style={{ textAlign: "center" }}>
+                          </label>
+                        </div>
+
+                        <div className="mo-card-row mo-card-meta-edit">
+                          <label className="mo-card-label">
+                            Start
                             <input
                               type="time"
                               className="hbz-input"
@@ -819,8 +1084,9 @@ export default function MonthlyOverview() {
                                 }))
                               }
                             />
-                          </td>
-                          <td style={{ textAlign: "center" }}>
+                          </label>
+                          <label className="mo-card-label">
+                            Ende
                             <input
                               type="time"
                               className="hbz-input"
@@ -832,8 +1098,12 @@ export default function MonthlyOverview() {
                                 }))
                               }
                             />
-                          </td>
-                          <td style={{ textAlign: "right" }}>
+                          </label>
+                        </div>
+
+                        <div className="mo-card-row mo-card-meta-edit">
+                          <label className="mo-card-label">
+                            Pause (min)
                             <input
                               type="number"
                               min={0}
@@ -847,8 +1117,9 @@ export default function MonthlyOverview() {
                                 }))
                               }
                             />
-                          </td>
-                          <td style={{ textAlign: "right" }}>
+                          </label>
+                          <label className="mo-card-label">
+                            Fahrzeit (min)
                             <input
                               type="number"
                               min={0}
@@ -862,31 +1133,12 @@ export default function MonthlyOverview() {
                                 }))
                               }
                             />
-                          </td>
-                          <td colSpan={1} style={{ textAlign: "right" }}>
-                            {(() => {
-                              const minsLive =
-                                Math.max(
-                                  hmToMin(editState.to_hm) -
-                                    hmToMin(editState.from_hm) -
-                                    (parseInt(
-                                      editState.break_min || "0",
-                                      10
-                                    ) || 0),
-                                  0
-                                ) +
-                                (parseInt(
-                                  editState.travel_minutes || "0",
-                                  10
-                                ) || 0);
-                              const hrsLive = h2(minsLive);
-                              const otLive = Math.max(hrsLive - 9, 0);
-                              return `${hrsLive.toFixed(
-                                2
-                              )} h / Ü: ${otLive.toFixed(2)} h`;
-                            })()}
-                          </td>
-                          <td>
+                          </label>
+                        </div>
+
+                        <div className="mo-card-row">
+                          <label className="mo-card-label">
+                            Notiz
                             <input
                               type="text"
                               className="hbz-input"
@@ -898,8 +1150,14 @@ export default function MonthlyOverview() {
                                 }))
                               }
                             />
-                          </td>
-                          <td style={{ textAlign: "right" }}>
+                          </label>
+                        </div>
+
+                        <div className="mo-card-footer">
+                          <span className="mo-card-summary">
+                            {hrsLive.toFixed(2)} h / Ü: {otLive.toFixed(2)} h
+                          </span>
+                          <div className="mo-card-actions">
                             <button
                               className="hbz-btn btn-small"
                               onClick={saveEdit}
@@ -912,256 +1170,13 @@ export default function MonthlyOverview() {
                             >
                               Abbrechen
                             </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Handy: Karten-Ansicht */}
-              <div className="mo-cards">
-                {grouped.map((r) => {
-                  const start = r.start_min ?? r.from_min ?? 0;
-                  const end = r.end_min ?? r.to_min ?? 0;
-                  const hrs = h2(r._mins);
-                  const ot = Math.max(hrs - 9, 0);
-                  const isEditing = editId === r.id;
-
-                  if (!isEditing) {
-                    return (
-                      <div
-                        key={`card-${r.id}-${r.work_date}`}
-                        className="mo-card"
-                      >
-                        <div className="mo-card-header">
-                          <div className="mo-card-title">
-                            <div className="mo-card-date">{r.work_date}</div>
-                            <div className="mo-card-emp">
-                              {r.employee_name}
-                            </div>
                           </div>
-                          <div className="mo-card-hours">
-                            <div className="mo-card-mainhrs">
-                              {hrs.toFixed(2)} h
-                            </div>
-                            <div className="mo-card-ot">
-                              Ü: {ot.toFixed(2)} h
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="mo-card-row">
-                          <strong>Projekt: </strong>
-                          {r.project_name || "—"}
-                        </div>
-
-                        <div className="mo-card-row mo-card-meta">
-                          <span>Start: {toHM(start)}</span>
-                          <span>Ende: {toHM(end)}</span>
-                          <span>Pause: {r.break_min ?? 0} min</span>
-                          <span>Fahrzeit: {r._travel ?? 0} min</span>
-                        </div>
-
-                        {r.note && (
-                          <div className="mo-card-row">
-                            <strong>Notiz: </strong>
-                            {r.note}
-                          </div>
-                        )}
-
-                        <div className="mo-card-actions">
-                          {isManager ? (
-                            <>
-                              <button
-                                className="hbz-btn btn-small"
-                                onClick={() => startEdit(r)}
-                              >
-                                Bearbeiten
-                              </button>
-                              <button
-                                className="hbz-btn btn-small"
-                                onClick={() => deleteEntry(r.id)}
-                              >
-                                Löschen
-                              </button>
-                            </>
-                          ) : (
-                            <span className="text-xs opacity-60">
-                              nur Anzeige
-                            </span>
-                          )}
                         </div>
                       </div>
                     );
-                  }
-
-                  // Edit-Karte auf Handy
-                  const minsLive =
-                    Math.max(
-                      hmToMin(editState.to_hm) -
-                        hmToMin(editState.from_hm) -
-                        (parseInt(editState.break_min || "0", 10) || 0),
-                      0
-                    ) +
-                    (parseInt(editState.travel_minutes || "0", 10) || 0);
-                  const hrsLive = h2(minsLive);
-                  const otLive = Math.max(hrsLive - 9, 0);
-
-                  return (
-                    <div
-                      key={`card-${r.id}-edit`}
-                      className="mo-card mo-card-edit"
-                    >
-                      <div className="mo-card-header">
-                        <div className="mo-card-title">
-                          <div className="mo-card-date">{r.work_date}</div>
-                          <div className="mo-card-emp">
-                            {r.employee_name}
-                          </div>
-                        </div>
-                        <div className="mo-card-hours">
-                          <div className="mo-card-mainhrs">
-                            {hrsLive.toFixed(2)} h
-                          </div>
-                          <div className="mo-card-ot">
-                            Ü: {otLive.toFixed(2)} h
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="mo-card-row">
-                        <label className="mo-card-label">
-                          Projekt
-                          <select
-                            className="hbz-input"
-                            value={editState.project_id ?? ""}
-                            onChange={(e) =>
-                              setEditState((s) => ({
-                                ...s,
-                                project_id: e.target.value || null,
-                              }))
-                            }
-                          >
-                            <option value="">— ohne Projekt —</option>
-                            {projects.map((p) => (
-                              <option key={p.id} value={p.id}>
-                                {p.code
-                                  ? `${p.code} · ${p.name}`
-                                  : p.name}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                      </div>
-
-                      <div className="mo-card-row mo-card-meta-edit">
-                        <label className="mo-card-label">
-                          Start
-                          <input
-                            type="time"
-                            className="hbz-input"
-                            value={editState.from_hm}
-                            onChange={(e) =>
-                              setEditState((s) => ({
-                                ...s,
-                                from_hm: e.target.value,
-                              }))
-                            }
-                          />
-                        </label>
-                        <label className="mo-card-label">
-                          Ende
-                          <input
-                            type="time"
-                            className="hbz-input"
-                            value={editState.to_hm}
-                            onChange={(e) =>
-                              setEditState((s) => ({
-                                ...s,
-                                to_hm: e.target.value,
-                              }))
-                            }
-                          />
-                        </label>
-                      </div>
-
-                      <div className="mo-card-row mo-card-meta-edit">
-                        <label className="mo-card-label">
-                          Pause (min)
-                          <input
-                            type="number"
-                            min={0}
-                            step={5}
-                            className="hbz-input"
-                            value={editState.break_min}
-                            onChange={(e) =>
-                              setEditState((s) => ({
-                                ...s,
-                                break_min: e.target.value,
-                              }))
-                            }
-                          />
-                        </label>
-                        <label className="mo-card-label">
-                          Fahrzeit (min)
-                          <input
-                            type="number"
-                            min={0}
-                            step={15}
-                            className="hbz-input"
-                            value={editState.travel_minutes ?? 0}
-                            onChange={(e) =>
-                              setEditState((s) => ({
-                                ...s,
-                                travel_minutes: e.target.value,
-                              }))
-                            }
-                          />
-                        </label>
-                      </div>
-
-                      <div className="mo-card-row">
-                        <label className="mo-card-label">
-                          Notiz
-                          <input
-                            type="text"
-                            className="hbz-input"
-                            value={editState.note}
-                            onChange={(e) =>
-                              setEditState((s) => ({
-                                ...s,
-                                note: e.target.value,
-                              }))
-                            }
-                          />
-                        </label>
-                      </div>
-
-                      <div className="mo-card-footer">
-                        <span className="mo-card-summary">
-                          {hrsLive.toFixed(2)} h / Ü: {otLive.toFixed(2)} h
-                        </span>
-                        <div className="mo-card-actions">
-                          <button
-                            className="hbz-btn btn-small"
-                            onClick={saveEdit}
-                          >
-                            Speichern
-                          </button>
-                          <button
-                            className="hbz-btn btn-small"
-                            onClick={cancelEdit}
-                          >
-                            Abbrechen
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+                  })}
+                </div>
+              )}
             </div>
           )}
         </div>

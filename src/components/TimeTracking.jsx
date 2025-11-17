@@ -198,9 +198,7 @@ export default function TimeTracking() {
         JSON.stringify([
           ...rows.map((r) => ({
             ...r,
-            id: `local-${Date.now()}-${Math.random()
-              .toString(36)
-              .slice(2)}`,
+            id: `local-${Date.now()}-${Math.random().toString(36).slice(2)}`,
             created_at: new Date().toISOString(),
             employee_name:
               employees.find((x) => (x.id ?? x.code ?? x.name) === r.employee_id)
@@ -313,9 +311,9 @@ export default function TimeTracking() {
 
           <div className="hbz-col-auto">
             <span className="kbd">Arbeitszeit heute</span>&nbsp;
-            <b>
-              {Math.floor(workMinutes / 60)} h {workMinutes % 60} min
-            </b>
+            <b>{workMinutes >= 0 ? `${Math.floor(workMinutes / 60)}:${String(
+              workMinutes % 60
+            ).padStart(2, "0")} h` : "0:00 h"}</b>
           </div>
         </div>
 
@@ -333,19 +331,28 @@ export default function TimeTracking() {
 
         {/* PAUSE + FAHRZEIT nebeneinander */}
         <div className="hbz-row" style={{ marginTop: 10 }}>
+          {/* Pause jetzt als Buttons (15-Minuten-Schritte) */}
           <div className="hbz-col" style={{ maxWidth: 220 }}>
             <label className="hbz-label">Pause (min)</label>
-            <select
-              className="hbz-input"
-              value={breakMinutes}
-              onChange={(e) => setBreakMinutes(parseInt(e.target.value, 10))}
-            >
-              {PAUSE_OPTIONS.map((m) => (
-                <option key={m} value={m}>
-                  {m} min
-                </option>
-              ))}
-            </select>
+            <div className="hbz-chipbar">
+              {PAUSE_OPTIONS.map((m) => {
+                const active = breakMinutes === m;
+                let label = `${m} min`;
+                if (m === 60) label = "1:00 h";
+                if (m === 75) label = "1:15 h";
+                if (m === 90) label = "1:30 h";
+                return (
+                  <button
+                    key={m}
+                    type="button"
+                    className={`hbz-chip ${active ? "active" : ""}`}
+                    onClick={() => setBreakMinutes(m)}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           {/* NEU: Fahrzeit als Buttons */}
@@ -380,9 +387,11 @@ export default function TimeTracking() {
 
           <div className="hbz-col-auto" style={{ alignSelf: "flex-end" }}>
             <span className="kbd">Gesamt inkl. Fahrzeit</span>&nbsp;
-            <b>
-              {Math.floor(totalWithTravel / 60)} h {totalWithTravel % 60} min
-            </b>
+            <b>{totalWithTravel >= 0
+              ? `${Math.floor(totalWithTravel / 60)}:${String(
+                  totalWithTravel % 60
+                ).padStart(2, "0")} h`
+              : "0:00 h"}</b>
           </div>
         </div>
 

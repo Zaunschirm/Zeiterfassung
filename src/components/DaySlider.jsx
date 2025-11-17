@@ -18,7 +18,8 @@ const hmToMin = (hm) => {
 // Minuten → Stunden (2 Nachkommastellen)
 const h2 = (m) => Math.round((m / 60) * 100) / 100;
 
-// Fahrzeit-Auswahl (0–90 Minuten in 15er-Schritten)
+// Pause- und Fahrzeit-Auswahl (0–90 Minuten in 15er-Schritten)
+const PAUSE_OPTIONS = [0, 15, 30, 45, 60, 75, 90];
 const TRAVEL_OPTIONS = [0, 15, 30, 45, 60, 75, 90];
 
 const logSbError = (prefix, error) =>
@@ -35,7 +36,7 @@ export default function DaySlider() {
     new Date().toISOString().slice(0, 10)
   );
 
-  // Slider (Neuanlage)
+  // Zeiten (Neuanlage)
   const [fromMin, setFromMin] = useState(7 * 60);
   const [toMin, setToMin] = useState(16 * 60 + 30);
   const [breakMin, setBreakMin] = useState(30);
@@ -444,7 +445,7 @@ export default function DaySlider() {
           </select>
         </div>
 
-        {/* Slider Start/Ende/Pause */}
+        {/* Start / Ende mit Slider, Pause jetzt Buttons */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div>
             <div className="font-semibold mb-1">Start</div>
@@ -474,15 +475,25 @@ export default function DaySlider() {
           </div>
           <div>
             <div className="font-semibold mb-1">Pause</div>
-            <input
-              type="range"
-              min={0}
-              max={180}
-              step={5}
-              value={breakMin}
-              onChange={(e) => setBreakMin(Number(e.target.value))}
-              className="w-full"
-            />
+            <div className="hbz-chipbar">
+              {PAUSE_OPTIONS.map((m) => {
+                const active = breakMin === m;
+                let label = `${m} min`;
+                if (m === 60) label = "1:00 h";
+                if (m === 75) label = "1:15 h";
+                if (m === 90) label = "1:30 h";
+                return (
+                  <button
+                    key={m}
+                    type="button"
+                    className={`hbz-chip ${active ? "active" : ""}`}
+                    onClick={() => setBreakMin(m)}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
             <div className="mt-2 text-2xl font-bold">{breakMin} min</div>
           </div>
         </div>
@@ -510,8 +521,8 @@ export default function DaySlider() {
             })}
           </div>
           <div className="text-xs opacity-70 mt-1">
-            Kostenstelle: <b>FAHRZEIT</b> – wird zur Arbeitszeit
-            dazugerechnet und in den Auswertungen separat ausgewiesen.
+            Kostenstelle: <b>FAHRZEIT</b> – wird zur Arbeitszeit dazugerechnet
+            und in den Auswertungen separat ausgewiesen.
           </div>
         </div>
 
@@ -601,18 +612,12 @@ export default function DaySlider() {
                         <td>{r.project_name || "—"}</td>
                         <td style={{ textAlign: "center" }}>{toHM(start)}</td>
                         <td style={{ textAlign: "center" }}>{toHM(end)}</td>
-                        <td style={{ textAlign: "right" }}>
-                          {breakM} min
-                        </td>
-                        <td style={{ textAlign: "right" }}>
-                          {travelM} min
-                        </td>
+                        <td style={{ textAlign: "right" }}>{breakM} min</td>
+                        <td style={{ textAlign: "right" }}>{travelM} min</td>
                         <td style={{ textAlign: "right" }}>
                           {hrs.toFixed(2)}
                         </td>
-                        <td style={{ textAlign: "right" }}>
-                          {ot.toFixed(2)}
-                        </td>
+                        <td style={{ textAlign: "right" }}>{ot.toFixed(2)}</td>
                         <td>{r.note || ""}</td>
                         <td style={{ textAlign: "right" }}>
                           {isManager ? (
@@ -660,9 +665,7 @@ export default function DaySlider() {
                           <option value="">— ohne Projekt —</option>
                           {projects.map((p) => (
                             <option key={p.id} value={p.id}>
-                              {p.code
-                                ? `${p.code} · ${p.name}`
-                                : p.name}
+                              {p.code ? `${p.code} · ${p.name}` : p.name}
                             </option>
                           ))}
                         </select>
@@ -724,7 +727,6 @@ export default function DaySlider() {
                         />
                       </td>
                       <td colSpan={1} style={{ textAlign: "right" }}>
-                        {/* Live-Anzeige der Stunden */}
                         {(() => {
                           const startM = hmToMin(editState.from_hm);
                           const endM = hmToMin(editState.to_hm);
@@ -738,9 +740,7 @@ export default function DaySlider() {
                           const w = Math.max(endM - startM - br, 0) + tr;
                           const h = h2(w);
                           const o = Math.max(h - 9, 0);
-                          return `${h.toFixed(2)} h / Ü: ${o.toFixed(
-                            2
-                          )} h`;
+                          return `${h.toFixed(2)} h / Ü: ${o.toFixed(2)} h`;
                         })()}
                       </td>
                       <td>
