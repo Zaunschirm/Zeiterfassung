@@ -1,29 +1,43 @@
-name: Supabase Keepalive
+name: Supabase Keepalive (Daily Ping)
 
 on:
   schedule:
-    - cron: "0 6 * * *"   # täglich 06:00 UTC
+    - cron: "0 5 * * *"   # täglich 05:00 UTC (anpassbar)
   workflow_dispatch:
 
 jobs:
-  ping:
+  keepalive:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Ping Supabase REST API
+      - name: Ping Supabase REST (healthcheck)
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_PROJECT_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
           set -e
 
-          echo "Pinging $SUPABASE_URL"
+          # clean URL (trim whitespace + remove trailing slashes)
+          BASE_URL="$(echo "$SUPABASE_URL" | tr -d '\r\n' | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//; s:/*$::')"
 
-          curl -sS \
+          # build endpoint
+          URL="$BASE_URL/rest/v1/healthcheck?select=id&limit=1"
+
+          echo "Pinging: $URL"
+
+          # do request and print http status
+          STATUS="$(curl -sS -o /dev/null -w "%{http_code}" \
             -H "apikey: $SUPABASE_ANON_KEY" \
             -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
             -H "Accept: application/json" \
-            "$SUPABASE_URL/rest/v1/healthcheck?select=id&limit=1" \
-            -o /dev/null
+            "$URL")"
 
-          echo "✅ Supabase is awake"
+          echo "HTTP Status: $STATUS"
+
+          # fail workflow if not 2xx
+          if [ "$STATUS" -lt 200 ] || [ "$STATUS" -ge 300 ]; then
+            echo "❌ Ping failed"
+            exit 1
+          fi
+
+          echo "✅ Supabase keepalive OK"
