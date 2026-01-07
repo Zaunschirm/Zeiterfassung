@@ -1,26 +1,16 @@
-name: Supabase Keepalive
+- name: Ping Supabase healthcheck
+  run: |
+    set -e
 
-on:
-  schedule:
-    - cron: "30 6 * * *" # täglich 06:30 UTC
-  workflow_dispatch:
+    BASE_URL="$(echo "${{ secrets.KEEPALIVE_SUPABASE_URL }}" | tr -d '\r\n' | sed 's:/*$::')"
+    ANON_KEY="${{ secrets.KEEPALIVE_SUPABASE_ANON_KEY }}"
 
-jobs:
-  ping:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Ping Supabase healthcheck
-        run: |
-          set -e
+    URL="$BASE_URL/rest/v1/healthcheck?select=id&limit=1"
 
-          # Clean up URL (remove newlines + trailing slashes)
-          BASE_URL="$(echo "${{ secrets.SUPABASE_URL }}" | tr -d '\r\n' | sed 's:/*$::')"
-          URL="$BASE_URL/rest/v1/healthcheck?select=id&limit=1"
+    echo "Pinging: $URL"
 
-          echo "Pinging: $URL"
-
-          curl -sS -o /dev/null -w "%{http_code}\n" \
-            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
-            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
-            -H "Accept: application/json" \
-            "$URL"
+    curl -sS -o /dev/null -w "%{http_code}\n" \
+      -H "apikey: $ANON_KEY" \
+      -H "Authorization: Bearer $ANON_KEY" \
+      -H "Accept: application/json" \
+      "$URL"
