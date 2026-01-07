@@ -9,21 +9,38 @@ jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
-      - name: Ping Supabase healthcheck
+      - name: Debug + Ping Supabase healthcheck
         run: |
           set -e
 
-          BASE_RAW="$(echo "${{ secrets.KEEPALIVE_SUPABASE_URL }}" | tr -d '\r\n' | sed 's:/*$::')"
+          # Read secrets
+          RAW_URL="${{ secrets.KEEPALIVE_SUPABASE_URL }}"
           ANON_KEY="${{ secrets.KEEPALIVE_SUPABASE_ANON_KEY }}"
 
+          # Trim whitespace + remove trailing slashes
+          BASE_RAW="$(echo "$RAW_URL" | tr -d '\r\n' | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//; s:/*$::')"
+
+          # If only host was stored, prepend https://
           if echo "$BASE_RAW" | grep -qE '^https?://'; then
             BASE_URL="$BASE_RAW"
           else
             BASE_URL="https://$BASE_RAW"
           fi
 
-          URL="$BASE_URL/rest/v1/healthcheck?select=id&limit=1"
+          # Extract host for DNS debug
+          HOST="$(echo "$BASE_URL" | sed -E 's#^https?://##' | cut -d/ -f1)"
 
+          echo "BASE_URL: [$BASE_URL]"
+          echo "HOST:     [$HOST]"
+          echo "HOST HEX: $(echo -n "$HOST" | od -An -t x1 | tr -d '\n' | sed 's/  */ /g')"
+
+          echo "DNS test (getent):"
+          getent hosts "$HOST" || true
+
+          echo "DNS test (nslookup):"
+          nslookup "$HOST" || true
+
+          URL="$BASE_URL/rest/v1/healthcheck?select=id&limit=1"
           echo "Pinging: $URL"
 
           curl -sS -o /dev/null -w "%{http_code}\n" \
