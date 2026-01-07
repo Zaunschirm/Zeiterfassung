@@ -2,7 +2,7 @@ name: Supabase Keepalive
 
 on:
   schedule:
-    - cron: "30 6 * * *"
+    - cron: "30 6 * * *" # täglich 06:30 UTC
   workflow_dispatch:
 
 jobs:
@@ -12,7 +12,13 @@ jobs:
       - name: Ping Supabase healthcheck
         run: |
           set -e
-          URL="${{ secrets.SUPABASE_URL }}/rest/v1/healthcheck?select=id&limit=1"
+
+          # Clean up URL (remove newlines + trailing slashes)
+          BASE_URL="$(echo "${{ secrets.SUPABASE_URL }}" | tr -d '\r\n' | sed 's:/*$::')"
+          URL="$BASE_URL/rest/v1/healthcheck?select=id&limit=1"
+
+          echo "Pinging: $URL"
+
           curl -sS -o /dev/null -w "%{http_code}\n" \
             -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
             -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
