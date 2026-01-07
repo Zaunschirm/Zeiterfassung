@@ -2,7 +2,7 @@ name: Supabase Keepalive
 
 on:
   schedule:
-    - cron: "30 6 * * *"   # täglich 06:30 UTC (kannst du ändern)
+    - cron: "30 6 * * *"   # täglich 06:30 UTC
   workflow_dispatch:
 
 jobs:
@@ -13,17 +13,16 @@ jobs:
         run: |
           set -e
 
-     BASE_RAW="$(echo "${{ secrets.KEEPALIVE_SUPABASE_URL }}" | tr -d '\r\n' | sed 's:/*$::')"
+          BASE_RAW="$(echo "${{ secrets.KEEPALIVE_SUPABASE_URL }}" | tr -d '\r\n' | sed 's:/*$::')"
+          ANON_KEY="${{ secrets.KEEPALIVE_SUPABASE_ANON_KEY }}"
 
-# if someone stored only the host, prepend https://
-if echo "$BASE_RAW" | grep -qE '^https?://'; then
-  BASE_URL="$BASE_RAW"
-else
-  BASE_URL="https://$BASE_RAW"
-fi
+          if echo "$BASE_RAW" | grep -qE '^https?://'; then
+            BASE_URL="$BASE_RAW"
+          else
+            BASE_URL="https://$BASE_RAW"
+          fi
 
-URL="$BASE_URL/rest/v1/healthcheck?select=id&limit=1"
-
+          URL="$BASE_URL/rest/v1/healthcheck?select=id&limit=1"
 
           echo "Pinging: $URL"
 
