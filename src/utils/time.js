@@ -10,3 +10,18 @@ export function toLabel(min) {
   return `${h}:${m}`
 }
 export function todayISO() { return new Date().toISOString().slice(0,10) }
+
+// Anzahl gearbeiteter Tage (ein Tag zählt, wenn Arbeitszeit > 0 Minuten)
+// Erwartet Rows mit Feldern: _mins (Arbeitszeit+Fahrzeit), _travel (Fahrzeit), work_date (YYYY-MM-DD)
+export function countWorkedDays(rows) {
+  if (!Array.isArray(rows)) return 0;
+
+  const days = new Set(
+    rows
+      .filter((r) => Math.max((r?._mins ?? 0) - (r?._travel ?? 0), 0) > 0)
+      .map((r) => r?.work_date)
+      .filter(Boolean)
+  );
+
+  return days.size;
+}
