@@ -3,6 +3,7 @@ import { supabase } from "../lib/supabase";
 import { getSession } from "../lib/session";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
+import { calcBuakSollHoursForYear } from "../utils/time";
 
 // ---- Helpers ----
 const h2 = (m) => Math.round((m / 60) * 100) / 100;
@@ -279,6 +280,10 @@ export default function YearOverview() {
     return { workH: h2(work), travelH: h2(travel), totalH: h2(total) };
   }, [rows]);
 
+  // BUAK Sollstunden (Kurz-/Langwoche)
+  const buakSollYear = useMemo(() => calcBuakSollHoursForYear(parseInt(year, 10)), [year]);
+  const buakDiffYear = useMemo(() => totals.totalH - buakSollYear, [totals.totalH, buakSollYear]);
+
   const hasData = rows.length > 0;
 
   // CSV Export ------------------------------------------------------
@@ -408,11 +413,11 @@ export default function YearOverview() {
     let y = doc.lastAutoTable.finalY + 18;
     doc.setFontSize(11);
     doc.text(
-      `Summen – Arbeit: ${totals.workH.toFixed(
+      `Summen – Soll (BUAK): ${buakSollYear.toFixed(2)} h | Ist: ${totals.totalH.toFixed(2)} h | Abw.: ${buakDiffYear.toFixed(2)} h | Arbeit: ${totals.workH.toFixed(
         2
       )} h | Fahrzeit: ${totals.travelH.toFixed(
         2
-      )} h | Gesamt: ${totals.totalH.toFixed(2)} h`,
+      )} h`,
       40,
       y
     );
