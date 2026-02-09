@@ -43,6 +43,10 @@ export default function DaySlider() {
   const [travelMin, setTravelMin] = useState(0);
   const [note, setNote] = useState("");
 
+  // NEU: Abwesenheit (Krank/Urlaub)
+  // null = normale Arbeit
+  const [absenceType, setAbsenceType] = useState(null);
+
   // Projekte
   const [projects, setProjects] = useState([]);
   const [projectId, setProjectId] = useState(null);
@@ -267,7 +271,7 @@ export default function DaySlider() {
       break_min: breakMin,
       travel_minutes: travelMin,
       travel_cost_center: "FAHRZEIT",
-      note: note?.trim() || null,
+      note: `${absenceType === "krank" ? "[Krank] " : absenceType === "urlaub" ? "[Urlaub] " : ""}${(note || "").trim()}`.trim() || null,
     };
 
     try {
@@ -302,6 +306,7 @@ export default function DaySlider() {
       }
 
       setNote("");
+      setAbsenceType(null);
       setBreakMin(30);
       setTravelMin(0);
       await loadEntries();
@@ -455,7 +460,10 @@ export default function DaySlider() {
               max={19 * 60 + 30}
               step={15}
               value={fromMin}
-              onChange={(e) => setFromMin(Number(e.target.value))}
+              onChange={(e) => {
+                if (absenceType) setAbsenceType(null);
+                setFromMin(Number(e.target.value));
+              }}
               className="w-full"
             />
             <div className="mt-2 text-2xl font-bold">{toHM(fromMin)}</div>
@@ -468,7 +476,10 @@ export default function DaySlider() {
               max={19 * 60 + 30}
               step={15}
               value={toMin}
-              onChange={(e) => setToMin(Number(e.target.value))}
+              onChange={(e) => {
+                if (absenceType) setAbsenceType(null);
+                setToMin(Number(e.target.value));
+              }}
               className="w-full"
             />
             <div className="mt-2 text-2xl font-bold">{toHM(toMin)}</div>
@@ -487,7 +498,10 @@ export default function DaySlider() {
                     key={m}
                     type="button"
                     className={`hbz-chip ${active ? "active" : ""}`}
-                    onClick={() => setBreakMin(m)}
+                    onClick={() => {
+                    if (absenceType) setAbsenceType(null);
+                    setBreakMin(m);
+                  }}
                   >
                     {label}
                   </button>
@@ -495,6 +509,59 @@ export default function DaySlider() {
               })}
             </div>
             <div className="mt-2 text-2xl font-bold">{breakMin} min</div>
+          </div>
+        </div>
+
+
+        {/* NEU: Krank / Urlaub */}
+        <div className="mt-4">
+          <div className="font-semibold mb-1">Abwesenheit</div>
+          <div className="hbz-chipbar">
+            <button
+              type="button"
+              className={`hbz-chip ${absenceType === "krank" ? "active" : ""}`}
+              onClick={() => {
+                setAbsenceType("krank");
+                // Mo–Do: 9h (07:00–16:00), Fr: 3h (07:00–10:00)
+                const d = new Date(`${date}T00:00:00`);
+                const isFri = d.getDay() === 5;
+                setFromMin(7 * 60);
+                setToMin(isFri ? 10 * 60 : 16 * 60);
+                setBreakMin(0);
+                setTravelMin(0);
+              }}
+            >
+              Krank
+            </button>
+
+            <button
+              type="button"
+              className={`hbz-chip ${absenceType === "urlaub" ? "active" : ""}`}
+              onClick={() => {
+                setAbsenceType("urlaub");
+                // 0h: 07:00–07:15 mit 15 min Pause => netto 0
+                setFromMin(7 * 60);
+                setToMin(7 * 60 + 15);
+                setBreakMin(15);
+                setTravelMin(0);
+              }}
+            >
+              Urlaub
+            </button>
+
+            {absenceType && (
+              <button
+                type="button"
+                className="hbz-chip"
+                onClick={() => setAbsenceType(null)}
+                title="Abwesenheit zurücksetzen"
+              >
+                Normal
+              </button>
+            )}
+          </div>
+          <div className="text-xs opacity-70 mt-1">
+            Krank: Mo–Do 9h, Fr 3h. Urlaub: 0h. (Krank/Urlaub zählen nicht als Arbeitstage)
           </div>
         </div>
 
@@ -513,7 +580,10 @@ export default function DaySlider() {
                   key={m}
                   type="button"
                   className={`hbz-chip ${active ? "active" : ""}`}
-                  onClick={() => setTravelMin(m)}
+                  onClick={() => {
+                    if (absenceType) setAbsenceType(null);
+                    setTravelMin(m);
+                  }}
                 >
                   {label}
                 </button>

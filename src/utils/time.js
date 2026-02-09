@@ -11,32 +11,24 @@ export function toLabel(min) {
 }
 export function todayISO() { return new Date().toISOString().slice(0,10) }
 
-// Anzahl gearbeiteter Tage (ein Tag zählt, wenn Arbeitszeit > 0 Minuten)
-// Erwartet Rows mit Feldern: _mins (Arbeitszeit+Fahrzeit), _travel (Fahrzeit), work_date (YYYY-MM-DD)
+// Anzahl gearbeiteter Tage (ein Tag zählt, wenn echte Arbeitszeit > 0)
+// Krank/Urlaub werden NICHT als Arbeitstag gezählt.
+// Erkennung über Notiz-Prefix: "[Krank]" / "[Urlaub]"
 export function countWorkedDays(rows) {
   if (!Array.isArray(rows)) return 0;
 
+  const isAbsence = (r) => {
+    const n = String(r?.note || "").trim();
+    return n.startsWith("[Krank]") || n.startsWith("[Urlaub]");
+  };
+
   const days = new Set(
     rows
-      // Krank/Urlaub sollen NICHT als Arbeitstag zählen
-      .filter((r) => !["krank", "urlaub"].includes((r?.absence_type || "").toLowerCase()))
-      // Arbeitstag nur wenn echte Arbeitsminuten > 0 (ohne Fahrzeit)
+      .filter((r) => !isAbsence(r))
       .filter((r) => Math.max((r?._mins ?? 0) - (r?._travel ?? 0), 0) > 0)
       .map((r) => r?.work_date)
       .filter(Boolean)
   );
 
   return days.size;
-}
-
-
-// Krank: Mo–Do 9h, Freitag 3h
-export function isFriday(workDate) {
-  if (!workDate) return false;
-  const d = new Date(`${workDate}T00:00:00`);
-  return d.getDay() === 5;
-}
-
-export function krankMinutesForDate(workDate) {
-  return isFriday(workDate) ? 180 : 540;
 }
