@@ -100,7 +100,7 @@ export default function DaySlider() {
           return;
         }
 
-        const list = (res.data || []).filter((p) => p?.disabled !== true);
+        const list = (res.data || []).filter((p) => p?.disabled !== true && p?.active !== false);
         setProjects(list);
         if (!projectId && list.length === 1) {
           setProjectId(list[0].id);
@@ -246,14 +246,16 @@ export default function DaySlider() {
   async function handleSave() {
     setError("");
 
-    if (!projectId) {
+    const isAbsence = absenceType === "krank" || absenceType === "urlaub";
+
+    if (!isAbsence && !projectId) {
       setError("Bitte Projekt auswählen.");
       return;
     }
 
-    const prj = projects.find((p) => p.id === projectId) || null;
+    const prj = projectId ? projects.find((p) => p.id === projectId) || null : null;
 
-    if (!prj) {
+    if (projectId && !prj) {
       setError("Ungültiges Projekt.");
       return;
     }
@@ -265,7 +267,7 @@ export default function DaySlider() {
 
     const base = {
       work_date: date,
-      project_id: prj.id,
+      project_id: prj ? prj.id : null,
       start_min: fromMin,
       end_min: toMin,
       break_min: breakMin,
@@ -439,6 +441,7 @@ export default function DaySlider() {
           <select
             className="w-full px-3 py-2 rounded border"
             value={projectId ?? ""}
+            disabled={absenceType === "krank" || absenceType === "urlaub"}
             onChange={(e) => setProjectId(e.target.value || null)}
           >
             <option value="">— ohne Projekt —</option>
@@ -448,6 +451,11 @@ export default function DaySlider() {
               </option>
             ))}
           </select>
+          {(absenceType === "krank" || absenceType === "urlaub") && (
+            <div className="text-xs opacity-70" style={{ marginTop: 4 }}>
+              Bei Krank/Urlaub ist kein Projekt nötig.
+            </div>
+          )}
         </div>
 
         {/* Start / Ende mit Slider, Pause jetzt Buttons */}
@@ -522,6 +530,7 @@ export default function DaySlider() {
               className={`hbz-chip ${absenceType === "krank" ? "active" : ""}`}
               onClick={() => {
                 setAbsenceType("krank");
+                setProjectId(null);
                 // Mo–Do: 9h (07:00–16:00), Fr: 3h (07:00–10:00)
                 const d = new Date(`${date}T00:00:00`);
                 const isFri = d.getDay() === 5;
@@ -539,6 +548,7 @@ export default function DaySlider() {
               className={`hbz-chip ${absenceType === "urlaub" ? "active" : ""}`}
               onClick={() => {
                 setAbsenceType("urlaub");
+                setProjectId(null);
                 // 0h: 07:00–07:15 mit 15 min Pause => netto 0
                 setFromMin(7 * 60);
                 setToMin(7 * 60 + 15);

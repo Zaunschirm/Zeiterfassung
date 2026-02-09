@@ -66,6 +66,15 @@ export default function EntryTable({ date }) {
 
   const getTravel = (r) => r.travel_minutes ?? r.travel_min ?? 0;
 
+  const parseAbsence = (note) => {
+    const t = String(note || "").trim();
+    const m = t.match(/^\[(krank|urlaub)\]\s*/i);
+    if (!m) return { type: "", clean: note || "" };
+    const type = m[1].toLowerCase() === "krank" ? "Krank" : "Urlaub";
+    const clean = t.replace(/^\[(krank|urlaub)\]\s*/i, "");
+    return { type, clean };
+  };
+
   return (
     <div className="mo-wrap">
       {busy && <div className="text-sm text-neutral-500">Lade…</div>}
@@ -79,31 +88,44 @@ export default function EntryTable({ date }) {
             <tr>
               <th style={{ width: 180 }}>Mitarbeiter</th>
               <th style={{ width: 220 }}>Projekt</th>
+              <th style={{ width: 90, textAlign: "center" }}>Status</th>
               <th style={{ width: 90, textAlign: "center" }}>Start</th>
               <th style={{ width: 90, textAlign: "center" }}>Ende</th>
               <th style={{ width: 110, textAlign: "right" }}>Pause</th>
-              <th style={{ width: 110, textAlign: "right" }}>Fahrzeit</th>09:41 11.11.2025
+              <th style={{ width: 110, textAlign: "right" }}>Fahrzeit</th>
               <th style={{ minWidth: 280 }}>Notiz</th>
               <th style={{ width: 140, textAlign: "right" }}>Aktion</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => (
+            {rows.map((r) => {
+              const abs = parseAbsence(r.note);
+              return (
               <tr key={r.id}>
                 <td>{r.employee_name || r.employee_id}</td>
                 <td>{r.project_name || r.project_code || r.project_id || "—"}</td>
+                <td style={{ textAlign: "center" }}>
+                  {abs.type ? (
+                    <span className="hbz-chip active" style={{ padding: "2px 8px" }}>
+                      {abs.type}
+                    </span>
+                  ) : (
+                    "—"
+                  )}
+                </td>
                 <td style={{ textAlign: "center" }}>{toHM(r.start_min)}</td>
                 <td style={{ textAlign: "center" }}>{toHM(r.end_min)}</td>
                 <td style={{ textAlign: "right" }}>{(r.break_min ?? 0)} min</td>
                 <td style={{ textAlign: "right" }}>{getTravel(r)} min</td>
-                <td>{(r.absence_type ? `[${(String(r.absence_type).toLowerCase() === "krank" ? "Krank" : String(r.absence_type).toLowerCase() === "urlaub" ? "Urlaub" : r.absence_type)}] ` : "")}{r.note || ""}</td>
+                <td>{abs.clean || ""}</td>
                 <td style={{ textAlign: "right" }}>
                   <button className="hbz-btn btn-small" onClick={() => remove(r.id)}>
                     Löschen
                   </button>
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       )}
