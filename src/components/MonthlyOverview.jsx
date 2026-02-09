@@ -284,6 +284,20 @@ export default function MonthlyOverview() {
     return t;
   }, [grouped]);
 
+  const workedDaysByEmployee = useMemo(() => {
+    const t = {};
+    for (const r of grouped) {
+      const name = r.employee_name || r.employee_id;
+      const workMins = Math.max((r._mins ?? 0) - (r._travel ?? 0), 0);
+      if (workMins <= 0) continue;
+      if (!t[name]) t[name] = new Set();
+      t[name].add(r.work_date);
+    }
+    const out = {};
+    for (const [k, set] of Object.entries(t)) out[k] = set.size;
+    return out;
+  }, [grouped]);
+
   const monthTotals = useMemo(() => {
     let workPlusTravel = 0;
     let travel = 0;
@@ -498,6 +512,7 @@ export default function MonthlyOverview() {
     const sumHead = [
       [
         "Mitarbeiter",
+        "Tage",
         "Stunden gesamt (inkl. Fahrzeit)",
         "Fahrzeit gesamt (h)",
         "Überstunden (Summe Tages-Ü>9h)",
@@ -505,6 +520,7 @@ export default function MonthlyOverview() {
     ];
     const sumBody = Object.entries(totalsByEmployee).map(([name, t]) => [
       name,
+      workedDaysByEmployee[name] ?? 0,
       t.hrs.toFixed(2),
       t.travel.toFixed(2),
       t.ot.toFixed(2),
@@ -512,7 +528,7 @@ export default function MonthlyOverview() {
     autoTable(doc, {
       head: sumHead,
       body: sumBody,
-      startY: doc.lastAutoTable.finalY + 20,
+      startY: 70,
       styles: { fontSize: 10, cellPadding: 4 },
       headStyles: { fillColor: [200, 200, 200] },
       margin: { left: 40, right: 40 },
@@ -539,7 +555,6 @@ export default function MonthlyOverview() {
       if (!absMap.has(key)) absMap.set(key, [r.work_date, emp, statusLabel, cleanNote]);
     });
     const absBody = Array.from(absMap.values()).sort((a, b) => {
-      // sort by date then employee
       if (a[0] !== b[0]) return String(a[0]).localeCompare(String(b[0]));
       return String(a[1]).localeCompare(String(b[1]));
     });
@@ -555,7 +570,6 @@ export default function MonthlyOverview() {
 
     // Ab hier wieder wie bisher – auf neuer Seite
     doc.addPage();
-
 
     // Monats-Gesamtblock
     const y0 = 60;
