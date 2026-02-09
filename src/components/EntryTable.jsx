@@ -96,7 +96,7 @@ export default function EntryTable({ date }) {
                 <td style={{ textAlign: "center" }}>{toHM(r.end_min)}</td>
                 <td style={{ textAlign: "right" }}>{(r.break_min ?? 0)} min</td>
                 <td style={{ textAlign: "right" }}>{getTravel(r)} min</td>
-                <td>{r.note || ""}</td>
+                <td>{(r.absence_type ? `[${(String(r.absence_type).toLowerCase() === "krank" ? "Krank" : String(r.absence_type).toLowerCase() === "urlaub" ? "Urlaub" : r.absence_type)}] ` : "")}{r.note || ""}</td>
                 <td style={{ textAlign: "right" }}>
                   <button className="hbz-btn btn-small" onClick={() => remove(r.id)}>
                     Löschen

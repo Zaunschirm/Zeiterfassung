@@ -46,6 +46,9 @@ export default function TimeTracking() {
 
   const [breakMinutes, setBreakMinutes] = useState(0);
 
+  // NEU: Krank / Urlaub
+  const [absenceType, setAbsenceType] = useState(null); // "krank" | "urlaub" | null
+
   // Fahrzeit
   const [travelMinutes, setTravelMinutes] = useState(0);
   const travelCostCenter = "FAHRZEIT"; // fix
@@ -137,6 +140,33 @@ export default function TimeTracking() {
   // --------------------------------------------------
   // UI-Interaktionen
   // --------------------------------------------------
+
+  // NEU: Krank / Urlaub (setzt Zeiten fix, ohne bestehende Logik zu ändern)
+  const krankMinutesForDate = (isoDate) => {
+    const d = new Date(`${isoDate}T00:00:00`);
+    const isFri = d.getDay() === 5;
+    return isFri ? 180 : 540; // Fr 3h, sonst 9h
+  };
+
+  const applyKrank = () => {
+    const mins = krankMinutesForDate(date);
+    // Wir setzen Start/Ende so, dass workMinutes exakt passt (Pause 0)
+    setAbsenceType((prev) => (prev === "krank" ? null : "krank"));
+    setBreakMinutes(0);
+    setFromMin(7 * 60); // 07:00
+    setToMin(7 * 60 + mins); // 07:00 + (9h/3h)
+  };
+
+  const applyUrlaub = () => {
+    // Urlaub zählt nicht zu Stunden: workMinutes = 0, aber Zeitspanne muss gültig sein (Ende > Start)
+    setAbsenceType((prev) => (prev === "urlaub" ? null : "urlaub"));
+    setFromMin(7 * 60); // 07:00
+    setToMin(7 * 60 + 1); // 1 Minute, damit Validation OK
+    setBreakMinutes(1); // ergibt 0 Arbeitsminuten
+  };
+
+  const clearAbsence = () => setAbsenceType(null);
+
   const toggleEmp = (emp) => {
     const key = emp.id ?? emp.code ?? emp.name;
     setSelectedEmployees((prev) =>
@@ -172,6 +202,9 @@ export default function TimeTracking() {
       // Fahrzeit
       travel_minutes: travelMinutes ?? 0,
       travel_cost_center: travelCostCenter,
+
+      // NEU: Krank / Urlaub
+      absence_type: absenceType || null,
     };
 
     const rows = selectedEmployees.map((emp) => ({
@@ -276,6 +309,33 @@ export default function TimeTracking() {
 
         <div className="hbz-section-title">Zeit</div>
 
+        {/* NEU: Krank / Urlaub */}
+        <div className="hbz-row" style={{ marginTop: 8, gap: 8, alignItems: "center" }}>
+          <div className="hbz-chipbar">
+            <button
+              type="button"
+              className={`hbz-chip ${absenceType === "krank" ? "active" : ""}`}
+              onClick={applyKrank}
+              title="Krank: Mo–Do 9h, Freitag 3h"
+            >
+              Krank
+            </button>
+            <button
+              type="button"
+              className={`hbz-chip ${absenceType === "urlaub" ? "active" : ""}`}
+              onClick={applyUrlaub}
+              title="Urlaub: zählt nicht zu Stunden"
+            >
+              Urlaub
+            </button>
+          </div>
+          {absenceType && (
+            <div className="text-xs opacity-70" style={{ marginLeft: 6 }}>
+              Status aktiv: <b>{absenceType === "krank" ? "Krank" : "Urlaub"}</b> (Ändern von Start/Ende setzt Status zurück)
+            </div>
+          )}
+        </div>
+
         <div className="hbz-row" style={{ alignItems: "flex-end" }}>
           <div className="hbz-col">
             <div className="field-inline">
@@ -285,6 +345,7 @@ export default function TimeTracking() {
                 className="hbz-input"
                 value={toHM(fromMin)}
                 onChange={(e) => {
+                  clearAbsence();
                   const [h, m] = e.target.value.split(":").map(Number);
                   setFromMin(clamp(h * 60 + m, 0, 24 * 60));
                 }}
@@ -301,6 +362,7 @@ export default function TimeTracking() {
                 className="hbz-input"
                 value={toHM(toMin)}
                 onChange={(e) => {
+                  clearAbsence();
                   const [h, m] = e.target.value.split(":").map(Number);
                   setToMin(clamp(h * 60 + m, 0, 24 * 60));
                 }}
@@ -323,6 +385,7 @@ export default function TimeTracking() {
             toMin={toMin}
             step={15}
             onChange={({ from, to }) => {
+              clearAbsence();
               setFromMin(clamp(from, 0, 24 * 60));
               setToMin(clamp(to, 0, 24 * 60));
             }}
