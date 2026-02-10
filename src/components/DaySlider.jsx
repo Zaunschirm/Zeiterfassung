@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { getSession } from "../lib/session";
 import EmployeePicker from "./EmployeePicker.jsx";
-import { getISOWeek, getBuakWeekType, getBuakSollHoursForWeek } from "../utils/time";
 
 // Utils
 const toHM = (m) =>
@@ -14,31 +13,7 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const hmToMin = (hm) => {
   if (!hm) return 0;
   const [h, m] = String(hm).split(":").map((x) => parseInt(x || "0", 10));
-  
-  // BUAK Kurz-/Langwoche Anzeige (ohne zusätzliche Hooks) – Kurzwoche grün, Langwoche rot
-  let buakLabel = "";
-  let buakType = null;
-
-  try {
-    const wk = getISOWeek(date); // ISO-KW Nummer
-    const type = getBuakWeekType(date); // "kurz" | "lang" | null
-    const soll = getBuakSollHoursForWeek(date); // 36 | 42 | null
-
-    buakType = type;
-    if (wk) {
-      if (!type) {
-        buakLabel = `KW ${wk}`;
-      } else {
-        const t = type === "kurz" ? "Kurzwoche" : "Langwoche";
-        buakLabel = soll ? `KW ${wk} · ${t} (${soll}h)` : `KW ${wk} · ${t}`;
-      }
-    }
-  } catch (e) {
-    buakLabel = "";
-    buakType = null;
-  }
-
-return (isNaN(h) ? 0 : h) * 60 + (isNaN(m) ? 0 : m);
+  return (isNaN(h) ? 0 : h) * 60 + (isNaN(m) ? 0 : m);
 };
 // Minuten → Stunden (2 Nachkommastellen)
 const h2 = (m) => Math.round((m / 60) * 100) / 100;
@@ -443,24 +418,6 @@ export default function DaySlider() {
               »
             </button>
           </div>
-          {buakLabel && (
-            <div
-              className="text-xs"
-              style={{
-                marginTop: 4,
-                fontWeight: 600,
-                color:
-                  buakType === "kurz"
-                    ? "#2e7d32"
-                    : buakType === "lang"
-                    ? "#c62828"
-                    : "#555",
-              }}
-            >
-              {buakLabel}
-            </div>
-          )}
-
         </div>
 
         {/* Mitarbeiter-Picker (nur Manager) */}
