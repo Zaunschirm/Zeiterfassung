@@ -12,9 +12,30 @@ const BUAK_WEEK_TYPES_2026 = {
   52:"K",53:"L",
 };
 
+function normalizeDateStr(dateStr) {
+  if (!dateStr) return "";
+  const s = String(dateStr).trim();
+
+  // already ISO yyyy-mm-dd
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+
+  // dd.mm.yyyy -> yyyy-mm-dd
+  const m = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+  if (m) {
+    const dd = String(m[1]).padStart(2, "0");
+    const mm = String(m[2]).padStart(2, "0");
+    const yyyy = m[3];
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
+  return s; // fallback (Date() might still parse)
+}
+
 function isoWeekNumber(dateStr) {
-  if (!dateStr) return null;
-  const d = new Date(dateStr + "T00:00:00");
+  const iso = normalizeDateStr(dateStr);
+  if (!iso) return null;
+
+  const d = new Date(iso + "T00:00:00");
   if (isNaN(d.getTime())) return null;
 
   // ISO week: Monday = 0 ... Sunday = 6
@@ -29,9 +50,10 @@ function isoWeekNumber(dateStr) {
 
 function getBuakWeekLabelSimple(dateStr) {
   try {
-    const wk = isoWeekNumber(dateStr);
+    const iso = normalizeDateStr(dateStr);
+    const wk = isoWeekNumber(iso);
     if (!wk) return "";
-    const year = Number(String(dateStr).slice(0, 4));
+    const year = Number(String(iso).slice(0, 4));
     if (year !== 2026) return `KW ${wk}`;
     const t = BUAK_WEEK_TYPES_2026[wk];
     if (t === "K") return `KW ${wk} - Kurzwoche`;
