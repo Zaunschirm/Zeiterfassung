@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { getSession } from "../lib/session";
 import EmployeePicker from "./EmployeePicker.jsx";
-import { getISOWeek, getBuakWeekType, getBuakSollHoursForWeek } from "../utils/time";
 
 // Utils
 const toHM = (m) =>
@@ -14,19 +13,7 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const hmToMin = (hm) => {
   if (!hm) return 0;
   const [h, m] = String(hm).split(":").map((x) => parseInt(x || "0", 10));
-  
-  // BUAK Kurz-/Langwoche Anzeige
-  const buakWeekNo = useMemo(() => getISOWeek(date), [date]);
-  const buakWeekType = useMemo(() => getBuakWeekType(date), [date]); // "kurz" | "lang" | null
-  const buakSoll = useMemo(() => getBuakSollHoursForWeek(date), [date]); // 36 | 42 | null
-  const buakWeekLabel = useMemo(() => {
-    if (!buakWeekNo) return "";
-    if (!buakWeekType) return `KW ${buakWeekNo}`;
-    const t = buakWeekType === "kurz" ? "Kurzwoche" : "Langwoche";
-    return buakSoll ? `KW ${buakWeekNo} · ${t} (${buakSoll}h)` : `KW ${buakWeekNo} · ${t}`;
-  }, [buakWeekNo, buakWeekType, buakSoll]);
-
-return (isNaN(h) ? 0 : h) * 60 + (isNaN(m) ? 0 : m);
+  return (isNaN(h) ? 0 : h) * 60 + (isNaN(m) ? 0 : m);
 };
 // Minuten → Stunden (2 Nachkommastellen)
 const h2 = (m) => Math.round((m / 60) * 100) / 100;
@@ -431,24 +418,6 @@ export default function DaySlider() {
               »
             </button>
           </div>
-          {buakWeekLabel && (
-            <div
-              className="text-xs"
-              style={{
-                marginTop: 4,
-                fontWeight: 600,
-                color:
-                  buakWeekType === "kurz"
-                    ? "#2e7d32" // grün
-                    : buakWeekType === "lang"
-                    ? "#c62828" // rot
-                    : "#555",
-              }}
-            >
-              {buakWeekLabel}
-            </div>
-          )}
-
         </div>
 
         {/* Mitarbeiter-Picker (nur Manager) */}
