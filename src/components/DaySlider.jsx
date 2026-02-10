@@ -2,45 +2,6 @@ import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { getSession } from "../lib/session";
 import EmployeePicker from "./EmployeePicker.jsx";
-// --- BUAK 2026 Kurz/Lang (nur Anzeige, sicher) ---
-const BUAK_WEEK_TYPES_2026 = {
-  1:"L",2:"L",3:"L",4:"K",5:"L",6:"L",7:"L",8:"K",9:"L",10:"L",11:"L",
-  12:"K",13:"L",14:"L",15:"L",16:"K",17:"L",18:"L",19:"L",20:"K",21:"L",
-  22:"L",23:"L",24:"K",25:"L",26:"L",27:"L",28:"K",29:"L",30:"L",31:"L",
-  32:"K",33:"L",34:"L",35:"L",36:"K",37:"L",38:"L",39:"L",40:"K",41:"L",
-  42:"L",43:"L",44:"K",45:"L",46:"L",47:"L",48:"K",49:"L",50:"L",51:"L",
-  52:"K",53:"L",
-};
-
-function isoWeekNumber(dateStr) {
-  if (!dateStr) return null;
-  const d = new Date(String(dateStr).slice(0,10) + "T00:00:00"); // expect YYYY-MM-DD
-  if (isNaN(d.getTime())) return null;
-
-  const dayNum = (d.getDay() + 6) % 7; // Mon=0..Sun=6
-  d.setDate(d.getDate() - dayNum + 3); // Thursday
-  const firstThursday = new Date(d.getFullYear(), 0, 4);
-  const firstDayNum = (firstThursday.getDay() + 6) % 7;
-  firstThursday.setDate(firstThursday.getDate() - firstDayNum + 3);
-
-  return 1 + Math.round((d - firstThursday) / (7 * 24 * 60 * 60 * 1000));
-}
-
-function getBuakWeekLabelSimple(dateStr) {
-  try {
-    const iso = String(dateStr).slice(0, 10);
-    const wk = isoWeekNumber(iso);
-    if (!wk) return "";
-    const year = Number(iso.slice(0, 4));
-    if (year !== 2026) return `KW ${wk}`;
-    const t = BUAK_WEEK_TYPES_2026[wk];
-    if (t === "K") return `KW ${wk} - Kurzwoche`;
-    if (t === "L") return `KW ${wk} - Langwoche`;
-    return `KW ${wk}`;
-  } catch {
-    return "";
-  }
-}
 
 // Utils
 const toHM = (m) =>
@@ -52,10 +13,7 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const hmToMin = (hm) => {
   if (!hm) return 0;
   const [h, m] = String(hm).split(":").map((x) => parseInt(x || "0", 10));
-  
-  const buakWeekLabelSimple = getBuakWeekLabelSimple(date);
-
-return (isNaN(h) ? 0 : h) * 60 + (isNaN(m) ? 0 : m);
+  return (isNaN(h) ? 0 : h) * 60 + (isNaN(m) ? 0 : m);
 };
 // Minuten → Stunden (2 Nachkommastellen)
 const h2 = (m) => Math.round((m / 60) * 100) / 100;
@@ -63,6 +21,45 @@ const h2 = (m) => Math.round((m / 60) * 100) / 100;
 // Pause- und Fahrzeit-Auswahl (0–90 Minuten in 15er-Schritten)
 const PAUSE_OPTIONS = [0, 15, 30, 45, 60, 75, 90];
 const TRAVEL_OPTIONS = [0, 15, 30, 45, 60, 75, 90];
+// --- BUAK 2026 Kurz/Lang (nur Anzeige) ---
+const BUAK_WEEK_TYPES_2026 = {
+  1:"L",2:"L",3:"L",4:"K",5:"L",6:"L",7:"L",8:"K",9:"L",10:"L",11:"L",
+  12:"K",13:"L",14:"L",15:"L",16:"K",17:"L",18:"L",19:"L",20:"K",21:"L",
+  22:"L",23:"L",24:"K",25:"L",26:"L",27:"L",28:"K",29:"L",30:"L",31:"L",
+  32:"K",33:"L",34:"L",35:"L",36:"K",37:"L",38:"L",39:"L",40:"K",41:"L",
+  42:"L",43:"L",44:"K",45:"L",46:"L",47:"L",48:"K",49:"L",50:"L",51:"L",
+  52:"K",53:"L",
+};
+
+function isoWeekNumber(dateStr) {
+  if (!dateStr) return null; // expects YYYY-MM-DD
+  const d = new Date(dateStr + "T00:00:00");
+  if (isNaN(d.getTime())) return null;
+
+  const dayNum = (d.getDay() + 6) % 7; // Mon=0..Sun=6
+  d.setDate(d.getDate() - dayNum + 3); // Thursday
+  const firstThursday = new Date(d.getFullYear(), 0, 4);
+  const firstDayNum = (firstThursday.getDay() + 6) % 7;
+  firstThursday.setDate(firstThursday.getDate() - firstDayNum + 3);
+
+  return 1 + Math.round((d - firstThursday) / (7 * 24 * 60 * 60 * 1000));
+}
+
+function getBuakWeekLabel(dateStr) {
+  try {
+    if (!dateStr) return "";
+    const wk = isoWeekNumber(String(dateStr).slice(0, 10));
+    if (!wk) return "";
+    const year = Number(String(dateStr).slice(0, 4));
+    if (year !== 2026) return `KW ${wk}`;
+    const t = BUAK_WEEK_TYPES_2026[wk];
+    if (t === "K") return `KW ${wk} - Kurzwoche`;
+    if (t === "L") return `KW ${wk} - Langwoche`;
+    return `KW ${wk}`;
+  } catch {
+    return "";
+  }
+}
 
 const logSbError = (prefix, error) =>
   console.error(prefix, error?.message || error);
@@ -77,6 +74,7 @@ export default function DaySlider() {
   const [date, setDate] = useState(() =>
     new Date().toISOString().slice(0, 10)
   );
+  const buakWeekLabel = getBuakWeekLabel(date);
 
   // Zeiten (Neuanlage)
   const [fromMin, setFromMin] = useState(7 * 60);
@@ -460,11 +458,12 @@ export default function DaySlider() {
               »
             </button>
           </div>
-          {buakWeekLabelSimple && (
-            <div className="text-xs opacity-70" style={{ marginTop: 4 }}>
-              {buakWeekLabelSimple}
-            </div>
-          )}
+            {buakWeekLabel && (
+              <div className="text-xs opacity-70" style={{ marginTop: 4 }}>
+                {buakWeekLabel}
+              </div>
+            )}
+
         </div>
 
         {/* Mitarbeiter-Picker (nur Manager) */}
@@ -618,7 +617,7 @@ export default function DaySlider() {
             )}
           </div>
           <div className="text-xs opacity-70 mt-1">
-            Krank: Mo–Do 9h, Fr 3h. Urlaub: 0h. (Krank/Urlaub zählen nicht als Arbeitstage)
+            
           </div>
         </div>
 
