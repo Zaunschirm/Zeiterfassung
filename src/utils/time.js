@@ -1,3 +1,4 @@
+
 export const MIN_START = 5*60
 export const MAX_END   = 19*60+30
 export const DEFAULT_START = 6*60+45
@@ -10,143 +11,164 @@ export function toLabel(min) {
 }
 export function todayISO() { return new Date().toISOString().slice(0,10) }
 
-// --------------------------------------------------
-// BUAK Kalender (Kurz-/Langwoche) – vorbereitet (Jahre erweiterbar)
-// Kurzwoche = 36 Sollstunden, Langwoche = 42 Sollstunden
-// Datenquelle: BUAK Kalender-PDF (A4) – Jahr 2026
-// --------------------------------------------------
+// Anzahl gearbeiteter Tage (ein Tag zählt, wenn echte Arbeitszeit > 0)
+// Krank/Urlaub werden NICHT als Arbeitstag gezählt.
+// Erkennung über Notiz-Prefix: "[Krank]" / "[Urlaub]"
+export function countWorkedDays(rows) {
+  if (!Array.isArray(rows)) return 0;
 
-export const BUAK_WEEK_TYPES = {
-  2026: {
-    1: 'kurz',
-    2: 'kurz',
-    3: 'lang',
-    4: 'kurz',
-    5: 'lang',
-    6: 'kurz',
-    7: 'lang',
-    8: 'kurz',
-    9: 'lang',
-    10: 'kurz',
-    11: 'lang',
-    12: 'kurz',
-    13: 'lang',
-    14: 'kurz',
-    15: 'lang',
-    16: 'lang',
-    17: 'kurz',
-    18: 'lang',
-    19: 'lang',
-    20: 'kurz',
-    21: 'kurz',
-    22: 'lang',
-    23: 'kurz',
-    24: 'lang',
-    25: 'kurz',
-    26: 'lang',
-    27: 'kurz',
-    28: 'lang',
-    29: 'kurz',
-    30: 'lang',
-    31: 'kurz',
-    32: 'lang',
-    33: 'kurz',
-    34: 'lang',
-    35: 'kurz',
-    36: 'lang',
-    37: 'kurz',
-    38: 'lang',
-    39: 'kurz',
-    40: 'lang',
-    41: 'kurz',
-    42: 'lang',
-    43: 'kurz',
-    44: 'lang',
-    45: 'kurz',
-    46: 'lang',
-    47: 'kurz',
-    48: 'lang',
-    49: 'kurz',
-    50: 'kurz',
-    51: 'kurz',
-    52: 'lang',
-    53: 'lang'
-  },
-};
+  const isAbsence = (r) => {
+    const n = String(r?.note || "").trim();
+    return n.startsWith("[Krank]") || n.startsWith("[Urlaub]");
+  };
 
-export const BUAK_SOLL_HOURS = {
-  kurz: 36,
-  lang: 42,
-};
+  const days = new Set(
+    rows
+      .filter((r) => !isAbsence(r))
+      .filter((r) => Math.max((r?._mins ?? 0) - (r?._travel ?? 0), 0) > 0)
+      .map((r) => r?.work_date)
+      .filter(Boolean)
+  );
 
-// ISO-Woche (1–53) + ISO-Wochenjahr
-export function getISOWeek(dateStr) {
-  const d0 = new Date(`${dateStr}T00:00:00Z`);
-  const d = new Date(Date.UTC(d0.getUTCFullYear(), d0.getUTCMonth(), d0.getUTCDate()));
-  // Donnerstag bestimmt das ISO-Wochenjahr
-  const dayNum = (d.getUTCDay() + 6) % 7; // Mo=0..So=6
-  d.setUTCDate(d.getUTCDate() - dayNum + 3);
-  const isoYear = d.getUTCFullYear();
-  const firstThursday = new Date(Date.UTC(isoYear, 0, 4));
-  const firstDayNum = (firstThursday.getUTCDay() + 6) % 7;
-  firstThursday.setUTCDate(firstThursday.getUTCDate() - firstDayNum + 3);
-  const week = 1 + Math.round((d - firstThursday) / (7 * 24 * 3600 * 1000));
-  return { isoYear, week };
+  return days.size;
 }
 
-export function getBuakWeekTypeByISO(isoYear, week) {
-  const y = BUAK_WEEK_TYPES[isoYear];
-  if (!y) return 'lang';
-  return y[week] || 'lang';
+
+// ---------------- BUAK Kurz-/Langwochen (vorbereitet) ----------------
+// Kurze Woche: 39h, Lange Woche: 42h
+export const BUAK_WEEK_TYPES = {
+  2026: {
+    1: 'K',
+    2: 'K',
+    3: 'L',
+    4: 'K',
+    5: 'L',
+    6: 'K',
+    7: 'L',
+    8: 'K',
+    9: 'L',
+    10: 'K',
+    11: 'L',
+    12: 'K',
+    13: 'L',
+    14: 'K',
+    15: 'L',
+    16: 'L',
+    17: 'K',
+    18: 'L',
+    19: 'L',
+    20: 'K',
+    21: 'K',
+    22: 'L',
+    23: 'K',
+    24: 'L',
+    25: 'K',
+    26: 'L',
+    27: 'K',
+    28: 'L',
+    29: 'K',
+    30: 'L',
+    31: 'K',
+    32: 'L',
+    33: 'K',
+    34: 'L',
+    35: 'K',
+    36: 'L',
+    37: 'K',
+    38: 'L',
+    39: 'K',
+    40: 'L',
+    41: 'K',
+    42: 'L',
+    43: 'K',
+    44: 'L',
+    45: 'K',
+    46: 'L',
+    47: 'K',
+    48: 'L',
+    49: 'K',
+    50: 'K',
+    51: 'K',
+    52: 'L',
+    53: 'L'
+  }
+};
+
+// Normalisiert Datum: akzeptiert 'YYYY-MM-DD' oder 'DD.MM.YYYY'
+export function normalizeDateStr(dateStr) {
+  if (!dateStr) return "";
+  const s = String(dateStr).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const m = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+  if (m) {
+    const dd = String(m[1]).padStart(2, "0");
+    const mm = String(m[2]).padStart(2, "0");
+    const yyyy = m[3];
+    return `${yyyy}-${mm}-${dd}`;
+  }
+  return s;
+}
+
+// ISO-Kalenderwoche (Mo–So) für Datum
+export function isoWeekNumber(dateStr) {
+  const iso = normalizeDateStr(dateStr);
+  if (!iso) return null;
+  const d = new Date(iso + "T00:00:00");
+  if (isNaN(d.getTime())) return null;
+
+  const dayNum = (d.getDay() + 6) % 7; // Mon=0..Sun=6
+  d.setDate(d.getDate() - dayNum + 3); // Thu
+  const firstThursday = new Date(d.getFullYear(), 0, 4);
+  const firstDayNum = (firstThursday.getDay() + 6) % 7;
+  firstThursday.setDate(firstThursday.getDate() - firstDayNum + 3);
+
+  return 1 + Math.round((d - firstThursday) / (7 * 24 * 60 * 60 * 1000));
 }
 
 export function getBuakWeekType(dateStr) {
-  const { isoYear, week } = getISOWeek(dateStr);
-  return getBuakWeekTypeByISO(isoYear, week);
+  const iso = normalizeDateStr(dateStr);
+  if (!iso) return null;
+  const year = Number(String(iso).slice(0, 4));
+  const wk = isoWeekNumber(iso);
+  const map = BUAK_WEEK_TYPES[year];
+  if (!map || !wk) return null;
+  const t = map[wk];
+  if (!t) return null;
+  return t === "K" ? "kurz" : t === "L" ? "lang" : null;
 }
 
 export function getBuakSollHoursForWeek(dateStr) {
   const t = getBuakWeekType(dateStr);
-  return BUAK_SOLL_HOURS[t] ?? BUAK_SOLL_HOURS.lang;
+  if (t === "kurz") return 39;
+  if (t === "lang") return 42;
+  return null;
 }
 
-// Monat (YYYY-MM) → Sollstunden (Summe der Wochen, die im Monat vorkommen)
+// monthStr: 'YYYY-MM' -> Sollstunden anhand BUAK Wochen (einmal pro ISO-Woche im Monat)
 export function calcBuakSollHoursForMonth(monthStr) {
-  if (!monthStr || monthStr.length < 7) return 0;
-  const y = parseInt(monthStr.slice(0, 4), 10);
-  const m = parseInt(monthStr.slice(5, 7), 10) - 1;
-  if (isNaN(y) || isNaN(m)) return 0;
+  if (!monthStr) return 0;
+  const [yStr, mStr] = String(monthStr).split("-");
+  const year = Number(yStr);
+  const month = Number(mStr);
+  if (!year || !month) return 0;
+
+  const first = new Date(`${yStr}-${mStr}-01T00:00:00`);
+  if (isNaN(first.getTime())) return 0;
 
   const weeks = new Set();
-  // alle Tage im Monat durchgehen
-  const d = new Date(Date.UTC(y, m, 1));
-  while (d.getUTCMonth() === m) {
-    const iso = d.toISOString().slice(0, 10);
-    const { isoYear, week } = getISOWeek(iso);
-    weeks.add(`${isoYear}-${week}`);
-    d.setUTCDate(d.getUTCDate() + 1);
+  const d = new Date(first);
+  while (d.getMonth() === first.getMonth()) {
+    const ds = d.toISOString().slice(0, 10);
+    const wk = isoWeekNumber(ds);
+    if (wk) weeks.add(wk);
+    d.setDate(d.getDate() + 1);
   }
 
-  let sum = 0;
-  weeks.forEach((key) => {
-    const [isoYearStr, wkStr] = key.split('-');
-    const isoYear = parseInt(isoYearStr, 10);
-    const week = parseInt(wkStr, 10);
-    const t = getBuakWeekTypeByISO(isoYear, week);
-    sum += BUAK_SOLL_HOURS[t] ?? BUAK_SOLL_HOURS.lang;
+  let soll = 0;
+  weeks.forEach((wk) => {
+    const t = BUAK_WEEK_TYPES?.[year]?.[wk];
+    if (t === "K") soll += 39;
+    else if (t === "L") soll += 42;
   });
-
-  return sum;
-}
-
-// Jahr → Sollstunden (Summe aller Kalenderwochen laut BUAK-Mapping)
-export function calcBuakSollHoursForYear(year) {
-  const y = BUAK_WEEK_TYPES[year];
-  if (!y) return 0;
-  let sum = 0;
-  Object.keys(y).forEach((wk) => {
-    const t = y[wk];
-    sum += BUAK_SOLL_HOURS[t] ?? BUAK_SOLL_HOURS.lang;
-  });
-  return sum;
+  return soll;
 }
