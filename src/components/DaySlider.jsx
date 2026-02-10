@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { getSession } from "../lib/session";
 import EmployeePicker from "./EmployeePicker.jsx";
-import { getBuakWeekType, getBuakWeekSollHours, isoWeekNumber } from "../utils/time";
 
 // Utils
 const toHM = (m) =>
@@ -14,19 +13,7 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const hmToMin = (hm) => {
   if (!hm) return 0;
   const [h, m] = String(hm).split(":").map((x) => parseInt(x || "0", 10));
-  
-  // BUAK Kurz-/Langwoche Anzeige (2026 vorbereitet)
-  const buakWeekNo = useMemo(() => isoWeekNumber(date), [date]);
-  const buakWeekType = useMemo(() => getBuakWeekType(date), [date]);
-  const buakSoll = useMemo(() => getBuakWeekSollHours(date), [date]);
-  const buakWeekLabel = useMemo(() => {
-    if (!buakWeekNo) return "";
-    if (!buakWeekType) return `KW ${buakWeekNo}`;
-    const t = buakWeekType === "kurz" ? "Kurzwoche" : "Langwoche";
-    return buakSoll ? `KW ${buakWeekNo} · ${t} (${buakSoll}h)` : `KW ${buakWeekNo} · ${t}`;
-  }, [buakWeekNo, buakWeekType, buakSoll]);
-
-return (isNaN(h) ? 0 : h) * 60 + (isNaN(m) ? 0 : m);
+  return (isNaN(h) ? 0 : h) * 60 + (isNaN(m) ? 0 : m);
 };
 // Minuten → Stunden (2 Nachkommastellen)
 const h2 = (m) => Math.round((m / 60) * 100) / 100;
@@ -55,6 +42,10 @@ export default function DaySlider() {
   const [breakMin, setBreakMin] = useState(30);
   const [travelMin, setTravelMin] = useState(0);
   const [note, setNote] = useState("");
+
+  // NEU: Abwesenheit (Krank/Urlaub)
+  // null = normale Arbeit
+  const [absenceType, setAbsenceType] = useState(null);
 
   // Projekte
   const [projects, setProjects] = useState([]);
@@ -109,7 +100,7 @@ export default function DaySlider() {
           return;
         }
 
-        const list = (res.data || []).filter((p) => p?.disabled !== true);
+        const list = (res.data || []).filter((p) => p?.disabled !== true && p?.active !== false);
         setProjects(list);
         if (!projectId && list.length === 1) {
           setProjectId(list[0].id);
@@ -255,14 +246,16 @@ export default function DaySlider() {
   async function handleSave() {
     setError("");
 
-    if (!projectId) {
+    const isAbsence = absenceType === "krank" || absenceType === "urlaub";
+
+    if (!isAbsence && !projectId) {
       setError("Bitte Projekt auswählen.");
       return;
     }
 
-    const prj = projects.find((p) => p.id === projectId) || null;
+    const prj = projectId ? projects.find((p) => p.id === projectId) || null : null;
 
-    if (!prj) {
+    if (projectId && !prj) {
       setError("Ungültiges Projekt.");
       return;
     }
@@ -274,13 +267,13 @@ export default function DaySlider() {
 
     const base = {
       work_date: date,
-      project_id: prj.id,
+      project_id: prj ? prj.id : null,
       start_min: fromMin,
       end_min: toMin,
       break_min: breakMin,
       travel_minutes: travelMin,
       travel_cost_center: "FAHRZEIT",
-      note: note?.trim() || null,
+      note: `${absenceType === "krank" ? "[Krank] " : absenceType === "urlaub" ? "[Urlaub] " : ""}${(note || "").trim()}`.trim() || null,
     };
 
     try {
@@ -315,6 +308,7 @@ export default function DaySlider() {
       }
 
       setNote("");
+      setAbsenceType(null);
       setBreakMin(30);
       setTravelMin(0);
       await loadEntries();
@@ -424,12 +418,6 @@ export default function DaySlider() {
               »
             </button>
           </div>
-          {buakWeekLabel && (
-            <div className="text-xs opacity-70" style={{ marginTop: 4 }}>
-              {buakWeekLabel}
-            </div>
-          )}
-
         </div>
 
         {/* Mitarbeiter-Picker (nur Manager) */}
@@ -453,6 +441,7 @@ export default function DaySlider() {
           <select
             className="w-full px-3 py-2 rounded border"
             value={projectId ?? ""}
+            disabled={absenceType === "krank" || absenceType === "urlaub"}
             onChange={(e) => setProjectId(e.target.value || null)}
           >
             <option value="">— ohne Projekt —</option>
@@ -462,6 +451,11 @@ export default function DaySlider() {
               </option>
             ))}
           </select>
+          {(absenceType === "krank" || absenceType === "urlaub") && (
+            <div className="text-xs opacity-70" style={{ marginTop: 4 }}>
+              Bei Krank/Urlaub ist kein Projekt nötig.
+            </div>
+          )}
         </div>
 
         {/* Start / Ende mit Slider, Pause jetzt Buttons */}
@@ -474,7 +468,10 @@ export default function DaySlider() {
               max={19 * 60 + 30}
               step={15}
               value={fromMin}
-              onChange={(e) => setFromMin(Number(e.target.value))}
+              onChange={(e) => {
+                if (absenceType) setAbsenceType(null);
+                setFromMin(Number(e.target.value));
+              }}
               className="w-full"
             />
             <div className="mt-2 text-2xl font-bold">{toHM(fromMin)}</div>
@@ -487,7 +484,10 @@ export default function DaySlider() {
               max={19 * 60 + 30}
               step={15}
               value={toMin}
-              onChange={(e) => setToMin(Number(e.target.value))}
+              onChange={(e) => {
+                if (absenceType) setAbsenceType(null);
+                setToMin(Number(e.target.value));
+              }}
               className="w-full"
             />
             <div className="mt-2 text-2xl font-bold">{toHM(toMin)}</div>
@@ -506,7 +506,10 @@ export default function DaySlider() {
                     key={m}
                     type="button"
                     className={`hbz-chip ${active ? "active" : ""}`}
-                    onClick={() => setBreakMin(m)}
+                    onClick={() => {
+                    if (absenceType) setAbsenceType(null);
+                    setBreakMin(m);
+                  }}
                   >
                     {label}
                   </button>
@@ -514,6 +517,61 @@ export default function DaySlider() {
               })}
             </div>
             <div className="mt-2 text-2xl font-bold">{breakMin} min</div>
+          </div>
+        </div>
+
+
+        {/* NEU: Krank / Urlaub */}
+        <div className="mt-4">
+          <div className="font-semibold mb-1">Abwesenheit</div>
+          <div className="hbz-chipbar">
+            <button
+              type="button"
+              className={`hbz-chip ${absenceType === "krank" ? "active" : ""}`}
+              onClick={() => {
+                setAbsenceType("krank");
+                setProjectId(null);
+                // Mo–Do: 9h (07:00–16:00), Fr: 3h (07:00–10:00)
+                const d = new Date(`${date}T00:00:00`);
+                const isFri = d.getDay() === 5;
+                setFromMin(7 * 60);
+                setToMin(isFri ? 10 * 60 : 16 * 60);
+                setBreakMin(0);
+                setTravelMin(0);
+              }}
+            >
+              Krank
+            </button>
+
+            <button
+              type="button"
+              className={`hbz-chip ${absenceType === "urlaub" ? "active" : ""}`}
+              onClick={() => {
+                setAbsenceType("urlaub");
+                setProjectId(null);
+                // 0h: 07:00–07:15 mit 15 min Pause => netto 0
+                setFromMin(7 * 60);
+                setToMin(7 * 60 + 15);
+                setBreakMin(15);
+                setTravelMin(0);
+              }}
+            >
+              Urlaub
+            </button>
+
+            {absenceType && (
+              <button
+                type="button"
+                className="hbz-chip"
+                onClick={() => setAbsenceType(null)}
+                title="Abwesenheit zurücksetzen"
+              >
+                Normal
+              </button>
+            )}
+          </div>
+          <div className="text-xs opacity-70 mt-1">
+            Krank: Mo–Do 9h, Fr 3h. Urlaub: 0h. (Krank/Urlaub zählen nicht als Arbeitstage)
           </div>
         </div>
 
@@ -532,7 +590,10 @@ export default function DaySlider() {
                   key={m}
                   type="button"
                   className={`hbz-chip ${active ? "active" : ""}`}
-                  onClick={() => setTravelMin(m)}
+                  onClick={() => {
+                    if (absenceType) setAbsenceType(null);
+                    setTravelMin(m);
+                  }}
                 >
                   {label}
                 </button>
