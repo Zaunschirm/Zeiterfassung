@@ -15,11 +15,7 @@ const BUAK_WEEK_TYPES_2026 = {
 function normalizeDateStr(dateStr) {
   if (!dateStr) return "";
   const s = String(dateStr).trim();
-
-  // already ISO yyyy-mm-dd
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-
-  // dd.mm.yyyy -> yyyy-mm-dd
   const m = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
   if (m) {
     const dd = String(m[1]).padStart(2, "0");
@@ -27,19 +23,16 @@ function normalizeDateStr(dateStr) {
     const yyyy = m[3];
     return `${yyyy}-${mm}-${dd}`;
   }
-
-  return s; // fallback (Date() might still parse)
+  return s;
 }
 
 function isoWeekNumber(dateStr) {
   const iso = normalizeDateStr(dateStr);
   if (!iso) return null;
-
   const d = new Date(iso + "T00:00:00");
   if (isNaN(d.getTime())) return null;
 
-  // ISO week: Monday = 0 ... Sunday = 6
-  const dayNum = (d.getDay() + 6) % 7;
+  const dayNum = (d.getDay() + 6) % 7; // Mon=0..Sun=6
   d.setDate(d.getDate() - dayNum + 3); // Thursday
   const firstThursday = new Date(d.getFullYear(), 0, 4);
   const firstDayNum = (firstThursday.getDay() + 6) % 7;
@@ -74,11 +67,7 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const hmToMin = (hm) => {
   if (!hm) return 0;
   const [h, m] = String(hm).split(":").map((x) => parseInt(x || "0", 10));
-  
-  // BUAK Anzeige (nur Text)
-  const buakWeekLabelSimple = getBuakWeekLabelSimple(date);
-
-return (isNaN(h) ? 0 : h) * 60 + (isNaN(m) ? 0 : m);
+  return (isNaN(h) ? 0 : h) * 60 + (isNaN(m) ? 0 : m);
 };
 // Minuten → Stunden (2 Nachkommastellen)
 const h2 = (m) => Math.round((m / 60) * 100) / 100;
@@ -483,7 +472,13 @@ export default function DaySlider() {
               »
             </button>
           </div>
-        </div>
+        
+          {buakWeekLabelSimple && (
+            <div className="text-xs opacity-70" style={{ marginTop: 4 }}>
+              {buakWeekLabelSimple}
+            </div>
+          )}
+</div>
 
         {/* Mitarbeiter-Picker (nur Manager) */}
         {isManager && (
