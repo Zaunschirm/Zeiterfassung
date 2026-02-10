@@ -23,12 +23,59 @@ const PAUSE_OPTIONS = [0, 15, 30, 45, 60, 75, 90];
 const TRAVEL_OPTIONS = [0, 15, 30, 45, 60, 75, 90];
 // --- BUAK 2026 Kurz/Lang (nur Anzeige) ---
 const BUAK_WEEK_TYPES_2026 = {
-  1:"L",2:"L",3:"L",4:"K",5:"L",6:"L",7:"L",8:"K",9:"L",10:"L",11:"L",
-  12:"K",13:"L",14:"L",15:"L",16:"K",17:"L",18:"L",19:"L",20:"K",21:"L",
-  22:"L",23:"L",24:"K",25:"L",26:"L",27:"L",28:"K",29:"L",30:"L",31:"L",
-  32:"K",33:"L",34:"L",35:"L",36:"K",37:"L",38:"L",39:"L",40:"K",41:"L",
-  42:"L",43:"L",44:"K",45:"L",46:"L",47:"L",48:"K",49:"L",50:"L",51:"L",
-  52:"K",53:"L",
+  1: "K",
+  2: "K",
+  3: "L",
+  4: "K",
+  5: "L",
+  6: "K",
+  7: "L",
+  8: "K",
+  9: "L",
+  10: "K",
+  11: "L",
+  12: "K",
+  13: "L",
+  14: "K",
+  15: "L",
+  16: "L",
+  17: "K",
+  18: "L",
+  19: "L",
+  20: "K",
+  21: "K",
+  22: "L",
+  23: "K",
+  24: "L",
+  25: "K",
+  26: "L",
+  27: "K",
+  28: "L",
+  29: "K",
+  30: "L",
+  31: "K",
+  32: "L",
+  33: "K",
+  34: "L",
+  35: "K",
+  36: "L",
+  37: "K",
+  38: "L",
+  39: "K",
+  40: "L",
+  41: "K",
+  42: "L",
+  43: "K",
+  44: "L",
+  45: "K",
+  46: "L",
+  47: "K",
+  48: "L",
+  49: "K",
+  50: "K",
+  51: "K",
+  52: "L",
+  53: "L",
 };
 
 function isoWeekNumber(dateStr) {
@@ -53,8 +100,8 @@ function getBuakWeekLabel(dateStr) {
     const year = Number(String(dateStr).slice(0, 4));
     if (year !== 2026) return `KW ${wk}`;
     const t = BUAK_WEEK_TYPES_2026[wk];
-    if (t === "K") return `KW ${wk} - Kurzwoche`;
-    if (t === "L") return `KW ${wk} - Langwoche`;
+    if (t === "K") return `KW ${wk} - Kurze Woche`;
+    if (t === "L") return `KW ${wk} - Lange Woche`;
     return `KW ${wk}`;
   } catch {
     return "";
