@@ -3,7 +3,7 @@ import { supabase } from "../lib/supabase";
 import { getSession } from "../lib/session";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
-import { calcBuakSollHoursForMonth, getBuakSollHoursForWeek } from "../utils/time";
+import { calcBuakSollHoursForMonth, getBuakWeekType, getBuakSollHoursForWeek } from "../utils/time";
 
 // ---------- Utils ----------
 const toHM = (m) =>
@@ -285,20 +285,6 @@ export default function MonthlyOverview() {
     return t;
   }, [grouped]);
 
-  const workedDaysByEmployee = useMemo(() => {
-    const t = {};
-    for (const r of grouped) {
-      const name = r.employee_name || r.employee_id;
-      const workMins = Math.max((r._mins ?? 0) - (r._travel ?? 0), 0);
-      if (workMins <= 0) continue;
-      if (!t[name]) t[name] = new Set();
-      t[name].add(r.work_date);
-    }
-    const out = {};
-    for (const [k, set] of Object.entries(t)) out[k] = set.size;
-    return out;
-  }, [grouped]);
-
   const monthTotals = useMemo(() => {
     let workPlusTravel = 0;
     let travel = 0;
@@ -504,16 +490,10 @@ export default function MonthlyOverview() {
       margin: { left: 40, right: 40 },
     });
 
-    // --- NEU: Summen & Abwesenheiten als Extra-Seite ---
-    doc.addPage();
-    doc.setFontSize(16);
-    doc.text(`Summen & Abwesenheiten ${month}`, 40, 40);
-
     // Summen pro Mitarbeiter
     const sumHead = [
       [
         "Mitarbeiter",
-        "Tage",
         "Stunden gesamt (inkl. Fahrzeit)",
         "Fahrzeit gesamt (h)",
         "Überstunden (Summe Tages-Ü>9h)",
@@ -521,7 +501,6 @@ export default function MonthlyOverview() {
     ];
     const sumBody = Object.entries(totalsByEmployee).map(([name, t]) => [
       name,
-      workedDaysByEmployee[name] ?? 0,
       t.hrs.toFixed(2),
       t.travel.toFixed(2),
       t.ot.toFixed(2),
@@ -529,67 +508,29 @@ export default function MonthlyOverview() {
     autoTable(doc, {
       head: sumHead,
       body: sumBody,
-      startY: 70,
+      startY: doc.lastAutoTable.finalY + 20,
       styles: { fontSize: 10, cellPadding: 4 },
       headStyles: { fillColor: [200, 200, 200] },
       margin: { left: 40, right: 40 },
     });
 
-    // Abwesenheiten (Krank / Urlaub) – jeder Tag einzeln
-    const absHead = [["Datum", "Mitarbeiter", "Status", "Notiz"]];
-    const absMap = new Map(); // key: date|employee|status
-    grouped.forEach((r) => {
-      const rawNote = (r.note || "").trim();
-      const t =
-        (r.absence_type || "").toLowerCase() ||
-        (rawNote.startsWith("[Krank]") ? "krank" : rawNote.startsWith("[Urlaub]") ? "urlaub" : "");
-      if (!t) return;
-
-      const statusLabel = t === "krank" ? "Krank" : t === "urlaub" ? "Urlaub" : t;
-      const cleanNote = rawNote
-        .replace(/^\[(Krank|Urlaub)\]\s*/i, "")
-        .replace(/\r?\n/g, " ")
-        .trim();
-
-      const emp = r.employee_name || "";
-      const key = `${r.work_date}|${emp}|${statusLabel}`;
-      if (!absMap.has(key)) absMap.set(key, [r.work_date, emp, statusLabel, cleanNote]);
-    });
-    const absBody = Array.from(absMap.values()).sort((a, b) => {
-      if (a[0] !== b[0]) return String(a[0]).localeCompare(String(b[0]));
-      return String(a[1]).localeCompare(String(b[1]));
-    });
-
-    autoTable(doc, {
-      head: absHead,
-      body: absBody.length ? absBody : [["—", "—", "—", "Keine Abwesenheiten im Zeitraum"]],
-      startY: doc.lastAutoTable.finalY + 20,
-      styles: { fontSize: 10, cellPadding: 4, overflow: "linebreak" },
-      headStyles: { fillColor: [200, 200, 200] },
-      margin: { left: 40, right: 40 },
-    });
-
-    // Ab hier wieder wie bisher – auf neuer Seite
-    doc.addPage();
-
     // Monats-Gesamtblock
-    const y0 = 60;
+    const y0 = doc.lastAutoTable.finalY + 22;
     doc.setFontSize(12);
-    const buakSoll = calcBuakSollHoursForMonth(month);
-    const ist = monthTotals.totalHrs;
-    const abw = ist - buakSoll;
     doc.text(
-      `Monatssummen – Soll (BUAK): ${buakSoll.toFixed(2)} h | Ist: ${ist.toFixed(
+      `Monatssummen – Soll (BUAK): ${monthSoll.toFixed(2)} h | Ist: ${monthTotals.totalHrs.toFixed(
         2
-      )} h | Abw.: ${abw.toFixed(2)} h | Fahrzeit: ${monthTotals.travelHrs.toFixed(2)} h`,
+      )} h | Abw.: ${(monthTotals.totalHrs - monthSoll).toFixed(2)} h | Fahrzeit: ${monthTotals.travelHrs.toFixed(
+        2
+      )} h`,
       40,
-      40
+      y0
     );
 
     // Wochenblöcke
-    let y = 70;
+    let y = y0 + 16;
     doc.setFontSize(14);
-    doc.text("Wochenübersicht (ISO, Mo–So) – Wochen-Ü > Soll (BUAK)", 40, y);
+    doc.text("Wochenübersicht (ISO, Mo–So) – Wochen-Ü (BUAK) > Soll", 40, y);
     y += 10;
 
     weekly.forEach((wk, idx) => {
@@ -627,8 +568,7 @@ export default function MonthlyOverview() {
         ]);
       });
       const weekHours = h2(wk._mins);
-      const weekSoll = getBuakSollHoursForWeek((wk.rows && wk.rows[0] && wk.rows[0].work_date) || "") ?? 39;
-      const weekOT = Math.max(weekHours - weekSoll, 0);
+      const weekOT = Math.max(weekHours - 39, 0);
 
       autoTable(doc, {
         head: tableHead,
@@ -640,11 +580,25 @@ export default function MonthlyOverview() {
       });
 
       y = doc.lastAutoTable.finalY + 5;
+      // BUAK Soll je Woche (Kurze Woche = 39h, Lange Woche = 42h)
+      const weekRefDate = wk.rows?.[0]?.date || wk.rows?.[0]?.work_date || "";
+      const weekSoll = getBuakSollHoursForWeek(weekRefDate) || 39;
+      const weekType = getBuakWeekType(weekRefDate);
+      const weekTypeLabel =
+        weekType === "kurz"
+          ? "Kurze Woche"
+          : weekType === "lang"
+          ? "Lange Woche"
+          : "Woche";
+      const weekOver = Math.max(weekHours - weekSoll, 0);
+
       doc.setFontSize(10);
       doc.text(
-        `Wochensumme ${wk.weekKey} – ${wk.employee}: ${weekHours.toFixed(
+        `Wochensumme ${wk.weekKey} (${weekTypeLabel}, Soll ${weekSoll.toFixed(
           2
-        )} h  |  Soll: ${weekSoll.toFixed(2)} h  |  Wochen-Ü: ${weekOT.toFixed(2)} h`,
+        )} h) – ${wk.employee}: ${weekHours.toFixed(
+          2
+        )} h  |  Wochen-Ü (>${weekSoll.toFixed(0)}h): ${weekOver.toFixed(2)} h`,
         40,
         y
       );
