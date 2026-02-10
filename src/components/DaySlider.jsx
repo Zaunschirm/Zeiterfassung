@@ -12,24 +12,9 @@ const BUAK_WEEK_TYPES_2026 = {
   52:"K",53:"L",
 };
 
-function normalizeDateStr(dateStr) {
-  if (!dateStr) return "";
-  const s = String(dateStr).trim();
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-  const m = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
-  if (m) {
-    const dd = String(m[1]).padStart(2, "0");
-    const mm = String(m[2]).padStart(2, "0");
-    const yyyy = m[3];
-    return `${yyyy}-${mm}-${dd}`;
-  }
-  return s;
-}
-
 function isoWeekNumber(dateStr) {
-  const iso = normalizeDateStr(dateStr);
-  if (!iso) return null;
-  const d = new Date(iso + "T00:00:00");
+  if (!dateStr) return null;
+  const d = new Date(String(dateStr).slice(0,10) + "T00:00:00"); // expect YYYY-MM-DD
   if (isNaN(d.getTime())) return null;
 
   const dayNum = (d.getDay() + 6) % 7; // Mon=0..Sun=6
@@ -43,10 +28,10 @@ function isoWeekNumber(dateStr) {
 
 function getBuakWeekLabelSimple(dateStr) {
   try {
-    const iso = normalizeDateStr(dateStr);
+    const iso = String(dateStr).slice(0, 10);
     const wk = isoWeekNumber(iso);
     if (!wk) return "";
-    const year = Number(String(iso).slice(0, 4));
+    const year = Number(iso.slice(0, 4));
     if (year !== 2026) return `KW ${wk}`;
     const t = BUAK_WEEK_TYPES_2026[wk];
     if (t === "K") return `KW ${wk} - Kurzwoche`;
@@ -67,7 +52,10 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const hmToMin = (hm) => {
   if (!hm) return 0;
   const [h, m] = String(hm).split(":").map((x) => parseInt(x || "0", 10));
-  return (isNaN(h) ? 0 : h) * 60 + (isNaN(m) ? 0 : m);
+  
+  const buakWeekLabelSimple = getBuakWeekLabelSimple(date);
+
+return (isNaN(h) ? 0 : h) * 60 + (isNaN(m) ? 0 : m);
 };
 // Minuten → Stunden (2 Nachkommastellen)
 const h2 = (m) => Math.round((m / 60) * 100) / 100;
@@ -472,13 +460,12 @@ export default function DaySlider() {
               »
             </button>
           </div>
-        
           {buakWeekLabelSimple && (
             <div className="text-xs opacity-70" style={{ marginTop: 4 }}>
               {buakWeekLabelSimple}
             </div>
           )}
-</div>
+        </div>
 
         {/* Mitarbeiter-Picker (nur Manager) */}
         {isManager && (
