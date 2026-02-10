@@ -3,7 +3,6 @@ import { supabase } from "../lib/supabase";
 import { getSession } from "../lib/session";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
-import { calcBuakSollHoursForMonth, getBuakWeekType, getBuakSollHoursForWeek } from "../utils/time";
 
 // ---------- Utils ----------
 const toHM = (m) =>
@@ -277,11 +276,20 @@ export default function MonthlyOverview() {
       const hrs = h2(r._mins);
       const travelHrs = h2(r._travel);
       const ot = Math.max(hrs - 9, 0);
-      if (!t[name]) t[name] = { hrs: 0, travel: 0, ot: 0 };
+      if (!t[name]) t[name] = { hrs: 0, travel: 0, ot: 0, _days: new Set() };
       t[name].hrs += hrs;
       t[name].travel += travelHrs;
       t[name].ot += ot;
+      // Arbeitstage zählen (Urlaub/Krank nicht als Arbeitstag)
+      const note = (r.note || "").toString();
+      const isAbs = note.includes("[Urlaub]") || note.includes("[Krank]");
+      if (!isAbs && hrs > 0) t[name]._days.add(r.work_date);
     }
+    // Sets -> Anzahl
+    Object.values(t).forEach((v) => {
+      v.days = v._days ? v._days.size : 0;
+      delete v._days;
+    });
     return t;
   }, [grouped]);
 
@@ -429,7 +437,8 @@ export default function MonthlyOverview() {
 
   // ----- Export: PDF -----
   function exportPDF() {
-    const doc = new jsPDF({
+    try {
+      const doc = new jsPDF({
       orientation: "landscape",
       unit: "pt",
       format: "a4",
@@ -494,6 +503,7 @@ export default function MonthlyOverview() {
     const sumHead = [
       [
         "Mitarbeiter",
+        "Tage",
         "Stunden gesamt (inkl. Fahrzeit)",
         "Fahrzeit gesamt (h)",
         "Überstunden (Summe Tages-Ü>9h)",
@@ -501,6 +511,7 @@ export default function MonthlyOverview() {
     ];
     const sumBody = Object.entries(totalsByEmployee).map(([name, t]) => [
       name,
+      t.days ?? 0,
       t.hrs.toFixed(2),
       t.travel.toFixed(2),
       t.ot.toFixed(2),
@@ -508,21 +519,19 @@ export default function MonthlyOverview() {
     autoTable(doc, {
       head: sumHead,
       body: sumBody,
-      startY: doc.lastAutoTable.finalY + 20,
+      startY: (doc.lastAutoTable?.finalY || 60) + 20,
       styles: { fontSize: 10, cellPadding: 4 },
       headStyles: { fillColor: [200, 200, 200] },
       margin: { left: 40, right: 40 },
     });
 
     // Monats-Gesamtblock
-    const y0 = doc.lastAutoTable.finalY + 22;
+    const y0 = (doc.lastAutoTable?.finalY || 60) + 22;
     doc.setFontSize(12);
     doc.text(
-      `Monatssummen – Soll (BUAK): ${monthSoll.toFixed(2)} h | Ist: ${monthTotals.totalHrs.toFixed(
+      `Monatssummen – Fahrzeit: ${monthTotals.travelHrs.toFixed(
         2
-      )} h | Abw.: ${(monthTotals.totalHrs - monthSoll).toFixed(2)} h | Fahrzeit: ${monthTotals.travelHrs.toFixed(
-        2
-      )} h`,
+      )} h | Gesamt inkl. Fahrzeit: ${monthTotals.totalHrs.toFixed(2)} h`,
       40,
       y0
     );
@@ -534,6 +543,9 @@ export default function MonthlyOverview() {
     y += 10;
 
     weekly.forEach((wk, idx) => {
+      const weekSoll = getBuakSollHoursForWeek(wk.firstDate || (wk.days?.[0]?.work_date));
+      const weekType = getBuakWeekType(wk.firstDate || (wk.days?.[0]?.work_date));
+      const weekTypeLabel = weekType === "kurz" ? "Kurze Woche" : weekType === "lang" ? "Lange Woche" : "";
       const tableHead = [
         [
           "Woche",
@@ -568,7 +580,7 @@ export default function MonthlyOverview() {
         ]);
       });
       const weekHours = h2(wk._mins);
-      const weekOT = Math.max(weekHours - 39, 0);
+      const weekOT = Math.max(weekHours - weekSoll, 0);
 
       autoTable(doc, {
         head: tableHead,
@@ -579,26 +591,12 @@ export default function MonthlyOverview() {
         margin: { left: 40, right: 40 },
       });
 
-      y = doc.lastAutoTable.finalY + 5;
-      // BUAK Soll je Woche (Kurze Woche = 39h, Lange Woche = 42h)
-      const weekRefDate = wk.rows?.[0]?.date || wk.rows?.[0]?.work_date || "";
-      const weekSoll = getBuakSollHoursForWeek(weekRefDate) || 39;
-      const weekType = getBuakWeekType(weekRefDate);
-      const weekTypeLabel =
-        weekType === "kurz"
-          ? "Kurze Woche"
-          : weekType === "lang"
-          ? "Lange Woche"
-          : "Woche";
-      const weekOver = Math.max(weekHours - weekSoll, 0);
-
+      y = (doc.lastAutoTable?.finalY || 60) + 5;
       doc.setFontSize(10);
       doc.text(
-        `Wochensumme ${wk.weekKey} (${weekTypeLabel}, Soll ${weekSoll.toFixed(
+        `Wochensumme ${wk.weekKey} – ${wk.employee}: ${weekHours.toFixed(
           2
-        )} h) – ${wk.employee}: ${weekHours.toFixed(
-          2
-        )} h  |  Wochen-Ü (>${weekSoll.toFixed(0)}h): ${weekOver.toFixed(2)} h`,
+        )} h  |  Wochen-Ü (>39h): ${weekOT.toFixed(2)} h`,
         40,
         y
       );
@@ -613,7 +611,11 @@ export default function MonthlyOverview() {
       }
     });
 
-    doc.save(`Monatsübersicht_${month}.pdf`);
+      doc.save(`Monatsübersicht_${month}.pdf`);
+    } catch (err) {
+      console.error("PDF Export Fehler:", err);
+      alert("PDF Export Fehler – bitte F12 Konsole öffnen.\n" + (err?.message || err));
+    }
   }
 
   // ----- UI -----
