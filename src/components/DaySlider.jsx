@@ -15,22 +15,28 @@ const hmToMin = (hm) => {
   if (!hm) return 0;
   const [h, m] = String(hm).split(":").map((x) => parseInt(x || "0", 10));
   
-  // BUAK Kurz-/Langwoche Anzeige (sicher) – Kurzwoche grün, Langwoche rot
-  const buakInfo = useMemo(() => {
-    try {
-      if (!date) return { label: "", type: null };
-      const wk = getISOWeek(date);
-      const type = getBuakWeekType(date); // "kurz" | "lang" | null
-      const soll = getBuakSollHoursForWeek(date); // 36 | 42 | null
-      if (!wk) return { label: "", type };
-      if (!type) return { label: `KW ${wk}`, type: null };
-      const t = type === "kurz" ? "Kurzwoche" : "Langwoche";
-      const label = soll ? `KW ${wk} · ${t} (${soll}h)` : `KW ${wk} · ${t}`;
-      return { label, type };
-    } catch {
-      return { label: "", type: null };
+  // BUAK Kurz-/Langwoche Anzeige (ohne zusätzliche Hooks) – Kurzwoche grün, Langwoche rot
+  let buakLabel = "";
+  let buakType = null;
+
+  try {
+    const wk = getISOWeek(date); // ISO-KW Nummer
+    const type = getBuakWeekType(date); // "kurz" | "lang" | null
+    const soll = getBuakSollHoursForWeek(date); // 36 | 42 | null
+
+    buakType = type;
+    if (wk) {
+      if (!type) {
+        buakLabel = `KW ${wk}`;
+      } else {
+        const t = type === "kurz" ? "Kurzwoche" : "Langwoche";
+        buakLabel = soll ? `KW ${wk} · ${t} (${soll}h)` : `KW ${wk} · ${t}`;
+      }
     }
-  }, [date]);
+  } catch (e) {
+    buakLabel = "";
+    buakType = null;
+  }
 
 return (isNaN(h) ? 0 : h) * 60 + (isNaN(m) ? 0 : m);
 };
@@ -437,21 +443,21 @@ export default function DaySlider() {
               »
             </button>
           </div>
-          {buakInfo.label && (
+          {buakLabel && (
             <div
               className="text-xs"
               style={{
                 marginTop: 4,
                 fontWeight: 600,
                 color:
-                  buakInfo.type === "kurz"
+                  buakType === "kurz"
                     ? "#2e7d32"
-                    : buakInfo.type === "lang"
+                    : buakType === "lang"
                     ? "#c62828"
                     : "#555",
               }}
             >
-              {buakInfo.label}
+              {buakLabel}
             </div>
           )}
 
