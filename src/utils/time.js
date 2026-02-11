@@ -11,68 +11,18 @@ export function toLabel(min) {
 }
 export function todayISO() { return new Date().toISOString().slice(0,10) }
 
-// ---------------- BUAK Kurz-/Langwochen (vorbereitet) ----------------
-// Quelle: BUAK Kalender 2026 (KW 1-53 mit K/L Kennzeichnung)
-// Kurze Woche: 39h, Lange Woche: 42h
-export const BUAK_WEEK_TYPES = {
-  2026: {
-    1: 'K',
-    2: 'K',
-    3: 'K',
-    4: 'K',
-    5: 'L',
-    6: 'K',
-    7: 'L',
-    8: 'K',
-    9: 'L',
-    10: 'K',
-    11: 'L',
-    12: 'K',
-    13: 'L',
-    14: 'K',
-    15: 'K',
-    16: 'L',
-    17: 'L',
-    18: 'L',
-    19: 'K',
-    20: 'L',
-    21: 'K',
-    22: 'L',
-    23: 'K',
-    24: 'L',
-    25: 'K',
-    26: 'L',
-    27: 'L',
-    28: 'L',
-    29: 'K',
-    30: 'L',
-    31: 'K',
-    32: 'L',
-    33: 'K',
-    34: 'L',
-    35: 'K',
-    36: 'L',
-    37: 'K',
-    38: 'L',
-    39: 'K',
-    40: 'L',
-    41: 'K',
-    42: 'L',
-    43: 'K',
-    44: 'L',
-    45: 'K',
-    46: 'L',
-    47: 'K',
-    48: 'L',
-    49: 'K',
-    50: 'K',
-    51: 'K',
-    52: 'L',
-    53: 'L'
-  }
+// ---------------- BUAK Kalender 2026 (Kurz/Lang) ----------------
+// Kurze Woche = 39h, Lange Woche = 42h
+const BUAK_WEEK_TYPES_2026 = {
+  1:"L",2:"L",3:"L",4:"K",5:"L",6:"L",7:"L",8:"K",9:"L",10:"L",11:"L",
+  12:"K",13:"L",14:"L",15:"L",16:"K",17:"L",18:"L",19:"L",20:"K",21:"L",
+  22:"L",23:"L",24:"K",25:"L",26:"L",27:"L",28:"K",29:"L",30:"L",31:"L",
+  32:"K",33:"L",34:"L",35:"L",36:"K",37:"L",38:"L",39:"L",40:"K",41:"L",
+  42:"L",43:"L",44:"K",45:"L",46:"L",47:"L",48:"K",49:"L",50:"L",51:"L",
+  52:"K",53:"L",
 };
 
-function _normalizeDateStr(dateStr) {
+function normalizeDateStr(dateStr) {
   if (!dateStr) return "";
   const s = String(dateStr).trim();
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
@@ -86,15 +36,17 @@ function _normalizeDateStr(dateStr) {
   return s;
 }
 
-// ISO-Kalenderwoche (Mo-So) fuer YYYY-MM-DD
-export function isoWeekNumber(dateStr) {
-  const iso = _normalizeDateStr(dateStr);
+// ISO week number for a date string (YYYY-MM-DD or dd.mm.yyyy)
+export function getISOWeek(dateStr) {
+  const iso = normalizeDateStr(dateStr);
   if (!iso) return null;
   const d = new Date(iso + "T00:00:00");
   if (isNaN(d.getTime())) return null;
 
-  const dayNum = (d.getDay() + 6) % 7; // Mon=0..Sun=6
-  d.setDate(d.getDate() - dayNum + 3); // Thu of current week
+  // ISO week: Monday = 0 ... Sunday = 6
+  const dayNum = (d.getDay() + 6) % 7;
+  d.setDate(d.getDate() - dayNum + 3); // Thursday
+
   const firstThursday = new Date(d.getFullYear(), 0, 4);
   const firstDayNum = (firstThursday.getDay() + 6) % 7;
   firstThursday.setDate(firstThursday.getDate() - firstDayNum + 3);
@@ -103,13 +55,12 @@ export function isoWeekNumber(dateStr) {
 }
 
 export function getBuakWeekType(dateStr) {
-  const iso = _normalizeDateStr(dateStr);
-  if (!iso) return null;
+  const iso = normalizeDateStr(dateStr);
   const year = Number(String(iso).slice(0, 4));
-  const wk = isoWeekNumber(iso);
-  const map = BUAK_WEEK_TYPES[year];
-  if (!map || !wk) return null;
-  const t = map[wk];
+  if (year !== 2026) return null;
+  const wk = getISOWeek(iso);
+  if (!wk) return null;
+  const t = BUAK_WEEK_TYPES_2026[wk];
   if (t === "K") return "kurz";
   if (t === "L") return "lang";
   return null;
@@ -122,7 +73,6 @@ export function getBuakSollHoursForWeek(dateStr) {
   return null;
 }
 
-// monthStr: "YYYY-MM"
 export function calcBuakSollHoursForMonth(monthStr) {
   if (!monthStr) return 0;
   const [yStr, mStr] = String(monthStr).split("-");
@@ -137,14 +87,15 @@ export function calcBuakSollHoursForMonth(monthStr) {
   const d = new Date(first);
   while (d.getMonth() === first.getMonth()) {
     const ds = d.toISOString().slice(0, 10);
-    const wk = isoWeekNumber(ds);
+    const wk = getISOWeek(ds);
     if (wk) weeks.add(wk);
     d.setDate(d.getDate() + 1);
   }
 
   let soll = 0;
   weeks.forEach((wk) => {
-    const t = BUAK_WEEK_TYPES?.[year]?.[wk];
+    if (year !== 2026) return;
+    const t = BUAK_WEEK_TYPES_2026[wk];
     if (t === "K") soll += 39;
     else if (t === "L") soll += 42;
   });
@@ -153,11 +104,11 @@ export function calcBuakSollHoursForMonth(monthStr) {
 
 export function calcBuakSollHoursForYear(year) {
   const y = Number(year);
-  const map = BUAK_WEEK_TYPES[y];
-  if (!map) return 0;
+  if (!y) return 0;
   let soll = 0;
+  if (y !== 2026) return 0;
   for (let wk = 1; wk <= 53; wk++) {
-    const t = map[wk];
+    const t = BUAK_WEEK_TYPES_2026[wk];
     if (t === "K") soll += 39;
     else if (t === "L") soll += 42;
   }

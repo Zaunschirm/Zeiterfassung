@@ -3,6 +3,7 @@ import { supabase } from "../lib/supabase";
 import { getSession } from "../lib/session";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
+import { getISOWeek, getBuakWeekType, getBuakSollHoursForWeek, calcBuakSollHoursForMonth } from "../utils/time";
 
 // ---------- Utils ----------
 const toHM = (m) =>
