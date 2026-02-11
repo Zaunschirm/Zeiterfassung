@@ -529,10 +529,15 @@ export default function MonthlyOverview() {
     // Monats-Gesamtblock
     const y0 = (doc.lastAutoTable?.finalY || 60) + 22;
     doc.setFontSize(12);
+    // BUAK Soll (Monat) - pro Mitarbeiter und gesamt
+    const monthSollPerEmployee = calcBuakSollHoursForMonth(month);
+    const monthSollTotal = monthSollPerEmployee * (selectedEmployees?.length || 0);
+    const monthAbw = monthTotals.totalHrs - monthSollTotal;
+
     doc.text(
-      `Monatssummen – Fahrzeit: ${monthTotals.travelHrs.toFixed(
+      `Monatssummen – Soll (BUAK): ${monthSollTotal.toFixed(2)} h | Ist: ${monthTotals.totalHrs.toFixed(
         2
-      )} h | Gesamt inkl. Fahrzeit: ${monthTotals.totalHrs.toFixed(2)} h`,
+      )} h | Abw.: ${monthAbw.toFixed(2)} h | Fahrzeit: ${monthTotals.travelHrs.toFixed(2)} h`,
       40,
       y0
     );
@@ -595,9 +600,9 @@ export default function MonthlyOverview() {
       y = (doc.lastAutoTable?.finalY || 60) + 5;
       doc.setFontSize(10);
       doc.text(
-        `Wochensumme ${wk.weekKey} – ${wk.employee}: ${weekHours.toFixed(
+        `Wochensumme ${wk.weekKey} (${weekTypeLabel}${weekTypeLabel ? ", " : ""}Soll ${weekSoll.toFixed(
           2
-        )} h  |  Wochen-Ü (>39h): ${weekOT.toFixed(2)} h`,
+        )} h) – ${wk.employee}: ${weekHours.toFixed(2)} h  |  Wochen-Ü (>Soll): ${weekOT.toFixed(2)} h`,
         40,
         y
       );
