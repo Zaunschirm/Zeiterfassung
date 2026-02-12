@@ -1,4 +1,3 @@
-
 export const MIN_START = 5*60
 export const MAX_END   = 19*60+30
 export const DEFAULT_START = 6*60+45
@@ -12,7 +11,7 @@ export function toLabel(min) {
 export function todayISO() { return new Date().toISOString().slice(0,10) }
 
 // ---------------- BUAK Kalender 2026 (Kurz/Lang) ----------------
-// Kurze Woche = 39h, Lange Woche = 42h
+// Kurze Woche = 36h, Lange Woche = 42h
 const BUAK_WEEK_TYPES_2026 = {
   1:"L",2:"L",3:"L",4:"K",5:"L",6:"K",7:"L",8:"K",9:"L",10:"L",11:"L",
   12:"K",13:"L",14:"L",15:"L",16:"K",17:"L",18:"L",19:"L",20:"K",21:"L",
@@ -68,7 +67,7 @@ export function getBuakWeekType(dateStr) {
 
 export function getBuakSollHoursForWeek(dateStr) {
   const t = getBuakWeekType(dateStr);
-  if (t === "kurz") return 39;
+  if (t === "kurz") return 36;
   if (t === "lang") return 42;
   return null;
 }
@@ -96,7 +95,7 @@ export function calcBuakSollHoursForMonth(monthStr) {
   weeks.forEach((wk) => {
     if (year !== 2026) return;
     const t = BUAK_WEEK_TYPES_2026[wk];
-    if (t === "K") soll += 39;
+    if (t === "K") soll += 36;
     else if (t === "L") soll += 42;
   });
   return soll;
@@ -109,7 +108,7 @@ export function calcBuakSollHoursForYear(year) {
   if (y !== 2026) return 0;
   for (let wk = 1; wk <= 53; wk++) {
     const t = BUAK_WEEK_TYPES_2026[wk];
-    if (t === "K") soll += 39;
+    if (t === "K") soll += 36;
     else if (t === "L") soll += 42;
   }
   return soll;
