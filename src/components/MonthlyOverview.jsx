@@ -531,7 +531,9 @@ export default function MonthlyOverview() {
     doc.setFontSize(12);
     // BUAK Soll (Monat) - pro Mitarbeiter und gesamt
     const monthSollPerEmployee = calcBuakSollHoursForMonth(month);
-    const monthSollTotal = monthSollPerEmployee * (selectedEmployees?.length || 0);
+    // Soll nur für Mitarbeiter zählen, die im Export tatsächlich vorkommen (sonst wird es z.B. 2× zu hoch)
+    const employeeCountForSoll = Object.keys(totalsByEmployee || {}).length || (selectedEmployees?.length || 0);
+    const monthSollTotal = monthSollPerEmployee * employeeCountForSoll;
     const monthAbw = monthTotals.totalHrs - monthSollTotal;
 
     doc.text(
