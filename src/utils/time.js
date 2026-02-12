@@ -35,11 +35,13 @@ function normalizeDateStr(dateStr) {
   return s;
 }
 
+function pad2(n){ return String(n).padStart(2,"0"); }
+
 // ISO week number for a date string (YYYY-MM-DD or dd.mm.yyyy)
 export function getISOWeek(dateStr) {
   const iso = normalizeDateStr(dateStr);
   if (!iso) return null;
-  const d = new Date(iso + "T00:00:00");
+  const d = new Date(iso + "T12:00:00"); // mittags = keine UTC/Zeitzonen-Verschiebung
   if (isNaN(d.getTime())) return null;
 
   // ISO week: Monday = 0 ... Sunday = 6
@@ -79,13 +81,15 @@ export function calcBuakSollHoursForMonth(monthStr) {
   const month = Number(mStr);
   if (!year || !month) return 0;
 
-  const first = new Date(`${yStr}-${mStr}-01T00:00:00`);
+  const first = new Date(`${yStr}-${mStr}-01T12:00:00`);
   if (isNaN(first.getTime())) return 0;
 
   const weeks = new Set();
   const d = new Date(first);
   while (d.getMonth() === first.getMonth()) {
-    const ds = d.toISOString().slice(0, 10);
+    // WICHTIG: NICHT toISOString() verwenden (UTC-Verschiebung)!
+    // Sonst rutscht z.B. 2026-02-01 auf 2026-01-31 und sammelt falsche Wochen => riesiges Monatssoll.
+    const ds = `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
     const wk = getISOWeek(ds);
     if (wk) weeks.add(wk);
     d.setDate(d.getDate() + 1);
