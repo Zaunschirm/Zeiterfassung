@@ -3,7 +3,12 @@ import { supabase } from "../lib/supabase";
 import { getSession } from "../lib/session";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
-import { getISOWeek, getBuakWeekType, getBuakSollHoursForWeek, calcBuakSollHoursForMonth } from "../utils/time";
+import {
+  getISOWeek,
+  getBuakWeekType,
+  getBuakSollHoursForWeek,
+  calcBuakSollHoursForMonth,
+} from "../utils/time";
 
 // ---------- Utils ----------
 const toHM = (m) =>
@@ -11,15 +16,20 @@ const toHM = (m) =>
     2,
     "0"
   )}`;
+
 const hmToMin = (hm) => {
   if (!hm) return 0;
-  const [h, m] = String(hm).split(":").map((x) => parseInt(x || "0", 10));
+  const [h, m] = String(hm)
+    .split(":")
+    .map((x) => parseInt(x || "0", 10));
   return (isNaN(h) ? 0 : h) * 60 + (isNaN(m) ? 0 : m);
 };
+
 const h2 = (m) => Math.round((m / 60) * 100) / 100;
 
 // Minuten einer Zeile (Arbeitszeit + Fahrzeit; Pause wird abgezogen)
 const getTravel = (e) => e.travel_minutes ?? e.travel_min ?? 0;
+
 const entryMinutes = (e) => {
   const start = e.start_min ?? e.from_min ?? 0;
   const end = e.end_min ?? e.to_min ?? 0;
@@ -34,6 +44,7 @@ function parseYMD(ymd) {
   const [y, m, d] = ymd.split("-").map((n) => parseInt(n, 10));
   return new Date(y, m - 1, d);
 }
+
 function isoWeek(d) {
   const dt = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
   const dayNum = dt.getUTCDay() || 7;
@@ -42,9 +53,15 @@ function isoWeek(d) {
   const weekNo = Math.ceil(((dt - yearStart) / 86400000 + 1) / 7);
   return { week: weekNo, year: dt.getUTCFullYear() };
 }
+
 const weekKey = (ymd) => {
   const id = isoWeek(parseYMD(ymd));
   return `${id.year}-W${String(id.week).padStart(2, "0")}`;
+};
+
+const isAbsenceRow = (r) => {
+  const note = (r?.note || "").toString();
+  return note.includes("[Urlaub]") || note.includes("[Krank]");
 };
 
 // ---------- Component ----------
@@ -74,6 +91,20 @@ export default function MonthlyOverview() {
   const [editId, setEditId] = useState(null);
   const [editState, setEditState] = useState(null);
 
+  // PDF Dialog
+  const [showPdfDialog, setShowPdfDialog] = useState(false);
+  const [pdfOptions, setPdfOptions] = useState({
+    selectedEmployeeCodes: [],
+    includeDetails: true,
+    includeWeekly: true,
+    includeTotals: true,
+    includeTravel: true,
+    includeOvertime: true,
+    includeAbsence: true,
+    includeWorkdays: true,
+    includeBuak: true,
+  });
+
   // Desktop / Mobile Umschaltung für Tabelle vs. Karten
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
@@ -85,11 +116,33 @@ export default function MonthlyOverview() {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  // Abgeleitet: aktuell ausgewählte Mitarbeiter (für Anzeige wie bei Zeiterfassung)
+  // Abgeleitet: aktuell ausgewählte Mitarbeiter
   const selectedEmployees = useMemo(
     () => employees.filter((e) => selectedCodes.includes(e.code)),
     [employees, selectedCodes]
   );
+
+  // Lookup für Export
+  const employeesById = useMemo(() => {
+    const map = {};
+    employees.forEach((e) => {
+      map[e.id] = e;
+    });
+    return map;
+  }, [employees]);
+
+  // Default PDF Mitarbeiter = aktuell ausgewählte Mitarbeiter
+  useEffect(() => {
+    setPdfOptions((prev) => ({
+      ...prev,
+      selectedEmployeeCodes:
+        selectedCodes.length > 0
+          ? [...selectedCodes]
+          : isStaff && session?.code
+          ? [session.code]
+          : [],
+    }));
+  }, [selectedCodes, isStaff, session?.code]);
 
   // ----- Stammdaten -----
   useEffect(() => {
@@ -102,9 +155,11 @@ export default function MonthlyOverview() {
           .eq("active", true)
           .eq("disabled", false)
           .order("name", { ascending: true });
+
         if (!error) {
           setEmployees(data || []);
-          // Standard: nur sich selbst anzeigen (wie Zeiterfassung)
+
+          // Standard: nur sich selbst anzeigen
           if ((data || []).length && selectedCodes.length === 0) {
             if (session?.code) {
               const me = (data || []).find((e) => e.code === session.code);
@@ -125,13 +180,14 @@ export default function MonthlyOverview() {
           .eq("code", session?.code)
           .limit(1)
           .maybeSingle();
+
         if (!error && data) {
           setEmployees([data]);
           setSelectedCodes([data.code]);
         }
       }
 
-      // Projects (robust, wie vorhanden)
+      // Projects
       const tryList = async (source) => {
         const { data, error } = await supabase
           .from(source)
@@ -140,6 +196,7 @@ export default function MonthlyOverview() {
         if (error) return { ok: false, data: [] };
         return { ok: true, data: data || [] };
       };
+
       let prj = await tryList("projects");
       if (!prj.ok || prj.data.length === 0) {
         for (const fb of ["v_projects", "projects_view", "projects_all"]) {
@@ -159,11 +216,12 @@ export default function MonthlyOverview() {
   useEffect(() => {
     loadMonth();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [month, selectedCodes, selectedProjectId, isManager]);
+  }, [month, selectedCodes, selectedProjectId, isManager, employees.length]);
 
   async function loadMonth() {
     try {
       setLoading(true);
+
       const [y, m] = month.split("-");
       const from = `${y}-${m}-01`;
       const lastDay = new Date(parseInt(y, 10), parseInt(m, 10), 0).getDate();
@@ -174,6 +232,7 @@ export default function MonthlyOverview() {
         ids = employees
           .filter((e) => selectedCodes.includes(e.code))
           .map((e) => e.id);
+
         if (!ids.length) {
           setRows([]);
           setLoading(false);
@@ -187,16 +246,19 @@ export default function MonthlyOverview() {
         .gte("work_date", from)
         .lte("work_date", to);
 
-      if (isManager) q = q.in("employee_id", ids);
-      else {
+      if (isManager) {
+        q = q.in("employee_id", ids);
+      } else {
         const me = employees[0];
         if (me?.id) q = q.eq("employee_id", me.id);
       }
+
       if (selectedProjectId) q = q.eq("project_id", selectedProjectId);
 
       let { data, error } = await q
         .order("employee_name", { ascending: true })
         .order("work_date", { ascending: true });
+
       if (error?.code === "42703") {
         const retry = await q
           .order("work_date", { ascending: true })
@@ -204,6 +266,7 @@ export default function MonthlyOverview() {
         data = retry.data;
         error = retry.error;
       }
+
       if (error) throw error;
       setRows(data || []);
     } catch (e) {
@@ -239,11 +302,21 @@ export default function MonthlyOverview() {
       const key = `${r.employee_name || r.employee_id}||${r.work_date}`;
       const mins = entryMinutes(r);
       const travel = getTravel(r);
-      if (!g[key]) g[key] = { ...r, _mins: 0, _travel: 0, items: [] };
+
+      if (!g[key]) {
+        g[key] = {
+          ...r,
+          _mins: 0,
+          _travel: 0,
+          items: [],
+        };
+      }
+
       g[key]._mins += mins;
       g[key]._travel += travel || 0;
       g[key].items.push(r);
     }
+
     return Object.values(g).sort(
       (a, b) =>
         (a.employee_name || "").localeCompare(b.employee_name || "") ||
@@ -257,12 +330,27 @@ export default function MonthlyOverview() {
       const wk = weekKey(r.work_date);
       const emp = r.employee_name || r.employee_id;
       const key = `${emp}||${wk}`;
-      if (!w[key])
-        w[key] = { employee: emp, weekKey: wk, days: [], _mins: 0, _travel: 0 };
+
+      if (!w[key]) {
+        w[key] = {
+          employee: emp,
+          weekKey: wk,
+          firstDate: r.work_date,
+          days: [],
+          _mins: 0,
+          _travel: 0,
+        };
+      }
+
       w[key].days.push(r);
       w[key]._mins += r._mins;
       w[key]._travel += r._travel;
+
+      if (!w[key].firstDate || r.work_date < w[key].firstDate) {
+        w[key].firstDate = r.work_date;
+      }
     }
+
     return Object.values(w).sort(
       (a, b) =>
         a.employee.localeCompare(b.employee) ||
@@ -277,30 +365,35 @@ export default function MonthlyOverview() {
       const hrs = h2(r._mins);
       const travelHrs = h2(r._travel);
       const ot = Math.max(hrs - 9, 0);
+
       if (!t[name]) t[name] = { hrs: 0, travel: 0, ot: 0, _days: new Set() };
+
       t[name].hrs += hrs;
       t[name].travel += travelHrs;
       t[name].ot += ot;
-      // Arbeitstage zählen (Urlaub/Krank nicht als Arbeitstag)
-      const note = (r.note || "").toString();
-      const isAbs = note.includes("[Urlaub]") || note.includes("[Krank]");
-      if (!isAbs && hrs > 0) t[name]._days.add(r.work_date);
+
+      if (!isAbsenceRow(r) && hrs > 0) {
+        t[name]._days.add(r.work_date);
+      }
     }
-    // Sets -> Anzahl
+
     Object.values(t).forEach((v) => {
       v.days = v._days ? v._days.size : 0;
       delete v._days;
     });
+
     return t;
   }, [grouped]);
 
   const monthTotals = useMemo(() => {
     let workPlusTravel = 0;
     let travel = 0;
+
     for (const r of grouped) {
       workPlusTravel += r._mins;
       travel += r._travel;
     }
+
     return {
       totalHrs: h2(workPlusTravel),
       travelHrs: h2(travel),
@@ -310,8 +403,10 @@ export default function MonthlyOverview() {
   // ----- Bearbeiten / Löschen -----
   function startEdit(row) {
     if (!isManager) return;
+
     const start = row.start_min ?? row.from_min ?? 0;
     const end = row.end_min ?? row.to_min ?? 0;
+
     setEditId(row.id);
     setEditState({
       id: row.id,
@@ -324,6 +419,7 @@ export default function MonthlyOverview() {
       travel_minutes: getTravel(row) || 0,
     });
   }
+
   function cancelEdit() {
     setEditId(null);
     setEditState(null);
@@ -331,6 +427,7 @@ export default function MonthlyOverview() {
 
   async function saveEdit() {
     if (!isManager || !editId || !editState) return;
+
     const from_m = hmToMin(editState.from_hm);
     const to_m = hmToMin(editState.to_hm);
     const br_m = parseInt(editState.break_min || "0", 10);
@@ -343,6 +440,7 @@ export default function MonthlyOverview() {
       break_min: isNaN(br_m) ? 0 : br_m,
       note: (editState.note || "").trim() || null,
     };
+
     if (typeof editState.travel_minutes !== "undefined") {
       update.travel_minutes = parseInt(editState.travel_minutes || "0", 10);
     }
@@ -351,11 +449,13 @@ export default function MonthlyOverview() {
       .from("time_entries")
       .update(update)
       .eq("id", editId);
+
     if (error) {
       console.error("update error:", error);
       alert("Aktualisieren fehlgeschlagen.");
       return;
     }
+
     await loadMonth();
     cancelEdit();
   }
@@ -363,15 +463,15 @@ export default function MonthlyOverview() {
   async function deleteEntry(id) {
     if (!isManager) return;
     if (!confirm("Eintrag wirklich löschen?")) return;
-    const { error } = await supabase
-      .from("time_entries")
-      .delete()
-      .eq("id", id);
+
+    const { error } = await supabase.from("time_entries").delete().eq("id", id);
+
     if (error) {
       console.error("delete error:", error);
       alert("Löschen fehlgeschlagen.");
       return;
     }
+
     await loadMonth();
   }
 
@@ -389,12 +489,15 @@ export default function MonthlyOverview() {
       "Überstunden",
       "Notiz",
     ];
+
     const lines = [headers.join(";")];
+
     for (const r of grouped) {
       const start = r.start_min ?? r.from_min ?? 0;
       const end = r.end_min ?? r.to_min ?? 0;
       const hrs = h2(r._mins);
       const ot = Math.max(hrs - 9, 0);
+
       lines.push(
         [
           r.work_date,
@@ -410,6 +513,7 @@ export default function MonthlyOverview() {
         ].join(";")
       );
     }
+
     lines.push(
       [
         "",
@@ -428,6 +532,7 @@ export default function MonthlyOverview() {
     const blob = new Blob([lines.join("\n")], {
       type: "text/csv;charset=utf-8",
     });
+
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -436,193 +541,408 @@ export default function MonthlyOverview() {
     URL.revokeObjectURL(url);
   }
 
+  function openPdfDialog() {
+    setPdfOptions((prev) => ({
+      ...prev,
+      selectedEmployeeCodes:
+        selectedCodes.length > 0
+          ? [...selectedCodes]
+          : isStaff && session?.code
+          ? [session.code]
+          : employees.map((e) => e.code),
+    }));
+    setShowPdfDialog(true);
+  }
+
   // ----- Export: PDF -----
   function exportPDF() {
     try {
-      const doc = new jsPDF({
-      orientation: "landscape",
-      unit: "pt",
-      format: "a4",
-    });
-    const title = `Monatsübersicht ${month}`;
-    doc.setFontSize(16);
-    doc.text(title, 40, 40);
+      const selectedPdfCodes =
+        pdfOptions.selectedEmployeeCodes?.length > 0
+          ? pdfOptions.selectedEmployeeCodes
+          : selectedCodes;
 
-    const head = [
-      [
-        "Datum",
-        "Mitarbeiter",
-        "Projekt",
-        "Start",
-        "Ende",
-        "Pause (min)",
-        "Fahrzeit (min)",
-        "Stunden (inkl. Fahrzeit)",
-        "Überstunden",
-        "Notiz",
-      ],
-    ];
-    const body = grouped.map((r) => {
-      const start = r.start_min ?? r.from_min ?? 0;
-      const end = r.end_min ?? r.to_min ?? 0;
-      const hrs = h2(r._mins);
-      const ot = Math.max(hrs - 9, 0);
-      return [
-        r.work_date,
-        r.employee_name || "",
-        r.project_name || "",
-        toHM(start),
-        toHM(end),
-        r.break_min ?? 0,
-        r._travel ?? 0,
-        hrs.toFixed(2),
-        ot.toFixed(2),
-        (r.note || "").replace(/\r?\n/g, " "),
-      ];
-    });
+      const exportGroupedBase = grouped.filter((r) => {
+        const code = employeesById[r.employee_id]?.code;
+        return selectedPdfCodes.includes(code);
+      });
 
-    autoTable(doc, {
-      head,
-      body,
-      startY: 60,
-      styles: { fontSize: 9, cellPadding: 3, overflow: "linebreak" },
-      headStyles: { fillColor: [123, 74, 45] },
-      didDrawPage: () => {
-        doc.setFontSize(9);
-        const pageWidth = doc.internal.pageSize.getWidth();
-        doc.text(
-          `Erstellt am ${new Date().toLocaleDateString("de-AT")}`,
-          pageWidth - 40,
-          30,
-          { align: "right" }
+      const exportGrouped = pdfOptions.includeAbsence
+        ? exportGroupedBase
+        : exportGroupedBase.filter((r) => !isAbsenceRow(r));
+
+      if (!exportGrouped.length) {
+        alert("Keine Daten für den PDF Export ausgewählt.");
+        return;
+      }
+
+      const exportWeekly = (() => {
+        const w = {};
+        for (const r of exportGrouped) {
+          const wk = weekKey(r.work_date);
+          const emp = r.employee_name || r.employee_id;
+          const key = `${emp}||${wk}`;
+
+          if (!w[key]) {
+            w[key] = {
+              employee: emp,
+              weekKey: wk,
+              firstDate: r.work_date,
+              days: [],
+              _mins: 0,
+              _travel: 0,
+            };
+          }
+
+          w[key].days.push(r);
+          w[key]._mins += r._mins;
+          w[key]._travel += r._travel;
+
+          if (!w[key].firstDate || r.work_date < w[key].firstDate) {
+            w[key].firstDate = r.work_date;
+          }
+        }
+
+        return Object.values(w).sort(
+          (a, b) =>
+            a.employee.localeCompare(b.employee) ||
+            a.weekKey.localeCompare(b.weekKey)
         );
-      },
-      margin: { left: 40, right: 40 },
-    });
+      })();
 
-    // Summen pro Mitarbeiter
-    const sumHead = [
-      [
-        "Mitarbeiter",
-        "Tage",
-        "Stunden gesamt (inkl. Fahrzeit)",
-        "Fahrzeit gesamt (h)",
-        "Überstunden (Summe Tages-Ü>9h)",
-      ],
-    ];
-    const sumBody = Object.entries(totalsByEmployee).map(([name, t]) => [
-      name,
-      t.days ?? 0,
-      t.hrs.toFixed(2),
-      t.travel.toFixed(2),
-      t.ot.toFixed(2),
-    ]);
-    autoTable(doc, {
-      head: sumHead,
-      body: sumBody,
-      startY: (doc.lastAutoTable?.finalY || 60) + 20,
-      styles: { fontSize: 10, cellPadding: 4 },
-      headStyles: { fillColor: [200, 200, 200] },
-      margin: { left: 40, right: 40 },
-    });
+      const exportTotalsByEmployee = (() => {
+        const t = {};
+        for (const r of exportGrouped) {
+          const name = r.employee_name || r.employee_id;
+          const hrs = h2(r._mins);
+          const travelHrs = h2(r._travel);
+          const ot = Math.max(hrs - 9, 0);
 
-    // Monats-Gesamtblock
-    const y0 = (doc.lastAutoTable?.finalY || 60) + 22;
-    doc.setFontSize(12);
-    // BUAK Soll (Monat) - pro Mitarbeiter und gesamt
-    const monthSollPerEmployee = calcBuakSollHoursForMonth(month);
-    // Soll nur für Mitarbeiter zählen, die im Export tatsächlich vorkommen (sonst wird es z.B. 2× zu hoch)
-    const employeeCountForSoll = Object.keys(totalsByEmployee || {}).length || (selectedEmployees?.length || 0);
-    const monthSollTotal = monthSollPerEmployee * employeeCountForSoll;
-    const monthAbw = monthTotals.totalHrs - monthSollTotal;
+          if (!t[name]) t[name] = { hrs: 0, travel: 0, ot: 0, _days: new Set() };
 
-    doc.text(
-      `Monatssummen – Soll (BUAK): ${monthSollTotal.toFixed(2)} h | Ist: ${monthTotals.totalHrs.toFixed(
-        2
-      )} h | Abw.: ${monthAbw.toFixed(2)} h | Fahrzeit: ${monthTotals.travelHrs.toFixed(2)} h`,
-      40,
-      y0
-    );
+          t[name].hrs += hrs;
+          t[name].travel += travelHrs;
+          t[name].ot += ot;
 
-    // Wochenblöcke
-    let y = y0 + 16;
-    doc.setFontSize(14);
-    doc.text("Wochenübersicht (ISO, Mo–So) – Wochen-Ü (BUAK) > Soll", 40, y);
-    y += 10;
+          if (!isAbsenceRow(r) && hrs > 0) {
+            t[name]._days.add(r.work_date);
+          }
+        }
 
-    weekly.forEach((wk, idx) => {
-      const weekSoll = getBuakSollHoursForWeek(wk.firstDate || (wk.days?.[0]?.work_date));
-      const weekType = getBuakWeekType(wk.firstDate || (wk.days?.[0]?.work_date));
-      const weekTypeLabel = weekType === "kurz" ? "Kurze Woche" : weekType === "lang" ? "Lange Woche" : "";
-      const tableHead = [
-        [
-          "Woche",
-          "Mitarbeiter",
-          "Datum",
-          "Projekt",
-          "Start",
-          "Ende",
-          "Pause (min)",
-          "Fahrzeit (min)",
-          "Stunden (inkl. Fahrzeit)",
-          "Ü (>9h/Tag)",
-        ],
-      ];
-      const tableBody = [];
-      wk.days.forEach((r) => {
-        const start = r.start_min ?? r.from_min ?? 0;
-        const end = r.end_min ?? r.to_min ?? 0;
-        const hrs = h2(r._mins);
-        const ot = Math.max(hrs - 9, 0);
-        tableBody.push([
-          wk.weekKey,
-          wk.employee,
-          r.work_date,
-          r.project_name || "",
-          toHM(start),
-          toHM(end),
-          r.break_min ?? 0,
-          r._travel ?? 0,
-          hrs.toFixed(2),
-          ot.toFixed(2),
-        ]);
-      });
-      const weekHours = h2(wk._mins);
-      const weekOT = Math.max(weekHours - weekSoll, 0);
+        Object.values(t).forEach((v) => {
+          v.days = v._days ? v._days.size : 0;
+          delete v._days;
+        });
 
-      autoTable(doc, {
-        head: tableHead,
-        body: tableBody,
-        startY: y + 10,
-        styles: { fontSize: 9, cellPadding: 3, overflow: "linebreak" },
-        headStyles: { fillColor: [235, 235, 235] },
-        margin: { left: 40, right: 40 },
+        return t;
+      })();
+
+      const exportMonthTotals = (() => {
+        let workPlusTravel = 0;
+        let travel = 0;
+
+        for (const r of exportGrouped) {
+          workPlusTravel += r._mins;
+          travel += r._travel;
+        }
+
+        return {
+          totalHrs: h2(workPlusTravel),
+          travelHrs: h2(travel),
+        };
+      })();
+
+      const doc = new jsPDF({
+        orientation: "landscape",
+        unit: "pt",
+        format: "a4",
       });
 
-      y = (doc.lastAutoTable?.finalY || 60) + 5;
+      const title = `Monatsübersicht ${month}`;
+      doc.setFontSize(16);
+      doc.text(title, 40, 40);
+
+      const selectedEmployeeNames = employees
+        .filter((e) => selectedPdfCodes.includes(e.code))
+        .map((e) => e.name || e.code);
+
       doc.setFontSize(10);
       doc.text(
-        `Wochensumme ${wk.weekKey} (${weekTypeLabel}${weekTypeLabel ? ", " : ""}Soll ${weekSoll.toFixed(
-          2
-        )} h) – ${wk.employee}: ${weekHours.toFixed(2)} h  |  Wochen-Ü (>Soll): ${weekOT.toFixed(2)} h`,
+        `Mitarbeiter: ${
+          selectedEmployeeNames.length ? selectedEmployeeNames.join(", ") : "—"
+        }`,
         40,
-        y
+        58
       );
-      y += 18;
 
-      if (
-        y > doc.internal.pageSize.getHeight() - 80 &&
-        idx < weekly.length - 1
-      ) {
-        doc.addPage();
-        y = 40;
+      doc.text(
+        `Inhalt: ${
+          [
+            pdfOptions.includeDetails ? "Tagesdetails" : null,
+            pdfOptions.includeWeekly ? "Wochenübersicht" : null,
+            pdfOptions.includeTotals ? "Summen" : null,
+            pdfOptions.includeTravel ? "Fahrzeit" : null,
+            pdfOptions.includeOvertime ? "Überstunden" : null,
+            pdfOptions.includeAbsence ? "Abwesenheiten" : null,
+            pdfOptions.includeWorkdays ? "Arbeitstage" : null,
+            pdfOptions.includeBuak ? "BUAK/Soll" : null,
+          ]
+            .filter(Boolean)
+            .join(", ") || "—"
+        }`,
+        40,
+        74
+      );
+
+      let currentY = 90;
+
+      if (pdfOptions.includeDetails) {
+        const detailHead = [
+          [
+            "Datum",
+            "Mitarbeiter",
+            "Projekt",
+            "Start",
+            "Ende",
+            "Pause (min)",
+            ...(pdfOptions.includeTravel ? ["Fahrzeit (min)"] : []),
+            "Stunden (inkl. Fahrzeit)",
+            ...(pdfOptions.includeOvertime ? ["Überstunden"] : []),
+            "Notiz",
+          ],
+        ];
+
+        const detailBody = exportGrouped.map((r) => {
+          const start = r.start_min ?? r.from_min ?? 0;
+          const end = r.end_min ?? r.to_min ?? 0;
+          const hrs = h2(r._mins);
+          const ot = Math.max(hrs - 9, 0);
+
+          return [
+            r.work_date,
+            r.employee_name || "",
+            r.project_name || "",
+            toHM(start),
+            toHM(end),
+            r.break_min ?? 0,
+            ...(pdfOptions.includeTravel ? [r._travel ?? 0] : []),
+            hrs.toFixed(2),
+            ...(pdfOptions.includeOvertime ? [ot.toFixed(2)] : []),
+            (r.note || "").replace(/\r?\n/g, " "),
+          ];
+        });
+
+        autoTable(doc, {
+          head: detailHead,
+          body: detailBody,
+          startY: currentY,
+          styles: { fontSize: 9, cellPadding: 3, overflow: "linebreak" },
+          headStyles: { fillColor: [123, 74, 45] },
+          didDrawPage: () => {
+            doc.setFontSize(9);
+            const pageWidth = doc.internal.pageSize.getWidth();
+            doc.text(
+              `Erstellt am ${new Date().toLocaleDateString("de-AT")}`,
+              pageWidth - 40,
+              30,
+              { align: "right" }
+            );
+          },
+          margin: { left: 40, right: 40 },
+        });
+
+        currentY = (doc.lastAutoTable?.finalY || currentY) + 20;
       }
-    });
+
+      if (pdfOptions.includeTotals) {
+        const sumHead = [
+          [
+            "Mitarbeiter",
+            ...(pdfOptions.includeWorkdays ? ["Tage"] : []),
+            "Stunden gesamt (inkl. Fahrzeit)",
+            ...(pdfOptions.includeTravel ? ["Fahrzeit gesamt (h)"] : []),
+            ...(pdfOptions.includeOvertime
+              ? ["Überstunden (Summe Tages-Ü>9h)"]
+              : []),
+          ],
+        ];
+
+        const sumBody = Object.entries(exportTotalsByEmployee).map(
+          ([name, t]) => [
+            name,
+            ...(pdfOptions.includeWorkdays ? [t.days ?? 0] : []),
+            t.hrs.toFixed(2),
+            ...(pdfOptions.includeTravel ? [t.travel.toFixed(2)] : []),
+            ...(pdfOptions.includeOvertime ? [t.ot.toFixed(2)] : []),
+          ]
+        );
+
+        autoTable(doc, {
+          head: sumHead,
+          body: sumBody,
+          startY: currentY,
+          styles: { fontSize: 10, cellPadding: 4 },
+          headStyles: { fillColor: [200, 200, 200] },
+          margin: { left: 40, right: 40 },
+        });
+
+        currentY = (doc.lastAutoTable?.finalY || currentY) + 22;
+      }
+
+      if (pdfOptions.includeTotals || pdfOptions.includeBuak || pdfOptions.includeTravel) {
+        if (currentY > doc.internal.pageSize.getHeight() - 80) {
+          doc.addPage();
+          currentY = 40;
+        }
+
+        doc.setFontSize(12);
+
+        const monthSollPerEmployee = calcBuakSollHoursForMonth(month);
+        const employeeCountForSoll = Object.keys(exportTotalsByEmployee || {}).length;
+        const monthSollTotal = monthSollPerEmployee * employeeCountForSoll;
+        const monthAbw = exportMonthTotals.totalHrs - monthSollTotal;
+
+        const summaryParts = [];
+
+        if (pdfOptions.includeBuak) {
+          summaryParts.push(`Soll (BUAK): ${monthSollTotal.toFixed(2)} h`);
+        }
+
+        summaryParts.push(`Ist: ${exportMonthTotals.totalHrs.toFixed(2)} h`);
+
+        if (pdfOptions.includeBuak) {
+          summaryParts.push(`Abw.: ${monthAbw.toFixed(2)} h`);
+        }
+
+        if (pdfOptions.includeTravel) {
+          summaryParts.push(
+            `Fahrzeit: ${exportMonthTotals.travelHrs.toFixed(2)} h`
+          );
+        }
+
+        doc.text(`Monatssummen – ${summaryParts.join(" | ")}`, 40, currentY);
+        currentY += 18;
+      }
+
+      if (pdfOptions.includeWeekly && exportWeekly.length > 0) {
+        if (currentY > doc.internal.pageSize.getHeight() - 120) {
+          doc.addPage();
+          currentY = 40;
+        }
+
+        doc.setFontSize(14);
+        doc.text("Wochenübersicht (ISO, Mo–So)", 40, currentY);
+        currentY += 10;
+
+        exportWeekly.forEach((wk, idx) => {
+          const weekSoll = getBuakSollHoursForWeek(
+            wk.firstDate || wk.days?.[0]?.work_date
+          );
+          const weekType = getBuakWeekType(
+            wk.firstDate || wk.days?.[0]?.work_date
+          );
+
+          const weekTypeLabel =
+            weekType === "kurz"
+              ? "Kurze Woche"
+              : weekType === "lang"
+              ? "Lange Woche"
+              : "";
+
+          const weekHead = [
+            [
+              "Woche",
+              "Mitarbeiter",
+              "Datum",
+              "Projekt",
+              "Start",
+              "Ende",
+              "Pause (min)",
+              ...(pdfOptions.includeTravel ? ["Fahrzeit (min)"] : []),
+              "Stunden (inkl. Fahrzeit)",
+              ...(pdfOptions.includeOvertime ? ["Ü (>9h/Tag)"] : []),
+            ],
+          ];
+
+          const weekBody = [];
+          wk.days.forEach((r) => {
+            const start = r.start_min ?? r.from_min ?? 0;
+            const end = r.end_min ?? r.to_min ?? 0;
+            const hrs = h2(r._mins);
+            const ot = Math.max(hrs - 9, 0);
+
+            weekBody.push([
+              wk.weekKey,
+              wk.employee,
+              r.work_date,
+              r.project_name || "",
+              toHM(start),
+              toHM(end),
+              r.break_min ?? 0,
+              ...(pdfOptions.includeTravel ? [r._travel ?? 0] : []),
+              hrs.toFixed(2),
+              ...(pdfOptions.includeOvertime ? [ot.toFixed(2)] : []),
+            ]);
+          });
+
+          const weekHours = h2(wk._mins);
+          const weekOT = Math.max(weekHours - weekSoll, 0);
+
+          autoTable(doc, {
+            head: weekHead,
+            body: weekBody,
+            startY: currentY + 10,
+            styles: { fontSize: 9, cellPadding: 3, overflow: "linebreak" },
+            headStyles: { fillColor: [235, 235, 235] },
+            margin: { left: 40, right: 40 },
+          });
+
+          currentY = (doc.lastAutoTable?.finalY || currentY) + 5;
+          doc.setFontSize(10);
+
+          const weekInfoParts = [];
+
+          if (pdfOptions.includeBuak) {
+            weekInfoParts.push(
+              `${weekTypeLabel}${weekTypeLabel ? ", " : ""}Soll ${weekSoll.toFixed(
+                2
+              )} h`
+            );
+          }
+
+          weekInfoParts.push(`${weekHours.toFixed(2)} h`);
+
+          if (pdfOptions.includeBuak) {
+            weekInfoParts.push(`Wochen-Ü (>Soll): ${weekOT.toFixed(2)} h`);
+          }
+
+          doc.text(
+            `Wochensumme ${wk.weekKey} – ${wk.employee}: ${weekInfoParts.join(
+              " | "
+            )}`,
+            40,
+            currentY
+          );
+
+          currentY += 18;
+
+          if (
+            currentY > doc.internal.pageSize.getHeight() - 80 &&
+            idx < exportWeekly.length - 1
+          ) {
+            doc.addPage();
+            currentY = 40;
+          }
+        });
+      }
 
       doc.save(`Monatsübersicht_${month}.pdf`);
     } catch (err) {
       console.error("PDF Export Fehler:", err);
-      alert("PDF Export Fehler – bitte F12 Konsole öffnen.\n" + (err?.message || err));
+      alert(
+        "PDF Export Fehler – bitte F12 Konsole öffnen.\n" +
+          (err?.message || err)
+      );
     }
   }
 
@@ -662,7 +982,6 @@ export default function MonthlyOverview() {
               Mitarbeiter (Mehrfachauswahl)
             </label>
 
-            {/* Steuerleiste wie bei Zeiterfassung */}
             <div className="mt-1 mb-1 flex items-center gap-2 text-xs">
               <button
                 type="button"
@@ -684,16 +1003,13 @@ export default function MonthlyOverview() {
                   <>
                     {" "}
                     (
-                    {selectedEmployees
-                      .map((e) => e.name || e.code)
-                      .join(", ")}
+                    {selectedEmployees.map((e) => e.name || e.code).join(", ")}
                     )
                   </>
                 )}
               </span>
             </div>
 
-            {/* Chips */}
             <div className="mt-1 flex flex-wrap gap-2">
               {employees.map((e) => {
                 const active = selectedCodes.includes(e.code);
@@ -720,7 +1036,7 @@ export default function MonthlyOverview() {
         )}
 
         <div className="ml-auto flex gap-2">
-          <button onClick={exportPDF} className="px-3 py-2 rounded border">
+          <button onClick={openPdfDialog} className="px-3 py-2 rounded border">
             PDF export
           </button>
           <button onClick={exportCSV} className="px-3 py-2 rounded border">
@@ -742,7 +1058,6 @@ export default function MonthlyOverview() {
             <div className="text-sm opacity-70 p-3">Keine Einträge.</div>
           ) : (
             <div className="mo-responsive">
-              {/* Desktop / Tablet: Tabelle */}
               {!isMobile && (
                 <div className="mo-table-wrapper">
                   <table className="nice mo-table">
@@ -820,7 +1135,6 @@ export default function MonthlyOverview() {
                           );
                         }
 
-                        // Edit-Zeile in der Tabelle
                         return (
                           <tr key={`${r.id}-edit`}>
                             <td>{r.work_date}</td>
@@ -839,9 +1153,7 @@ export default function MonthlyOverview() {
                                 <option value="">— ohne Projekt —</option>
                                 {projects.map((p) => (
                                   <option key={p.id} value={p.id}>
-                                    {p.code
-                                      ? `${p.code} · ${p.name}`
-                                      : p.name}
+                                    {p.code ? `${p.code} · ${p.name}` : p.name}
                                   </option>
                                 ))}
                               </select>
@@ -908,10 +1220,8 @@ export default function MonthlyOverview() {
                                   Math.max(
                                     hmToMin(editState.to_hm) -
                                       hmToMin(editState.from_hm) -
-                                      (parseInt(
-                                        editState.break_min || "0",
-                                        10
-                                      ) || 0),
+                                      (parseInt(editState.break_min || "0", 10) ||
+                                        0),
                                     0
                                   ) +
                                   (parseInt(
@@ -960,7 +1270,6 @@ export default function MonthlyOverview() {
                 </div>
               )}
 
-              {/* Handy: Karten-Ansicht */}
               {isMobile && (
                 <div className="mo-cards">
                   {grouped.map((r) => {
@@ -1038,7 +1347,6 @@ export default function MonthlyOverview() {
                       );
                     }
 
-                    // Edit-Karte auf Handy
                     const minsLive =
                       Math.max(
                         hmToMin(editState.to_hm) -
@@ -1088,9 +1396,7 @@ export default function MonthlyOverview() {
                               <option value="">— ohne Projekt —</option>
                               {projects.map((p) => (
                                 <option key={p.id} value={p.id}>
-                                  {p.code
-                                    ? `${p.code} · ${p.name}`
-                                    : p.name}
+                                  {p.code ? `${p.code} · ${p.name}` : p.name}
                                 </option>
                               ))}
                             </select>
@@ -1208,13 +1514,251 @@ export default function MonthlyOverview() {
           )}
         </div>
 
-        {/* Monats-Summenleiste */}
         <div className="px-3 py-2 text-sm opacity-80">
           <b>Monatssummen:</b>&nbsp;
           Fahrzeit: {monthTotals.travelHrs.toFixed(2)} h &nbsp;|&nbsp; Gesamt
           inkl. Fahrzeit: {monthTotals.totalHrs.toFixed(2)} h
         </div>
       </div>
+
+      {showPdfDialog && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          style={{ background: "rgba(0,0,0,0.45)" }}
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl p-4 w-full max-w-3xl mx-3"
+            style={{ maxHeight: "90vh", overflowY: "auto" }}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold">PDF Export auswählen</h3>
+              <button
+                className="px-3 py-1 rounded border"
+                onClick={() => setShowPdfDialog(false)}
+              >
+                Schließen
+              </button>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="border rounded-lg p-3">
+                <div className="font-semibold mb-2">Mitarbeiter</div>
+
+                <div className="flex flex-wrap gap-2 mb-3">
+                  <button
+                    type="button"
+                    className="hbz-btn btn-small"
+                    onClick={() =>
+                      setPdfOptions((prev) => ({
+                        ...prev,
+                        selectedEmployeeCodes: employees.map((e) => e.code),
+                      }))
+                    }
+                  >
+                    Alle
+                  </button>
+
+                  <button
+                    type="button"
+                    className="hbz-btn btn-small"
+                    onClick={() =>
+                      setPdfOptions((prev) => ({
+                        ...prev,
+                        selectedEmployeeCodes: session?.code
+                          ? [session.code]
+                          : [],
+                      }))
+                    }
+                  >
+                    Nur mich
+                  </button>
+
+                  <button
+                    type="button"
+                    className="hbz-btn btn-small"
+                    onClick={() =>
+                      setPdfOptions((prev) => ({
+                        ...prev,
+                        selectedEmployeeCodes: [...selectedCodes],
+                      }))
+                    }
+                  >
+                    Aktuelle Auswahl
+                  </button>
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  {employees.map((e) => {
+                    const checked = pdfOptions.selectedEmployeeCodes.includes(
+                      e.code
+                    );
+                    return (
+                      <label
+                        key={`pdf-emp-${e.id}`}
+                        className="flex items-center gap-2"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(ev) => {
+                            const isChecked = ev.target.checked;
+                            setPdfOptions((prev) => ({
+                              ...prev,
+                              selectedEmployeeCodes: isChecked
+                                ? [...prev.selectedEmployeeCodes, e.code]
+                                : prev.selectedEmployeeCodes.filter(
+                                    (c) => c !== e.code
+                                  ),
+                            }));
+                          }}
+                        />
+                        <span>{e.name || e.code}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="border rounded-lg p-3">
+                <div className="font-semibold mb-2">Inhalt</div>
+
+                <div className="flex flex-col gap-2">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={pdfOptions.includeDetails}
+                      onChange={(e) =>
+                        setPdfOptions((prev) => ({
+                          ...prev,
+                          includeDetails: e.target.checked,
+                        }))
+                      }
+                    />
+                    <span>Tagesdetails</span>
+                  </label>
+
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={pdfOptions.includeWeekly}
+                      onChange={(e) =>
+                        setPdfOptions((prev) => ({
+                          ...prev,
+                          includeWeekly: e.target.checked,
+                        }))
+                      }
+                    />
+                    <span>Wochenübersicht</span>
+                  </label>
+
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={pdfOptions.includeTotals}
+                      onChange={(e) =>
+                        setPdfOptions((prev) => ({
+                          ...prev,
+                          includeTotals: e.target.checked,
+                        }))
+                      }
+                    />
+                    <span>Summen</span>
+                  </label>
+
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={pdfOptions.includeTravel}
+                      onChange={(e) =>
+                        setPdfOptions((prev) => ({
+                          ...prev,
+                          includeTravel: e.target.checked,
+                        }))
+                      }
+                    />
+                    <span>Fahrzeit</span>
+                  </label>
+
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={pdfOptions.includeOvertime}
+                      onChange={(e) =>
+                        setPdfOptions((prev) => ({
+                          ...prev,
+                          includeOvertime: e.target.checked,
+                        }))
+                      }
+                    />
+                    <span>Überstunden</span>
+                  </label>
+
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={pdfOptions.includeAbsence}
+                      onChange={(e) =>
+                        setPdfOptions((prev) => ({
+                          ...prev,
+                          includeAbsence: e.target.checked,
+                        }))
+                      }
+                    />
+                    <span>Krank / Urlaub anzeigen</span>
+                  </label>
+
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={pdfOptions.includeWorkdays}
+                      onChange={(e) =>
+                        setPdfOptions((prev) => ({
+                          ...prev,
+                          includeWorkdays: e.target.checked,
+                        }))
+                      }
+                    />
+                    <span>Arbeitstage</span>
+                  </label>
+
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={pdfOptions.includeBuak}
+                      onChange={(e) =>
+                        setPdfOptions((prev) => ({
+                          ...prev,
+                          includeBuak: e.target.checked,
+                        }))
+                      }
+                    />
+                    <span>BUAK / Sollstunden / kurze-lange Woche</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 mt-5">
+              <button
+                className="px-3 py-2 rounded border"
+                onClick={() => setShowPdfDialog(false)}
+              >
+                Abbrechen
+              </button>
+              <button
+                className="px-3 py-2 rounded border text-white"
+                style={{ background: "#7b4a2d" }}
+                onClick={() => {
+                  exportPDF();
+                  setShowPdfDialog(false);
+                }}
+              >
+                PDF exportieren
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
