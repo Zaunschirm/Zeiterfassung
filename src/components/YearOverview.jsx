@@ -3,7 +3,10 @@ import { supabase } from "../lib/supabase";
 import { getSession } from "../lib/session";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
-import { calcBuakSollHoursForYear, calcBuakSollHoursForMonth } from "../utils/time";
+import {
+  calcBuakSollHoursForYear,
+  calcBuakSollHoursForMonth,
+} from "../utils/time";
 
 // ---- Helpers ----
 const h2 = (m) => Math.round((m / 60) * 100) / 100;
@@ -19,7 +22,9 @@ function splitMinutes(r) {
     work = Math.max(end - start - pause, 0);
   }
 
-  const total = r.total_minutes != null ? r.total_minutes : work + (travel || 0);
+  const total =
+    r.total_minutes != null ? r.total_minutes : work + (travel || 0);
+
   return { work, travel, total };
 }
 
@@ -40,24 +45,58 @@ function compareMonthStrings(a, b) {
   return a.localeCompare(b);
 }
 
+function getMonthListBetween(fromYm, toYm) {
+  if (!fromYm || !toYm) return [];
+
+  const [fromY, fromM] = fromYm.split("-").map(Number);
+  const [toY, toM] = toYm.split("-").map(Number);
+
+  const out = [];
+  let y = fromY;
+  let m = fromM;
+
+  while (y < toY || (y === toY && m <= toM)) {
+    out.push(`${y}-${String(m).padStart(2, "0")}`);
+    m += 1;
+    if (m > 12) {
+      m = 1;
+      y += 1;
+    }
+  }
+
+  return out;
+}
+
+function calcBuakSollForMonthList(monthList) {
+  return (monthList || []).reduce(
+    (sum, ym) => sum + (calcBuakSollHoursForMonth(ym) || 0),
+    0
+  );
+}
+
+function uniq(arr) {
+  return Array.from(new Set(arr));
+}
+
 function getRangeFromFilters(year, monthFilter, rangeFromMonth, rangeToMonth) {
   const fromRange = getMonthRange(rangeFromMonth);
   const toRange = getMonthRange(rangeToMonth);
   const singleMonth = getMonthRange(monthFilter);
 
   if (fromRange && toRange) {
-    const useFrom = compareMonthStrings(rangeFromMonth, rangeToMonth) <= 0 ? fromRange : toRange;
-    const useTo = compareMonthStrings(rangeFromMonth, rangeToMonth) <= 0 ? toRange : fromRange;
+    const isNormalOrder = compareMonthStrings(rangeFromMonth, rangeToMonth) <= 0;
+    const useFrom = isNormalOrder ? fromRange : toRange;
+    const useTo = isNormalOrder ? toRange : fromRange;
+    const fromYm = isNormalOrder ? rangeFromMonth : rangeToMonth;
+    const toYm = isNormalOrder ? rangeToMonth : rangeFromMonth;
+
     return {
       mode: "range",
       from: useFrom.from,
       to: useTo.to,
-      label: `${rangeFromMonth} bis ${rangeToMonth}`,
+      label: `${fromYm} bis ${toYm}`,
       yearForBuak: null,
-      monthList: getMonthListBetween(
-        compareMonthStrings(rangeFromMonth, rangeToMonth) <= 0 ? rangeFromMonth : rangeToMonth,
-        compareMonthStrings(rangeFromMonth, rangeToMonth) <= 0 ? rangeToMonth : rangeFromMonth
-      ),
+      monthList: getMonthListBetween(fromYm, toYm),
     };
   }
 
@@ -78,36 +117,11 @@ function getRangeFromFilters(year, monthFilter, rangeFromMonth, rangeToMonth) {
     to: `${year}-12-31`,
     label: `Jahr ${year}`,
     yearForBuak: year,
-    monthList: Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, "0")}`),
+    monthList: Array.from(
+      { length: 12 },
+      (_, i) => `${year}-${String(i + 1).padStart(2, "0")}`
+    ),
   };
-}
-
-function getMonthListBetween(fromYm, toYm) {
-  if (!fromYm || !toYm) return [];
-  const [fromY, fromM] = fromYm.split("-").map(Number);
-  const [toY, toM] = toYm.split("-").map(Number);
-
-  const out = [];
-  let y = fromY;
-  let m = fromM;
-
-  while (y < toY || (y === toY && m <= toM)) {
-    out.push(`${y}-${String(m).padStart(2, "0")}`);
-    m += 1;
-    if (m > 12) {
-      m = 1;
-      y += 1;
-    }
-  }
-  return out;
-}
-
-function calcBuakSollForMonthList(monthList) {
-  return (monthList || []).reduce((sum, ym) => sum + (calcBuakSollHoursForMonth(ym) || 0), 0);
-}
-
-function uniq(arr) {
-  return Array.from(new Set(arr));
 }
 
 export default function YearOverview() {
@@ -118,10 +132,13 @@ export default function YearOverview() {
   const now = new Date();
   const currentYear = now.getFullYear();
   const currentMonth = now.getMonth() + 1;
-  const currentMonthStr = `${currentYear}-${String(currentMonth).padStart(2, "0")}`;
+  const currentMonthStr = `${currentYear}-${String(currentMonth).padStart(
+    2,
+    "0"
+  )}`;
 
   const [year, setYear] = useState(currentYear);
-  const [monthFilter, setMonthFilter] = useState(""); // "" = gesamtes Jahr
+  const [monthFilter, setMonthFilter] = useState("");
   const [rangeFromMonth, setRangeFromMonth] = useState("");
   const [rangeToMonth, setRangeToMonth] = useState("");
 
@@ -140,7 +157,10 @@ export default function YearOverview() {
     includeProjects: true,
     includeEmployees: true,
     includeEmployeeProjects: true,
+    includeWorkHours: true,
+    includeTotalHours: true,
     includeTravel: true,
+    includeDays: true,
     includeBuak: true,
   });
 
@@ -195,14 +215,27 @@ export default function YearOverview() {
   useEffect(() => {
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [year, monthFilter, rangeFromMonth, rangeToMonth, selectedCodes, selectedProjectId, employees.length]);
+  }, [
+    year,
+    monthFilter,
+    rangeFromMonth,
+    rangeToMonth,
+    selectedCodes,
+    selectedProjectId,
+    employees.length,
+  ]);
 
   async function loadData() {
     setLoading(true);
     setError("");
 
     try {
-      const range = getRangeFromFilters(year, monthFilter, rangeFromMonth, rangeToMonth);
+      const range = getRangeFromFilters(
+        year,
+        monthFilter,
+        rangeFromMonth,
+        rangeToMonth
+      );
 
       const ids = employees
         .filter((e) => selectedCodes.includes(e.code))
@@ -232,7 +265,9 @@ export default function YearOverview() {
     } catch (e) {
       console.error("YearOverview load error:", e);
       setRows([]);
-      setError("Daten konnten nicht geladen werden. Bitte Konsole prüfen oder Filter anpassen.");
+      setError(
+        "Daten konnten nicht geladen werden. Bitte Konsole prüfen oder Filter anpassen."
+      );
     } finally {
       setLoading(false);
     }
@@ -250,6 +285,7 @@ export default function YearOverview() {
   // je Projekt
   const byProject = useMemo(() => {
     const map = new Map();
+
     for (const r of rows) {
       const { work, travel, total } = splitMinutes(r);
       const name = r.project_name || r.project_code || r.project_id || "—";
@@ -265,20 +301,30 @@ export default function YearOverview() {
           travel: 0,
           total: 0,
           cnt: 0,
+          _days: new Set(),
         };
 
       e.work += work;
       e.travel += travel;
       e.total += total;
       e.cnt += 1;
+      if (r.work_date) e._days.add(r.work_date);
+
       map.set(key, e);
     }
-    return Array.from(map.values()).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+
+    return Array.from(map.values())
+      .map((e) => ({
+        ...e,
+        days: e._days ? e._days.size : 0,
+      }))
+      .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
   }, [rows]);
 
   // je Mitarbeiter
   const byEmployee = useMemo(() => {
     const map = new Map();
+
     for (const r of rows) {
       const { work, travel, total } = splitMinutes(r);
       const key = r.employee_name || r.employee_id || "—";
@@ -290,20 +336,33 @@ export default function YearOverview() {
           travel: 0,
           total: 0,
           cnt: 0,
+          _days: new Set(),
         };
 
       e.work += work;
       e.travel += travel;
       e.total += total;
       e.cnt += 1;
+
+      if (r.work_date) {
+        e._days.add(r.work_date);
+      }
+
       map.set(key, e);
     }
-    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+
+    return Array.from(map.values())
+      .map((e) => ({
+        ...e,
+        days: e._days ? e._days.size : 0,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
   }, [rows]);
 
   // Mitarbeiter × Projekt
   const byEmployeeProject = useMemo(() => {
     const map = new Map();
+
     for (const r of rows) {
       const { work, travel, total } = splitMinutes(r);
       const emp = r.employee_name || r.employee_id || "—";
@@ -318,17 +377,24 @@ export default function YearOverview() {
           travel: 0,
           total: 0,
           cnt: 0,
+          _days: new Set(),
         };
 
       e.work += work;
       e.travel += travel;
       e.total += total;
       e.cnt += 1;
+      if (r.work_date) e._days.add(r.work_date);
+
       map.set(key, e);
     }
-    return Array.from(map.values()).sort(
-      (a, b) => a.emp.localeCompare(b.emp) || a.prj.localeCompare(b.prj)
-    );
+
+    return Array.from(map.values())
+      .map((e) => ({
+        ...e,
+        days: e._days ? e._days.size : 0,
+      }))
+      .sort((a, b) => a.emp.localeCompare(b.emp) || a.prj.localeCompare(b.prj));
   }, [rows]);
 
   // Gesamtsummen
@@ -336,12 +402,14 @@ export default function YearOverview() {
     let work = 0,
       travel = 0,
       total = 0;
+
     for (const r of rows) {
       const m = splitMinutes(r);
       work += m.work;
       travel += m.travel;
       total += m.total;
     }
+
     return { workH: h2(work), travelH: h2(travel), totalH: h2(total) };
   }, [rows]);
 
@@ -353,7 +421,10 @@ export default function YearOverview() {
     return calcBuakSollForMonthList(activeRange.monthList);
   }, [activeRange]);
 
-  const buakDiff = useMemo(() => totals.totalH - buakSoll, [totals.totalH, buakSoll]);
+  const buakDiff = useMemo(
+    () => totals.totalH - buakSoll,
+    [totals.totalH, buakSoll]
+  );
 
   const hasData = rows.length > 0;
 
@@ -364,7 +435,17 @@ export default function YearOverview() {
     lines.push("");
 
     lines.push("PROJEKTE");
-    lines.push(["Projekt", "Arbeitsstunden", "Fahrzeit (h)", "Gesamt (h)", "Einträge"].join(";"));
+    lines.push(
+      [
+        "Projekt",
+        "Arbeitsstunden",
+        "Fahrzeit (h)",
+        "Gesamt (h)",
+        "Anzahl Tage",
+        "Einträge",
+      ].join(";")
+    );
+
     for (const p of byProject) {
       const label = p.code ? `${p.code} · ${p.name}` : p.name;
       lines.push(
@@ -373,6 +454,7 @@ export default function YearOverview() {
           h2(p.work).toFixed(2),
           h2(p.travel).toFixed(2),
           h2(p.total).toFixed(2),
+          p.days ?? 0,
           p.cnt,
         ].join(";")
       );
@@ -380,7 +462,17 @@ export default function YearOverview() {
 
     lines.push("");
     lines.push("MITARBEITER");
-    lines.push(["Mitarbeiter", "Arbeitsstunden", "Fahrzeit (h)", "Gesamt (h)", "Einträge"].join(";"));
+    lines.push(
+      [
+        "Mitarbeiter",
+        "Arbeitsstunden",
+        "Fahrzeit (h)",
+        "Gesamt (h)",
+        "Anzahl Tage",
+        "Einträge",
+      ].join(";")
+    );
+
     for (const e of byEmployee) {
       lines.push(
         [
@@ -388,6 +480,7 @@ export default function YearOverview() {
           h2(e.work).toFixed(2),
           h2(e.travel).toFixed(2),
           h2(e.total).toFixed(2),
+          e.days ?? 0,
           e.cnt,
         ].join(";")
       );
@@ -400,12 +493,24 @@ export default function YearOverview() {
         totals.travelH.toFixed(2),
         totals.totalH.toFixed(2),
         "",
+        "",
       ].join(";")
     );
 
     lines.push("");
     lines.push("MITARBEITER x PROJEKT");
-    lines.push(["Mitarbeiter", "Projekt", "Arbeitsstunden", "Fahrzeit (h)", "Gesamt (h)", "Einträge"].join(";"));
+    lines.push(
+      [
+        "Mitarbeiter",
+        "Projekt",
+        "Arbeitsstunden",
+        "Fahrzeit (h)",
+        "Gesamt (h)",
+        "Anzahl Tage",
+        "Einträge",
+      ].join(";")
+    );
+
     for (const r of byEmployeeProject) {
       lines.push(
         [
@@ -414,6 +519,7 @@ export default function YearOverview() {
           h2(r.work).toFixed(2),
           h2(r.travel).toFixed(2),
           h2(r.total).toFixed(2),
+          r.days ?? 0,
           r.cnt,
         ].join(";")
       );
@@ -433,7 +539,9 @@ export default function YearOverview() {
   function openPdfDialog() {
     setPdfOptions((prev) => ({
       ...prev,
-      selectedEmployeeCodes: selectedCodes.length ? [...selectedCodes] : employees.map((e) => e.code),
+      selectedEmployeeCodes: selectedCodes.length
+        ? [...selectedCodes]
+        : employees.map((e) => e.code),
     }));
     setShowPdfDialog(true);
   }
@@ -456,6 +564,7 @@ export default function YearOverview() {
 
     const exportByProject = (() => {
       const map = new Map();
+
       for (const r of selectedRows) {
         const { work, travel, total } = splitMinutes(r);
         const name = r.project_name || r.project_code || r.project_id || "—";
@@ -471,19 +580,29 @@ export default function YearOverview() {
             travel: 0,
             total: 0,
             cnt: 0,
+            _days: new Set(),
           };
 
         e.work += work;
         e.travel += travel;
         e.total += total;
         e.cnt += 1;
+        if (r.work_date) e._days.add(r.work_date);
+
         map.set(key, e);
       }
-      return Array.from(map.values()).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+
+      return Array.from(map.values())
+        .map((e) => ({
+          ...e,
+          days: e._days ? e._days.size : 0,
+        }))
+        .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
     })();
 
     const exportByEmployee = (() => {
       const map = new Map();
+
       for (const r of selectedRows) {
         const { work, travel, total } = splitMinutes(r);
         const key = r.employee_name || r.employee_id || "—";
@@ -495,19 +614,32 @@ export default function YearOverview() {
             travel: 0,
             total: 0,
             cnt: 0,
+            _days: new Set(),
           };
 
         e.work += work;
         e.travel += travel;
         e.total += total;
         e.cnt += 1;
+
+        if (r.work_date) {
+          e._days.add(r.work_date);
+        }
+
         map.set(key, e);
       }
-      return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+
+      return Array.from(map.values())
+        .map((e) => ({
+          ...e,
+          days: e._days ? e._days.size : 0,
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name));
     })();
 
     const exportByEmployeeProject = (() => {
       const map = new Map();
+
       for (const r of selectedRows) {
         const { work, travel, total } = splitMinutes(r);
         const emp = r.employee_name || r.employee_id || "—";
@@ -522,29 +654,40 @@ export default function YearOverview() {
             travel: 0,
             total: 0,
             cnt: 0,
+            _days: new Set(),
           };
 
         e.work += work;
         e.travel += travel;
         e.total += total;
         e.cnt += 1;
+        if (r.work_date) e._days.add(r.work_date);
+
         map.set(key, e);
       }
-      return Array.from(map.values()).sort(
-        (a, b) => a.emp.localeCompare(b.emp) || a.prj.localeCompare(b.prj)
-      );
+
+      return Array.from(map.values())
+        .map((e) => ({
+          ...e,
+          days: e._days ? e._days.size : 0,
+        }))
+        .sort(
+          (a, b) => a.emp.localeCompare(b.emp) || a.prj.localeCompare(b.prj)
+        );
     })();
 
     const exportTotals = (() => {
       let work = 0,
         travel = 0,
         total = 0;
+
       for (const r of selectedRows) {
         const m = splitMinutes(r);
         work += m.work;
         travel += m.travel;
         total += m.total;
       }
+
       return { workH: h2(work), travelH: h2(travel), totalH: h2(total) };
     })();
 
@@ -582,7 +725,10 @@ export default function YearOverview() {
           pdfOptions.includeProjects ? "Projekte" : null,
           pdfOptions.includeEmployees ? "Mitarbeiter" : null,
           pdfOptions.includeEmployeeProjects ? "Mitarbeiter x Projekt" : null,
+          pdfOptions.includeWorkHours ? "Arbeitsstunden" : null,
+          pdfOptions.includeTotalHours ? "Gesamtstunden" : null,
           pdfOptions.includeTravel ? "Fahrzeit" : null,
+          pdfOptions.includeDays ? "Anzahl Tage" : null,
           pdfOptions.includeBuak ? "BUAK Sollstunden" : null,
         ]
           .filter(Boolean)
@@ -599,16 +745,18 @@ export default function YearOverview() {
       autoTable(doc, {
         head: [[
           "Projekt",
-          "Arbeitsstunden",
+          ...(pdfOptions.includeWorkHours ? ["Arbeitsstunden"] : []),
           ...(pdfOptions.includeTravel ? ["Fahrzeit (h)"] : []),
-          "Gesamt (h)",
+          ...(pdfOptions.includeTotalHours ? ["Gesamt (h)"] : []),
+          ...(pdfOptions.includeDays ? ["Anzahl Tage"] : []),
           "Einträge",
         ]],
         body: exportByProject.map((p) => [
           p.code ? `${p.code} · ${p.name}` : p.name,
-          h2(p.work).toFixed(2),
+          ...(pdfOptions.includeWorkHours ? [h2(p.work).toFixed(2)] : []),
           ...(pdfOptions.includeTravel ? [h2(p.travel).toFixed(2)] : []),
-          h2(p.total).toFixed(2),
+          ...(pdfOptions.includeTotalHours ? [h2(p.total).toFixed(2)] : []),
+          ...(pdfOptions.includeDays ? [p.days ?? 0] : []),
           p.cnt,
         ]),
         startY: y,
@@ -620,19 +768,39 @@ export default function YearOverview() {
       drewSomething = true;
     }
 
-    if (pdfOptions.includeBuak || pdfOptions.includeTravel) {
+    if (
+      pdfOptions.includeBuak ||
+      pdfOptions.includeTravel ||
+      pdfOptions.includeWorkHours ||
+      pdfOptions.includeTotalHours ||
+      pdfOptions.includeDays
+    ) {
       if (y > doc.internal.pageSize.getHeight() - 80) {
         doc.addPage();
         y = 40;
       }
+
       doc.setFontSize(11);
 
       const sumParts = [];
-      if (pdfOptions.includeBuak) sumParts.push(`Soll (BUAK): ${exportBuakSoll.toFixed(2)} h`);
-      sumParts.push(`Ist: ${exportTotals.totalH.toFixed(2)} h`);
-      if (pdfOptions.includeBuak) sumParts.push(`Abw.: ${exportBuakDiff.toFixed(2)} h`);
-      sumParts.push(`Arbeit: ${exportTotals.workH.toFixed(2)} h`);
-      if (pdfOptions.includeTravel) sumParts.push(`Fahrzeit: ${exportTotals.travelH.toFixed(2)} h`);
+      if (pdfOptions.includeBuak)
+        sumParts.push(`Soll (BUAK): ${exportBuakSoll.toFixed(2)} h`);
+      if (pdfOptions.includeTotalHours)
+        sumParts.push(`Ist: ${exportTotals.totalH.toFixed(2)} h`);
+      if (pdfOptions.includeBuak)
+        sumParts.push(`Abw.: ${exportBuakDiff.toFixed(2)} h`);
+      if (pdfOptions.includeWorkHours)
+        sumParts.push(`Arbeit: ${exportTotals.workH.toFixed(2)} h`);
+      if (pdfOptions.includeTravel)
+        sumParts.push(`Fahrzeit: ${exportTotals.travelH.toFixed(2)} h`);
+      if (pdfOptions.includeDays) {
+        const totalDays = new Set(
+          selectedRows
+            .map((r) => `${r.employee_id || r.employee_name}||${r.work_date}`)
+            .filter(Boolean)
+        ).size;
+        sumParts.push(`Anzahl Tage: ${totalDays}`);
+      }
 
       doc.text(`Summen – ${sumParts.join(" | ")}`, 40, y);
       y += 16;
@@ -644,19 +812,22 @@ export default function YearOverview() {
         doc.addPage();
         y = 40;
       }
+
       autoTable(doc, {
         head: [[
           "Mitarbeiter",
-          "Arbeitsstunden",
+          ...(pdfOptions.includeWorkHours ? ["Arbeitsstunden"] : []),
           ...(pdfOptions.includeTravel ? ["Fahrzeit (h)"] : []),
-          "Gesamt (h)",
+          ...(pdfOptions.includeTotalHours ? ["Gesamt (h)"] : []),
+          ...(pdfOptions.includeDays ? ["Anzahl Tage"] : []),
           "Einträge",
         ]],
         body: exportByEmployee.map((e) => [
           e.name,
-          h2(e.work).toFixed(2),
+          ...(pdfOptions.includeWorkHours ? [h2(e.work).toFixed(2)] : []),
           ...(pdfOptions.includeTravel ? [h2(e.travel).toFixed(2)] : []),
-          h2(e.total).toFixed(2),
+          ...(pdfOptions.includeTotalHours ? [h2(e.total).toFixed(2)] : []),
+          ...(pdfOptions.includeDays ? [e.days ?? 0] : []),
           e.cnt,
         ]),
         startY: y,
@@ -673,21 +844,24 @@ export default function YearOverview() {
         doc.addPage();
         y = 40;
       }
+
       autoTable(doc, {
         head: [[
           "Mitarbeiter",
           "Projekt",
-          "Arbeitsstunden",
+          ...(pdfOptions.includeWorkHours ? ["Arbeitsstunden"] : []),
           ...(pdfOptions.includeTravel ? ["Fahrzeit (h)"] : []),
-          "Gesamt (h)",
+          ...(pdfOptions.includeTotalHours ? ["Gesamt (h)"] : []),
+          ...(pdfOptions.includeDays ? ["Anzahl Tage"] : []),
           "Einträge",
         ]],
         body: exportByEmployeeProject.map((r) => [
           r.emp,
           r.prj,
-          h2(r.work).toFixed(2),
+          ...(pdfOptions.includeWorkHours ? [h2(r.work).toFixed(2)] : []),
           ...(pdfOptions.includeTravel ? [h2(r.travel).toFixed(2)] : []),
-          h2(r.total).toFixed(2),
+          ...(pdfOptions.includeTotalHours ? [h2(r.total).toFixed(2)] : []),
+          ...(pdfOptions.includeDays ? [r.days ?? 0] : []),
           r.cnt,
         ]),
         startY: y,
@@ -718,10 +892,12 @@ export default function YearOverview() {
   const handleLastMonth = () => {
     let y = currentYear;
     let m = currentMonth - 1;
+
     if (m === 0) {
       m = 12;
       y = currentYear - 1;
     }
+
     const val = `${y}-${String(m).padStart(2, "0")}`;
     setRangeFromMonth("");
     setRangeToMonth("");
@@ -751,9 +927,6 @@ export default function YearOverview() {
             onChange={(e) => {
               const y = parseInt(e.target.value, 10);
               setYear(y);
-              if (!monthFilter && !rangeFromMonth && !rangeToMonth) {
-                setYear(y);
-              }
             }}
             className="px-3 py-2 rounded border"
           >
@@ -986,6 +1159,7 @@ export default function YearOverview() {
                     <th style={{ textAlign: "right" }}>Arbeitsstunden</th>
                     <th style={{ textAlign: "right" }}>Fahrzeit (h)</th>
                     <th style={{ textAlign: "right" }}>Gesamt (h)</th>
+                    <th style={{ textAlign: "right" }}>Anzahl Tage</th>
                     <th style={{ textAlign: "right" }}>Einträge</th>
                   </tr>
                 </thead>
@@ -1002,6 +1176,7 @@ export default function YearOverview() {
                       <td style={{ textAlign: "right" }}>
                         {h2(p.total).toFixed(2)}
                       </td>
+                      <td style={{ textAlign: "right" }}>{p.days ?? 0}</td>
                       <td style={{ textAlign: "right" }}>{p.cnt}</td>
                     </tr>
                   ))}
@@ -1020,6 +1195,7 @@ export default function YearOverview() {
                     <th style={{ textAlign: "right" }}>Arbeitsstunden</th>
                     <th style={{ textAlign: "right" }}>Fahrzeit (h)</th>
                     <th style={{ textAlign: "right" }}>Gesamt (h)</th>
+                    <th style={{ textAlign: "right" }}>Anzahl Tage</th>
                     <th style={{ textAlign: "right" }}>Einträge</th>
                   </tr>
                 </thead>
@@ -1036,6 +1212,7 @@ export default function YearOverview() {
                       <td style={{ textAlign: "right" }}>
                         {h2(e.total).toFixed(2)}
                       </td>
+                      <td style={{ textAlign: "right" }}>{e.days ?? 0}</td>
                       <td style={{ textAlign: "right" }}>{e.cnt}</td>
                     </tr>
                   ))}
@@ -1055,6 +1232,7 @@ export default function YearOverview() {
                     <th style={{ textAlign: "right" }}>Arbeitsstunden</th>
                     <th style={{ textAlign: "right" }}>Fahrzeit (h)</th>
                     <th style={{ textAlign: "right" }}>Gesamt (h)</th>
+                    <th style={{ textAlign: "right" }}>Anzahl Tage</th>
                     <th style={{ textAlign: "right" }}>Einträge</th>
                   </tr>
                 </thead>
@@ -1072,6 +1250,7 @@ export default function YearOverview() {
                       <td style={{ textAlign: "right" }}>
                         {h2(r.total).toFixed(2)}
                       </td>
+                      <td style={{ textAlign: "right" }}>{r.days ?? 0}</td>
                       <td style={{ textAlign: "right" }}>{r.cnt}</td>
                     </tr>
                   ))}
@@ -1136,14 +1315,18 @@ export default function YearOverview() {
                     <label key={e.id} className="flex items-center gap-2">
                       <input
                         type="checkbox"
-                        checked={pdfOptions.selectedEmployeeCodes.includes(e.code)}
+                        checked={pdfOptions.selectedEmployeeCodes.includes(
+                          e.code
+                        )}
                         onChange={(ev) => {
                           const checked = ev.target.checked;
                           setPdfOptions((prev) => ({
                             ...prev,
                             selectedEmployeeCodes: checked
                               ? [...prev.selectedEmployeeCodes, e.code]
-                              : prev.selectedEmployeeCodes.filter((c) => c !== e.code),
+                              : prev.selectedEmployeeCodes.filter(
+                                  (c) => c !== e.code
+                                ),
                           }));
                         }}
                       />
@@ -1202,6 +1385,34 @@ export default function YearOverview() {
                   <label className="flex items-center gap-2">
                     <input
                       type="checkbox"
+                      checked={pdfOptions.includeWorkHours}
+                      onChange={(e) =>
+                        setPdfOptions((p) => ({
+                          ...p,
+                          includeWorkHours: e.target.checked,
+                        }))
+                      }
+                    />
+                    <span>Arbeitsstunden</span>
+                  </label>
+
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={pdfOptions.includeTotalHours}
+                      onChange={(e) =>
+                        setPdfOptions((p) => ({
+                          ...p,
+                          includeTotalHours: e.target.checked,
+                        }))
+                      }
+                    />
+                    <span>Gesamtstunden</span>
+                  </label>
+
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
                       checked={pdfOptions.includeTravel}
                       onChange={(e) =>
                         setPdfOptions((p) => ({
@@ -1211,6 +1422,20 @@ export default function YearOverview() {
                       }
                     />
                     <span>Fahrzeit</span>
+                  </label>
+
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={pdfOptions.includeDays}
+                      onChange={(e) =>
+                        setPdfOptions((p) => ({
+                          ...p,
+                          includeDays: e.target.checked,
+                        }))
+                      }
+                    />
+                    <span>Anzahl Tage</span>
                   </label>
 
                   <label className="flex items-center gap-2">
