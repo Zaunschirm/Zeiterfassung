@@ -3,16 +3,14 @@ import { supabase } from "../lib/supabase";
 import { getSession } from "../lib/session";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
-import { calcBuakSollHoursForYear } from "../utils/time";
+import { calcBuakSollHoursForYear, calcBuakSollHoursForMonth } from "../utils/time";
 
 // ---- Helpers ----
 const h2 = (m) => Math.round((m / 60) * 100) / 100;
 
 function splitMinutes(r) {
-  // robust: aus vorhandenen Feldern rechnen
   let work = r.work_minutes;
-  let travel =
-    r.travel_minutes ?? r.travel_min ?? r.travel ?? 0;
+  let travel = r.travel_minutes ?? r.travel_min ?? r.travel ?? 0;
 
   if (work == null) {
     const start = r.start_min ?? r.from_min ?? 0;
@@ -21,22 +19,95 @@ function splitMinutes(r) {
     work = Math.max(end - start - pause, 0);
   }
 
-  const total =
-    r.total_minutes != null ? r.total_minutes : work + (travel || 0);
-
+  const total = r.total_minutes != null ? r.total_minutes : work + (travel || 0);
   return { work, travel, total };
 }
 
 function getMonthRange(ym) {
-  // ym = "YYYY-MM"
   if (!ym || !/^\d{4}-\d{2}$/.test(ym)) return null;
   const [y, m] = ym.split("-").map((x) => parseInt(x, 10));
   const lastDay = new Date(y, m, 0).getDate();
   return {
     year: y,
+    month: m,
     from: `${y}-${ym.slice(5)}-01`,
     to: `${y}-${ym.slice(5)}-${String(lastDay).padStart(2, "0")}`,
   };
+}
+
+function compareMonthStrings(a, b) {
+  if (!a || !b) return 0;
+  return a.localeCompare(b);
+}
+
+function getRangeFromFilters(year, monthFilter, rangeFromMonth, rangeToMonth) {
+  const fromRange = getMonthRange(rangeFromMonth);
+  const toRange = getMonthRange(rangeToMonth);
+  const singleMonth = getMonthRange(monthFilter);
+
+  if (fromRange && toRange) {
+    const useFrom = compareMonthStrings(rangeFromMonth, rangeToMonth) <= 0 ? fromRange : toRange;
+    const useTo = compareMonthStrings(rangeFromMonth, rangeToMonth) <= 0 ? toRange : fromRange;
+    return {
+      mode: "range",
+      from: useFrom.from,
+      to: useTo.to,
+      label: `${rangeFromMonth} bis ${rangeToMonth}`,
+      yearForBuak: null,
+      monthList: getMonthListBetween(
+        compareMonthStrings(rangeFromMonth, rangeToMonth) <= 0 ? rangeFromMonth : rangeToMonth,
+        compareMonthStrings(rangeFromMonth, rangeToMonth) <= 0 ? rangeToMonth : rangeFromMonth
+      ),
+    };
+  }
+
+  if (singleMonth) {
+    return {
+      mode: "month",
+      from: singleMonth.from,
+      to: singleMonth.to,
+      label: `Monat ${monthFilter}`,
+      yearForBuak: singleMonth.year,
+      monthList: [monthFilter],
+    };
+  }
+
+  return {
+    mode: "year",
+    from: `${year}-01-01`,
+    to: `${year}-12-31`,
+    label: `Jahr ${year}`,
+    yearForBuak: year,
+    monthList: Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, "0")}`),
+  };
+}
+
+function getMonthListBetween(fromYm, toYm) {
+  if (!fromYm || !toYm) return [];
+  const [fromY, fromM] = fromYm.split("-").map(Number);
+  const [toY, toM] = toYm.split("-").map(Number);
+
+  const out = [];
+  let y = fromY;
+  let m = fromM;
+
+  while (y < toY || (y === toY && m <= toM)) {
+    out.push(`${y}-${String(m).padStart(2, "0")}`);
+    m += 1;
+    if (m > 12) {
+      m = 1;
+      y += 1;
+    }
+  }
+  return out;
+}
+
+function calcBuakSollForMonthList(monthList) {
+  return (monthList || []).reduce((sum, ym) => sum + (calcBuakSollHoursForMonth(ym) || 0), 0);
+}
+
+function uniq(arr) {
+  return Array.from(new Set(arr));
 }
 
 export default function YearOverview() {
@@ -47,13 +118,12 @@ export default function YearOverview() {
   const now = new Date();
   const currentYear = now.getFullYear();
   const currentMonth = now.getMonth() + 1;
-  const currentMonthStr = `${currentYear}-${String(currentMonth).padStart(
-    2,
-    "0"
-  )}`;
+  const currentMonthStr = `${currentYear}-${String(currentMonth).padStart(2, "0")}`;
 
   const [year, setYear] = useState(currentYear);
   const [monthFilter, setMonthFilter] = useState(""); // "" = gesamtes Jahr
+  const [rangeFromMonth, setRangeFromMonth] = useState("");
+  const [rangeToMonth, setRangeToMonth] = useState("");
 
   const [employees, setEmployees] = useState([]);
   const [projects, setProjects] = useState([]);
@@ -63,6 +133,16 @@ export default function YearOverview() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  const [showPdfDialog, setShowPdfDialog] = useState(false);
+  const [pdfOptions, setPdfOptions] = useState({
+    selectedEmployeeCodes: [],
+    includeProjects: true,
+    includeEmployees: true,
+    includeEmployeeProjects: true,
+    includeTravel: true,
+    includeBuak: true,
+  });
 
   // Nur Admin darf Jahresübersicht sehen
   if (!isAdmin) {
@@ -104,30 +184,26 @@ export default function YearOverview() {
     })();
   }, []);
 
+  useEffect(() => {
+    setPdfOptions((prev) => ({
+      ...prev,
+      selectedEmployeeCodes: [...selectedCodes],
+    }));
+  }, [selectedCodes]);
+
   // Daten laden je nach Jahr/Monat/Filter
   useEffect(() => {
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [year, monthFilter, selectedCodes, selectedProjectId]);
+  }, [year, monthFilter, rangeFromMonth, rangeToMonth, selectedCodes, selectedProjectId, employees.length]);
 
   async function loadData() {
     setLoading(true);
     setError("");
-    try {
-      // Zeitraum bestimmen
-      let from, to, effectiveYear;
-      const mr = getMonthRange(monthFilter);
-      if (mr) {
-        from = mr.from;
-        to = mr.to;
-        effectiveYear = mr.year;
-      } else {
-        from = `${year}-01-01`;
-        to = `${year}-12-31`;
-        effectiveYear = year;
-      }
 
-      // IDs der gewählten Mitarbeiter
+    try {
+      const range = getRangeFromFilters(year, monthFilter, rangeFromMonth, rangeToMonth);
+
       const ids = employees
         .filter((e) => selectedCodes.includes(e.code))
         .map((e) => e.id);
@@ -141,8 +217,8 @@ export default function YearOverview() {
       let q = supabase
         .from("v_time_entries_expanded")
         .select("*")
-        .gte("work_date", from)
-        .lte("work_date", to)
+        .gte("work_date", range.from)
+        .lte("work_date", range.to)
         .in("employee_id", ids);
 
       if (selectedProjectId) q = q.eq("project_id", selectedProjectId);
@@ -156,22 +232,18 @@ export default function YearOverview() {
     } catch (e) {
       console.error("YearOverview load error:", e);
       setRows([]);
-      setError(
-        "Daten konnten nicht geladen werden. Bitte Konsole prüfen oder Filter anpassen."
-      );
+      setError("Daten konnten nicht geladen werden. Bitte Konsole prüfen oder Filter anpassen.");
     } finally {
       setLoading(false);
     }
   }
 
-  // Aktueller Zeitraum-Text
-  const rangeLabel = useMemo(() => {
-    const mr = getMonthRange(monthFilter);
-    if (mr) {
-      return `Monat ${monthFilter}`;
-    }
-    return `Jahr ${year}`;
-  }, [monthFilter, year]);
+  const activeRange = useMemo(
+    () => getRangeFromFilters(year, monthFilter, rangeFromMonth, rangeToMonth),
+    [year, monthFilter, rangeFromMonth, rangeToMonth]
+  );
+
+  const rangeLabel = useMemo(() => activeRange.label, [activeRange]);
 
   // Gruppierungen --------------------------------------------------
 
@@ -199,12 +271,9 @@ export default function YearOverview() {
       e.travel += travel;
       e.total += total;
       e.cnt += 1;
-
       map.set(key, e);
     }
-    return Array.from(map.values()).sort((a, b) =>
-      (a.name || "").localeCompare(b.name || "")
-    );
+    return Array.from(map.values()).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
   }, [rows]);
 
   // je Mitarbeiter
@@ -227,12 +296,9 @@ export default function YearOverview() {
       e.travel += travel;
       e.total += total;
       e.cnt += 1;
-
       map.set(key, e);
     }
-    return Array.from(map.values()).sort((a, b) =>
-      a.name.localeCompare(b.name)
-    );
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
   }, [rows]);
 
   // Mitarbeiter × Projekt
@@ -258,7 +324,6 @@ export default function YearOverview() {
       e.travel += travel;
       e.total += total;
       e.cnt += 1;
-
       map.set(key, e);
     }
     return Array.from(map.values()).sort(
@@ -280,9 +345,15 @@ export default function YearOverview() {
     return { workH: h2(work), travelH: h2(travel), totalH: h2(total) };
   }, [rows]);
 
-  // BUAK Sollstunden (Kurz-/Langwoche)
-  const buakSollYear = useMemo(() => calcBuakSollHoursForYear(parseInt(year, 10)), [year]);
-  const buakDiffYear = useMemo(() => totals.totalH - buakSollYear, [totals.totalH, buakSollYear]);
+  // BUAK Sollstunden
+  const buakSoll = useMemo(() => {
+    if (activeRange.mode === "year" && activeRange.yearForBuak) {
+      return calcBuakSollHoursForYear(parseInt(activeRange.yearForBuak, 10));
+    }
+    return calcBuakSollForMonthList(activeRange.monthList);
+  }, [activeRange]);
+
+  const buakDiff = useMemo(() => totals.totalH - buakSoll, [totals.totalH, buakSoll]);
 
   const hasData = rows.length > 0;
 
@@ -292,13 +363,8 @@ export default function YearOverview() {
     lines.push(`Auswertung ${rangeLabel}`);
     lines.push("");
 
-    // Abschnitt Projekte
     lines.push("PROJEKTE");
-    lines.push(
-      ["Projekt", "Arbeitsstunden", "Fahrzeit (h)", "Gesamt (h)", "Einträge"].join(
-        ";"
-      )
-    );
+    lines.push(["Projekt", "Arbeitsstunden", "Fahrzeit (h)", "Gesamt (h)", "Einträge"].join(";"));
     for (const p of byProject) {
       const label = p.code ? `${p.code} · ${p.name}` : p.name;
       lines.push(
@@ -314,11 +380,7 @@ export default function YearOverview() {
 
     lines.push("");
     lines.push("MITARBEITER");
-    lines.push(
-      ["Mitarbeiter", "Arbeitsstunden", "Fahrzeit (h)", "Gesamt (h)", "Einträge"].join(
-        ";"
-      )
-    );
+    lines.push(["Mitarbeiter", "Arbeitsstunden", "Fahrzeit (h)", "Gesamt (h)", "Einträge"].join(";"));
     for (const e of byEmployee) {
       lines.push(
         [
@@ -330,6 +392,7 @@ export default function YearOverview() {
         ].join(";")
       );
     }
+
     lines.push(
       [
         "GESAMT",
@@ -342,16 +405,7 @@ export default function YearOverview() {
 
     lines.push("");
     lines.push("MITARBEITER x PROJEKT");
-    lines.push(
-      [
-        "Mitarbeiter",
-        "Projekt",
-        "Arbeitsstunden",
-        "Fahrzeit (h)",
-        "Gesamt (h)",
-        "Einträge",
-      ].join(";")
-    );
+    lines.push(["Mitarbeiter", "Projekt", "Arbeitsstunden", "Fahrzeit (h)", "Gesamt (h)", "Einträge"].join(";"));
     for (const r of byEmployeeProject) {
       lines.push(
         [
@@ -376,109 +430,287 @@ export default function YearOverview() {
     URL.revokeObjectURL(url);
   }
 
+  function openPdfDialog() {
+    setPdfOptions((prev) => ({
+      ...prev,
+      selectedEmployeeCodes: selectedCodes.length ? [...selectedCodes] : employees.map((e) => e.code),
+    }));
+    setShowPdfDialog(true);
+  }
+
   // PDF Export ------------------------------------------------------
   function exportPDF() {
+    const selectedRows = rows.filter((r) => {
+      const emp = employees.find((e) => e.id === r.employee_id);
+      return pdfOptions.selectedEmployeeCodes.includes(emp?.code);
+    });
+
+    if (!selectedRows.length) {
+      alert("Keine Daten für den PDF Export ausgewählt.");
+      return;
+    }
+
+    const selectedNames = employees
+      .filter((e) => pdfOptions.selectedEmployeeCodes.includes(e.code))
+      .map((e) => e.name || e.code);
+
+    const exportByProject = (() => {
+      const map = new Map();
+      for (const r of selectedRows) {
+        const { work, travel, total } = splitMinutes(r);
+        const name = r.project_name || r.project_code || r.project_id || "—";
+        const code = r.project_code || "";
+        const key = String(r.project_id || name);
+
+        const e =
+          map.get(key) || {
+            id: r.project_id || key,
+            name,
+            code,
+            work: 0,
+            travel: 0,
+            total: 0,
+            cnt: 0,
+          };
+
+        e.work += work;
+        e.travel += travel;
+        e.total += total;
+        e.cnt += 1;
+        map.set(key, e);
+      }
+      return Array.from(map.values()).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+    })();
+
+    const exportByEmployee = (() => {
+      const map = new Map();
+      for (const r of selectedRows) {
+        const { work, travel, total } = splitMinutes(r);
+        const key = r.employee_name || r.employee_id || "—";
+
+        const e =
+          map.get(key) || {
+            name: key,
+            work: 0,
+            travel: 0,
+            total: 0,
+            cnt: 0,
+          };
+
+        e.work += work;
+        e.travel += travel;
+        e.total += total;
+        e.cnt += 1;
+        map.set(key, e);
+      }
+      return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+    })();
+
+    const exportByEmployeeProject = (() => {
+      const map = new Map();
+      for (const r of selectedRows) {
+        const { work, travel, total } = splitMinutes(r);
+        const emp = r.employee_name || r.employee_id || "—";
+        const prj = r.project_name || r.project_code || r.project_id || "—";
+        const key = `${emp}||${prj}`;
+
+        const e =
+          map.get(key) || {
+            emp,
+            prj,
+            work: 0,
+            travel: 0,
+            total: 0,
+            cnt: 0,
+          };
+
+        e.work += work;
+        e.travel += travel;
+        e.total += total;
+        e.cnt += 1;
+        map.set(key, e);
+      }
+      return Array.from(map.values()).sort(
+        (a, b) => a.emp.localeCompare(b.emp) || a.prj.localeCompare(b.prj)
+      );
+    })();
+
+    const exportTotals = (() => {
+      let work = 0,
+        travel = 0,
+        total = 0;
+      for (const r of selectedRows) {
+        const m = splitMinutes(r);
+        work += m.work;
+        travel += m.travel;
+        total += m.total;
+      }
+      return { workH: h2(work), travelH: h2(travel), totalH: h2(total) };
+    })();
+
+    const selectedEmployeeCount = uniq(
+      selectedRows.map((r) => r.employee_name || String(r.employee_id || "—"))
+    ).length;
+
+    const exportBuakSollBase =
+      activeRange.mode === "year" && activeRange.yearForBuak
+        ? calcBuakSollHoursForYear(parseInt(activeRange.yearForBuak, 10))
+        : calcBuakSollForMonthList(activeRange.monthList);
+
+    const exportBuakSoll = exportBuakSollBase * (selectedEmployeeCount || 1);
+    const exportBuakDiff = exportTotals.totalH - exportBuakSoll;
+
     const doc = new jsPDF({
       orientation: "landscape",
       unit: "pt",
       format: "a4",
     });
+
     doc.setFontSize(16);
     doc.text(`Auswertung ${rangeLabel}`, 40, 40);
 
-    // Tabelle 1: Projekte
-    autoTable(doc, {
-      head: [
-        [
-          "Projekt",
-          "Arbeitsstunden",
-          "Fahrzeit (h)",
-          "Gesamt (h)",
-          "Einträge",
-        ],
-      ],
-      body: byProject.map((p) => [
-        p.code ? `${p.code} · ${p.name}` : p.name,
-        h2(p.work).toFixed(2),
-        h2(p.travel).toFixed(2),
-        h2(p.total).toFixed(2),
-        p.cnt,
-      ]),
-      startY: 60,
-      styles: { fontSize: 9, cellPadding: 3 },
-      headStyles: { fillColor: [123, 74, 45] },
-      margin: { left: 40, right: 40 },
-    });
-
-    let y = doc.lastAutoTable.finalY + 18;
-    doc.setFontSize(11);
+    doc.setFontSize(10);
     doc.text(
-      `Summen – Soll (BUAK): ${buakSollYear.toFixed(2)} h | Ist: ${totals.totalH.toFixed(2)} h | Abw.: ${buakDiffYear.toFixed(2)} h | Arbeit: ${totals.workH.toFixed(
-        2
-      )} h | Fahrzeit: ${totals.travelH.toFixed(
-        2
-      )} h`,
+      `Mitarbeiter: ${selectedNames.length ? selectedNames.join(", ") : "—"}`,
       40,
-      y
+      58
     );
 
-    // Tabelle 2: Mitarbeiter
-    y += 16;
-    autoTable(doc, {
-      head: [
+    doc.text(
+      `Inhalt: ${
         [
-          "Mitarbeiter",
+          pdfOptions.includeProjects ? "Projekte" : null,
+          pdfOptions.includeEmployees ? "Mitarbeiter" : null,
+          pdfOptions.includeEmployeeProjects ? "Mitarbeiter x Projekt" : null,
+          pdfOptions.includeTravel ? "Fahrzeit" : null,
+          pdfOptions.includeBuak ? "BUAK Sollstunden" : null,
+        ]
+          .filter(Boolean)
+          .join(", ") || "—"
+      }`,
+      40,
+      74
+    );
+
+    let y = 92;
+    let drewSomething = false;
+
+    if (pdfOptions.includeProjects) {
+      autoTable(doc, {
+        head: [[
+          "Projekt",
           "Arbeitsstunden",
-          "Fahrzeit (h)",
+          ...(pdfOptions.includeTravel ? ["Fahrzeit (h)"] : []),
           "Gesamt (h)",
           "Einträge",
-        ],
-      ],
-      body: byEmployee.map((e) => [
-        e.name,
-        h2(e.work).toFixed(2),
-        h2(e.travel).toFixed(2),
-        h2(e.total).toFixed(2),
-        e.cnt,
-      ]),
-      startY: y,
-      styles: { fontSize: 9, cellPadding: 3 },
-      headStyles: { fillColor: [220, 220, 220] },
-      margin: { left: 40, right: 40 },
-    });
+        ]],
+        body: exportByProject.map((p) => [
+          p.code ? `${p.code} · ${p.name}` : p.name,
+          h2(p.work).toFixed(2),
+          ...(pdfOptions.includeTravel ? [h2(p.travel).toFixed(2)] : []),
+          h2(p.total).toFixed(2),
+          p.cnt,
+        ]),
+        startY: y,
+        styles: { fontSize: 9, cellPadding: 3 },
+        headStyles: { fillColor: [123, 74, 45] },
+        margin: { left: 40, right: 40 },
+      });
+      y = (doc.lastAutoTable?.finalY || y) + 18;
+      drewSomething = true;
+    }
 
-    // Tabelle 3: Mitarbeiter x Projekt
-    y = doc.lastAutoTable.finalY + 20;
-    autoTable(doc, {
-      head: [
-        [
+    if (pdfOptions.includeBuak || pdfOptions.includeTravel) {
+      if (y > doc.internal.pageSize.getHeight() - 80) {
+        doc.addPage();
+        y = 40;
+      }
+      doc.setFontSize(11);
+
+      const sumParts = [];
+      if (pdfOptions.includeBuak) sumParts.push(`Soll (BUAK): ${exportBuakSoll.toFixed(2)} h`);
+      sumParts.push(`Ist: ${exportTotals.totalH.toFixed(2)} h`);
+      if (pdfOptions.includeBuak) sumParts.push(`Abw.: ${exportBuakDiff.toFixed(2)} h`);
+      sumParts.push(`Arbeit: ${exportTotals.workH.toFixed(2)} h`);
+      if (pdfOptions.includeTravel) sumParts.push(`Fahrzeit: ${exportTotals.travelH.toFixed(2)} h`);
+
+      doc.text(`Summen – ${sumParts.join(" | ")}`, 40, y);
+      y += 16;
+      drewSomething = true;
+    }
+
+    if (pdfOptions.includeEmployees) {
+      if (y > doc.internal.pageSize.getHeight() - 120) {
+        doc.addPage();
+        y = 40;
+      }
+      autoTable(doc, {
+        head: [[
+          "Mitarbeiter",
+          "Arbeitsstunden",
+          ...(pdfOptions.includeTravel ? ["Fahrzeit (h)"] : []),
+          "Gesamt (h)",
+          "Einträge",
+        ]],
+        body: exportByEmployee.map((e) => [
+          e.name,
+          h2(e.work).toFixed(2),
+          ...(pdfOptions.includeTravel ? [h2(e.travel).toFixed(2)] : []),
+          h2(e.total).toFixed(2),
+          e.cnt,
+        ]),
+        startY: y,
+        styles: { fontSize: 9, cellPadding: 3 },
+        headStyles: { fillColor: [220, 220, 220] },
+        margin: { left: 40, right: 40 },
+      });
+      y = (doc.lastAutoTable?.finalY || y) + 20;
+      drewSomething = true;
+    }
+
+    if (pdfOptions.includeEmployeeProjects) {
+      if (y > doc.internal.pageSize.getHeight() - 120) {
+        doc.addPage();
+        y = 40;
+      }
+      autoTable(doc, {
+        head: [[
           "Mitarbeiter",
           "Projekt",
           "Arbeitsstunden",
-          "Fahrzeit (h)",
+          ...(pdfOptions.includeTravel ? ["Fahrzeit (h)"] : []),
           "Gesamt (h)",
           "Einträge",
-        ],
-      ],
-      body: byEmployeeProject.map((r) => [
-        r.emp,
-        r.prj,
-        h2(r.work).toFixed(2),
-        h2(r.travel).toFixed(2),
-        h2(r.total).toFixed(2),
-        r.cnt,
-      ]),
-      startY: y,
-      styles: { fontSize: 8, cellPadding: 2.5 },
-      headStyles: { fillColor: [240, 240, 240] },
-      margin: { left: 40, right: 40 },
-    });
+        ]],
+        body: exportByEmployeeProject.map((r) => [
+          r.emp,
+          r.prj,
+          h2(r.work).toFixed(2),
+          ...(pdfOptions.includeTravel ? [h2(r.travel).toFixed(2)] : []),
+          h2(r.total).toFixed(2),
+          r.cnt,
+        ]),
+        startY: y,
+        styles: { fontSize: 8, cellPadding: 2.5 },
+        headStyles: { fillColor: [240, 240, 240] },
+        margin: { left: 40, right: 40 },
+      });
+      y = (doc.lastAutoTable?.finalY || y) + 20;
+      drewSomething = true;
+    }
+
+    if (!drewSomething) {
+      doc.setFontSize(11);
+      doc.text("Keine Inhalte für den PDF Export ausgewählt.", 40, y);
+    }
 
     doc.save(`Auswertung_${rangeLabel.replace(/\s+/g, "_")}.pdf`);
   }
 
   // Button-Handler --------------------------------------------------
   const handleCurrentMonth = () => {
+    setRangeFromMonth("");
+    setRangeToMonth("");
     setMonthFilter(currentMonthStr);
     setYear(currentYear);
   };
@@ -491,6 +723,8 @@ export default function YearOverview() {
       y = currentYear - 1;
     }
     const val = `${y}-${String(m).padStart(2, "0")}`;
+    setRangeFromMonth("");
+    setRangeToMonth("");
     setMonthFilter(val);
     setYear(y);
   };
@@ -498,18 +732,29 @@ export default function YearOverview() {
   const handleCurrentYear = () => {
     setYear(currentYear);
     setMonthFilter("");
+    setRangeFromMonth("");
+    setRangeToMonth("");
+  };
+
+  const handleMonthRange = () => {
+    setMonthFilter("");
   };
 
   // Render ----------------------------------------------------------
   return (
     <div className="max-w-screen-xl mx-auto">
       <div className="flex flex-wrap items-end gap-3 mb-4">
-        {/* Jahr-Auswahl */}
         <div>
           <label className="block text-sm font-semibold">Jahr</label>
           <select
             value={year}
-            onChange={(e) => setYear(parseInt(e.target.value, 10))}
+            onChange={(e) => {
+              const y = parseInt(e.target.value, 10);
+              setYear(y);
+              if (!monthFilter && !rangeFromMonth && !rangeToMonth) {
+                setYear(y);
+              }
+            }}
             className="px-3 py-2 rounded border"
           >
             {Array.from({ length: 8 }, (_, i) => currentYear - i).map((y) => (
@@ -520,7 +765,6 @@ export default function YearOverview() {
           </select>
         </div>
 
-        {/* Projektfilter */}
         <div>
           <label className="block text-sm font-semibold">Projekt</label>
           <select
@@ -537,11 +781,31 @@ export default function YearOverview() {
           </select>
         </div>
 
-        {/* Mitarbeiterfilter */}
         <div className="flex-1">
           <label className="block text-sm font-semibold">
             Mitarbeiter (Mehrfachauswahl)
           </label>
+
+          <div className="mt-1 mb-1 flex items-center gap-2 text-xs">
+            <button
+              type="button"
+              className="hbz-btn btn-small"
+              onClick={() => setSelectedCodes(employees.map((e) => e.code))}
+            >
+              Alle
+            </button>
+            <button
+              type="button"
+              className="hbz-btn btn-small"
+              onClick={() => setSelectedCodes([])}
+            >
+              Keine
+            </button>
+            <span className="opacity-70">
+              {selectedCodes.length} / {employees.length} gewählt
+            </span>
+          </div>
+
           <div className="mt-1 flex flex-wrap gap-2">
             {employees.map((e) => {
               const active = selectedCodes.includes(e.code);
@@ -567,10 +831,9 @@ export default function YearOverview() {
           </div>
         </div>
 
-        {/* Export-Buttons */}
         <div className="ml-auto flex flex-col gap-2">
           <button
-            onClick={exportPDF}
+            onClick={openPdfDialog}
             className="px-3 py-2 rounded border"
             disabled={!hasData}
           >
@@ -586,7 +849,6 @@ export default function YearOverview() {
         </div>
       </div>
 
-      {/* Zeitraum-Buttons */}
       <div className="hbz-card" style={{ marginBottom: 10 }}>
         <div className="flex flex-wrap items-center gap-3">
           <div className="text-sm font-semibold">Zeitraum:</div>
@@ -608,7 +870,7 @@ export default function YearOverview() {
           </button>
 
           <div className="flex items-center gap-1">
-            <span className="text-xs opacity-75">Monat auswählbar:</span>
+            <span className="text-xs opacity-75">Einzelner Monat:</span>
             <input
               type="month"
               className="hbz-input"
@@ -616,9 +878,43 @@ export default function YearOverview() {
               value={monthFilter}
               onChange={(e) => {
                 const v = e.target.value;
+                setRangeFromMonth("");
+                setRangeToMonth("");
                 setMonthFilter(v);
                 const mr = getMonthRange(v);
                 if (mr) setYear(mr.year);
+              }}
+            />
+          </div>
+
+          <div className="flex items-center gap-1">
+            <span className="text-xs opacity-75">Von:</span>
+            <input
+              type="month"
+              className="hbz-input"
+              style={{ maxWidth: 150 }}
+              value={rangeFromMonth}
+              onChange={(e) => {
+                const v = e.target.value;
+                setRangeFromMonth(v);
+                handleMonthRange();
+                const mr = getMonthRange(v);
+                if (mr) setYear(mr.year);
+              }}
+            />
+          </div>
+
+          <div className="flex items-center gap-1">
+            <span className="text-xs opacity-75">Bis:</span>
+            <input
+              type="month"
+              className="hbz-input"
+              style={{ maxWidth: 150 }}
+              value={rangeToMonth}
+              onChange={(e) => {
+                const v = e.target.value;
+                setRangeToMonth(v);
+                handleMonthRange();
               }}
             />
           </div>
@@ -637,7 +933,6 @@ export default function YearOverview() {
         </div>
       </div>
 
-      {/* Hauptkarte mit Tabellen */}
       <div className="hbz-card">
         <div
           className="px-2 py-2 font-semibold"
@@ -666,7 +961,20 @@ export default function YearOverview() {
 
         {hasData && (
           <>
-            {/* Tabelle: je Projekt */}
+            <div className="mt-3 text-sm opacity-80">
+              {activeRange.mode === "year" ? (
+                <>
+                  <b>BUAK Soll:</b> {buakSoll.toFixed(2)} h &nbsp;|&nbsp;
+                  <b>Abweichung:</b> {buakDiff.toFixed(2)} h
+                </>
+              ) : (
+                <>
+                  <b>BUAK Soll Zeitraum:</b> {buakSoll.toFixed(2)} h &nbsp;|&nbsp;
+                  <b>Abweichung:</b> {buakDiff.toFixed(2)} h
+                </>
+              )}
+            </div>
+
             <div className="mt-4 mo-wrap">
               <h3 className="text-base font-semibold mb-2">
                 Stunden je Projekt
@@ -684,9 +992,7 @@ export default function YearOverview() {
                 <tbody>
                   {byProject.map((p) => (
                     <tr key={p.id}>
-                      <td>
-                        {p.code ? `${p.code} · ${p.name}` : p.name}
-                      </td>
+                      <td>{p.code ? `${p.code} · ${p.name}` : p.name}</td>
                       <td style={{ textAlign: "right" }}>
                         {h2(p.work).toFixed(2)}
                       </td>
@@ -703,7 +1009,6 @@ export default function YearOverview() {
               </table>
             </div>
 
-            {/* Tabelle: je Mitarbeiter */}
             <div className="mt-6 mo-wrap">
               <h3 className="text-base font-semibold mb-2">
                 Stunden je Mitarbeiter
@@ -738,7 +1043,6 @@ export default function YearOverview() {
               </table>
             </div>
 
-            {/* Tabelle: Mitarbeiter × Projekt */}
             <div className="mt-6 mo-wrap">
               <h3 className="text-base font-semibold mb-2">
                 Aufschlüsselung je Mitarbeiter und Projekt
@@ -777,6 +1081,181 @@ export default function YearOverview() {
           </>
         )}
       </div>
+
+      {showPdfDialog && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          style={{ background: "rgba(0,0,0,0.45)" }}
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl p-4 w-full max-w-3xl mx-3"
+            style={{ maxHeight: "90vh", overflowY: "auto" }}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold">PDF Export auswählen</h3>
+              <button
+                className="px-3 py-1 rounded border"
+                onClick={() => setShowPdfDialog(false)}
+              >
+                Schließen
+              </button>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="border rounded-lg p-3">
+                <div className="font-semibold mb-2">Mitarbeiter</div>
+
+                <div className="flex flex-wrap gap-2 mb-3">
+                  <button
+                    className="hbz-btn btn-small"
+                    onClick={() =>
+                      setPdfOptions((prev) => ({
+                        ...prev,
+                        selectedEmployeeCodes: employees.map((e) => e.code),
+                      }))
+                    }
+                  >
+                    Alle
+                  </button>
+
+                  <button
+                    className="hbz-btn btn-small"
+                    onClick={() =>
+                      setPdfOptions((prev) => ({
+                        ...prev,
+                        selectedEmployeeCodes: [...selectedCodes],
+                      }))
+                    }
+                  >
+                    Aktuelle Auswahl
+                  </button>
+                </div>
+
+                <div className="mt-3 flex flex-col gap-2">
+                  {employees.map((e) => (
+                    <label key={e.id} className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={pdfOptions.selectedEmployeeCodes.includes(e.code)}
+                        onChange={(ev) => {
+                          const checked = ev.target.checked;
+                          setPdfOptions((prev) => ({
+                            ...prev,
+                            selectedEmployeeCodes: checked
+                              ? [...prev.selectedEmployeeCodes, e.code]
+                              : prev.selectedEmployeeCodes.filter((c) => c !== e.code),
+                          }));
+                        }}
+                      />
+                      <span>{e.name}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="border rounded-lg p-3">
+                <div className="font-semibold mb-2">Inhalt</div>
+
+                <div className="flex flex-col gap-2">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={pdfOptions.includeProjects}
+                      onChange={(e) =>
+                        setPdfOptions((p) => ({
+                          ...p,
+                          includeProjects: e.target.checked,
+                        }))
+                      }
+                    />
+                    <span>Projekte</span>
+                  </label>
+
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={pdfOptions.includeEmployees}
+                      onChange={(e) =>
+                        setPdfOptions((p) => ({
+                          ...p,
+                          includeEmployees: e.target.checked,
+                        }))
+                      }
+                    />
+                    <span>Mitarbeiter</span>
+                  </label>
+
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={pdfOptions.includeEmployeeProjects}
+                      onChange={(e) =>
+                        setPdfOptions((p) => ({
+                          ...p,
+                          includeEmployeeProjects: e.target.checked,
+                        }))
+                      }
+                    />
+                    <span>Mitarbeiter x Projekt</span>
+                  </label>
+
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={pdfOptions.includeTravel}
+                      onChange={(e) =>
+                        setPdfOptions((p) => ({
+                          ...p,
+                          includeTravel: e.target.checked,
+                        }))
+                      }
+                    />
+                    <span>Fahrzeit</span>
+                  </label>
+
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={pdfOptions.includeBuak}
+                      onChange={(e) =>
+                        setPdfOptions((p) => ({
+                          ...p,
+                          includeBuak: e.target.checked,
+                        }))
+                      }
+                    />
+                    <span>BUAK Sollstunden</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4 text-sm opacity-80">
+              Exportiert wird der aktuell gewählte Zeitraum: <b>{rangeLabel}</b>
+            </div>
+
+            <div className="flex justify-end gap-2 mt-5">
+              <button
+                className="px-3 py-2 rounded border"
+                onClick={() => setShowPdfDialog(false)}
+              >
+                Abbrechen
+              </button>
+
+              <button
+                className="px-3 py-2 rounded border text-white"
+                style={{ background: "#7b4a2d" }}
+                onClick={() => {
+                  exportPDF();
+                  setShowPdfDialog(false);
+                }}
+              >
+                PDF exportieren
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
