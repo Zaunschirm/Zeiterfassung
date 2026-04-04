@@ -1,4 +1,3 @@
-// src/components/ProjectPhotos.jsx
 import React, { useEffect, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 
@@ -9,7 +8,6 @@ const supabase =
     import.meta.env.VITE_SUPABASE_ANON_KEY
   );
 
-// exakt wie im Supabase Storage!
 const BUCKET = "project-photos";
 
 export default function ProjectPhotos() {
@@ -20,13 +18,13 @@ export default function ProjectPhotos() {
   const [busyZip, setBusyZip] = useState(false);
   const [msg, setMsg] = useState("");
 
-  // Projekte laden
   useEffect(() => {
     (async () => {
       const { data, error } = await supabase
         .from("projects")
         .select("id, name")
         .order("name", { ascending: true });
+
       if (error) {
         console.error(error);
         setMsg("❌ Projekte konnten nicht geladen werden: " + error.message);
@@ -36,7 +34,6 @@ export default function ProjectPhotos() {
     })();
   }, []);
 
-  // Fotos beim Projektwechsel laden
   useEffect(() => {
     if (!selectedProject) {
       setPhotos([]);
@@ -53,6 +50,7 @@ export default function ProjectPhotos() {
         limit: 500,
         sortBy: { column: "created_at", order: "desc" },
       });
+
     if (error) {
       console.error(error);
       setMsg("❌ Fehler beim Laden der Fotos: " + error.message);
@@ -61,7 +59,6 @@ export default function ProjectPhotos() {
     }
   }
 
-  // Upload (mehrere Dateien möglich)
   async function handleUpload(e) {
     const files = Array.from(e.target.files || []);
     if (!files.length || !selectedProject) return;
@@ -76,6 +73,7 @@ export default function ProjectPhotos() {
           .upload(filePath, file, { cacheControl: "3600", upsert: false });
         if (error) throw error;
       }
+
       setMsg("✅ Upload erfolgreich.");
       await loadPhotos(selectedProject);
     } catch (err) {
@@ -83,15 +81,15 @@ export default function ProjectPhotos() {
       setMsg("❌ Fehler beim Hochladen: " + (err?.message || err));
     } finally {
       setUploading(false);
-      // optional: e.target.value = "";
     }
   }
 
-  // Löschen
   async function handleDelete(photo) {
     if (!confirm(`Foto „${photo.name}“ wirklich löschen?`)) return;
+
     const path = `${selectedProject}/${photo.name}`;
     const { error } = await supabase.storage.from(BUCKET).remove([path]);
+
     if (error) {
       setMsg("❌ Fehler beim Löschen: " + error.message);
     } else {
@@ -100,14 +98,12 @@ export default function ProjectPhotos() {
     }
   }
 
-  // Öffentliche URL für ein Foto
   function getPublicURL(photo) {
     const path = `${selectedProject}/${photo.name}`;
     const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
     return data?.publicUrl || "";
   }
 
-  // Alle Fotos als ZIP
   async function downloadAllAsZip() {
     if (!selectedProject || photos.length === 0) return;
     setBusyZip(true);
@@ -119,7 +115,6 @@ export default function ProjectPhotos() {
         import("file-saver"),
       ]);
 
-      // Hilfsfunktion: in Batches laden
       const chunks = (arr, size) =>
         Array.from({ length: Math.ceil(arr.length / size) }, (_, i) =>
           arr.slice(i * size, i * size + size)
@@ -142,7 +137,6 @@ export default function ProjectPhotos() {
       }
 
       const content = await zip.generateAsync({ type: "blob" });
-      // Dateiname: ProjektID + Datum
       const today = new Date().toISOString().slice(0, 10);
       saveAs(content, `Projektfotos_${selectedProject}_${today}.zip`);
       setMsg("📦 ZIP erstellt.");
@@ -156,12 +150,16 @@ export default function ProjectPhotos() {
 
   return (
     <div className="hbz-container">
-      <div className="hbz-card" style={{ marginTop: 10 }}>
-        <h3>Projektfotos</h3>
+      <div className="hbz-card project-photos-card">
+        <div className="project-photos-head">
+          <div>
+            <div className="hbz-section-title">Bilder</div>
+            <h2 className="page-title">Projektfotos</h2>
+          </div>
+        </div>
 
-        {/* Projekt wählen */}
-        <div style={{ marginBottom: 12 }}>
-          <label>Projekt auswählen:</label>
+        <div className="project-photos-filter">
+          <label className="hbz-label">Projekt auswählen</label>
           <select
             className="hbz-input"
             value={selectedProject}
@@ -176,10 +174,9 @@ export default function ProjectPhotos() {
           </select>
         </div>
 
-        {/* Upload */}
         {selectedProject && (
-          <div style={{ marginBottom: 16 }}>
-            <label>Fotos hochladen:</label>
+          <div className="project-photos-upload">
+            <label className="hbz-label">Fotos hochladen</label>
             <input
               type="file"
               accept="image/*"
@@ -188,105 +185,70 @@ export default function ProjectPhotos() {
               onChange={handleUpload}
               disabled={uploading}
             />
-            {uploading && <p>⏳ Lade hoch…</p>}
+            {uploading && <p className="text-xs opacity-70">⏳ Lade hoch…</p>}
           </div>
         )}
 
-        {/* Message */}
-        {msg && (
-          <div
-            className="hbz-card"
-            style={{ background: "#f5f5f5", padding: "6px 10px", marginBottom: 10 }}
-          >
-            {msg}
-          </div>
-        )}
+        {msg && <div className="project-photos-msg">{msg}</div>}
 
-        {/* ZIP-Button */}
         {selectedProject && photos.length > 0 && (
-          <div style={{ marginBottom: 10, display: "flex", gap: 8 }}>
+          <div className="project-photos-toolbar">
             <button
               className="hbz-btn"
               onClick={downloadAllAsZip}
               disabled={busyZip}
-              title="Alle Fotos dieses Projektes als ZIP herunterladen"
             >
               {busyZip ? "Erstelle ZIP…" : "Alle als ZIP herunterladen"}
             </button>
           </div>
         )}
 
-        {/* Grid */}
         {selectedProject && (
-          <div>
-            <h4>Fotos im Projekt:</h4>
-            {photos.length === 0 && <p>Keine Fotos vorhanden.</p>}
-
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))",
-                gap: 10,
-                marginTop: 10,
-              }}
-            >
-              {photos.map((photo) => {
-                const url = getPublicURL(photo);
-                return (
-                  <div
-                    key={photo.id || photo.name}
-                    className="hbz-card"
-                    style={{
-                      padding: 6,
-                      textAlign: "center",
-                      background: "#fff",
-                      border: "1px solid rgba(0,0,0,0.1)",
-                    }}
-                  >
-                    <img
-                      src={url}
-                      alt={photo.name}
-                      style={{
-                        width: "100%",
-                        height: 120,
-                        objectFit: "cover",
-                        borderRadius: 6,
-                        cursor: "pointer",
-                      }}
-                      onClick={() => window.open(url, "_blank")}
-                    />
-                    <div style={{ fontSize: 12, marginTop: 6, wordBreak: "break-all" }}>
-                      {photo.name}
-                    </div>
-
-                    <div
-                      style={{
-                        display: "flex",
-                        gap: 6,
-                        justifyContent: "center",
-                        marginTop: 6,
-                      }}
-                    >
-                      <button
-                        className="hbz-btn btn-small"
-                        onClick={() => window.open(url, "_blank")}
-                      >
-                        Ansehen
-                      </button>
-                      <a className="hbz-btn btn-small" href={url} download>
-                        Download
-                      </a>
-                      <button
-                        className="hbz-btn btn-small"
-                        onClick={() => handleDelete(photo)}
-                      >
-                        Löschen
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
+          <div className="project-photos-section">
+            <div className="project-photos-section-head">
+              <h3>Fotos im Projekt</h3>
+              <span className="badge-soft">{photos.length} Fotos</span>
             </div>
+
+            {photos.length === 0 ? (
+              <div className="project-empty-state">Keine Fotos vorhanden.</div>
+            ) : (
+              <div className="project-photo-grid">
+                {photos.map((photo) => {
+                  const url = getPublicURL(photo);
+                  return (
+                    <div key={photo.id || photo.name} className="project-photo-card">
+                      <img
+                        src={url}
+                        alt={photo.name}
+                        className="project-photo-image"
+                        onClick={() => window.open(url, "_blank")}
+                      />
+
+                      <div className="project-photo-name">{photo.name}</div>
+
+                      <div className="project-photo-actions">
+                        <button
+                          className="hbz-btn btn-small"
+                          onClick={() => window.open(url, "_blank")}
+                        >
+                          Ansehen
+                        </button>
+                        <a className="hbz-btn btn-small" href={url} download>
+                          Download
+                        </a>
+                        <button
+                          className="hbz-btn btn-small"
+                          onClick={() => handleDelete(photo)}
+                        >
+                          Löschen
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
       </div>

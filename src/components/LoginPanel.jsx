@@ -1,98 +1,99 @@
-import React, { useState } from "react";
-import { supabase } from "../lib/supabase";
-import { setSession } from "../lib/session";
-import "../styles.css";
+import React, { useMemo, useState } from "react";
+import { NavLink } from "react-router-dom";
 
-export default function LoginPanel({ onLogin }) {
-  const [code, setCode] = useState("");
-  const [pin, setPin] = useState("");
-  const [error, setError] = useState("");
+export default function NavBar({ onLogout, currentUser, role }) {
+  const [mobileOpen, setMobileOpen] = useState(false);
 
-  async function handleLogin(e) {
-    e.preventDefault();
-    setError("");
+  const isAdmin = role === "admin";
+  const canSeeAdmin = role === "admin" || role === "teamleiter";
 
-    const { data, error: rpcError } = await supabase.rpc("login_lookup", {
-      p_code: code.trim().toUpperCase(),
-      p_pin: pin.trim(),
-    });
+  const initials = useMemo(() => {
+    const name = currentUser?.name || "HB";
+    return String(name)
+      .split(" ")
+      .map((p) => p[0] || "")
+      .join("")
+      .slice(0, 2)
+      .toUpperCase();
+  }, [currentUser]);
 
-    if (rpcError || !data || data.length === 0) {
-      setError("Falscher Code oder PIN");
-      return;
-    }
+  const mainLinks = [
+    { to: "/zeiterfassung", label: "Zeiterfassung" },
+    { to: "/projektfotos", label: "Projektfotos" },
+    { to: "/monatsuebersicht", label: "Monatsübersicht" },
+  ];
 
-    const user = data[0];
-    if (!user) {
-      setError("Ungültige Anmeldedaten");
-      return;
-    }
+  const adminLinks = [
+    ...(canSeeAdmin ? [{ to: "/projekte", label: "Projekte" }] : []),
+    ...(canSeeAdmin ? [{ to: "/mitarbeiter", label: "Mitarbeiter" }] : []),
+    ...(isAdmin ? [{ to: "/jahresuebersicht", label: "Jahresübersicht" }] : []),
+  ];
 
-    setSession({ user });
-    if (onLogin) onLogin(user);
-  }
+  const allLinks = [...mainLinks, ...adminLinks];
+
+  const renderNavLink = (to, label) => (
+    <NavLink
+      key={to}
+      to={to}
+      className={({ isActive }) =>
+        `app-nav-btn${isActive ? " app-nav-btn-active" : ""}`
+      }
+      onClick={() => setMobileOpen(false)}
+    >
+      <span className="app-nav-label">{label}</span>
+    </NavLink>
+  );
 
   return (
-    <div className="login-wrapper">
-      <div className="login-card">
-
-        {/* LOGO FIX – lädt jetzt IMMER /logo.png !!! */}
-        <div className="login-logo-row">
-          <div className="login-logo-circle login-logo-image">
-            <img src="/logo.png" alt="Holzbau Zaunschirm Logo" />
+    <>
+      <nav className="app-nav">
+        <div className="app-nav-left">
+          <div className="app-logo-circle">
+            <span>HZ</span>
           </div>
-          <div>
-            <div className="login-logo-text-main">Holzbau Zaunschirm</div>
-            <div className="login-logo-text-sub">Zeiterfassung · Anmeldung</div>
+          <div className="app-title">
+            <div className="app-title-main">Holzbau Zaunschirm</div>
+            <div className="app-title-sub">Zeiterfassung</div>
           </div>
         </div>
 
-        <div className="login-subtitle">
-          Einfach Code + PIN – keine E-Mail notwendig.
+        <div className="app-nav-center">
+          {allLinks.map((link) => renderNavLink(link.to, link.label))}
         </div>
 
-        <form className="login-form" onSubmit={handleLogin}>
-          <div className="login-grid">
-            <div className="hbz-col">
-              <label className="hbz-label">Mitarbeiter-Code</label>
-              <input
-                type="text"
-                className="hbz-input"
-                placeholder="z. B. ZS"
-                value={code}
-                onChange={(e) => setCode(e.target.value.toUpperCase())}
-                required
-              />
-            </div>
-
-            <div className="hbz-col">
-              <label className="hbz-label">PIN</label>
-              <input
-                type="password"
-                className="hbz-input"
-                placeholder="4-stellig"
-                inputMode="numeric"
-                maxLength={4}
-                value={pin}
-                onChange={(e) =>
-                  setPin(e.target.value.replace(/[^0-9]/g, ""))
-                }
-                required
-              />
-            </div>
+        <div className="app-nav-right">
+          <div className="app-user-badge">
+            <div className="app-user-initial">{initials}</div>
+            <span className="app-user-name">
+              {currentUser?.name || "Eingeloggt"}
+              {role ? ` (${role})` : ""}
+            </span>
           </div>
 
-          {error && <div className="login-error">{error}</div>}
-
-          <button type="submit" className="save-btn" style={{ width: "100%" }}>
-            Anmelden
+          <button type="button" className="hbz-btn" onClick={onLogout}>
+            Logout
           </button>
-        </form>
-
-        <div className="login-footer">
-          <span>Holzbau Zaunschirm · Zeiterfassung</span>
         </div>
-      </div>
-    </div>
+
+        <button
+          type="button"
+          className="app-nav-mobile-toggle"
+          onClick={() => setMobileOpen((v) => !v)}
+        >
+          Menü
+        </button>
+      </nav>
+
+      {mobileOpen && (
+        <div className="app-nav-menu-mobile">
+          <div className="app-nav-menu-mobile-row">
+            {allLinks.map((link) => renderNavLink(link.to, link.label))}
+            <button type="button" className="app-nav-btn" onClick={onLogout}>
+              <span className="app-nav-label">Logout</span>
+            </button>
+          </div>
+        </div>
+      )}
+    </>
   );
 }

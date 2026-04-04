@@ -1,133 +1,99 @@
-import React from "react";
-import { NavLink, useNavigate } from "react-router-dom";
+import React, { useMemo, useState } from "react";
+import { NavLink } from "react-router-dom";
 
-/**
- * NavBar – 1:1 Version mit allen Funktionen:
- * - onLogout
- * - setCurrentView (optional, alte Kompatibilität)
- * - currentUser (optional)
- * - role (admin | teamleiter | mitarbeiter)
- * - navigate() + aktive Markierung
- */
-export default function NavBar({ onLogout, setCurrentView, currentUser, role }) {
-  const navigate = useNavigate();
-
-  // Navigation mit alter View-Kompatibilität
-  const go = (path, viewKey) => {
-    navigate(path);
-    if (typeof setCurrentView === "function" && viewKey) {
-      setCurrentView(viewKey);
-    }
-  };
-
-  const linkClass = ({ isActive }) =>
-    "nav-btn" + (isActive ? " nav-btn-active" : "");
+export default function NavBar({ onLogout, currentUser, role }) {
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   const isAdmin = role === "admin";
   const canSeeAdmin = role === "admin" || role === "teamleiter";
 
-  return (
-    <nav
-      className="hbz-navbar"
-      style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        gap: 12,
-        padding: "8px 10px",
-        background: "var(--hbz-nav-bg, #ead8c3)",
-        borderBottom: "1px solid rgba(0,0,0,0.1)",
-      }}
+  const initials = useMemo(() => {
+    const name = currentUser?.name || "HB";
+    return String(name)
+      .split(" ")
+      .map((p) => p[0] || "")
+      .join("")
+      .slice(0, 2)
+      .toUpperCase();
+  }, [currentUser]);
+
+  const mainLinks = [
+    { to: "/zeiterfassung", label: "Zeiterfassung" },
+    { to: "/projektfotos", label: "Projektfotos" },
+    { to: "/monatsuebersicht", label: "Monatsübersicht" },
+  ];
+
+  const adminLinks = [
+    ...(canSeeAdmin ? [{ to: "/projekte", label: "Projekte" }] : []),
+    ...(canSeeAdmin ? [{ to: "/mitarbeiter", label: "Mitarbeiter" }] : []),
+    ...(isAdmin ? [{ to: "/jahresuebersicht", label: "Jahresübersicht" }] : []),
+  ];
+
+  const allLinks = [...mainLinks, ...adminLinks];
+
+  const renderNavLink = (to, label) => (
+    <NavLink
+      key={to}
+      to={to}
+      className={({ isActive }) =>
+        `app-nav-btn${isActive ? " app-nav-btn-active" : ""}`
+      }
+      onClick={() => setMobileOpen(false)}
     >
-      {/* Navigation Links */}
-      <div
-        className="hbz-nav-left"
-        style={{ display: "flex", gap: 6, alignItems: "center" }}
-      >
-        <NavLink
-          to="/zeiterfassung"
-          className={linkClass}
-          onClick={() => go("/zeiterfassung", "zeiterfassung")}
-        >
-          Zeiterfassung
-        </NavLink>
+      <span className="app-nav-label">{label}</span>
+    </NavLink>
+  );
 
-        <NavLink
-          to="/projektfotos"
-          className={linkClass}
-          onClick={() => go("/projektfotos", "projektfotos")}
-        >
-          Projektfotos
-        </NavLink>
+  return (
+    <>
+      <nav className="app-nav">
+        <div className="app-nav-left">
+          <div className="app-logo-circle">
+            <span>HZ</span>
+          </div>
+          <div className="app-title">
+            <div className="app-title-main">Holzbau Zaunschirm</div>
+            <div className="app-title-sub">Zeiterfassung</div>
+          </div>
+        </div>
 
-        <NavLink
-          to="/monatsuebersicht"
-          className={linkClass}
-          onClick={() => go("/monatsuebersicht", "monatsuebersicht")}
-        >
-          Monatsübersicht
-        </NavLink>
+        <div className="app-nav-center">
+          {allLinks.map((link) => renderNavLink(link.to, link.label))}
+        </div>
 
-        {canSeeAdmin && (
-          <>
-            <NavLink
-              to="/projekte"
-              className={linkClass}
-              onClick={() => go("/projekte", "projekte")}
-            >
-              Projekte
-            </NavLink>
+        <div className="app-nav-right">
+          <div className="app-user-badge">
+            <div className="app-user-initial">{initials}</div>
+            <span className="app-user-name">
+              {currentUser?.name || "Eingeloggt"}
+              {role ? ` (${role})` : ""}
+            </span>
+          </div>
 
-            <NavLink
-              to="/mitarbeiter"
-              className={linkClass}
-              onClick={() => go("/mitarbeiter", "mitarbeiter")}
-            >
-              Mitarbeiter
-            </NavLink>
+          <button type="button" className="hbz-btn" onClick={onLogout}>
+            Logout
+          </button>
+        </div>
 
-            {isAdmin && (
-              <NavLink
-                to="/jahresuebersicht"
-                className={linkClass}
-                onClick={() => go("/jahresuebersicht", "jahresuebersicht")}
-              >
-                Jahresübersicht
-              </NavLink>
-            )}
-          </>
-        )}
-      </div>
-
-      {/* Benutzer & Logout */}
-      <div
-        className="hbz-nav-right"
-        style={{ display: "flex", alignItems: "center", gap: 8 }}
-      >
-        {currentUser && (
-          <span
-            title={currentUser?.email || ""}
-            style={{ opacity: 0.8, fontSize: 13, marginRight: 6 }}
-          >
-            {currentUser?.name || "Eingeloggt"}
-            {role ? ` (${role})` : ""}
-          </span>
-        )}
         <button
           type="button"
-          className="nav-btn"
-          onClick={onLogout}
-          style={{
-            cursor: "pointer",
-            padding: "6px 10px",
-            borderRadius: 8,
-            border: "1px solid rgba(0,0,0,0.2)",
-            background: "#fff",
-          }}
+          className="app-nav-mobile-toggle"
+          onClick={() => setMobileOpen((v) => !v)}
         >
-          Logout
+          Menü
         </button>
-      </div>
-    </nav>
+      </nav>
+
+      {mobileOpen && (
+        <div className="app-nav-menu-mobile">
+          <div className="app-nav-menu-mobile-row">
+            {allLinks.map((link) => renderNavLink(link.to, link.label))}
+            <button type="button" className="app-nav-btn" onClick={onLogout}>
+              <span className="app-nav-label">Logout</span>
+            </button>
+          </div>
+        </div>
+      )}
+    </>
   );
 }

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 const supabase =
@@ -35,6 +35,7 @@ export default function ProjectAdmin() {
       .from("projects")
       .select("*")
       .order("created_at", { ascending: false });
+
     if (error) {
       console.error(error);
       setMessage("❌ Fehler: " + error.message);
@@ -48,7 +49,6 @@ export default function ProjectAdmin() {
     const q = search.trim().toLowerCase();
     let list = projects;
 
-    // Suche nach Name oder Kostenstelle
     if (q) {
       list = list.filter(
         (p) =>
@@ -57,7 +57,6 @@ export default function ProjectAdmin() {
       );
     }
 
-    // Sortierung
     list = [...list].sort((a, b) => {
       const dir = sortDir === "asc" ? 1 : -1;
       const valA = (a[sortField] || "").toString().toLowerCase();
@@ -70,7 +69,10 @@ export default function ProjectAdmin() {
 
   function onChange(e) {
     const { name, value, type, checked } = e.target;
-    setForm((f) => ({ ...f, [name]: type === "checkbox" ? checked : value }));
+    setForm((f) => ({
+      ...f,
+      [name]: type === "checkbox" ? checked : value,
+    }));
   }
 
   async function onSubmit(e) {
@@ -104,14 +106,18 @@ export default function ProjectAdmin() {
       setEditId(null);
       fetchProjects();
     }
+
     setSaving(false);
   }
 
   async function onDelete(id, name) {
     if (!confirm(`Projekt "${name}" wirklich löschen?`)) return;
+
     const { error } = await supabase.from("projects").delete().eq("id", id);
-    if (error) setMessage("❌ Fehler: " + error.message);
-    else {
+
+    if (error) {
+      setMessage("❌ Fehler: " + error.message);
+    } else {
       setProjects((p) => p.filter((x) => x.id !== id));
       setMessage("🗑️ Projekt gelöscht.");
       if (editId === id) {
@@ -131,7 +137,6 @@ export default function ProjectAdmin() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  // Sortierung durch Klick auf Spaltenüberschrift ändern
   function toggleSort(field) {
     if (sortField === field) {
       setSortDir(sortDir === "asc" ? "desc" : "asc");
@@ -148,12 +153,21 @@ export default function ProjectAdmin() {
 
   return (
     <div className="hbz-container">
-      <div className="hbz-card" style={{ marginTop: 10 }}>
-        <h3>{editId ? "Projekt bearbeiten" : "Projekt anlegen"}</h3>
+      <div className="hbz-card project-page-card">
+        <div className="project-page-head">
+          <div>
+            <div className="hbz-section-title">
+              {editId ? "Bearbeiten" : "Neu anlegen"}
+            </div>
+            <h2 className="page-title">
+              {editId ? "Projekt bearbeiten" : "Projekt anlegen"}
+            </h2>
+          </div>
+        </div>
 
-        <form onSubmit={onSubmit} className="hbz-grid hbz-grid-2">
+        <form onSubmit={onSubmit} className="project-form-grid">
           <div style={{ gridColumn: "1 / -1" }}>
-            <label>Projektname *</label>
+            <label className="hbz-label">Projektname *</label>
             <input
               className="hbz-input"
               name="name"
@@ -164,7 +178,7 @@ export default function ProjectAdmin() {
           </div>
 
           <div style={{ gridColumn: "1 / -1" }}>
-            <label>Kostenstelle</label>
+            <label className="hbz-label">Kostenstelle</label>
             <input
               className="hbz-input"
               name="cost_center"
@@ -174,25 +188,29 @@ export default function ProjectAdmin() {
             />
           </div>
 
-          <div style={{ gridColumn: "1 / -1" }}>
-            <input
-              type="checkbox"
-              name="active"
-              checked={form.active}
-              onChange={onChange}
-            />{" "}
-            Projekt aktiv
-          </div>
+          <div className="project-active-row" style={{ gridColumn: "1 / -1" }}>
+            <label className="project-checkbox-row">
+              <input
+                type="checkbox"
+                name="active"
+                checked={form.active}
+                onChange={onChange}
+              />
+              <span>Projekt aktiv</span>
+            </label>
 
-          <div style={{ gridColumn: "1 / -1" }}>
             <button className="save-btn" disabled={saving}>
-              💾 {saving ? "Speichert..." : editId ? "Änderungen speichern" : "Projekt anlegen"}
+              {saving
+                ? "Speichert…"
+                : editId
+                ? "Änderungen speichern"
+                : "Projekt anlegen"}
             </button>
+
             {editId && (
               <button
                 type="button"
                 className="hbz-btn"
-                style={{ marginLeft: 8 }}
                 onClick={() => {
                   setForm(emptyForm);
                   setEditId(null);
@@ -205,72 +223,81 @@ export default function ProjectAdmin() {
         </form>
       </div>
 
-      {message && (
-        <div
-          className="hbz-card"
-          style={{ marginTop: 10, background: "#f5f5f5", padding: "6px 10px" }}
-        >
-          {message}
-        </div>
-      )}
+      {message && <div className="project-note-box">{message}</div>}
 
-      <div className="hbz-card" style={{ marginTop: 10 }}>
-        <div className="hbz-toolbar" style={{ display: "flex", justifyContent: "space-between" }}>
-          <strong>Projekte</strong>
-          <input
-            className="hbz-input"
-            style={{ width: 200 }}
-            placeholder="Suchen..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+      <div className="hbz-card project-page-card">
+        <div className="project-page-head">
+          <h3 className="project-page-title">Projekte</h3>
+          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <span className="badge-soft">{filtered.length} Projekte</span>
+            <input
+              className="hbz-input"
+              style={{ width: 220 }}
+              placeholder="Suchen…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
         </div>
 
         {loading ? (
-          <p>Lade Projekte...</p>
+          <p className="text-sm opacity-70">Lade Projekte…</p>
         ) : (
-          <table className="nice">
-            <thead>
-              <tr>
-                <th onClick={() => toggleSort("name")} style={{ cursor: "pointer" }}>
-                  Name{sortArrow("name")}
-                </th>
-                <th onClick={() => toggleSort("cost_center")} style={{ cursor: "pointer" }}>
-                  Kostenstelle{sortArrow("cost_center")}
-                </th>
-                <th>Aktiv</th>
-                <th>Aktion</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((p) => (
-                <tr key={p.id}>
-                  <td>{p.name}</td>
-                  <td>{p.cost_center || "—"}</td>
-                  <td>{p.active ? "Ja" : "Nein"}</td>
-                  <td>
-                    <button className="hbz-btn btn-small" onClick={() => onEdit(p)}>
-                      Bearbeiten
-                    </button>
-                    <button
-                      className="hbz-btn btn-small"
-                      style={{ marginLeft: 6 }}
-                      onClick={() => onDelete(p.id, p.name)}
-                    >
-                      Löschen
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {filtered.length === 0 && (
+          <div className="employee-table-wrap">
+            <table className="employee-table">
+              <thead>
                 <tr>
-                  <td colSpan={4} style={{ opacity: 0.6 }}>
-                    Keine Projekte gefunden
-                  </td>
+                  <th
+                    onClick={() => toggleSort("name")}
+                    style={{ cursor: "pointer" }}
+                  >
+                    Name{sortArrow("name")}
+                  </th>
+                  <th
+                    onClick={() => toggleSort("cost_center")}
+                    style={{ cursor: "pointer" }}
+                  >
+                    Kostenstelle{sortArrow("cost_center")}
+                  </th>
+                  <th>Aktiv</th>
+                  <th className="num">Aktion</th>
                 </tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {filtered.map((p) => (
+                  <tr key={p.id}>
+                    <td>{p.name}</td>
+                    <td>{p.cost_center || "—"}</td>
+                    <td>{p.active ? "Ja" : "Nein"}</td>
+                    <td className="num">
+                      <div className="employee-action-group">
+                        <button
+                          className="hbz-btn btn-small"
+                          onClick={() => onEdit(p)}
+                        >
+                          Bearbeiten
+                        </button>
+                        <button
+                          className="hbz-btn btn-small"
+                          onClick={() => onDelete(p.id, p.name)}
+                        >
+                          Löschen
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+
+                {filtered.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="employee-empty">
+                      Keine Projekte gefunden
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </div>

@@ -21,7 +21,6 @@ export default function App() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Optional: Session wiederherstellen
   useEffect(() => {
     try {
       const raw = sessionStorage.getItem("hbz_user");
@@ -35,13 +34,11 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    // Wenn bereits eingeloggt, auf Zeiterfassung weiterleiten
     if (loggedIn && (location.pathname === "/" || location.pathname === "/login")) {
       navigate("/zeiterfassung", { replace: true });
     }
   }, [loggedIn, location.pathname, navigate]);
 
-  // LoginPanel ruft diesen Handler auf (übergibt optional user-Objekt)
   const handleLogin = (user) => {
     setLoggedIn(true);
     if (user) {
@@ -65,54 +62,41 @@ export default function App() {
   };
 
   return (
-    <div className="App">
-      {loggedIn && (
-        <NavBar
-          onLogout={handleLogout}
-          role={role}
-          currentUser={currentUser}
-          // setCurrentView bleibt optional für Abwärtskompatibilität
-        />
+    <div className="app-root">
+      {loggedIn ? (
+        <>
+          <div className="app-shell">
+            <NavBar
+              onLogout={handleLogout}
+              role={role}
+              currentUser={currentUser}
+            />
+
+            <div className="app-page">
+              <Routes>
+                <Route path="/zeiterfassung" element={<DaySlider />} />
+                <Route path="/projekte" element={<ProjectAdmin />} />
+                <Route path="/jahresuebersicht" element={<YearOverview />} />
+                <Route path="/monatsuebersicht" element={<MonthlyOverview />} />
+                <Route path="/projektfotos" element={<ProjectPhotos />} />
+                <Route path="/mitarbeiter" element={<EmployeeList />} />
+                <Route path="/" element={<Navigate to="/zeiterfassung" replace />} />
+                <Route path="*" element={<Navigate to="/zeiterfassung" replace />} />
+              </Routes>
+            </div>
+          </div>
+
+          <footer className="app-footer">
+            <div>Holzbau Zaunschirm · Zeiterfassung</div>
+            <div>Version: {APP_VERSION}</div>
+          </footer>
+        </>
+      ) : (
+        <Routes>
+          <Route path="/" element={<LoginPanel onLogin={handleLogin} />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
       )}
-
-      <Routes>
-        {!loggedIn ? (
-          <>
-            <Route path="/" element={<LoginPanel onLogin={handleLogin} />} />
-            {/* Alles andere auf Login umlenken */}
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </>
-        ) : (
-          <>
-            {/* Zeit-Erfassung */}
-            <Route path="/zeiterfassung" element={<DaySlider />} />
-
-            {/* Projekte anlegen / verwalten */}
-            <Route path="/projekte" element={<ProjectAdmin />} />
-
-            {/* Jahresübersicht (nur Admin – zusätzlicher Check in der Komponente) */}
-            <Route path="/jahresuebersicht" element={<YearOverview />} />
-
-            {/* Monatsübersicht */}
-            <Route path="/monatsuebersicht" element={<MonthlyOverview />} />
-
-            {/* Projektfotos */}
-            <Route path="/projektfotos" element={<ProjectPhotos />} />
-
-            {/* Mitarbeiterverwaltung */}
-            <Route path="/mitarbeiter" element={<EmployeeList />} />
-
-            {/* Default: wenn eingeloggt, aber auf / -> zur Zeiterfassung */}
-            <Route path="/" element={<Navigate to="/zeiterfassung" replace />} />
-            <Route path="*" element={<Navigate to="/zeiterfassung" replace />} />
-          </>
-        )}
-      </Routes>
-
-      <footer className="app-footer">
-        <div>Holzbau Zaunschirm · Zeiterfassung</div>
-        <div>Version: {APP_VERSION}</div>
-      </footer>
     </div>
   );
 }
