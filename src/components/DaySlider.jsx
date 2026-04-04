@@ -15,13 +15,11 @@ const hmToMin = (hm) => {
   const [h, m] = String(hm).split(":").map((x) => parseInt(x || "0", 10));
   return (isNaN(h) ? 0 : h) * 60 + (isNaN(m) ? 0 : m);
 };
-// Minuten → Stunden (2 Nachkommastellen)
 const h2 = (m) => Math.round((m / 60) * 100) / 100;
 
-// Pause- und Fahrzeit-Auswahl (0–90 Minuten in 15er-Schritten)
 const PAUSE_OPTIONS = [0, 15, 30, 45, 60, 75, 90];
 const TRAVEL_OPTIONS = [0, 15, 30, 45, 60, 75, 90];
-// --- BUAK 2026 Kurz/Lang (nur Anzeige) ---
+
 const BUAK_WEEK_TYPES_2026 = {
   1: "K",
   2: "K",
@@ -79,12 +77,12 @@ const BUAK_WEEK_TYPES_2026 = {
 };
 
 function isoWeekNumber(dateStr) {
-  if (!dateStr) return null; // expects YYYY-MM-DD
+  if (!dateStr) return null;
   const d = new Date(dateStr + "T00:00:00");
   if (isNaN(d.getTime())) return null;
 
-  const dayNum = (d.getDay() + 6) % 7; // Mon=0..Sun=6
-  d.setDate(d.getDate() - dayNum + 3); // Thursday
+  const dayNum = (d.getDay() + 6) % 7;
+  d.setDate(d.getDate() - dayNum + 3);
   const firstThursday = new Date(d.getFullYear(), 0, 4);
   const firstDayNum = (firstThursday.getDay() + 6) % 7;
   firstThursday.setDate(firstThursday.getDate() - firstDayNum + 3);
@@ -117,36 +115,29 @@ export default function DaySlider() {
   const isStaff = role === "mitarbeiter";
   const isManager = !isStaff;
 
-  // Datum
   const [date, setDate] = useState(() =>
     new Date().toISOString().slice(0, 10)
   );
   const buakWeekLabel = getBuakWeekLabel(date);
 
-  // Zeiten (Neuanlage)
   const [fromMin, setFromMin] = useState(7 * 60);
   const [toMin, setToMin] = useState(16 * 60 + 30);
   const [breakMin, setBreakMin] = useState(30);
   const [travelMin, setTravelMin] = useState(0);
   const [note, setNote] = useState("");
 
-  // NEU: Abwesenheit (Krank/Urlaub)
-  // null = normale Arbeit
   const [absenceType, setAbsenceType] = useState(null);
 
-  // Projekte
   const [projects, setProjects] = useState([]);
   const [projectId, setProjectId] = useState(null);
   const [projectLoadNote, setProjectLoadNote] = useState(null);
 
-  // Mitarbeiter (Picker, Mehrfachauswahl für Manager)
   const [employees, setEmployees] = useState([]);
   const [selectedCodes, setSelectedCodes] = useState(
     isStaff ? [session?.code].filter(Boolean) : []
   );
   const [employeeRow, setEmployeeRow] = useState(null);
 
-  // Einträge + Bearbeitung
   const [entries, setEntries] = useState([]);
   const [editId, setEditId] = useState(null);
   const [editState, setEditState] = useState(null);
@@ -155,7 +146,6 @@ export default function DaySlider() {
 
   const [error, setError] = useState("");
 
-  // ---------------- Projekte laden ----------------
   useEffect(() => {
     async function loadProjects() {
       try {
@@ -187,7 +177,9 @@ export default function DaySlider() {
           return;
         }
 
-        const list = (res.data || []).filter((p) => p?.disabled !== true && p?.active !== false);
+        const list = (res.data || []).filter(
+          (p) => p?.disabled !== true && p?.active !== false
+        );
         setProjects(list);
         if (!projectId && list.length === 1) {
           setProjectId(list[0].id);
@@ -204,7 +196,6 @@ export default function DaySlider() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ---------------- Mitarbeiter laden ----------------
   useEffect(() => {
     async function loadEmployees() {
       try {
@@ -244,7 +235,6 @@ export default function DaySlider() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isManager, session?.code]);
 
-  // ---------------- aktiver Mitarbeiter (für Mitarbeiterrolle) ----------------
   useEffect(() => {
     if (!isStaff) return;
     if (!session?.code) return;
@@ -263,7 +253,6 @@ export default function DaySlider() {
     })();
   }, [isStaff, session?.code]);
 
-  // ---------------- Anzeige: Tagesstunden + Überstunden ----------------
   const totalMin = useMemo(() => {
     const raw = clamp(toMin - fromMin, 0, 24 * 60);
     return clamp(raw - breakMin, 0, 24 * 60);
@@ -274,16 +263,9 @@ export default function DaySlider() {
     [totalMin, travelMin]
   );
 
-  const totalHours = useMemo(
-    () => h2(totalMinWithTravel),
-    [totalMinWithTravel]
-  );
-  const totalOvertime = useMemo(
-    () => Math.max(totalHours - 9, 0),
-    [totalHours]
-  );
+  const totalHours = useMemo(() => h2(totalMinWithTravel), [totalMinWithTravel]);
+  const totalOvertime = useMemo(() => Math.max(totalHours - 9, 0), [totalHours]);
 
-  // ---------------- Einträge laden ----------------
   async function loadEntries() {
     try {
       setLoading(true);
@@ -320,7 +302,6 @@ export default function DaySlider() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [date, isManager, selectedCodes, employeeRow?.id]);
 
-  // ---------------- Datum +/- ----------------
   const shiftDate = (days) => {
     setDate((old) => {
       const d = new Date(old);
@@ -329,7 +310,6 @@ export default function DaySlider() {
     });
   };
 
-  // ---------------- Speichern ----------------
   async function handleSave() {
     setError("");
 
@@ -340,7 +320,9 @@ export default function DaySlider() {
       return;
     }
 
-    const prj = projectId ? projects.find((p) => p.id === projectId) || null : null;
+    const prj = projectId
+      ? projects.find((p) => p.id === projectId) || null
+      : null;
 
     if (projectId && !prj) {
       setError("Ungültiges Projekt.");
@@ -360,7 +342,13 @@ export default function DaySlider() {
       break_min: breakMin,
       travel_minutes: travelMin,
       travel_cost_center: "FAHRZEIT",
-      note: `${absenceType === "krank" ? "[Krank] " : absenceType === "urlaub" ? "[Urlaub] " : ""}${(note || "").trim()}`.trim() || null,
+      note: `${
+        absenceType === "krank"
+          ? "[Krank] "
+          : absenceType === "urlaub"
+          ? "[Urlaub] "
+          : ""
+      }${(note || "").trim()}`.trim() || null,
     };
 
     try {
@@ -407,7 +395,6 @@ export default function DaySlider() {
     }
   }
 
-  // ---------------- Bearbeiten / Löschen ----------------
   function startEdit(row) {
     if (!isManager) return;
     setEditId(row.id);
@@ -475,118 +462,167 @@ export default function DaySlider() {
     }
   }
 
-  // ---------------- Render ----------------
+  const summaryCards = [
+    { label: "Start", value: toHM(fromMin) },
+    { label: "Ende", value: toHM(toMin) },
+    { label: "Pause", value: `${breakMin} min` },
+    { label: "Fahrzeit", value: `${travelMin} min` },
+  ];
+
   return (
-    <div className="hbz-container">
-      <div className="hbz-card">
-        {/* Kopf */}
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-          <h2 className="page-title">Zeiterfassung</h2>
-          <div className="flex items-center gap-2">
+    <div className="month-overview">
+      <div className="month-overview-hero hbz-card">
+        <div className="month-overview-hero__content">
+          <div>
+            <div className="month-overview-kicker">Zeiterfassung</div>
+            <h2 className="month-overview-title">Tageserfassung</h2>
+            <div className="month-overview-subtitle">
+              Datum: <b>{date}</b>
+            </div>
+            {buakWeekLabel && (
+              <div className="month-overview-subtitle">
+                <b>{buakWeekLabel}</b>
+              </div>
+            )}
+          </div>
+
+          <div className="month-overview-actions">
             <button
-              className="hbz-btn btn-small"
+              className="hbz-btn"
               type="button"
               onClick={() => shiftDate(-1)}
             >
-              «
+              ← Tag zurück
             </button>
+            <button
+              className="hbz-btn"
+              type="button"
+              onClick={() => shiftDate(1)}
+            >
+              Tag vor →
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="hbz-card month-main-card">
+        <div className="month-card-title">Zeiten erfassen</div>
+
+        <div className="month-filter-grid">
+          <div className="field-inline">
+            <label className="hbz-label">Datum</label>
             <input
               type="date"
               className="hbz-input"
               value={date}
               onChange={(e) => setDate(e.target.value)}
-              style={{ maxWidth: 160 }}
             />
-            <button
-              className="hbz-btn btn-small"
-              type="button"
-              onClick={() => shiftDate(1)}
+          </div>
+
+          <div className="field-inline">
+            <label className="hbz-label">Projekt</label>
+            <select
+              className="hbz-select"
+              value={projectId ?? ""}
+              disabled={absenceType === "krank" || absenceType === "urlaub"}
+              onChange={(e) => setProjectId(e.target.value || null)}
             >
-              »
-            </button>
+              <option value="">— ohne Projekt —</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.code ? `${p.code} · ${p.name}` : p.name}
+                </option>
+              ))}
+            </select>
           </div>
-            {buakWeekLabel && (
-              <div className="text-xs opacity-70" style={{ marginTop: 4 }}>
-                {buakWeekLabel}
-              </div>
-            )}
-
         </div>
 
-        {/* Mitarbeiter-Picker (nur Manager) */}
-        {isManager && (
-          <EmployeePicker
-            employees={employees}
-            selected={selectedCodes}
-            onChange={setSelectedCodes}
-            enableMulti={true}
-          />
+        {(absenceType === "krank" || absenceType === "urlaub") && (
+          <div className="help" style={{ marginTop: 8 }}>
+            Bei Krank/Urlaub ist kein Projekt nötig.
+          </div>
         )}
 
-        {/* Hinweis, falls Projekte nicht geladen werden konnten */}
         {projectLoadNote && (
-          <div className="text-xs text-red-700 mt-2">{projectLoadNote}</div>
+          <div className="year-error-box" style={{ marginTop: 12 }}>
+            {projectLoadNote}
+          </div>
         )}
 
-        {/* Projekt */}
-        <div className="mb-4 mt-3">
-          <label className="block mb-1 font-semibold">Projekt</label>
-          <select
-            className="w-full px-3 py-2 rounded border"
-            value={projectId ?? ""}
-            disabled={absenceType === "krank" || absenceType === "urlaub"}
-            onChange={(e) => setProjectId(e.target.value || null)}
-          >
-            <option value="">— ohne Projekt —</option>
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.code ? `${p.code} · ${p.name}` : p.name}
-              </option>
-            ))}
-          </select>
-          {(absenceType === "krank" || absenceType === "urlaub") && (
-            <div className="text-xs opacity-70" style={{ marginTop: 4 }}>
-              Bei Krank/Urlaub ist kein Projekt nötig.
+        {isManager && (
+          <div className="month-employee-block">
+            <div className="month-employee-head">
+              <label className="hbz-label">Mitarbeiter</label>
+              <span className="badge-soft">
+                {selectedCodes.length} / {employees.length} gewählt
+              </span>
             </div>
-          )}
+
+            <EmployeePicker
+              employees={employees}
+              selected={selectedCodes}
+              onChange={setSelectedCodes}
+              enableMulti={true}
+            />
+          </div>
+        )}
+
+        <div className="month-summary-grid" style={{ marginTop: 16 }}>
+          {summaryCards.map((card) => (
+            <div key={card.label} className="month-summary-card">
+              <div className="month-summary-label">{card.label}</div>
+              <div className="month-summary-value">{card.value}</div>
+            </div>
+          ))}
         </div>
 
-        {/* Start / Ende mit Slider, Pause jetzt Buttons */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div>
-            <div className="font-semibold mb-1">Start</div>
-            <input
-              type="range"
-              min={5 * 60}
-              max={19 * 60 + 30}
-              step={15}
-              value={fromMin}
-              onChange={(e) => {
-                if (absenceType) setAbsenceType(null);
-                setFromMin(Number(e.target.value));
-              }}
-              className="w-full"
-            />
-            <div className="mt-2 text-2xl font-bold">{toHM(fromMin)}</div>
+        <div className="year-sections" style={{ marginTop: 18 }}>
+          <div className="year-section">
+            <div className="month-card-title">Arbeitszeit</div>
+
+            <div className="month-card-edit-grid" style={{ marginTop: 10 }}>
+              <div className="month-card-field">
+                <label className="hbz-label">Start</label>
+                <input
+                  type="range"
+                  min={5 * 60}
+                  max={19 * 60 + 30}
+                  step={15}
+                  value={fromMin}
+                  onChange={(e) => {
+                    if (absenceType) setAbsenceType(null);
+                    setFromMin(Number(e.target.value));
+                  }}
+                  style={{ width: "100%" }}
+                />
+                <div className="month-card-mainhrs" style={{ marginTop: 8 }}>
+                  {toHM(fromMin)}
+                </div>
+              </div>
+
+              <div className="month-card-field">
+                <label className="hbz-label">Ende</label>
+                <input
+                  type="range"
+                  min={5 * 60}
+                  max={19 * 60 + 30}
+                  step={15}
+                  value={toMin}
+                  onChange={(e) => {
+                    if (absenceType) setAbsenceType(null);
+                    setToMin(Number(e.target.value));
+                  }}
+                  style={{ width: "100%" }}
+                />
+                <div className="month-card-mainhrs" style={{ marginTop: 8 }}>
+                  {toHM(toMin)}
+                </div>
+              </div>
+            </div>
           </div>
-          <div>
-            <div className="font-semibold mb-1">Ende</div>
-            <input
-              type="range"
-              min={5 * 60}
-              max={19 * 60 + 30}
-              step={15}
-              value={toMin}
-              onChange={(e) => {
-                if (absenceType) setAbsenceType(null);
-                setToMin(Number(e.target.value));
-              }}
-              className="w-full"
-            />
-            <div className="mt-2 text-2xl font-bold">{toHM(toMin)}</div>
-          </div>
-          <div>
-            <div className="font-semibold mb-1">Pause</div>
+
+          <div className="year-section">
+            <div className="month-card-title">Pause</div>
             <div className="hbz-chipbar">
               {PAUSE_OPTIONS.map((m) => {
                 const active = breakMin === m;
@@ -600,118 +636,111 @@ export default function DaySlider() {
                     type="button"
                     className={`hbz-chip ${active ? "active" : ""}`}
                     onClick={() => {
-                    if (absenceType) setAbsenceType(null);
-                    setBreakMin(m);
-                  }}
+                      if (absenceType) setAbsenceType(null);
+                      setBreakMin(m);
+                    }}
                   >
                     {label}
                   </button>
                 );
               })}
             </div>
-            <div className="mt-2 text-2xl font-bold">{breakMin} min</div>
           </div>
-        </div>
 
-
-        {/* NEU: Krank / Urlaub */}
-        <div className="mt-4">
-          <div className="font-semibold mb-1">Abwesenheit</div>
-          <div className="hbz-chipbar">
-            <button
-              type="button"
-              className={`hbz-chip ${absenceType === "krank" ? "active" : ""}`}
-              onClick={() => {
-                setAbsenceType("krank");
-                setProjectId(null);
-                // Mo–Do: 9h (07:00–16:00), Fr: 3h (07:00–10:00)
-                const d = new Date(`${date}T00:00:00`);
-                const isFri = d.getDay() === 5;
-                setFromMin(7 * 60);
-                setToMin(isFri ? 10 * 60 : 16 * 60);
-                setBreakMin(0);
-                setTravelMin(0);
-              }}
-            >
-              Krank
-            </button>
-
-            <button
-              type="button"
-              className={`hbz-chip ${absenceType === "urlaub" ? "active" : ""}`}
-              onClick={() => {
-                setAbsenceType("urlaub");
-                setProjectId(null);
-                // 0h: 07:00–07:15 mit 15 min Pause => netto 0
-                setFromMin(7 * 60);
-                setToMin(7 * 60 + 15);
-                setBreakMin(15);
-                setTravelMin(0);
-              }}
-            >
-              Urlaub
-            </button>
-
-            {absenceType && (
+          <div className="year-section">
+            <div className="month-card-title">Abwesenheit</div>
+            <div className="hbz-chipbar">
               <button
                 type="button"
-                className="hbz-chip"
-                onClick={() => setAbsenceType(null)}
-                title="Abwesenheit zurücksetzen"
+                className={`hbz-chip ${
+                  absenceType === "krank" ? "active" : ""
+                }`}
+                onClick={() => {
+                  setAbsenceType("krank");
+                  setProjectId(null);
+                  const d = new Date(`${date}T00:00:00`);
+                  const isFri = d.getDay() === 5;
+                  setFromMin(7 * 60);
+                  setToMin(isFri ? 10 * 60 : 16 * 60);
+                  setBreakMin(0);
+                  setTravelMin(0);
+                }}
               >
-                Normal
+                Krank
               </button>
-            )}
-          </div>
-          <div className="text-xs opacity-70 mt-1">
-            
-          </div>
-        </div>
 
-        {/* Fahrzeit – Buttons */}
-        <div className="mt-4">
-          <div className="font-semibold mb-1">Fahrzeit</div>
-          <div className="hbz-chipbar">
-            {TRAVEL_OPTIONS.map((m) => {
-              const active = travelMin === m;
-              let label = `${m} min`;
-              if (m === 60) label = "1:00 h";
-              if (m === 75) label = "1:15 h";
-              if (m === 90) label = "1:30 h";
-              return (
+              <button
+                type="button"
+                className={`hbz-chip ${
+                  absenceType === "urlaub" ? "active" : ""
+                }`}
+                onClick={() => {
+                  setAbsenceType("urlaub");
+                  setProjectId(null);
+                  setFromMin(7 * 60);
+                  setToMin(7 * 60 + 15);
+                  setBreakMin(15);
+                  setTravelMin(0);
+                }}
+              >
+                Urlaub
+              </button>
+
+              {absenceType && (
                 <button
-                  key={m}
                   type="button"
-                  className={`hbz-chip ${active ? "active" : ""}`}
-                  onClick={() => {
-                    if (absenceType) setAbsenceType(null);
-                    setTravelMin(m);
-                  }}
+                  className="hbz-chip"
+                  onClick={() => setAbsenceType(null)}
+                  title="Abwesenheit zurücksetzen"
                 >
-                  {label}
+                  Normal
                 </button>
-              );
-            })}
+              )}
+            </div>
           </div>
-          <div className="text-xs opacity-70 mt-1">
-            Kostenstelle: <b>FAHRZEIT</b> – wird zur Arbeitszeit dazugerechnet
-            und in den Auswertungen separat ausgewiesen.
+
+          <div className="year-section">
+            <div className="month-card-title">Fahrzeit</div>
+            <div className="hbz-chipbar">
+              {TRAVEL_OPTIONS.map((m) => {
+                const active = travelMin === m;
+                let label = `${m} min`;
+                if (m === 60) label = "1:00 h";
+                if (m === 75) label = "1:15 h";
+                if (m === 90) label = "1:30 h";
+                return (
+                  <button
+                    key={m}
+                    type="button"
+                    className={`hbz-chip ${active ? "active" : ""}`}
+                    onClick={() => {
+                      if (absenceType) setAbsenceType(null);
+                      setTravelMin(m);
+                    }}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="help" style={{ marginTop: 8 }}>
+              Kostenstelle: <b>FAHRZEIT</b> – wird zur Arbeitszeit dazugerechnet
+              und in den Auswertungen separat ausgewiesen.
+            </div>
           </div>
         </div>
 
-        <div className="mt-4 text-sm">
-          <span className="font-semibold">Arbeitszeit heute:</span>{" "}
-          {totalHours.toFixed(2)} h{" "}
+        <div className="year-range-active" style={{ marginTop: 16 }}>
+          <strong>Arbeitszeit heute:</strong> {totalHours.toFixed(2)} h
           {totalOvertime > 0
-            ? `(Ü: ${totalOvertime.toFixed(2)} h)`
-            : "(keine Überstunden)"}
+            ? ` | Ü: ${totalOvertime.toFixed(2)} h`
+            : " | keine Überstunden"}
         </div>
 
-        {/* Notiz */}
-        <div className="mt-3">
-          <label className="block mb-1 font-semibold">Notiz</label>
+        <div className="month-card-field" style={{ marginTop: 16 }}>
+          <label className="hbz-label">Notiz</label>
           <textarea
-            className="w-full px-3 py-2 rounded border"
+            className="hbz-textarea"
             rows={3}
             value={note}
             onChange={(e) => setNote(e.target.value)}
@@ -720,7 +749,7 @@ export default function DaySlider() {
         </div>
 
         {error && (
-          <div className="mt-2 text-sm text-red-700">
+          <div className="year-error-box" style={{ marginTop: 12 }}>
             <b>Hinweis:</b> {error}
           </div>
         )}
@@ -737,32 +766,33 @@ export default function DaySlider() {
         </div>
       </div>
 
-      {/* Tages-Einträge */}
-      <div className="hbz-card" style={{ marginTop: 12 }}>
-        <div className="flex items-center justify-between mb-2">
-          <div className="hbz-section-title">Einträge am {date}</div>
-          {loading && (
-            <span className="text-xs opacity-70">Lade Einträge…</span>
-          )}
+      <div className="hbz-card month-main-card">
+        <div className="month-main-header">
+          <div>
+            <div className="month-card-title">Einträge am {date}</div>
+            <div className="month-main-subtitle">
+              {loading ? "Lade Einträge…" : "Tagesübersicht"}
+            </div>
+          </div>
         </div>
 
         {entries.length === 0 ? (
-          <div className="text-sm opacity-70">Keine Einträge.</div>
+          <div className="month-empty-state">Keine Einträge.</div>
         ) : (
-          <div className="mo-wrap">
-            <table className="nice zt-table">
+          <div className="month-table-wrap">
+            <table className="month-table">
               <thead>
                 <tr>
-                  <th className="zt-col-emp">Mitarbeiter</th>
-                  <th className="zt-col-prj">Projekt</th>
-                  <th className="zt-col-time">Start</th>
-                  <th className="zt-col-time">Ende</th>
-                  <th className="zt-col-pause">Pause</th>
-                  <th className="zt-col-pause">Fahrzeit</th>
-                  <th className="zt-col-hrs">Stunden</th>
-                  <th className="zt-col-ot">Überstunden</th>
-                  <th className="zt-col-note">Notiz</th>
-                  <th className="zt-col-actions"></th>
+                  <th>Mitarbeiter</th>
+                  <th>Projekt</th>
+                  <th className="num">Start</th>
+                  <th className="num">Ende</th>
+                  <th className="num">Pause</th>
+                  <th className="num">Fahrzeit</th>
+                  <th className="num">Stunden</th>
+                  <th className="num">Überstunden</th>
+                  <th>Notiz</th>
+                  <th className="num">Aktion</th>
                 </tr>
               </thead>
               <tbody>
@@ -783,18 +813,16 @@ export default function DaySlider() {
                       <tr key={r.id}>
                         <td>{r.employee_name || r.employee_id}</td>
                         <td>{r.project_name || "—"}</td>
-                        <td style={{ textAlign: "center" }}>{toHM(start)}</td>
-                        <td style={{ textAlign: "center" }}>{toHM(end)}</td>
-                        <td style={{ textAlign: "right" }}>{breakM} min</td>
-                        <td style={{ textAlign: "right" }}>{travelM} min</td>
-                        <td style={{ textAlign: "right" }}>
-                          {hrs.toFixed(2)}
-                        </td>
-                        <td style={{ textAlign: "right" }}>{ot.toFixed(2)}</td>
+                        <td className="num">{toHM(start)}</td>
+                        <td className="num">{toHM(end)}</td>
+                        <td className="num">{breakM} min</td>
+                        <td className="num">{travelM} min</td>
+                        <td className="num">{hrs.toFixed(2)}</td>
+                        <td className="num">{ot.toFixed(2)}</td>
                         <td>{r.note || ""}</td>
-                        <td style={{ textAlign: "right" }}>
+                        <td className="num">
                           {isManager ? (
-                            <>
+                            <div className="month-action-group">
                               <button
                                 className="hbz-btn btn-small"
                                 type="button"
@@ -809,18 +837,15 @@ export default function DaySlider() {
                               >
                                 Löschen
                               </button>
-                            </>
+                            </div>
                           ) : (
-                            <span className="text-xs opacity-60">
-                              nur Anzeige
-                            </span>
+                            <span className="help">nur Anzeige</span>
                           )}
                         </td>
                       </tr>
                     );
                   }
 
-                  // Bearbeitungszeile
                   return (
                     <tr key={`${r.id}-edit`}>
                       <td>{r.employee_name || r.employee_id}</td>
@@ -843,7 +868,7 @@ export default function DaySlider() {
                           ))}
                         </select>
                       </td>
-                      <td style={{ textAlign: "center" }}>
+                      <td className="num">
                         <input
                           type="time"
                           className="hbz-input"
@@ -856,7 +881,7 @@ export default function DaySlider() {
                           }
                         />
                       </td>
-                      <td style={{ textAlign: "center" }}>
+                      <td className="num">
                         <input
                           type="time"
                           className="hbz-input"
@@ -869,7 +894,7 @@ export default function DaySlider() {
                           }
                         />
                       </td>
-                      <td style={{ textAlign: "right" }}>
+                      <td className="num">
                         <input
                           type="number"
                           min={0}
@@ -884,7 +909,7 @@ export default function DaySlider() {
                           }
                         />
                       </td>
-                      <td style={{ textAlign: "right" }}>
+                      <td className="num">
                         <input
                           type="number"
                           min={0}
@@ -899,21 +924,31 @@ export default function DaySlider() {
                           }
                         />
                       </td>
-                      <td colSpan={1} style={{ textAlign: "right" }}>
+                      <td className="num">
                         {(() => {
                           const startM = hmToMin(editState.from_hm);
                           const endM = hmToMin(editState.to_hm);
                           const br =
                             parseInt(editState.break_min || "0", 10) || 0;
                           const tr =
-                            parseInt(
-                              editState.travel_minutes || "0",
-                              10
-                            ) || 0;
+                            parseInt(editState.travel_minutes || "0", 10) || 0;
+                          const w = Math.max(endM - startM - br, 0) + tr;
+                          const h = h2(w);
+                          return h.toFixed(2);
+                        })()}
+                      </td>
+                      <td className="num">
+                        {(() => {
+                          const startM = hmToMin(editState.from_hm);
+                          const endM = hmToMin(editState.to_hm);
+                          const br =
+                            parseInt(editState.break_min || "0", 10) || 0;
+                          const tr =
+                            parseInt(editState.travel_minutes || "0", 10) || 0;
                           const w = Math.max(endM - startM - br, 0) + tr;
                           const h = h2(w);
                           const o = Math.max(h - 9, 0);
-                          return `${h.toFixed(2)} h / Ü: ${o.toFixed(2)} h`;
+                          return o.toFixed(2);
                         })()}
                       </td>
                       <td>
@@ -929,21 +964,23 @@ export default function DaySlider() {
                           }
                         />
                       </td>
-                      <td style={{ textAlign: "right" }}>
-                        <button
-                          className="hbz-btn btn-small"
-                          type="button"
-                          onClick={saveEdit}
-                        >
-                          Speichern
-                        </button>
-                        <button
-                          className="hbz-btn btn-small"
-                          type="button"
-                          onClick={cancelEdit}
-                        >
-                          Abbrechen
-                        </button>
+                      <td className="num">
+                        <div className="month-action-group">
+                          <button
+                            className="hbz-btn btn-small"
+                            type="button"
+                            onClick={saveEdit}
+                          >
+                            Speichern
+                          </button>
+                          <button
+                            className="hbz-btn btn-small"
+                            type="button"
+                            onClick={cancelEdit}
+                          >
+                            Abbrechen
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
