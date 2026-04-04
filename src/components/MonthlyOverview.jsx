@@ -89,6 +89,7 @@ export default function MonthlyOverview() {
   const [pdfOptions, setPdfOptions] = useState({
     selectedEmployeeCodes: [],
     includeDetails: true,
+    includeDailySeparate: false,
     includeWeekly: true,
     includeTotals: true,
     includeTravel: true,
@@ -147,8 +148,11 @@ export default function MonthlyOverview() {
           if ((data || []).length && selectedCodes.length === 0) {
             if (session?.code) {
               const me = (data || []).find((e) => e.code === session.code);
-              if (me) setSelectedCodes([me.code]);
-              else setSelectedCodes(data.map((e) => e.code));
+              if (me) {
+                setSelectedCodes([me.code]);
+              } else {
+                setSelectedCodes(data.map((e) => e.code));
+              }
             } else {
               setSelectedCodes(data.map((e) => e.code));
             }
@@ -259,7 +263,9 @@ export default function MonthlyOverview() {
 
   useEffect(() => {
     const handleVisibility = () => {
-      if (document.visibilityState === "visible") loadMonth();
+      if (document.visibilityState === "visible") {
+        loadMonth();
+      }
     };
 
     window.addEventListener("focus", handleVisibility);
@@ -535,6 +541,15 @@ export default function MonthlyOverview() {
           ? pdfOptions.selectedEmployeeCodes
           : selectedCodes;
 
+      const exportRowsBase = rows.filter((r) => {
+        const code = employeesById[r.employee_id]?.code;
+        return selectedPdfCodes.includes(code);
+      });
+
+      const exportRows = pdfOptions.includeAbsence
+        ? exportRowsBase
+        : exportRowsBase.filter((r) => !isAbsenceRow(r));
+
       const exportGroupedBase = grouped.filter((r) => {
         const code = employeesById[r.employee_id]?.code;
         return selectedPdfCodes.includes(code);
@@ -544,7 +559,7 @@ export default function MonthlyOverview() {
         ? exportGroupedBase
         : exportGroupedBase.filter((r) => !isAbsenceRow(r));
 
-      if (!exportGrouped.length) {
+      if (!exportGrouped.length && !exportRows.length) {
         alert("Keine Daten für den PDF Export ausgewählt.");
         return;
       }
@@ -651,6 +666,7 @@ export default function MonthlyOverview() {
         `Inhalt: ${
           [
             pdfOptions.includeDetails ? "Tagesdetails" : null,
+            pdfOptions.includeDailySeparate ? "Einzelbuchungen separat" : null,
             pdfOptions.includeWeekly ? "Wochenübersicht" : null,
             pdfOptions.includeTotals ? "Summen" : null,
             pdfOptions.includeTravel ? "Fahrzeit" : null,
@@ -682,10 +698,22 @@ export default function MonthlyOverview() {
           "Notiz",
         ]];
 
-        const detailBody = exportGrouped.map((r) => {
+        const detailSource = pdfOptions.includeDailySeparate
+          ? exportRows
+          : exportGrouped;
+
+        const detailBody = detailSource.map((r) => {
           const start = r.start_min ?? r.from_min ?? 0;
           const end = r.end_min ?? r.to_min ?? 0;
-          const hrs = h2(r._mins);
+          const pause = r.break_min ?? 0;
+          const travel = r._travel ?? r.travel_minutes ?? r.travel_min ?? 0;
+
+          const mins =
+            typeof r._mins !== "undefined"
+              ? r._mins
+              : Math.max(end - start - pause, 0) + (travel || 0);
+
+          const hrs = h2(mins);
           const ot = Math.max(hrs - 9, 0);
 
           return [
@@ -694,8 +722,8 @@ export default function MonthlyOverview() {
             r.project_name || "",
             toHM(start),
             toHM(end),
-            r.break_min ?? 0,
-            ...(pdfOptions.includeTravel ? [r._travel ?? 0] : []),
+            pause,
+            ...(pdfOptions.includeTravel ? [travel] : []),
             hrs.toFixed(2),
             ...(pdfOptions.includeOvertime ? [ot.toFixed(2)] : []),
             (r.note || "").replace(/\r?\n/g, " "),
@@ -1629,6 +1657,20 @@ export default function MonthlyOverview() {
                       }
                     />
                     <span>Tagesdetails</span>
+                  </label>
+
+                  <label className="month-check-row">
+                    <input
+                      type="checkbox"
+                      checked={pdfOptions.includeDailySeparate}
+                      onChange={(e) =>
+                        setPdfOptions((prev) => ({
+                          ...prev,
+                          includeDailySeparate: e.target.checked,
+                        }))
+                      }
+                    />
+                    <span>Jede Buchung / jeden Tag separat auflisten</span>
                   </label>
 
                   <label className="month-check-row">
