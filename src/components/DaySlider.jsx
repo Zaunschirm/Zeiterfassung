@@ -143,8 +143,16 @@ export default function DaySlider() {
   const [editState, setEditState] = useState(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
 
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth <= 768);
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   useEffect(() => {
     async function loadProjects() {
@@ -779,23 +787,223 @@ export default function DaySlider() {
         {entries.length === 0 ? (
           <div className="month-empty-state">Keine Einträge.</div>
         ) : (
-          <div className="month-table-wrap">
-            <table className="month-table">
-              <thead>
-                <tr>
-                  <th>Mitarbeiter</th>
-                  <th>Projekt</th>
-                  <th className="num">Start</th>
-                  <th className="num">Ende</th>
-                  <th className="num">Pause</th>
-                  <th className="num">Fahrzeit</th>
-                  <th className="num">Stunden</th>
-                  <th className="num">Überstunden</th>
-                  <th>Notiz</th>
-                  <th className="num">Aktion</th>
-                </tr>
-              </thead>
-              <tbody>
+          <>
+            {!isMobile && (
+              <div className="month-table-wrap">
+                <table className="month-table">
+                  <thead>
+                    <tr>
+                      <th>Mitarbeiter</th>
+                      <th>Projekt</th>
+                      <th className="num">Start</th>
+                      <th className="num">Ende</th>
+                      <th className="num">Pause</th>
+                      <th className="num">Fahrzeit</th>
+                      <th className="num">Stunden</th>
+                      <th className="num">Überstunden</th>
+                      <th>Notiz</th>
+                      <th className="num">Aktion</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {entries.map((r) => {
+                      const start = r.start_min ?? r.from_min ?? 0;
+                      const end = r.end_min ?? r.to_min ?? 0;
+                      const breakM = r.break_min ?? 0;
+                      const travelM =
+                        r.travel_minutes ?? r.travel_min ?? r.travel ?? 0;
+                      const work = Math.max(end - start - breakM, 0);
+                      const total = work + (travelM || 0);
+                      const hrs = h2(total);
+                      const ot = Math.max(hrs - 9, 0);
+                      const isEditing = editId === r.id;
+
+                      if (!isEditing) {
+                        return (
+                          <tr key={r.id}>
+                            <td>{r.employee_name || r.employee_id}</td>
+                            <td>{r.project_name || "—"}</td>
+                            <td className="num">{toHM(start)}</td>
+                            <td className="num">{toHM(end)}</td>
+                            <td className="num">{breakM} min</td>
+                            <td className="num">{travelM} min</td>
+                            <td className="num">{hrs.toFixed(2)}</td>
+                            <td className="num">{ot.toFixed(2)}</td>
+                            <td>{r.note || ""}</td>
+                            <td className="num">
+                              {isManager ? (
+                                <div className="month-action-group">
+                                  <button
+                                    className="hbz-btn btn-small"
+                                    type="button"
+                                    onClick={() => startEdit(r)}
+                                  >
+                                    Bearbeiten
+                                  </button>
+                                  <button
+                                    className="hbz-btn btn-small"
+                                    type="button"
+                                    onClick={() => deleteEntry(r.id)}
+                                  >
+                                    Löschen
+                                  </button>
+                                </div>
+                              ) : (
+                                <span className="help">nur Anzeige</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      }
+
+                      return (
+                        <tr key={`${r.id}-edit`}>
+                          <td>{r.employee_name || r.employee_id}</td>
+                          <td>
+                            <select
+                              className="hbz-input"
+                              value={editState.project_id ?? ""}
+                              onChange={(e) =>
+                                setEditState((s) => ({
+                                  ...s,
+                                  project_id: e.target.value || null,
+                                }))
+                              }
+                            >
+                              <option value="">— ohne Projekt —</option>
+                              {projects.map((p) => (
+                                <option key={p.id} value={p.id}>
+                                  {p.code ? `${p.code} · ${p.name}` : p.name}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className="num">
+                            <input
+                              type="time"
+                              className="hbz-input"
+                              value={editState.from_hm}
+                              onChange={(e) =>
+                                setEditState((s) => ({
+                                  ...s,
+                                  from_hm: e.target.value,
+                                }))
+                              }
+                            />
+                          </td>
+                          <td className="num">
+                            <input
+                              type="time"
+                              className="hbz-input"
+                              value={editState.to_hm}
+                              onChange={(e) =>
+                                setEditState((s) => ({
+                                  ...s,
+                                  to_hm: e.target.value,
+                                }))
+                              }
+                            />
+                          </td>
+                          <td className="num">
+                            <input
+                              type="number"
+                              min={0}
+                              step={5}
+                              className="hbz-input"
+                              value={editState.break_min}
+                              onChange={(e) =>
+                                setEditState((s) => ({
+                                  ...s,
+                                  break_min: e.target.value,
+                                }))
+                              }
+                            />
+                          </td>
+                          <td className="num">
+                            <input
+                              type="number"
+                              min={0}
+                              step={5}
+                              className="hbz-input"
+                              value={editState.travel_minutes ?? 0}
+                              onChange={(e) =>
+                                setEditState((s) => ({
+                                  ...s,
+                                  travel_minutes: e.target.value,
+                                }))
+                              }
+                            />
+                          </td>
+                          <td className="num">
+                            {(() => {
+                              const startM = hmToMin(editState.from_hm);
+                              const endM = hmToMin(editState.to_hm);
+                              const br =
+                                parseInt(editState.break_min || "0", 10) || 0;
+                              const tr =
+                                parseInt(editState.travel_minutes || "0", 10) ||
+                                0;
+                              const w = Math.max(endM - startM - br, 0) + tr;
+                              const h = h2(w);
+                              return h.toFixed(2);
+                            })()}
+                          </td>
+                          <td className="num">
+                            {(() => {
+                              const startM = hmToMin(editState.from_hm);
+                              const endM = hmToMin(editState.to_hm);
+                              const br =
+                                parseInt(editState.break_min || "0", 10) || 0;
+                              const tr =
+                                parseInt(editState.travel_minutes || "0", 10) ||
+                                0;
+                              const w = Math.max(endM - startM - br, 0) + tr;
+                              const h = h2(w);
+                              const o = Math.max(h - 9, 0);
+                              return o.toFixed(2);
+                            })()}
+                          </td>
+                          <td>
+                            <input
+                              type="text"
+                              className="hbz-input"
+                              value={editState.note}
+                              onChange={(e) =>
+                                setEditState((s) => ({
+                                  ...s,
+                                  note: e.target.value,
+                                }))
+                              }
+                            />
+                          </td>
+                          <td className="num">
+                            <div className="month-action-group">
+                              <button
+                                className="hbz-btn btn-small"
+                                type="button"
+                                onClick={saveEdit}
+                              >
+                                Speichern
+                              </button>
+                              <button
+                                className="hbz-btn btn-small"
+                                type="button"
+                                onClick={cancelEdit}
+                              >
+                                Abbrechen
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {isMobile && (
+              <div className="month-cards">
                 {entries.map((r) => {
                   const start = r.start_min ?? r.from_min ?? 0;
                   const end = r.end_min ?? r.to_min ?? 0;
@@ -810,19 +1018,44 @@ export default function DaySlider() {
 
                   if (!isEditing) {
                     return (
-                      <tr key={r.id}>
-                        <td>{r.employee_name || r.employee_id}</td>
-                        <td>{r.project_name || "—"}</td>
-                        <td className="num">{toHM(start)}</td>
-                        <td className="num">{toHM(end)}</td>
-                        <td className="num">{breakM} min</td>
-                        <td className="num">{travelM} min</td>
-                        <td className="num">{hrs.toFixed(2)}</td>
-                        <td className="num">{ot.toFixed(2)}</td>
-                        <td>{r.note || ""}</td>
-                        <td className="num">
+                      <div key={`card-${r.id}`} className="month-card">
+                        <div className="month-card-header">
+                          <div>
+                            <div className="month-card-date">{date}</div>
+                            <div className="month-card-emp">
+                              {r.employee_name || r.employee_id}
+                            </div>
+                          </div>
+                          <div className="month-card-hours">
+                            <div className="month-card-mainhrs">
+                              {hrs.toFixed(2)} h
+                            </div>
+                            <div className="month-card-ot">
+                              Ü: {ot.toFixed(2)} h
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="month-card-row">
+                          <strong>Projekt:</strong> {r.project_name || "—"}
+                        </div>
+
+                        <div className="month-card-meta">
+                          <span>Start: {toHM(start)}</span>
+                          <span>Ende: {toHM(end)}</span>
+                          <span>Pause: {breakM} min</span>
+                          <span>Fahrzeit: {travelM} min</span>
+                        </div>
+
+                        {r.note && (
+                          <div className="month-card-row">
+                            <strong>Notiz:</strong> {r.note}
+                          </div>
+                        )}
+
+                        <div className="month-card-actions">
                           {isManager ? (
-                            <div className="month-action-group">
+                            <>
                               <button
                                 className="hbz-btn btn-small"
                                 type="button"
@@ -837,19 +1070,47 @@ export default function DaySlider() {
                               >
                                 Löschen
                               </button>
-                            </div>
+                            </>
                           ) : (
                             <span className="help">nur Anzeige</span>
                           )}
-                        </td>
-                      </tr>
+                        </div>
+                      </div>
                     );
                   }
 
+                  const minsLive =
+                    Math.max(
+                      hmToMin(editState.to_hm) -
+                        hmToMin(editState.from_hm) -
+                        (parseInt(editState.break_min || "0", 10) || 0),
+                      0
+                    ) +
+                    (parseInt(editState.travel_minutes || "0", 10) || 0);
+                  const hrsLive = h2(minsLive);
+                  const otLive = Math.max(hrsLive - 9, 0);
+
                   return (
-                    <tr key={`${r.id}-edit`}>
-                      <td>{r.employee_name || r.employee_id}</td>
-                      <td>
+                    <div key={`card-${r.id}-edit`} className="month-card month-card-edit">
+                      <div className="month-card-header">
+                        <div>
+                          <div className="month-card-date">{date}</div>
+                          <div className="month-card-emp">
+                            {r.employee_name || r.employee_id}
+                          </div>
+                        </div>
+                        <div className="month-card-hours">
+                          <div className="month-card-mainhrs">
+                            {hrsLive.toFixed(2)} h
+                          </div>
+                          <div className="month-card-ot">
+                            Ü: {otLive.toFixed(2)} h
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="month-card-field">
+                        <label className="hbz-label">Projekt</label>
                         <select
                           className="hbz-input"
                           value={editState.project_id ?? ""}
@@ -867,91 +1128,76 @@ export default function DaySlider() {
                             </option>
                           ))}
                         </select>
-                      </td>
-                      <td className="num">
-                        <input
-                          type="time"
-                          className="hbz-input"
-                          value={editState.from_hm}
-                          onChange={(e) =>
-                            setEditState((s) => ({
-                              ...s,
-                              from_hm: e.target.value,
-                            }))
-                          }
-                        />
-                      </td>
-                      <td className="num">
-                        <input
-                          type="time"
-                          className="hbz-input"
-                          value={editState.to_hm}
-                          onChange={(e) =>
-                            setEditState((s) => ({
-                              ...s,
-                              to_hm: e.target.value,
-                            }))
-                          }
-                        />
-                      </td>
-                      <td className="num">
-                        <input
-                          type="number"
-                          min={0}
-                          step={5}
-                          className="hbz-input"
-                          value={editState.break_min}
-                          onChange={(e) =>
-                            setEditState((s) => ({
-                              ...s,
-                              break_min: e.target.value,
-                            }))
-                          }
-                        />
-                      </td>
-                      <td className="num">
-                        <input
-                          type="number"
-                          min={0}
-                          step={5}
-                          className="hbz-input"
-                          value={editState.travel_minutes ?? 0}
-                          onChange={(e) =>
-                            setEditState((s) => ({
-                              ...s,
-                              travel_minutes: e.target.value,
-                            }))
-                          }
-                        />
-                      </td>
-                      <td className="num">
-                        {(() => {
-                          const startM = hmToMin(editState.from_hm);
-                          const endM = hmToMin(editState.to_hm);
-                          const br =
-                            parseInt(editState.break_min || "0", 10) || 0;
-                          const tr =
-                            parseInt(editState.travel_minutes || "0", 10) || 0;
-                          const w = Math.max(endM - startM - br, 0) + tr;
-                          const h = h2(w);
-                          return h.toFixed(2);
-                        })()}
-                      </td>
-                      <td className="num">
-                        {(() => {
-                          const startM = hmToMin(editState.from_hm);
-                          const endM = hmToMin(editState.to_hm);
-                          const br =
-                            parseInt(editState.break_min || "0", 10) || 0;
-                          const tr =
-                            parseInt(editState.travel_minutes || "0", 10) || 0;
-                          const w = Math.max(endM - startM - br, 0) + tr;
-                          const h = h2(w);
-                          const o = Math.max(h - 9, 0);
-                          return o.toFixed(2);
-                        })()}
-                      </td>
-                      <td>
+                      </div>
+
+                      <div className="month-card-edit-grid">
+                        <div className="month-card-field">
+                          <label className="hbz-label">Start</label>
+                          <input
+                            type="time"
+                            className="hbz-input"
+                            value={editState.from_hm}
+                            onChange={(e) =>
+                              setEditState((s) => ({
+                                ...s,
+                                from_hm: e.target.value,
+                              }))
+                            }
+                          />
+                        </div>
+                        <div className="month-card-field">
+                          <label className="hbz-label">Ende</label>
+                          <input
+                            type="time"
+                            className="hbz-input"
+                            value={editState.to_hm}
+                            onChange={(e) =>
+                              setEditState((s) => ({
+                                ...s,
+                                to_hm: e.target.value,
+                              }))
+                            }
+                          />
+                        </div>
+                      </div>
+
+                      <div className="month-card-edit-grid">
+                        <div className="month-card-field">
+                          <label className="hbz-label">Pause (min)</label>
+                          <input
+                            type="number"
+                            min={0}
+                            step={5}
+                            className="hbz-input"
+                            value={editState.break_min}
+                            onChange={(e) =>
+                              setEditState((s) => ({
+                                ...s,
+                                break_min: e.target.value,
+                              }))
+                            }
+                          />
+                        </div>
+                        <div className="month-card-field">
+                          <label className="hbz-label">Fahrzeit (min)</label>
+                          <input
+                            type="number"
+                            min={0}
+                            step={5}
+                            className="hbz-input"
+                            value={editState.travel_minutes ?? 0}
+                            onChange={(e) =>
+                              setEditState((s) => ({
+                                ...s,
+                                travel_minutes: e.target.value,
+                              }))
+                            }
+                          />
+                        </div>
+                      </div>
+
+                      <div className="month-card-field">
+                        <label className="hbz-label">Notiz</label>
                         <input
                           type="text"
                           className="hbz-input"
@@ -963,9 +1209,13 @@ export default function DaySlider() {
                             }))
                           }
                         />
-                      </td>
-                      <td className="num">
-                        <div className="month-action-group">
+                      </div>
+
+                      <div className="month-card-footer">
+                        <span className="month-card-summary">
+                          {hrsLive.toFixed(2)} h / Ü: {otLive.toFixed(2)} h
+                        </span>
+                        <div className="month-card-actions">
                           <button
                             className="hbz-btn btn-small"
                             type="button"
@@ -981,13 +1231,13 @@ export default function DaySlider() {
                             Abbrechen
                           </button>
                         </div>
-                      </td>
-                    </tr>
+                      </div>
+                    </div>
                   );
                 })}
-              </tbody>
-            </table>
-          </div>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
