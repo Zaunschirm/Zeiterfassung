@@ -10,6 +10,7 @@ import DaySlider from "./components/DaySlider.jsx";
 import ProjectAdmin from "./components/ProjectAdmin.jsx";
 import YearOverview from "./components/YearOverview.jsx";
 
+import { getSession, setSession, clearSession } from "./lib/session";
 import { APP_VERSION } from "./version";
 import "./styles.css";
 
@@ -23,14 +24,17 @@ export default function App() {
 
   useEffect(() => {
     try {
-      const raw = sessionStorage.getItem("hbz_user");
-      if (raw) {
-        const u = JSON.parse(raw);
-        setCurrentUser(u);
-        setRole(u?.role || "mitarbeiter");
+      const stored = getSession();
+      const user = stored?.user || null;
+
+      if (user) {
+        setCurrentUser(user);
+        setRole(user?.role || "mitarbeiter");
         setLoggedIn(true);
       }
-    } catch {}
+    } catch (e) {
+      console.error("[App] Session load error:", e);
+    }
   }, []);
 
   useEffect(() => {
@@ -40,14 +44,18 @@ export default function App() {
   }, [loggedIn, location.pathname, navigate]);
 
   const handleLogin = (user) => {
+    if (!user) return;
+
     setLoggedIn(true);
-    if (user) {
-      setCurrentUser(user);
-      setRole(user?.role || "mitarbeiter");
-      try {
-        sessionStorage.setItem("hbz_user", JSON.stringify(user));
-      } catch {}
+    setCurrentUser(user);
+    setRole(user?.role || "mitarbeiter");
+
+    try {
+      setSession({ user });
+    } catch (e) {
+      console.error("[App] Session save error:", e);
     }
+
     navigate("/zeiterfassung", { replace: true });
   };
 
@@ -55,9 +63,13 @@ export default function App() {
     setLoggedIn(false);
     setCurrentUser(null);
     setRole(null);
+
     try {
-      sessionStorage.removeItem("hbz_user");
-    } catch {}
+      clearSession();
+    } catch (e) {
+      console.error("[App] Session clear error:", e);
+    }
+
     navigate("/", { replace: true });
   };
 
@@ -94,6 +106,7 @@ export default function App() {
       ) : (
         <Routes>
           <Route path="/" element={<LoginPanel onLogin={handleLogin} />} />
+          <Route path="/login" element={<LoginPanel onLogin={handleLogin} />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       )}

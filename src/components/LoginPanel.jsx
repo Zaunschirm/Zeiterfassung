@@ -1,99 +1,152 @@
 import React, { useMemo, useState } from "react";
-import { NavLink } from "react-router-dom";
+import { supabase } from "../lib/supabase";
 
-export default function NavBar({ onLogout, currentUser, role }) {
-  const [mobileOpen, setMobileOpen] = useState(false);
+function normalizeRole(role) {
+  const r = String(role || "mitarbeiter").trim().toLowerCase();
+  if (r === "admin") return "admin";
+  if (r === "teamleiter") return "teamleiter";
+  return "mitarbeiter";
+}
 
-  const isAdmin = role === "admin";
-  const canSeeAdmin = role === "admin" || role === "teamleiter";
-
-  const initials = useMemo(() => {
-    const name = currentUser?.name || "HB";
-    return String(name)
-      .split(" ")
-      .map((p) => p[0] || "")
-      .join("")
-      .slice(0, 2)
-      .toUpperCase();
-  }, [currentUser]);
-
-  const mainLinks = [
-    { to: "/zeiterfassung", label: "Zeiterfassung" },
-    { to: "/projektfotos", label: "Projektfotos" },
-    { to: "/monatsuebersicht", label: "Monatsübersicht" },
-  ];
-
-  const adminLinks = [
-    ...(canSeeAdmin ? [{ to: "/projekte", label: "Projekte" }] : []),
-    ...(canSeeAdmin ? [{ to: "/mitarbeiter", label: "Mitarbeiter" }] : []),
-    ...(isAdmin ? [{ to: "/jahresuebersicht", label: "Jahresübersicht" }] : []),
-  ];
-
-  const allLinks = [...mainLinks, ...adminLinks];
-
-  const renderNavLink = (to, label) => (
-    <NavLink
-      key={to}
-      to={to}
-      className={({ isActive }) =>
-        `app-nav-btn${isActive ? " app-nav-btn-active" : ""}`
-      }
-      onClick={() => setMobileOpen(false)}
-    >
-      <span className="app-nav-label">{label}</span>
-    </NavLink>
+function getDisplayName(row) {
+  return (
+    row?.name ||
+    row?.full_name ||
+    row?.mitarbeitername ||
+    row?.employee_name ||
+    row?.code ||
+    "Mitarbeiter"
   );
+}
+
+export default function LoginPanel({ onLogin }) {
+  const [code, setCode] = useState("");
+  const [pin, setPin] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const codeValue = useMemo(() => code.trim(), [code]);
+  const pinValue = useMemo(() => pin.trim(), [pin]);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setError("");
+
+    if (!codeValue || !pinValue) {
+      setError("Bitte Code und PIN eingeben.");
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      const { data, error: sbError } = await supabase
+        .from("employees")
+        .select("id, code, name, role, active, disabled, pin")
+        .eq("code", codeValue)
+        .limit(1)
+        .maybeSingle();
+
+      if (sbError) throw sbError;
+
+      if (!data) {
+        setError("Mitarbeiter nicht gefunden.");
+        return;
+      }
+
+      if (data.disabled === true || data.active === false) {
+        setError("Dieser Mitarbeiter ist deaktiviert.");
+        return;
+      }
+
+      const storedPin = data?.pin != null ? String(data.pin).trim() : "";
+      if (!storedPin) {
+        setError("Für diesen Mitarbeiter ist keine PIN hinterlegt.");
+        return;
+      }
+
+      if (storedPin !== pinValue) {
+        setError("PIN ist falsch.");
+        return;
+      }
+
+      onLogin?.({
+        id: data.id,
+        code: data.code,
+        name: getDisplayName(data),
+        role: normalizeRole(data.role),
+      });
+    } catch (err) {
+      console.error("[LoginPanel] login error:", err);
+      setError("Login fehlgeschlagen. Bitte Konsole prüfen.");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   return (
-    <>
-      <nav className="app-nav">
-        <div className="app-nav-left">
-          <div className="app-logo-circle">
+    <div className="login-wrapper">
+      <div className="login-card">
+        <div className="login-logo-row">
+          <div className="login-logo-circle">
             <span>HZ</span>
           </div>
-          <div className="app-title">
-            <div className="app-title-main">Holzbau Zaunschirm</div>
-            <div className="app-title-sub">Zeiterfassung</div>
+
+          <div>
+            <div className="login-logo-text-main">Holzbau Zaunschirm</div>
+            <div className="login-logo-text-sub">Zeiterfassung</div>
           </div>
         </div>
 
-        <div className="app-nav-center">
-          {allLinks.map((link) => renderNavLink(link.to, link.label))}
+        <div className="login-subtitle">
+          Bitte mit Mitarbeiter-Code und 4-stelliger PIN anmelden.
         </div>
 
-        <div className="app-nav-right">
-          <div className="app-user-badge">
-            <div className="app-user-initial">{initials}</div>
-            <span className="app-user-name">
-              {currentUser?.name || "Eingeloggt"}
-              {role ? ` (${role})` : ""}
-            </span>
+        <form className="login-form" onSubmit={handleSubmit}>
+          <div className="field-inline" style={{ marginBottom: 10 }}>
+            <label className="hbz-label">Mitarbeiter-Code</label>
+            <input
+              type="text"
+              className="hbz-input"
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              placeholder="z. B. MA01"
+              autoComplete="username"
+            />
           </div>
 
-          <button type="button" className="hbz-btn" onClick={onLogout}>
-            Logout
-          </button>
-        </div>
+          <div className="field-inline">
+            <label className="hbz-label">PIN</label>
+            <input
+              type="password"
+              inputMode="numeric"
+              maxLength={10}
+              className="hbz-input"
+              value={pin}
+              onChange={(e) => setPin(e.target.value.replace(/[^\d]/g, ""))}
+              placeholder="••••"
+              autoComplete="current-password"
+            />
+          </div>
 
-        <button
-          type="button"
-          className="app-nav-mobile-toggle"
-          onClick={() => setMobileOpen((v) => !v)}
-        >
-          Menü
-        </button>
-      </nav>
+          {error && <div className="login-error">{error}</div>}
 
-      {mobileOpen && (
-        <div className="app-nav-menu-mobile">
-          <div className="app-nav-menu-mobile-row">
-            {allLinks.map((link) => renderNavLink(link.to, link.label))}
-            <button type="button" className="app-nav-btn" onClick={onLogout}>
-              <span className="app-nav-label">Logout</span>
+          <div className="login-submit-row">
+            <button
+              type="submit"
+              className="save-btn lg"
+              disabled={loading}
+            >
+              {loading ? "Anmeldung läuft…" : "Anmelden"}
             </button>
           </div>
+        </form>
+
+        <div className="login-footer">
+          <span>Holzbau Zaunschirm GmbH</span>
+          <span>Zeiterfassung</span>
         </div>
-      )}
-    </>
+      </div>
+    </div>
   );
 }
