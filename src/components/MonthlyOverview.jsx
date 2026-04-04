@@ -4,7 +4,6 @@ import { getSession } from "../lib/session";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import {
-  getISOWeek,
   getBuakWeekType,
   getBuakSollHoursForWeek,
   calcBuakSollHoursForMonth,
@@ -27,7 +26,6 @@ const hmToMin = (hm) => {
 
 const h2 = (m) => Math.round((m / 60) * 100) / 100;
 
-// Minuten einer Zeile (Arbeitszeit + Fahrzeit; Pause wird abgezogen)
 const getTravel = (e) => e.travel_minutes ?? e.travel_min ?? 0;
 
 const entryMinutes = (e) => {
@@ -39,7 +37,6 @@ const entryMinutes = (e) => {
   return work + (travel || 0);
 };
 
-// ISO-Week helpers
 function parseYMD(ymd) {
   const [y, m, d] = ymd.split("-").map((n) => parseInt(n, 10));
   return new Date(y, m - 1, d);
@@ -71,13 +68,11 @@ export default function MonthlyOverview() {
   const isStaff = role === "mitarbeiter";
   const isManager = !isStaff;
 
-  // Monat (YYYY-MM)
   const [month, setMonth] = useState(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
   });
 
-  // Stammdaten/Filter
   const [employees, setEmployees] = useState([]);
   const [projects, setProjects] = useState([]);
   const [selectedCodes, setSelectedCodes] = useState(
@@ -85,13 +80,11 @@ export default function MonthlyOverview() {
   );
   const [selectedProjectId, setSelectedProjectId] = useState("");
 
-  // Daten
   const [loading, setLoading] = useState(false);
-  const [rows, setRows] = useState([]); // v_time_entries_expanded
+  const [rows, setRows] = useState([]);
   const [editId, setEditId] = useState(null);
   const [editState, setEditState] = useState(null);
 
-  // PDF Dialog
   const [showPdfDialog, setShowPdfDialog] = useState(false);
   const [pdfOptions, setPdfOptions] = useState({
     selectedEmployeeCodes: [],
@@ -105,24 +98,20 @@ export default function MonthlyOverview() {
     includeBuak: true,
   });
 
-  // Desktop / Mobile Umschaltung für Tabelle vs. Karten
   const [isMobile, setIsMobile] = useState(false);
+
   useEffect(() => {
-    const handleResize = () => {
-      setIsMobile(window.innerWidth <= 768);
-    };
+    const handleResize = () => setIsMobile(window.innerWidth <= 768);
     handleResize();
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  // Abgeleitet: aktuell ausgewählte Mitarbeiter
   const selectedEmployees = useMemo(
     () => employees.filter((e) => selectedCodes.includes(e.code)),
     [employees, selectedCodes]
   );
 
-  // Lookup für Export
   const employeesById = useMemo(() => {
     const map = {};
     employees.forEach((e) => {
@@ -131,7 +120,6 @@ export default function MonthlyOverview() {
     return map;
   }, [employees]);
 
-  // Default PDF Mitarbeiter = aktuell ausgewählte Mitarbeiter
   useEffect(() => {
     setPdfOptions((prev) => ({
       ...prev,
@@ -144,10 +132,8 @@ export default function MonthlyOverview() {
     }));
   }, [selectedCodes, isStaff, session?.code]);
 
-  // ----- Stammdaten -----
   useEffect(() => {
     (async () => {
-      // Employees
       if (isManager) {
         const { data, error } = await supabase
           .from("employees")
@@ -158,16 +144,11 @@ export default function MonthlyOverview() {
 
         if (!error) {
           setEmployees(data || []);
-
-          // Standard: nur sich selbst anzeigen
           if ((data || []).length && selectedCodes.length === 0) {
             if (session?.code) {
               const me = (data || []).find((e) => e.code === session.code);
-              if (me) {
-                setSelectedCodes([me.code]);
-              } else {
-                setSelectedCodes(data.map((e) => e.code));
-              }
+              if (me) setSelectedCodes([me.code]);
+              else setSelectedCodes(data.map((e) => e.code));
             } else {
               setSelectedCodes(data.map((e) => e.code));
             }
@@ -187,7 +168,6 @@ export default function MonthlyOverview() {
         }
       }
 
-      // Projects
       const tryList = async (source) => {
         const { data, error } = await supabase
           .from(source)
@@ -207,12 +187,12 @@ export default function MonthlyOverview() {
           }
         }
       }
+
       setProjects((prj.data || []).filter((p) => p?.disabled !== true));
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isManager]);
 
-  // ----- Monatsdaten laden -----
   useEffect(() => {
     loadMonth();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -277,12 +257,9 @@ export default function MonthlyOverview() {
     }
   }
 
-  // Handy/Browser: bei Rückkehr in die App Monatsdaten neu laden
   useEffect(() => {
     const handleVisibility = () => {
-      if (document.visibilityState === "visible") {
-        loadMonth();
-      }
+      if (document.visibilityState === "visible") loadMonth();
     };
 
     window.addEventListener("focus", handleVisibility);
@@ -295,7 +272,6 @@ export default function MonthlyOverview() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ----- Gruppierungen -----
   const grouped = useMemo(() => {
     const g = {};
     for (const r of rows) {
@@ -400,7 +376,6 @@ export default function MonthlyOverview() {
     };
   }, [grouped]);
 
-  // ----- Bearbeiten / Löschen -----
   function startEdit(row) {
     if (!isManager) return;
 
@@ -475,7 +450,6 @@ export default function MonthlyOverview() {
     await loadMonth();
   }
 
-  // ----- Export: CSV -----
   function exportCSV() {
     const headers = [
       "Datum",
@@ -554,7 +528,6 @@ export default function MonthlyOverview() {
     setShowPdfDialog(true);
   }
 
-  // ----- Export: PDF -----
   function exportPDF() {
     try {
       const selectedPdfCodes =
@@ -658,9 +631,8 @@ export default function MonthlyOverview() {
         format: "a4",
       });
 
-      const title = `Monatsübersicht ${month}`;
       doc.setFontSize(16);
-      doc.text(title, 40, 40);
+      doc.text(`Monatsübersicht ${month}`, 40, 40);
 
       const selectedEmployeeNames = employees
         .filter((e) => selectedPdfCodes.includes(e.code))
@@ -697,20 +669,18 @@ export default function MonthlyOverview() {
       let currentY = 90;
 
       if (pdfOptions.includeDetails) {
-        const detailHead = [
-          [
-            "Datum",
-            "Mitarbeiter",
-            "Projekt",
-            "Start",
-            "Ende",
-            "Pause (min)",
-            ...(pdfOptions.includeTravel ? ["Fahrzeit (min)"] : []),
-            "Stunden (inkl. Fahrzeit)",
-            ...(pdfOptions.includeOvertime ? ["Überstunden"] : []),
-            "Notiz",
-          ],
-        ];
+        const detailHead = [[
+          "Datum",
+          "Mitarbeiter",
+          "Projekt",
+          "Start",
+          "Ende",
+          "Pause (min)",
+          ...(pdfOptions.includeTravel ? ["Fahrzeit (min)"] : []),
+          "Stunden (inkl. Fahrzeit)",
+          ...(pdfOptions.includeOvertime ? ["Überstunden"] : []),
+          "Notiz",
+        ]];
 
         const detailBody = exportGrouped.map((r) => {
           const start = r.start_min ?? r.from_min ?? 0;
@@ -755,17 +725,15 @@ export default function MonthlyOverview() {
       }
 
       if (pdfOptions.includeTotals) {
-        const sumHead = [
-          [
-            "Mitarbeiter",
-            ...(pdfOptions.includeWorkdays ? ["Tage"] : []),
-            "Stunden gesamt (inkl. Fahrzeit)",
-            ...(pdfOptions.includeTravel ? ["Fahrzeit gesamt (h)"] : []),
-            ...(pdfOptions.includeOvertime
-              ? ["Überstunden (Summe Tages-Ü>9h)"]
-              : []),
-          ],
-        ];
+        const sumHead = [[
+          "Mitarbeiter",
+          ...(pdfOptions.includeWorkdays ? ["Tage"] : []),
+          "Stunden gesamt (inkl. Fahrzeit)",
+          ...(pdfOptions.includeTravel ? ["Fahrzeit gesamt (h)"] : []),
+          ...(pdfOptions.includeOvertime
+            ? ["Überstunden (Summe Tages-Ü>9h)"]
+            : []),
+        ]];
 
         const sumBody = Object.entries(exportTotalsByEmployee).map(
           ([name, t]) => [
@@ -789,7 +757,11 @@ export default function MonthlyOverview() {
         currentY = (doc.lastAutoTable?.finalY || currentY) + 22;
       }
 
-      if (pdfOptions.includeTotals || pdfOptions.includeBuak || pdfOptions.includeTravel) {
+      if (
+        pdfOptions.includeTotals ||
+        pdfOptions.includeBuak ||
+        pdfOptions.includeTravel
+      ) {
         if (currentY > doc.internal.pageSize.getHeight() - 80) {
           doc.addPage();
           currentY = 40;
@@ -803,17 +775,13 @@ export default function MonthlyOverview() {
         const monthAbw = exportMonthTotals.totalHrs - monthSollTotal;
 
         const summaryParts = [];
-
         if (pdfOptions.includeBuak) {
           summaryParts.push(`Soll (BUAK): ${monthSollTotal.toFixed(2)} h`);
         }
-
         summaryParts.push(`Ist: ${exportMonthTotals.totalHrs.toFixed(2)} h`);
-
         if (pdfOptions.includeBuak) {
           summaryParts.push(`Abw.: ${monthAbw.toFixed(2)} h`);
         }
-
         if (pdfOptions.includeTravel) {
           summaryParts.push(
             `Fahrzeit: ${exportMonthTotals.travelHrs.toFixed(2)} h`
@@ -849,20 +817,18 @@ export default function MonthlyOverview() {
               ? "Lange Woche"
               : "";
 
-          const weekHead = [
-            [
-              "Woche",
-              "Mitarbeiter",
-              "Datum",
-              "Projekt",
-              "Start",
-              "Ende",
-              "Pause (min)",
-              ...(pdfOptions.includeTravel ? ["Fahrzeit (min)"] : []),
-              "Stunden (inkl. Fahrzeit)",
-              ...(pdfOptions.includeOvertime ? ["Ü (>9h/Tag)"] : []),
-            ],
-          ];
+          const weekHead = [[
+            "Woche",
+            "Mitarbeiter",
+            "Datum",
+            "Projekt",
+            "Start",
+            "Ende",
+            "Pause (min)",
+            ...(pdfOptions.includeTravel ? ["Fahrzeit (min)"] : []),
+            "Stunden (inkl. Fahrzeit)",
+            ...(pdfOptions.includeOvertime ? ["Ü (>9h/Tag)"] : []),
+          ]];
 
           const weekBody = [];
           wk.days.forEach((r) => {
@@ -901,7 +867,6 @@ export default function MonthlyOverview() {
           doc.setFontSize(10);
 
           const weekInfoParts = [];
-
           if (pdfOptions.includeBuak) {
             weekInfoParts.push(
               `${weekTypeLabel}${weekTypeLabel ? ", " : ""}Soll ${weekSoll.toFixed(
@@ -909,9 +874,7 @@ export default function MonthlyOverview() {
               )} h`
             );
           }
-
           weekInfoParts.push(`${weekHours.toFixed(2)} h`);
-
           if (pdfOptions.includeBuak) {
             weekInfoParts.push(`Wochen-Ü (>Soll): ${weekOT.toFixed(2)} h`);
           }
@@ -946,443 +909,225 @@ export default function MonthlyOverview() {
     }
   }
 
-  // ----- UI -----
+  const summaryCards = [
+    {
+      label: "Fahrzeit",
+      value: `${monthTotals.travelHrs.toFixed(2)} h`,
+    },
+    {
+      label: "Gesamtstunden",
+      value: `${monthTotals.totalHrs.toFixed(2)} h`,
+    },
+    {
+      label: "Mitarbeiter",
+      value: `${Object.keys(totalsByEmployee).length}`,
+    },
+    {
+      label: "Einträge",
+      value: `${grouped.length}`,
+    },
+  ];
+
   return (
-    <div className="max-w-screen-xl mx-auto">
-      <div className="flex flex-wrap items-end gap-3 mb-4">
-        <div>
-          <label className="block text-sm font-semibold">Monat</label>
-          <input
-            type="month"
-            value={month}
-            onChange={(e) => setMonth(e.target.value)}
-            className="px-3 py-2 rounded border"
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-semibold">Projekt</label>
-          <select
-            value={selectedProjectId}
-            onChange={(e) => setSelectedProjectId(e.target.value)}
-            className="px-3 py-2 rounded border min-w-[220px]"
-          >
-            <option value="">Alle</option>
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.code ? `${p.code} · ${p.name}` : p.name}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {isManager && (
-          <div className="flex-1">
-            <label className="block text-sm font-semibold">
-              Mitarbeiter (Mehrfachauswahl)
-            </label>
-
-            <div className="mt-1 mb-1 flex items-center gap-2 text-xs">
-              <button
-                type="button"
-                className="hbz-btn btn-small"
-                onClick={() => setSelectedCodes(employees.map((e) => e.code))}
-              >
-                Alle
-              </button>
-              <button
-                type="button"
-                className="hbz-btn btn-small"
-                onClick={() => setSelectedCodes([])}
-              >
-                Keine
-              </button>
-              <span className="opacity-70">
-                {selectedEmployees.length} / {employees.length} gewählt
-                {selectedEmployees.length > 0 && (
-                  <>
-                    {" "}
-                    (
-                    {selectedEmployees.map((e) => e.name || e.code).join(", ")}
-                    )
-                  </>
-                )}
-              </span>
-            </div>
-
-            <div className="mt-1 flex flex-wrap gap-2">
-              {employees.map((e) => {
-                const active = selectedCodes.includes(e.code);
-                return (
-                  <button
-                    key={e.id}
-                    className={`px-2 py-1 rounded border ${
-                      active ? "bg-[#7b4a2d] text-white" : ""
-                    }`}
-                    onClick={() => {
-                      setSelectedCodes((prev) =>
-                        prev.includes(e.code)
-                          ? prev.filter((c) => c !== e.code)
-                          : [...prev, e.code]
-                      );
-                    }}
-                  >
-                    {e.name}
-                  </button>
-                );
-              })}
+    <div className="month-overview">
+      <div className="month-overview-hero hbz-card">
+        <div className="month-overview-hero__content">
+          <div>
+            <div className="month-overview-kicker">Auswertung</div>
+            <h2 className="month-overview-title">Monatsübersicht</h2>
+            <div className="month-overview-subtitle">
+              Monat: <b>{month}</b>
             </div>
           </div>
-        )}
 
-        <div className="ml-auto flex gap-2">
-          <button onClick={openPdfDialog} className="px-3 py-2 rounded border">
-            PDF export
-          </button>
-          <button onClick={exportCSV} className="px-3 py-2 rounded border">
-            CSV export
-          </button>
+          <div className="month-overview-actions">
+            <button onClick={openPdfDialog} className="hbz-btn hbz-btn-primary">
+              PDF Export
+            </button>
+            <button onClick={exportCSV} className="hbz-btn">
+              CSV Export
+            </button>
+          </div>
         </div>
       </div>
 
-      <div className="hbz-card">
-        <div
-          className="px-2 py-2 font-semibold"
-          style={{ background: "#f6eee4", borderRadius: 8 }}
-        >
-          {loading ? "Lade…" : `Einträge ${month}`}
+      <div className="month-overview-topgrid">
+        <div className="hbz-card month-filter-card">
+          <div className="month-card-title">Filter</div>
+
+          <div className="month-filter-grid">
+            <div className="field-inline">
+              <label className="hbz-label">Monat</label>
+              <input
+                type="month"
+                value={month}
+                onChange={(e) => setMonth(e.target.value)}
+                className="hbz-input"
+              />
+            </div>
+
+            <div className="field-inline">
+              <label className="hbz-label">Projekt</label>
+              <select
+                value={selectedProjectId}
+                onChange={(e) => setSelectedProjectId(e.target.value)}
+                className="hbz-select"
+              >
+                <option value="">Alle Projekte</option>
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.code ? `${p.code} · ${p.name}` : p.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {isManager && (
+            <div className="month-employee-block">
+              <div className="month-employee-head">
+                <label className="hbz-label">Mitarbeiter</label>
+                <span className="badge-soft">
+                  {selectedEmployees.length} / {employees.length} gewählt
+                </span>
+              </div>
+
+              <div className="month-chip-actions">
+                <button
+                  type="button"
+                  className="hbz-btn btn-small"
+                  onClick={() => setSelectedCodes(employees.map((e) => e.code))}
+                >
+                  Alle
+                </button>
+                <button
+                  type="button"
+                  className="hbz-btn btn-small"
+                  onClick={() => setSelectedCodes([])}
+                >
+                  Keine
+                </button>
+              </div>
+
+              <div className="month-chip-list">
+                {employees.map((e) => {
+                  const active = selectedCodes.includes(e.code);
+                  return (
+                    <button
+                      key={e.id}
+                      type="button"
+                      className={`month-chip ${active ? "active" : ""}`}
+                      onClick={() => {
+                        setSelectedCodes((prev) =>
+                          prev.includes(e.code)
+                            ? prev.filter((c) => c !== e.code)
+                            : [...prev, e.code]
+                        );
+                      }}
+                    >
+                      {e.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
-        <div className="mo-wrap">
-          {grouped.length === 0 ? (
-            <div className="text-sm opacity-70 p-3">Keine Einträge.</div>
-          ) : (
-            <div className="mo-responsive">
-              {!isMobile && (
-                <div className="mo-table-wrapper">
-                  <table className="nice mo-table">
-                    <thead>
-                      <tr>
-                        <th className="mo-col-date">Datum</th>
-                        <th className="mo-col-emp">Mitarbeiter</th>
-                        <th className="mo-col-prj">Projekt</th>
-                        <th className="mo-col-time">Start</th>
-                        <th className="mo-col-time">Ende</th>
-                        <th className="mo-col-pause">Pause</th>
-                        <th className="mo-col-pause">Fahrzeit</th>
-                        <th className="mo-col-hrs">Stunden (inkl. Fahrzeit)</th>
-                        <th className="mo-col-ot">Überstunden</th>
-                        <th className="mo-col-note">Notiz</th>
-                        <th className="mo-col-actions"></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {grouped.map((r) => {
-                        const start = r.start_min ?? r.from_min ?? 0;
-                        const end = r.end_min ?? r.to_min ?? 0;
-                        const hrs = h2(r._mins);
-                        const ot = Math.max(hrs - 9, 0);
-                        const isEditing = editId === r.id;
+        <div className="month-summary-grid">
+          {summaryCards.map((card) => (
+            <div key={card.label} className="month-summary-card">
+              <div className="month-summary-label">{card.label}</div>
+              <div className="month-summary-value">{card.value}</div>
+            </div>
+          ))}
+        </div>
+      </div>
 
-                        if (!isEditing) {
-                          return (
-                            <tr key={`${r.id}-${r.work_date}`}>
-                              <td>{r.work_date}</td>
-                              <td>{r.employee_name}</td>
-                              <td>{r.project_name || "—"}</td>
-                              <td style={{ textAlign: "center" }}>
-                                {toHM(start)}
-                              </td>
-                              <td style={{ textAlign: "center" }}>
-                                {toHM(end)}
-                              </td>
-                              <td style={{ textAlign: "right" }}>
-                                {r.break_min ?? 0} min
-                              </td>
-                              <td style={{ textAlign: "right" }}>
-                                {r._travel ?? 0} min
-                              </td>
-                              <td style={{ textAlign: "right" }}>
-                                {hrs.toFixed(2)}
-                              </td>
-                              <td style={{ textAlign: "right" }}>
-                                {ot.toFixed(2)}
-                              </td>
-                              <td>{r.note || ""}</td>
-                              <td style={{ textAlign: "right" }}>
-                                {isManager ? (
-                                  <>
-                                    <button
-                                      className="hbz-btn btn-small"
-                                      onClick={() => startEdit(r)}
-                                    >
-                                      Bearbeiten
-                                    </button>
-                                    <button
-                                      className="hbz-btn btn-small"
-                                      onClick={() => deleteEntry(r.id)}
-                                    >
-                                      Löschen
-                                    </button>
-                                  </>
-                                ) : (
-                                  <span className="text-xs opacity-60">
-                                    nur Anzeige
-                                  </span>
-                                )}
-                              </td>
-                            </tr>
-                          );
-                        }
+      <div className="hbz-card month-main-card">
+        <div className="month-main-header">
+          <div>
+            <div className="month-card-title">Einträge</div>
+            <div className="month-main-subtitle">
+              {loading ? "Lade…" : `Einträge für ${month}`}
+            </div>
+          </div>
+        </div>
 
+        {grouped.length === 0 ? (
+          <div className="month-empty-state">Keine Einträge.</div>
+        ) : (
+          <>
+            {!isMobile && (
+              <div className="month-table-wrap">
+                <table className="month-table">
+                  <thead>
+                    <tr>
+                      <th>Datum</th>
+                      <th>Mitarbeiter</th>
+                      <th>Projekt</th>
+                      <th className="num">Start</th>
+                      <th className="num">Ende</th>
+                      <th className="num">Pause</th>
+                      <th className="num">Fahrzeit</th>
+                      <th className="num">Stunden</th>
+                      <th className="num">Überstunden</th>
+                      <th>Notiz</th>
+                      <th className="num">Aktion</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {grouped.map((r) => {
+                      const start = r.start_min ?? r.from_min ?? 0;
+                      const end = r.end_min ?? r.to_min ?? 0;
+                      const hrs = h2(r._mins);
+                      const ot = Math.max(hrs - 9, 0);
+                      const isEditing = editId === r.id;
+
+                      if (!isEditing) {
                         return (
-                          <tr key={`${r.id}-edit`}>
+                          <tr key={`${r.id}-${r.work_date}`}>
                             <td>{r.work_date}</td>
                             <td>{r.employee_name}</td>
-                            <td>
-                              <select
-                                className="hbz-input"
-                                value={editState.project_id ?? ""}
-                                onChange={(e) =>
-                                  setEditState((s) => ({
-                                    ...s,
-                                    project_id: e.target.value || null,
-                                  }))
-                                }
-                              >
-                                <option value="">— ohne Projekt —</option>
-                                {projects.map((p) => (
-                                  <option key={p.id} value={p.id}>
-                                    {p.code ? `${p.code} · ${p.name}` : p.name}
-                                  </option>
-                                ))}
-                              </select>
-                            </td>
-                            <td style={{ textAlign: "center" }}>
-                              <input
-                                type="time"
-                                className="hbz-input"
-                                value={editState.from_hm}
-                                onChange={(e) =>
-                                  setEditState((s) => ({
-                                    ...s,
-                                    from_hm: e.target.value,
-                                  }))
-                                }
-                              />
-                            </td>
-                            <td style={{ textAlign: "center" }}>
-                              <input
-                                type="time"
-                                className="hbz-input"
-                                value={editState.to_hm}
-                                onChange={(e) =>
-                                  setEditState((s) => ({
-                                    ...s,
-                                    to_hm: e.target.value,
-                                  }))
-                                }
-                              />
-                            </td>
-                            <td style={{ textAlign: "right" }}>
-                              <input
-                                type="number"
-                                min={0}
-                                step={5}
-                                className="hbz-input"
-                                value={editState.break_min}
-                                onChange={(e) =>
-                                  setEditState((s) => ({
-                                    ...s,
-                                    break_min: e.target.value,
-                                  }))
-                                }
-                              />
-                            </td>
-                            <td style={{ textAlign: "right" }}>
-                              <input
-                                type="number"
-                                min={0}
-                                step={15}
-                                className="hbz-input"
-                                value={editState.travel_minutes ?? 0}
-                                onChange={(e) =>
-                                  setEditState((s) => ({
-                                    ...s,
-                                    travel_minutes: e.target.value,
-                                  }))
-                                }
-                              />
-                            </td>
-                            <td colSpan={1} style={{ textAlign: "right" }}>
-                              {(() => {
-                                const minsLive =
-                                  Math.max(
-                                    hmToMin(editState.to_hm) -
-                                      hmToMin(editState.from_hm) -
-                                      (parseInt(editState.break_min || "0", 10) ||
-                                        0),
-                                    0
-                                  ) +
-                                  (parseInt(
-                                    editState.travel_minutes || "0",
-                                    10
-                                  ) || 0);
-                                const hrsLive = h2(minsLive);
-                                const otLive = Math.max(hrsLive - 9, 0);
-                                return `${hrsLive.toFixed(
-                                  2
-                                )} h / Ü: ${otLive.toFixed(2)} h`;
-                              })()}
-                            </td>
-                            <td>
-                              <input
-                                type="text"
-                                className="hbz-input"
-                                value={editState.note}
-                                onChange={(e) =>
-                                  setEditState((s) => ({
-                                    ...s,
-                                    note: e.target.value,
-                                  }))
-                                }
-                              />
-                            </td>
-                            <td style={{ textAlign: "right" }}>
-                              <button
-                                className="hbz-btn btn-small"
-                                onClick={saveEdit}
-                              >
-                                Speichern
-                              </button>
-                              <button
-                                className="hbz-btn btn-small"
-                                onClick={cancelEdit}
-                              >
-                                Abbrechen
-                              </button>
+                            <td>{r.project_name || "—"}</td>
+                            <td className="num">{toHM(start)}</td>
+                            <td className="num">{toHM(end)}</td>
+                            <td className="num">{r.break_min ?? 0} min</td>
+                            <td className="num">{r._travel ?? 0} min</td>
+                            <td className="num">{hrs.toFixed(2)}</td>
+                            <td className="num">{ot.toFixed(2)}</td>
+                            <td>{r.note || ""}</td>
+                            <td className="num">
+                              {isManager ? (
+                                <div className="month-action-group">
+                                  <button
+                                    className="hbz-btn btn-small"
+                                    type="button"
+                                    onClick={() => startEdit(r)}
+                                  >
+                                    Bearbeiten
+                                  </button>
+                                  <button
+                                    className="hbz-btn btn-small"
+                                    type="button"
+                                    onClick={() => deleteEntry(r.id)}
+                                  >
+                                    Löschen
+                                  </button>
+                                </div>
+                              ) : (
+                                <span className="help">nur Anzeige</span>
+                              )}
                             </td>
                           </tr>
                         );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+                      }
 
-              {isMobile && (
-                <div className="mo-cards">
-                  {grouped.map((r) => {
-                    const start = r.start_min ?? r.from_min ?? 0;
-                    const end = r.end_min ?? r.to_min ?? 0;
-                    const hrs = h2(r._mins);
-                    const ot = Math.max(hrs - 9, 0);
-                    const isEditing = editId === r.id;
-
-                    if (!isEditing) {
                       return (
-                        <div
-                          key={`card-${r.id}-${r.work_date}`}
-                          className="mo-card"
-                        >
-                          <div className="mo-card-header">
-                            <div className="mo-card-title">
-                              <div className="mo-card-date">{r.work_date}</div>
-                              <div className="mo-card-emp">
-                                {r.employee_name}
-                              </div>
-                            </div>
-                            <div className="mo-card-hours">
-                              <div className="mo-card-mainhrs">
-                                {hrs.toFixed(2)} h
-                              </div>
-                              <div className="mo-card-ot">
-                                Ü: {ot.toFixed(2)} h
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="mo-card-row">
-                            <strong>Projekt: </strong>
-                            {r.project_name || "—"}
-                          </div>
-
-                          <div className="mo-card-row mo-card-meta">
-                            <span>Start: {toHM(start)}</span>
-                            <span>Ende: {toHM(end)}</span>
-                            <span>Pause: {r.break_min ?? 0} min</span>
-                            <span>Fahrzeit: {r._travel ?? 0} min</span>
-                          </div>
-
-                          {r.note && (
-                            <div className="mo-card-row">
-                              <strong>Notiz: </strong>
-                              {r.note}
-                            </div>
-                          )}
-
-                          <div className="mo-card-actions">
-                            {isManager ? (
-                              <>
-                                <button
-                                  className="hbz-btn btn-small"
-                                  onClick={() => startEdit(r)}
-                                >
-                                  Bearbeiten
-                                </button>
-                                <button
-                                  className="hbz-btn btn-small"
-                                  onClick={() => deleteEntry(r.id)}
-                                >
-                                  Löschen
-                                </button>
-                              </>
-                            ) : (
-                              <span className="text-xs opacity-60">
-                                nur Anzeige
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    }
-
-                    const minsLive =
-                      Math.max(
-                        hmToMin(editState.to_hm) -
-                          hmToMin(editState.from_hm) -
-                          (parseInt(editState.break_min || "0", 10) || 0),
-                        0
-                      ) +
-                      (parseInt(editState.travel_minutes || "0", 10) || 0);
-                    const hrsLive = h2(minsLive);
-                    const otLive = Math.max(hrsLive - 9, 0);
-
-                    return (
-                      <div
-                        key={`card-${r.id}-edit`}
-                        className="mo-card mo-card-edit"
-                      >
-                        <div className="mo-card-header">
-                          <div className="mo-card-title">
-                            <div className="mo-card-date">{r.work_date}</div>
-                            <div className="mo-card-emp">
-                              {r.employee_name}
-                            </div>
-                          </div>
-                          <div className="mo-card-hours">
-                            <div className="mo-card-mainhrs">
-                              {hrsLive.toFixed(2)} h
-                            </div>
-                            <div className="mo-card-ot">
-                              Ü: {otLive.toFixed(2)} h
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="mo-card-row">
-                          <label className="mo-card-label">
-                            Projekt
+                        <tr key={`${r.id}-edit`}>
+                          <td>{r.work_date}</td>
+                          <td>{r.employee_name}</td>
+                          <td>
                             <select
                               className="hbz-input"
                               value={editState.project_id ?? ""}
@@ -1400,12 +1145,8 @@ export default function MonthlyOverview() {
                                 </option>
                               ))}
                             </select>
-                          </label>
-                        </div>
-
-                        <div className="mo-card-row mo-card-meta-edit">
-                          <label className="mo-card-label">
-                            Start
+                          </td>
+                          <td className="num">
                             <input
                               type="time"
                               className="hbz-input"
@@ -1417,9 +1158,8 @@ export default function MonthlyOverview() {
                                 }))
                               }
                             />
-                          </label>
-                          <label className="mo-card-label">
-                            Ende
+                          </td>
+                          <td className="num">
                             <input
                               type="time"
                               className="hbz-input"
@@ -1431,12 +1171,8 @@ export default function MonthlyOverview() {
                                 }))
                               }
                             />
-                          </label>
-                        </div>
-
-                        <div className="mo-card-row mo-card-meta-edit">
-                          <label className="mo-card-label">
-                            Pause (min)
+                          </td>
+                          <td className="num">
                             <input
                               type="number"
                               min={0}
@@ -1450,9 +1186,8 @@ export default function MonthlyOverview() {
                                 }))
                               }
                             />
-                          </label>
-                          <label className="mo-card-label">
-                            Fahrzeit (min)
+                          </td>
+                          <td className="num">
                             <input
                               type="number"
                               min={0}
@@ -1466,12 +1201,37 @@ export default function MonthlyOverview() {
                                 }))
                               }
                             />
-                          </label>
-                        </div>
-
-                        <div className="mo-card-row">
-                          <label className="mo-card-label">
-                            Notiz
+                          </td>
+                          <td className="num">
+                            {(() => {
+                              const minsLive =
+                                Math.max(
+                                  hmToMin(editState.to_hm) -
+                                    hmToMin(editState.from_hm) -
+                                    (parseInt(editState.break_min || "0", 10) || 0),
+                                  0
+                                ) +
+                                (parseInt(editState.travel_minutes || "0", 10) || 0);
+                              const hrsLive = h2(minsLive);
+                              return hrsLive.toFixed(2);
+                            })()}
+                          </td>
+                          <td className="num">
+                            {(() => {
+                              const minsLive =
+                                Math.max(
+                                  hmToMin(editState.to_hm) -
+                                    hmToMin(editState.from_hm) -
+                                    (parseInt(editState.break_min || "0", 10) || 0),
+                                  0
+                                ) +
+                                (parseInt(editState.travel_minutes || "0", 10) || 0);
+                              const hrsLive = h2(minsLive);
+                              const otLive = Math.max(hrsLive - 9, 0);
+                              return otLive.toFixed(2);
+                            })()}
+                          </td>
+                          <td>
                             <input
                               type="text"
                               className="hbz-input"
@@ -1483,68 +1243,302 @@ export default function MonthlyOverview() {
                                 }))
                               }
                             />
-                          </label>
+                          </td>
+                          <td className="num">
+                            <div className="month-action-group">
+                              <button
+                                className="hbz-btn btn-small"
+                                type="button"
+                                onClick={saveEdit}
+                              >
+                                Speichern
+                              </button>
+                              <button
+                                className="hbz-btn btn-small"
+                                type="button"
+                                onClick={cancelEdit}
+                              >
+                                Abbrechen
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {isMobile && (
+              <div className="month-cards">
+                {grouped.map((r) => {
+                  const start = r.start_min ?? r.from_min ?? 0;
+                  const end = r.end_min ?? r.to_min ?? 0;
+                  const hrs = h2(r._mins);
+                  const ot = Math.max(hrs - 9, 0);
+                  const isEditing = editId === r.id;
+
+                  if (!isEditing) {
+                    return (
+                      <div
+                        key={`card-${r.id}-${r.work_date}`}
+                        className="month-card"
+                      >
+                        <div className="month-card-header">
+                          <div>
+                            <div className="month-card-date">{r.work_date}</div>
+                            <div className="month-card-emp">{r.employee_name}</div>
+                          </div>
+                          <div className="month-card-hours">
+                            <div className="month-card-mainhrs">
+                              {hrs.toFixed(2)} h
+                            </div>
+                            <div className="month-card-ot">
+                              Ü: {ot.toFixed(2)} h
+                            </div>
+                          </div>
                         </div>
 
-                        <div className="mo-card-footer">
-                          <span className="mo-card-summary">
-                            {hrsLive.toFixed(2)} h / Ü: {otLive.toFixed(2)} h
-                          </span>
-                          <div className="mo-card-actions">
-                            <button
-                              className="hbz-btn btn-small"
-                              onClick={saveEdit}
-                            >
-                              Speichern
-                            </button>
-                            <button
-                              className="hbz-btn btn-small"
-                              onClick={cancelEdit}
-                            >
-                              Abbrechen
-                            </button>
+                        <div className="month-card-row">
+                          <strong>Projekt:</strong> {r.project_name || "—"}
+                        </div>
+
+                        <div className="month-card-meta">
+                          <span>Start: {toHM(start)}</span>
+                          <span>Ende: {toHM(end)}</span>
+                          <span>Pause: {r.break_min ?? 0} min</span>
+                          <span>Fahrzeit: {r._travel ?? 0} min</span>
+                        </div>
+
+                        {r.note && (
+                          <div className="month-card-row">
+                            <strong>Notiz:</strong> {r.note}
                           </div>
+                        )}
+
+                        <div className="month-card-actions">
+                          {isManager ? (
+                            <>
+                              <button
+                                className="hbz-btn btn-small"
+                                type="button"
+                                onClick={() => startEdit(r)}
+                              >
+                                Bearbeiten
+                              </button>
+                              <button
+                                className="hbz-btn btn-small"
+                                type="button"
+                                onClick={() => deleteEntry(r.id)}
+                              >
+                                Löschen
+                              </button>
+                            </>
+                          ) : (
+                            <span className="help">nur Anzeige</span>
+                          )}
                         </div>
                       </div>
                     );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+                  }
 
-        <div className="px-3 py-2 text-sm opacity-80">
-          <b>Monatssummen:</b>&nbsp;
-          Fahrzeit: {monthTotals.travelHrs.toFixed(2)} h &nbsp;|&nbsp; Gesamt
-          inkl. Fahrzeit: {monthTotals.totalHrs.toFixed(2)} h
-        </div>
+                  const minsLive =
+                    Math.max(
+                      hmToMin(editState.to_hm) -
+                        hmToMin(editState.from_hm) -
+                        (parseInt(editState.break_min || "0", 10) || 0),
+                      0
+                    ) +
+                    (parseInt(editState.travel_minutes || "0", 10) || 0);
+                  const hrsLive = h2(minsLive);
+                  const otLive = Math.max(hrsLive - 9, 0);
+
+                  return (
+                    <div
+                      key={`card-${r.id}-edit`}
+                      className="month-card month-card-edit"
+                    >
+                      <div className="month-card-header">
+                        <div>
+                          <div className="month-card-date">{r.work_date}</div>
+                          <div className="month-card-emp">{r.employee_name}</div>
+                        </div>
+                        <div className="month-card-hours">
+                          <div className="month-card-mainhrs">
+                            {hrsLive.toFixed(2)} h
+                          </div>
+                          <div className="month-card-ot">
+                            Ü: {otLive.toFixed(2)} h
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="month-card-field">
+                        <label className="hbz-label">Projekt</label>
+                        <select
+                          className="hbz-input"
+                          value={editState.project_id ?? ""}
+                          onChange={(e) =>
+                            setEditState((s) => ({
+                              ...s,
+                              project_id: e.target.value || null,
+                            }))
+                          }
+                        >
+                          <option value="">— ohne Projekt —</option>
+                          {projects.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.code ? `${p.code} · ${p.name}` : p.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="month-card-edit-grid">
+                        <div className="month-card-field">
+                          <label className="hbz-label">Start</label>
+                          <input
+                            type="time"
+                            className="hbz-input"
+                            value={editState.from_hm}
+                            onChange={(e) =>
+                              setEditState((s) => ({
+                                ...s,
+                                from_hm: e.target.value,
+                              }))
+                            }
+                          />
+                        </div>
+                        <div className="month-card-field">
+                          <label className="hbz-label">Ende</label>
+                          <input
+                            type="time"
+                            className="hbz-input"
+                            value={editState.to_hm}
+                            onChange={(e) =>
+                              setEditState((s) => ({
+                                ...s,
+                                to_hm: e.target.value,
+                              }))
+                            }
+                          />
+                        </div>
+                      </div>
+
+                      <div className="month-card-edit-grid">
+                        <div className="month-card-field">
+                          <label className="hbz-label">Pause (min)</label>
+                          <input
+                            type="number"
+                            min={0}
+                            step={5}
+                            className="hbz-input"
+                            value={editState.break_min}
+                            onChange={(e) =>
+                              setEditState((s) => ({
+                                ...s,
+                                break_min: e.target.value,
+                              }))
+                            }
+                          />
+                        </div>
+                        <div className="month-card-field">
+                          <label className="hbz-label">Fahrzeit (min)</label>
+                          <input
+                            type="number"
+                            min={0}
+                            step={15}
+                            className="hbz-input"
+                            value={editState.travel_minutes ?? 0}
+                            onChange={(e) =>
+                              setEditState((s) => ({
+                                ...s,
+                                travel_minutes: e.target.value,
+                              }))
+                            }
+                          />
+                        </div>
+                      </div>
+
+                      <div className="month-card-field">
+                        <label className="hbz-label">Notiz</label>
+                        <input
+                          type="text"
+                          className="hbz-input"
+                          value={editState.note}
+                          onChange={(e) =>
+                            setEditState((s) => ({
+                              ...s,
+                              note: e.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+
+                      <div className="month-card-footer">
+                        <span className="month-card-summary">
+                          {hrsLive.toFixed(2)} h / Ü: {otLive.toFixed(2)} h
+                        </span>
+                        <div className="month-card-actions">
+                          <button
+                            className="hbz-btn btn-small"
+                            type="button"
+                            onClick={saveEdit}
+                          >
+                            Speichern
+                          </button>
+                          <button
+                            className="hbz-btn btn-small"
+                            type="button"
+                            onClick={cancelEdit}
+                          >
+                            Abbrechen
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            <div className="year-range-active" style={{ marginTop: 14 }}>
+              <strong>Monatssummen:</strong>{" "}
+              Gesamt inkl. Fahrzeit: {monthTotals.totalHrs.toFixed(2)} h
+              {" | "}
+              Fahrzeit: {monthTotals.travelHrs.toFixed(2)} h
+              {" | "}
+              Wochenblöcke: {weekly.length}
+            </div>
+          </>
+        )}
       </div>
 
       {showPdfDialog && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center"
-          style={{ background: "rgba(0,0,0,0.45)" }}
-        >
-          <div
-            className="bg-white rounded-xl shadow-xl p-4 w-full max-w-3xl mx-3"
-            style={{ maxHeight: "90vh", overflowY: "auto" }}
-          >
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold">PDF Export auswählen</h3>
+        <div className="month-modal-backdrop">
+          <div className="month-modal">
+            <div className="month-modal-head">
+              <div>
+                <div className="month-card-title">PDF Export auswählen</div>
+                <div className="month-modal-subtitle">
+                  Monat: <b>{month}</b>
+                </div>
+              </div>
               <button
-                className="px-3 py-1 rounded border"
+                className="hbz-btn"
+                type="button"
                 onClick={() => setShowPdfDialog(false)}
               >
                 Schließen
               </button>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="border rounded-lg p-3">
-                <div className="font-semibold mb-2">Mitarbeiter</div>
+            <div className="month-modal-grid">
+              <div className="month-modal-box">
+                <div className="month-modal-box-title">Mitarbeiter</div>
 
-                <div className="flex flex-wrap gap-2 mb-3">
+                <div className="month-chip-actions">
                   <button
                     type="button"
                     className="hbz-btn btn-small"
@@ -1587,7 +1581,7 @@ export default function MonthlyOverview() {
                   </button>
                 </div>
 
-                <div className="flex flex-col gap-2">
+                <div className="month-modal-checklist">
                   {employees.map((e) => {
                     const checked = pdfOptions.selectedEmployeeCodes.includes(
                       e.code
@@ -1595,7 +1589,7 @@ export default function MonthlyOverview() {
                     return (
                       <label
                         key={`pdf-emp-${e.id}`}
-                        className="flex items-center gap-2"
+                        className="month-check-row"
                       >
                         <input
                           type="checkbox"
@@ -1619,11 +1613,11 @@ export default function MonthlyOverview() {
                 </div>
               </div>
 
-              <div className="border rounded-lg p-3">
-                <div className="font-semibold mb-2">Inhalt</div>
+              <div className="month-modal-box">
+                <div className="month-modal-box-title">Inhalt</div>
 
-                <div className="flex flex-col gap-2">
-                  <label className="flex items-center gap-2">
+                <div className="month-modal-checklist">
+                  <label className="month-check-row">
                     <input
                       type="checkbox"
                       checked={pdfOptions.includeDetails}
@@ -1637,7 +1631,7 @@ export default function MonthlyOverview() {
                     <span>Tagesdetails</span>
                   </label>
 
-                  <label className="flex items-center gap-2">
+                  <label className="month-check-row">
                     <input
                       type="checkbox"
                       checked={pdfOptions.includeWeekly}
@@ -1651,7 +1645,7 @@ export default function MonthlyOverview() {
                     <span>Wochenübersicht</span>
                   </label>
 
-                  <label className="flex items-center gap-2">
+                  <label className="month-check-row">
                     <input
                       type="checkbox"
                       checked={pdfOptions.includeTotals}
@@ -1665,7 +1659,7 @@ export default function MonthlyOverview() {
                     <span>Summen</span>
                   </label>
 
-                  <label className="flex items-center gap-2">
+                  <label className="month-check-row">
                     <input
                       type="checkbox"
                       checked={pdfOptions.includeTravel}
@@ -1679,7 +1673,7 @@ export default function MonthlyOverview() {
                     <span>Fahrzeit</span>
                   </label>
 
-                  <label className="flex items-center gap-2">
+                  <label className="month-check-row">
                     <input
                       type="checkbox"
                       checked={pdfOptions.includeOvertime}
@@ -1693,7 +1687,7 @@ export default function MonthlyOverview() {
                     <span>Überstunden</span>
                   </label>
 
-                  <label className="flex items-center gap-2">
+                  <label className="month-check-row">
                     <input
                       type="checkbox"
                       checked={pdfOptions.includeAbsence}
@@ -1707,7 +1701,7 @@ export default function MonthlyOverview() {
                     <span>Krank / Urlaub anzeigen</span>
                   </label>
 
-                  <label className="flex items-center gap-2">
+                  <label className="month-check-row">
                     <input
                       type="checkbox"
                       checked={pdfOptions.includeWorkdays}
@@ -1721,7 +1715,7 @@ export default function MonthlyOverview() {
                     <span>Arbeitstage</span>
                   </label>
 
-                  <label className="flex items-center gap-2">
+                  <label className="month-check-row">
                     <input
                       type="checkbox"
                       checked={pdfOptions.includeBuak}
@@ -1738,16 +1732,17 @@ export default function MonthlyOverview() {
               </div>
             </div>
 
-            <div className="flex justify-end gap-2 mt-5">
+            <div className="month-modal-actions">
               <button
-                className="px-3 py-2 rounded border"
+                className="hbz-btn"
+                type="button"
                 onClick={() => setShowPdfDialog(false)}
               >
                 Abbrechen
               </button>
               <button
-                className="px-3 py-2 rounded border text-white"
-                style={{ background: "#7b4a2d" }}
+                className="hbz-btn hbz-btn-primary"
+                type="button"
                 onClick={() => {
                   exportPDF();
                   setShowPdfDialog(false);
