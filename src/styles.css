@@ -1003,3 +1003,443 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   border-color: #7b4a2d;
   font-weight: 600;
 }
+
+/* ===== YearOverview modern layout ===== */
+
+.year-overview {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.year-overview-hero {
+  background: linear-gradient(135deg, rgba(123, 74, 45, 0.96), rgba(196, 154, 108, 0.92));
+  color: #fff8f1;
+  border: none;
+  box-shadow: 0 18px 34px rgba(97, 60, 36, 0.22);
+}
+
+.year-overview-hero__content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.year-overview-kicker {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  opacity: 0.85;
+  margin-bottom: 6px;
+}
+
+.year-overview-title {
+  margin: 0;
+  font-size: 28px;
+  line-height: 1.1;
+  color: #fffaf4;
+}
+
+.year-overview-subtitle {
+  margin-top: 8px;
+  font-size: 14px;
+  color: rgba(255, 248, 241, 0.9);
+}
+
+.year-overview-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.year-overview-actions .hbz-btn {
+  background: rgba(255, 255, 255, 0.14);
+  color: #fffaf4;
+  border-color: rgba(255, 255, 255, 0.28);
+}
+
+.year-overview-actions .hbz-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.year-overview-actions .hbz-btn-primary {
+  background: #fff7ec;
+  color: #6f4327;
+  border-color: #fff7ec;
+}
+
+.year-overview-topgrid {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr;
+  gap: 14px;
+}
+
+.year-filter-card,
+.year-range-card,
+.year-main-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.year-card-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #4a311f;
+  margin-bottom: 12px;
+}
+
+.year-filter-grid,
+.year-range-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.year-filter-grid {
+  grid-template-columns: 130px minmax(220px, 1fr);
+}
+
+.year-range-grid {
+  grid-template-columns: repeat(3, minmax(140px, 1fr));
+  margin-top: 12px;
+}
+
+.year-employee-block {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(203, 182, 156, 0.55);
+}
+
+.year-employee-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.year-chip-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.year-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.year-chip {
+  border-radius: 999px;
+  border: 1px solid rgba(171, 141, 109, 0.65);
+  background: #fffaf3;
+  color: #5a3a23;
+  padding: 7px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.year-chip:hover {
+  background: #f9efdf;
+  transform: translateY(-1px);
+}
+
+.year-chip.active {
+  background: linear-gradient(145deg, #7b4a2d, #b98457);
+  color: #fff8ef;
+  border-color: #7b4a2d;
+  box-shadow: 0 8px 16px rgba(123, 74, 45, 0.2);
+}
+
+.year-range-quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.year-range-active {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #fbf5ec, #f3e7d9);
+  border: 1px solid rgba(203, 182, 156, 0.55);
+  color: #5b4432;
+  font-size: 13px;
+}
+
+.year-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.year-summary-card {
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(203, 182, 156, 0.45);
+  border-radius: 18px;
+  padding: 14px 16px;
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.05);
+}
+
+.year-summary-card.positive {
+  border-color: rgba(78, 156, 96, 0.35);
+  background: linear-gradient(180deg, #ffffff, #f2fbf3);
+}
+
+.year-summary-card.negative {
+  border-color: rgba(197, 108, 95, 0.35);
+  background: linear-gradient(180deg, #ffffff, #fff3f1);
+}
+
+.year-summary-label {
+  font-size: 12px;
+  color: #7a614e;
+  margin-bottom: 6px;
+}
+
+.year-summary-value {
+  font-size: 22px;
+  font-weight: 800;
+  color: #3f2c1b;
+  line-height: 1.1;
+}
+
+.year-main-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.year-main-subtitle {
+  font-size: 13px;
+  color: #6a5342;
+}
+
+.year-error-box {
+  margin-top: 8px;
+  border-radius: 12px;
+  border: 1px solid #d14b4b;
+  background: #fff3f1;
+  padding: 10px 12px;
+  font-size: 13px;
+  color: #7d1c1c;
+}
+
+.year-empty-state {
+  margin-top: 10px;
+  padding: 18px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, #fdf8f2, #f7efe4);
+  border: 1px dashed rgba(171, 141, 109, 0.6);
+  color: #6e5746;
+  text-align: center;
+}
+
+.year-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.year-section {
+  margin-top: 2px;
+}
+
+.year-section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.year-section-head h3 {
+  margin: 0;
+  font-size: 16px;
+  color: #442c1b;
+}
+
+.year-table-wrap {
+  overflow-x: auto;
+  border-radius: 16px;
+  border: 1px solid rgba(203, 182, 156, 0.45);
+  background: #fffdf9;
+}
+
+.year-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 760px;
+  font-size: 13px;
+}
+
+.year-table th,
+.year-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(203, 182, 156, 0.38);
+  text-align: left;
+}
+
+.year-table th {
+  background: linear-gradient(180deg, #f9f0e5, #f0e1d0);
+  color: #6a452c;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.year-table tbody tr:nth-child(even) {
+  background: rgba(249, 241, 231, 0.52);
+}
+
+.year-table tbody tr:hover {
+  background: rgba(245, 232, 215, 0.78);
+}
+
+.year-table .num {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.year-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(31, 22, 15, 0.48);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+}
+
+.year-modal {
+  width: min(980px, 100%);
+  max-height: 90vh;
+  overflow-y: auto;
+  background: rgba(255, 255, 255, 0.98);
+  border-radius: 24px;
+  padding: 20px;
+  box-shadow: 0 24px 50px rgba(0, 0, 0, 0.18);
+  border: 1px solid rgba(203, 182, 156, 0.45);
+}
+
+.year-modal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.year-modal-subtitle {
+  font-size: 13px;
+  color: #6f5745;
+  margin-top: 4px;
+}
+
+.year-modal-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.year-modal-box {
+  border: 1px solid rgba(203, 182, 156, 0.45);
+  border-radius: 18px;
+  padding: 14px;
+  background: linear-gradient(180deg, #fffdfa, #f9f2e8);
+}
+
+.year-modal-box-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #4e3423;
+  margin-bottom: 10px;
+}
+
+.year-modal-checklist {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.year-check-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: #433023;
+}
+
+.year-check-row input[type="checkbox"] {
+  accent-color: #7b4a2d;
+  width: 15px;
+  height: 15px;
+}
+
+.year-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+@media (max-width: 980px) {
+  .year-overview-topgrid {
+    grid-template-columns: 1fr;
+  }
+
+  .year-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .year-overview-title {
+    font-size: 24px;
+  }
+
+  .year-filter-grid,
+  .year-range-grid,
+  .year-modal-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .year-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .year-modal {
+    padding: 16px;
+    border-radius: 18px;
+  }
+
+  .year-modal-head,
+  .year-section-head,
+  .year-overview-hero__content,
+  .year-employee-head,
+  .year-main-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .year-overview-actions,
+  .year-modal-actions {
+    width: 100%;
+  }
+
+  .year-overview-actions .hbz-btn,
+  .year-modal-actions .hbz-btn {
+    flex: 1;
+    justify-content: center;
+  }
+}

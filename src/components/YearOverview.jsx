@@ -164,7 +164,6 @@ export default function YearOverview() {
     includeBuak: true,
   });
 
-  // Nur Admin darf Jahresübersicht sehen
   if (!isAdmin) {
     return (
       <div className="hbz-container">
@@ -178,7 +177,6 @@ export default function YearOverview() {
     );
   }
 
-  // Stammdaten laden
   useEffect(() => {
     (async () => {
       try {
@@ -211,7 +209,6 @@ export default function YearOverview() {
     }));
   }, [selectedCodes]);
 
-  // Daten laden je nach Jahr/Monat/Filter
   useEffect(() => {
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -280,9 +277,6 @@ export default function YearOverview() {
 
   const rangeLabel = useMemo(() => activeRange.label, [activeRange]);
 
-  // Gruppierungen --------------------------------------------------
-
-  // je Projekt
   const byProject = useMemo(() => {
     const map = new Map();
 
@@ -321,7 +315,6 @@ export default function YearOverview() {
       .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
   }, [rows]);
 
-  // je Mitarbeiter
   const byEmployee = useMemo(() => {
     const map = new Map();
 
@@ -359,7 +352,6 @@ export default function YearOverview() {
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [rows]);
 
-  // Mitarbeiter × Projekt
   const byEmployeeProject = useMemo(() => {
     const map = new Map();
 
@@ -397,7 +389,6 @@ export default function YearOverview() {
       .sort((a, b) => a.emp.localeCompare(b.emp) || a.prj.localeCompare(b.prj));
   }, [rows]);
 
-  // Gesamtsummen
   const totals = useMemo(() => {
     let work = 0,
       travel = 0,
@@ -413,7 +404,6 @@ export default function YearOverview() {
     return { workH: h2(work), travelH: h2(travel), totalH: h2(total) };
   }, [rows]);
 
-  // BUAK Sollstunden
   const buakSoll = useMemo(() => {
     if (activeRange.mode === "year" && activeRange.yearForBuak) {
       return calcBuakSollHoursForYear(parseInt(activeRange.yearForBuak, 10));
@@ -428,7 +418,6 @@ export default function YearOverview() {
 
   const hasData = rows.length > 0;
 
-  // CSV Export ------------------------------------------------------
   function exportCSV() {
     const lines = [];
     lines.push(`Auswertung ${rangeLabel}`);
@@ -546,7 +535,6 @@ export default function YearOverview() {
     setShowPdfDialog(true);
   }
 
-  // PDF Export ------------------------------------------------------
   function exportPDF() {
     const selectedRows = rows.filter((r) => {
       const emp = employees.find((e) => e.id === r.employee_id);
@@ -881,7 +869,6 @@ export default function YearOverview() {
     doc.save(`Auswertung_${rangeLabel.replace(/\s+/g, "_")}.pdf`);
   }
 
-  // Button-Handler --------------------------------------------------
   const handleCurrentMonth = () => {
     setRangeFromMonth("");
     setRangeToMonth("");
@@ -916,375 +903,406 @@ export default function YearOverview() {
     setMonthFilter("");
   };
 
-  // Render ----------------------------------------------------------
+  const summaryCards = [
+    {
+      label: "Arbeitsstunden",
+      value: `${totals.workH.toFixed(2)} h`,
+    },
+    {
+      label: "Fahrzeit",
+      value: `${totals.travelH.toFixed(2)} h`,
+    },
+    {
+      label: "Gesamtstunden",
+      value: `${totals.totalH.toFixed(2)} h`,
+    },
+    {
+      label: activeRange.mode === "year" ? "BUAK Soll" : "BUAK Soll Zeitraum",
+      value: `${buakSoll.toFixed(2)} h`,
+    },
+    {
+      label: "Abweichung",
+      value: `${buakDiff.toFixed(2)} h`,
+      tone: buakDiff >= 0 ? "positive" : "negative",
+    },
+  ];
+
   return (
-    <div className="max-w-screen-xl mx-auto">
-      <div className="flex flex-wrap items-end gap-3 mb-4">
-        <div>
-          <label className="block text-sm font-semibold">Jahr</label>
-          <select
-            value={year}
-            onChange={(e) => {
-              const y = parseInt(e.target.value, 10);
-              setYear(y);
-            }}
-            className="px-3 py-2 rounded border"
-          >
-            {Array.from({ length: 8 }, (_, i) => currentYear - i).map((y) => (
-              <option key={y} value={y}>
-                {y}
-              </option>
-            ))}
-          </select>
-        </div>
+    <div className="year-overview">
+      <div className="year-overview-hero hbz-card">
+        <div className="year-overview-hero__content">
+          <div>
+            <div className="year-overview-kicker">Auswertung</div>
+            <h2 className="year-overview-title">Jahresübersicht</h2>
+            <div className="year-overview-subtitle">
+              Zeitraum: <b>{rangeLabel}</b>
+            </div>
+          </div>
 
-        <div>
-          <label className="block text-sm font-semibold">Projekt</label>
-          <select
-            value={selectedProjectId}
-            onChange={(e) => setSelectedProjectId(e.target.value)}
-            className="px-3 py-2 rounded border min-w-[240px]"
-          >
-            <option value="">Alle</option>
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.code ? `${p.code} · ${p.name}` : p.name}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="flex-1">
-          <label className="block text-sm font-semibold">
-            Mitarbeiter (Mehrfachauswahl)
-          </label>
-
-          <div className="mt-1 mb-1 flex items-center gap-2 text-xs">
+          <div className="year-overview-actions">
             <button
-              type="button"
-              className="hbz-btn btn-small"
-              onClick={() => setSelectedCodes(employees.map((e) => e.code))}
+              onClick={openPdfDialog}
+              className="hbz-btn hbz-btn-primary"
+              disabled={!hasData}
             >
-              Alle
+              PDF export
             </button>
             <button
-              type="button"
-              className="hbz-btn btn-small"
-              onClick={() => setSelectedCodes([])}
+              onClick={exportCSV}
+              className="hbz-btn"
+              disabled={!hasData}
             >
-              Keine
+              CSV export
             </button>
-            <span className="opacity-70">
-              {selectedCodes.length} / {employees.length} gewählt
-            </span>
-          </div>
-
-          <div className="mt-1 flex flex-wrap gap-2">
-            {employees.map((e) => {
-              const active = selectedCodes.includes(e.code);
-              return (
-                <button
-                  key={e.id}
-                  type="button"
-                  className={`px-2 py-1 rounded border ${
-                    active ? "bg-[#7b4a2d] text-white" : ""
-                  }`}
-                  onClick={() => {
-                    setSelectedCodes((prev) =>
-                      prev.includes(e.code)
-                        ? prev.filter((c) => c !== e.code)
-                        : [...prev, e.code]
-                    );
-                  }}
-                >
-                  {e.name}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        <div className="ml-auto flex flex-col gap-2">
-          <button
-            onClick={openPdfDialog}
-            className="px-3 py-2 rounded border"
-            disabled={!hasData}
-          >
-            PDF export
-          </button>
-          <button
-            onClick={exportCSV}
-            className="px-3 py-2 rounded border"
-            disabled={!hasData}
-          >
-            CSV export
-          </button>
-        </div>
-      </div>
-
-      <div className="hbz-card" style={{ marginBottom: 10 }}>
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="text-sm font-semibold">Zeitraum:</div>
-
-          <button
-            type="button"
-            className="hbz-btn btn-small"
-            onClick={handleCurrentMonth}
-          >
-            Aktueller Monat
-          </button>
-
-          <button
-            type="button"
-            className="hbz-btn btn-small"
-            onClick={handleLastMonth}
-          >
-            Letzter Monat
-          </button>
-
-          <div className="flex items-center gap-1">
-            <span className="text-xs opacity-75">Einzelner Monat:</span>
-            <input
-              type="month"
-              className="hbz-input"
-              style={{ maxWidth: 150 }}
-              value={monthFilter}
-              onChange={(e) => {
-                const v = e.target.value;
-                setRangeFromMonth("");
-                setRangeToMonth("");
-                setMonthFilter(v);
-                const mr = getMonthRange(v);
-                if (mr) setYear(mr.year);
-              }}
-            />
-          </div>
-
-          <div className="flex items-center gap-1">
-            <span className="text-xs opacity-75">Von:</span>
-            <input
-              type="month"
-              className="hbz-input"
-              style={{ maxWidth: 150 }}
-              value={rangeFromMonth}
-              onChange={(e) => {
-                const v = e.target.value;
-                setRangeFromMonth(v);
-                handleMonthRange();
-                const mr = getMonthRange(v);
-                if (mr) setYear(mr.year);
-              }}
-            />
-          </div>
-
-          <div className="flex items-center gap-1">
-            <span className="text-xs opacity-75">Bis:</span>
-            <input
-              type="month"
-              className="hbz-input"
-              style={{ maxWidth: 150 }}
-              value={rangeToMonth}
-              onChange={(e) => {
-                const v = e.target.value;
-                setRangeToMonth(v);
-                handleMonthRange();
-              }}
-            />
-          </div>
-
-          <button
-            type="button"
-            className="hbz-btn btn-small"
-            onClick={handleCurrentYear}
-          >
-            Aktuelles Jahr
-          </button>
-
-          <div className="ml-auto text-sm opacity-80">
-            Aktuell: <b>{rangeLabel}</b>
           </div>
         </div>
       </div>
 
-      <div className="hbz-card">
-        <div
-          className="px-2 py-2 font-semibold"
-          style={{ background: "#f6eee4", borderRadius: 8 }}
-        >
-          {loading
-            ? "Lade…"
-            : `Auswertung ${rangeLabel} – Arbeit: ${totals.workH.toFixed(
-                2
-              )} h · Fahrzeit: ${totals.travelH.toFixed(
-                2
-              )} h · Gesamt: ${totals.totalH.toFixed(2)} h`}
+      <div className="year-overview-topgrid">
+        <div className="hbz-card year-filter-card">
+          <div className="year-card-title">Filter</div>
+
+          <div className="year-filter-grid">
+            <div className="field-inline">
+              <label className="hbz-label">Jahr</label>
+              <select
+                value={year}
+                onChange={(e) => {
+                  const y = parseInt(e.target.value, 10);
+                  setYear(y);
+                }}
+                className="hbz-select"
+              >
+                {Array.from({ length: 8 }, (_, i) => currentYear - i).map((y) => (
+                  <option key={y} value={y}>
+                    {y}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="field-inline">
+              <label className="hbz-label">Projekt</label>
+              <select
+                value={selectedProjectId}
+                onChange={(e) => setSelectedProjectId(e.target.value)}
+                className="hbz-select"
+              >
+                <option value="">Alle</option>
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.code ? `${p.code} · ${p.name}` : p.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="year-employee-block">
+            <div className="year-employee-head">
+              <label className="hbz-label">Mitarbeiter</label>
+              <span className="badge-soft">
+                {selectedCodes.length} / {employees.length} gewählt
+              </span>
+            </div>
+
+            <div className="year-chip-actions">
+              <button
+                type="button"
+                className="hbz-btn btn-small"
+                onClick={() => setSelectedCodes(employees.map((e) => e.code))}
+              >
+                Alle
+              </button>
+              <button
+                type="button"
+                className="hbz-btn btn-small"
+                onClick={() => setSelectedCodes([])}
+              >
+                Keine
+              </button>
+            </div>
+
+            <div className="year-chip-list">
+              {employees.map((e) => {
+                const active = selectedCodes.includes(e.code);
+                return (
+                  <button
+                    key={e.id}
+                    type="button"
+                    className={`year-chip ${active ? "active" : ""}`}
+                    onClick={() => {
+                      setSelectedCodes((prev) =>
+                        prev.includes(e.code)
+                          ? prev.filter((c) => c !== e.code)
+                          : [...prev, e.code]
+                      );
+                    }}
+                  >
+                    {e.name}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        <div className="hbz-card year-range-card">
+          <div className="year-card-title">Zeitraum</div>
+
+          <div className="year-range-quick">
+            <button
+              type="button"
+              className="hbz-btn btn-small"
+              onClick={handleCurrentMonth}
+            >
+              Aktueller Monat
+            </button>
+
+            <button
+              type="button"
+              className="hbz-btn btn-small"
+              onClick={handleLastMonth}
+            >
+              Letzter Monat
+            </button>
+
+            <button
+              type="button"
+              className="hbz-btn btn-small"
+              onClick={handleCurrentYear}
+            >
+              Aktuelles Jahr
+            </button>
+          </div>
+
+          <div className="year-range-grid">
+            <div className="field-inline">
+              <label className="hbz-label">Einzelner Monat</label>
+              <input
+                type="month"
+                className="hbz-input"
+                value={monthFilter}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setRangeFromMonth("");
+                  setRangeToMonth("");
+                  setMonthFilter(v);
+                  const mr = getMonthRange(v);
+                  if (mr) setYear(mr.year);
+                }}
+              />
+            </div>
+
+            <div className="field-inline">
+              <label className="hbz-label">Von</label>
+              <input
+                type="month"
+                className="hbz-input"
+                value={rangeFromMonth}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setRangeFromMonth(v);
+                  handleMonthRange();
+                  const mr = getMonthRange(v);
+                  if (mr) setYear(mr.year);
+                }}
+              />
+            </div>
+
+            <div className="field-inline">
+              <label className="hbz-label">Bis</label>
+              <input
+                type="month"
+                className="hbz-input"
+                value={rangeToMonth}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setRangeToMonth(v);
+                  handleMonthRange();
+                }}
+              />
+            </div>
+          </div>
+
+          <div className="year-range-active">
+            Aktuell ausgewählt: <b>{rangeLabel}</b>
+          </div>
+        </div>
+      </div>
+
+      <div className="year-summary-grid">
+        {summaryCards.map((card) => (
+          <div
+            key={card.label}
+            className={`year-summary-card ${card.tone || ""}`}
+          >
+            <div className="year-summary-label">{card.label}</div>
+            <div className="year-summary-value">{card.value}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="hbz-card year-main-card">
+        <div className="year-main-header">
+          <div>
+            <div className="year-card-title">Auswertung</div>
+            <div className="year-main-subtitle">
+              {loading
+                ? "Lade…"
+                : `Arbeit: ${totals.workH.toFixed(2)} h · Fahrzeit: ${totals.travelH.toFixed(
+                    2
+                  )} h · Gesamt: ${totals.totalH.toFixed(2)} h`}
+            </div>
+          </div>
         </div>
 
         {error && (
-          <div className="mt-2 text-sm text-red-700">
+          <div className="year-error-box">
             <b>Hinweis:</b> {error}
           </div>
         )}
 
         {!hasData && !loading && (
-          <div className="text-sm opacity-70 mt-3">
+          <div className="year-empty-state">
             Keine Einträge für diese Filter.
           </div>
         )}
 
         {hasData && (
-          <>
-            <div className="mt-3 text-sm opacity-80">
-              {activeRange.mode === "year" ? (
-                <>
-                  <b>BUAK Soll:</b> {buakSoll.toFixed(2)} h &nbsp;|&nbsp;
-                  <b>Abweichung:</b> {buakDiff.toFixed(2)} h
-                </>
-              ) : (
-                <>
-                  <b>BUAK Soll Zeitraum:</b> {buakSoll.toFixed(2)} h &nbsp;|&nbsp;
-                  <b>Abweichung:</b> {buakDiff.toFixed(2)} h
-                </>
-              )}
-            </div>
+          <div className="year-sections">
+            <section className="year-section">
+              <div className="year-section-head">
+                <h3>Stunden je Projekt</h3>
+                <span className="badge-soft">{byProject.length} Projekte</span>
+              </div>
 
-            <div className="mt-4 mo-wrap">
-              <h3 className="text-base font-semibold mb-2">
-                Stunden je Projekt
-              </h3>
-              <table className="nice mo-table">
-                <thead>
-                  <tr>
-                    <th>Projekt</th>
-                    <th style={{ textAlign: "right" }}>Arbeitsstunden</th>
-                    <th style={{ textAlign: "right" }}>Fahrzeit (h)</th>
-                    <th style={{ textAlign: "right" }}>Gesamt (h)</th>
-                    <th style={{ textAlign: "right" }}>Anzahl Tage</th>
-                    <th style={{ textAlign: "right" }}>Einträge</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {byProject.map((p) => (
-                    <tr key={p.id}>
-                      <td>{p.code ? `${p.code} · ${p.name}` : p.name}</td>
-                      <td style={{ textAlign: "right" }}>
-                        {h2(p.work).toFixed(2)}
-                      </td>
-                      <td style={{ textAlign: "right" }}>
-                        {h2(p.travel).toFixed(2)}
-                      </td>
-                      <td style={{ textAlign: "right" }}>
-                        {h2(p.total).toFixed(2)}
-                      </td>
-                      <td style={{ textAlign: "right" }}>{p.days ?? 0}</td>
-                      <td style={{ textAlign: "right" }}>{p.cnt}</td>
+              <div className="year-table-wrap">
+                <table className="year-table">
+                  <thead>
+                    <tr>
+                      <th>Projekt</th>
+                      <th className="num">Arbeitsstunden</th>
+                      <th className="num">Fahrzeit (h)</th>
+                      <th className="num">Gesamt (h)</th>
+                      <th className="num">Anzahl Tage</th>
+                      <th className="num">Einträge</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {byProject.map((p) => (
+                      <tr key={p.id}>
+                        <td>{p.code ? `${p.code} · ${p.name}` : p.name}</td>
+                        <td className="num">{h2(p.work).toFixed(2)}</td>
+                        <td className="num">{h2(p.travel).toFixed(2)}</td>
+                        <td className="num">{h2(p.total).toFixed(2)}</td>
+                        <td className="num">{p.days ?? 0}</td>
+                        <td className="num">{p.cnt}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
 
-            <div className="mt-6 mo-wrap">
-              <h3 className="text-base font-semibold mb-2">
-                Stunden je Mitarbeiter
-              </h3>
-              <table className="nice mo-table">
-                <thead>
-                  <tr>
-                    <th>Mitarbeiter</th>
-                    <th style={{ textAlign: "right" }}>Arbeitsstunden</th>
-                    <th style={{ textAlign: "right" }}>Fahrzeit (h)</th>
-                    <th style={{ textAlign: "right" }}>Gesamt (h)</th>
-                    <th style={{ textAlign: "right" }}>Anzahl Tage</th>
-                    <th style={{ textAlign: "right" }}>Einträge</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {byEmployee.map((e) => (
-                    <tr key={e.name}>
-                      <td>{e.name}</td>
-                      <td style={{ textAlign: "right" }}>
-                        {h2(e.work).toFixed(2)}
-                      </td>
-                      <td style={{ textAlign: "right" }}>
-                        {h2(e.travel).toFixed(2)}
-                      </td>
-                      <td style={{ textAlign: "right" }}>
-                        {h2(e.total).toFixed(2)}
-                      </td>
-                      <td style={{ textAlign: "right" }}>{e.days ?? 0}</td>
-                      <td style={{ textAlign: "right" }}>{e.cnt}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <section className="year-section">
+              <div className="year-section-head">
+                <h3>Stunden je Mitarbeiter</h3>
+                <span className="badge-soft">{byEmployee.length} Mitarbeiter</span>
+              </div>
 
-            <div className="mt-6 mo-wrap">
-              <h3 className="text-base font-semibold mb-2">
-                Aufschlüsselung je Mitarbeiter und Projekt
-              </h3>
-              <table className="nice mo-table">
-                <thead>
-                  <tr>
-                    <th>Mitarbeiter</th>
-                    <th>Projekt</th>
-                    <th style={{ textAlign: "right" }}>Arbeitsstunden</th>
-                    <th style={{ textAlign: "right" }}>Fahrzeit (h)</th>
-                    <th style={{ textAlign: "right" }}>Gesamt (h)</th>
-                    <th style={{ textAlign: "right" }}>Anzahl Tage</th>
-                    <th style={{ textAlign: "right" }}>Einträge</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {byEmployeeProject.map((r) => (
-                    <tr key={`${r.emp}||${r.prj}`}>
-                      <td>{r.emp}</td>
-                      <td>{r.prj}</td>
-                      <td style={{ textAlign: "right" }}>
-                        {h2(r.work).toFixed(2)}
-                      </td>
-                      <td style={{ textAlign: "right" }}>
-                        {h2(r.travel).toFixed(2)}
-                      </td>
-                      <td style={{ textAlign: "right" }}>
-                        {h2(r.total).toFixed(2)}
-                      </td>
-                      <td style={{ textAlign: "right" }}>{r.days ?? 0}</td>
-                      <td style={{ textAlign: "right" }}>{r.cnt}</td>
+              <div className="year-table-wrap">
+                <table className="year-table">
+                  <thead>
+                    <tr>
+                      <th>Mitarbeiter</th>
+                      <th className="num">Arbeitsstunden</th>
+                      <th className="num">Fahrzeit (h)</th>
+                      <th className="num">Gesamt (h)</th>
+                      <th className="num">Anzahl Tage</th>
+                      <th className="num">Einträge</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </>
+                  </thead>
+                  <tbody>
+                    {byEmployee.map((e) => (
+                      <tr key={e.name}>
+                        <td>{e.name}</td>
+                        <td className="num">{h2(e.work).toFixed(2)}</td>
+                        <td className="num">{h2(e.travel).toFixed(2)}</td>
+                        <td className="num">{h2(e.total).toFixed(2)}</td>
+                        <td className="num">{e.days ?? 0}</td>
+                        <td className="num">{e.cnt}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section className="year-section">
+              <div className="year-section-head">
+                <h3>Aufschlüsselung je Mitarbeiter und Projekt</h3>
+                <span className="badge-soft">
+                  {byEmployeeProject.length} Kombinationen
+                </span>
+              </div>
+
+              <div className="year-table-wrap">
+                <table className="year-table">
+                  <thead>
+                    <tr>
+                      <th>Mitarbeiter</th>
+                      <th>Projekt</th>
+                      <th className="num">Arbeitsstunden</th>
+                      <th className="num">Fahrzeit (h)</th>
+                      <th className="num">Gesamt (h)</th>
+                      <th className="num">Anzahl Tage</th>
+                      <th className="num">Einträge</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {byEmployeeProject.map((r) => (
+                      <tr key={`${r.emp}||${r.prj}`}>
+                        <td>{r.emp}</td>
+                        <td>{r.prj}</td>
+                        <td className="num">{h2(r.work).toFixed(2)}</td>
+                        <td className="num">{h2(r.travel).toFixed(2)}</td>
+                        <td className="num">{h2(r.total).toFixed(2)}</td>
+                        <td className="num">{r.days ?? 0}</td>
+                        <td className="num">{r.cnt}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </div>
         )}
       </div>
 
       {showPdfDialog && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center"
-          style={{ background: "rgba(0,0,0,0.45)" }}
-        >
-          <div
-            className="bg-white rounded-xl shadow-xl p-4 w-full max-w-3xl mx-3"
-            style={{ maxHeight: "90vh", overflowY: "auto" }}
-          >
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold">PDF Export auswählen</h3>
+        <div className="year-modal-backdrop">
+          <div className="year-modal">
+            <div className="year-modal-head">
+              <div>
+                <div className="year-card-title">PDF Export auswählen</div>
+                <div className="year-modal-subtitle">
+                  Zeitraum: <b>{rangeLabel}</b>
+                </div>
+              </div>
               <button
-                className="px-3 py-1 rounded border"
+                className="hbz-btn"
                 onClick={() => setShowPdfDialog(false)}
               >
                 Schließen
               </button>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="border rounded-lg p-3">
-                <div className="font-semibold mb-2">Mitarbeiter</div>
+            <div className="year-modal-grid">
+              <div className="year-modal-box">
+                <div className="year-modal-box-title">Mitarbeiter</div>
 
-                <div className="flex flex-wrap gap-2 mb-3">
+                <div className="year-chip-actions">
                   <button
                     className="hbz-btn btn-small"
                     onClick={() =>
@@ -1310,9 +1328,9 @@ export default function YearOverview() {
                   </button>
                 </div>
 
-                <div className="mt-3 flex flex-col gap-2">
+                <div className="year-modal-checklist">
                   {employees.map((e) => (
-                    <label key={e.id} className="flex items-center gap-2">
+                    <label key={e.id} className="year-check-row">
                       <input
                         type="checkbox"
                         checked={pdfOptions.selectedEmployeeCodes.includes(
@@ -1336,11 +1354,11 @@ export default function YearOverview() {
                 </div>
               </div>
 
-              <div className="border rounded-lg p-3">
-                <div className="font-semibold mb-2">Inhalt</div>
+              <div className="year-modal-box">
+                <div className="year-modal-box-title">Inhalt</div>
 
-                <div className="flex flex-col gap-2">
-                  <label className="flex items-center gap-2">
+                <div className="year-modal-checklist">
+                  <label className="year-check-row">
                     <input
                       type="checkbox"
                       checked={pdfOptions.includeProjects}
@@ -1354,7 +1372,7 @@ export default function YearOverview() {
                     <span>Projekte</span>
                   </label>
 
-                  <label className="flex items-center gap-2">
+                  <label className="year-check-row">
                     <input
                       type="checkbox"
                       checked={pdfOptions.includeEmployees}
@@ -1368,7 +1386,7 @@ export default function YearOverview() {
                     <span>Mitarbeiter</span>
                   </label>
 
-                  <label className="flex items-center gap-2">
+                  <label className="year-check-row">
                     <input
                       type="checkbox"
                       checked={pdfOptions.includeEmployeeProjects}
@@ -1382,7 +1400,7 @@ export default function YearOverview() {
                     <span>Mitarbeiter x Projekt</span>
                   </label>
 
-                  <label className="flex items-center gap-2">
+                  <label className="year-check-row">
                     <input
                       type="checkbox"
                       checked={pdfOptions.includeWorkHours}
@@ -1396,7 +1414,7 @@ export default function YearOverview() {
                     <span>Arbeitsstunden</span>
                   </label>
 
-                  <label className="flex items-center gap-2">
+                  <label className="year-check-row">
                     <input
                       type="checkbox"
                       checked={pdfOptions.includeTotalHours}
@@ -1410,7 +1428,7 @@ export default function YearOverview() {
                     <span>Gesamtstunden</span>
                   </label>
 
-                  <label className="flex items-center gap-2">
+                  <label className="year-check-row">
                     <input
                       type="checkbox"
                       checked={pdfOptions.includeTravel}
@@ -1424,7 +1442,7 @@ export default function YearOverview() {
                     <span>Fahrzeit</span>
                   </label>
 
-                  <label className="flex items-center gap-2">
+                  <label className="year-check-row">
                     <input
                       type="checkbox"
                       checked={pdfOptions.includeDays}
@@ -1438,7 +1456,7 @@ export default function YearOverview() {
                     <span>Anzahl Tage</span>
                   </label>
 
-                  <label className="flex items-center gap-2">
+                  <label className="year-check-row">
                     <input
                       type="checkbox"
                       checked={pdfOptions.includeBuak}
@@ -1455,21 +1473,16 @@ export default function YearOverview() {
               </div>
             </div>
 
-            <div className="mt-4 text-sm opacity-80">
-              Exportiert wird der aktuell gewählte Zeitraum: <b>{rangeLabel}</b>
-            </div>
-
-            <div className="flex justify-end gap-2 mt-5">
+            <div className="year-modal-actions">
               <button
-                className="px-3 py-2 rounded border"
+                className="hbz-btn"
                 onClick={() => setShowPdfDialog(false)}
               >
                 Abbrechen
               </button>
 
               <button
-                className="px-3 py-2 rounded border text-white"
-                style={{ background: "#7b4a2d" }}
+                className="hbz-btn hbz-btn-primary"
                 onClick={() => {
                   exportPDF();
                   setShowPdfDialog(false);
