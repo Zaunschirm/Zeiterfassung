@@ -22,6 +22,7 @@ function getDisplayName(row) {
 export default function LoginPanel({ onLogin }) {
   const [code, setCode] = useState("");
   const [pin, setPin] = useState("");
+  const [rememberMe, setRememberMe] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -70,12 +71,15 @@ export default function LoginPanel({ onLogin }) {
         return;
       }
 
-      onLogin?.({
-        id: data.id,
-        code: data.code,
-        name: getDisplayName(data),
-        role: normalizeRole(data.role),
-      });
+      onLogin?.(
+        {
+          id: data.id,
+          code: data.code,
+          name: getDisplayName(data),
+          role: normalizeRole(data.role),
+        },
+        rememberMe
+      );
     } catch (err) {
       console.error("[LoginPanel] login error:", err);
       setError("Login fehlgeschlagen. Bitte Konsole prüfen.");
@@ -127,6 +131,26 @@ export default function LoginPanel({ onLogin }) {
               placeholder="••••"
               autoComplete="current-password"
             />
+          </div>
+
+          <div className="field-inline" style={{ marginTop: 10 }}>
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                fontSize: 13,
+                color: "#5a3a23",
+                cursor: "pointer",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+              />
+              Dauerhaft eingeloggt bleiben
+            </label>
           </div>
 
           {error && <div className="login-error">{error}</div>}

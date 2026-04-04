@@ -43,7 +43,7 @@ export default function App() {
     }
   }, [loggedIn, location.pathname, navigate]);
 
-  const handleLogin = (user) => {
+  const handleLogin = (user, persistent = false) => {
     if (!user) return;
 
     setLoggedIn(true);
@@ -51,7 +51,7 @@ export default function App() {
     setRole(user?.role || "mitarbeiter");
 
     try {
-      setSession({ user });
+      setSession({ user }, persistent);
     } catch (e) {
       console.error("[App] Session save error:", e);
     }
