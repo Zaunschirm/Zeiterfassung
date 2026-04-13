@@ -78,7 +78,6 @@ function uniq(arr) {
   return Array.from(new Set(arr));
 }
 
-
 function isVacationRow(r) {
   const note = (r?.note || "").toString();
   return note.includes("[Urlaub]");
@@ -164,7 +163,6 @@ function buildPayrollMonthlySummary(sourceRows, monthList) {
       );
     });
 }
-
 
 function getRangeFromFilters(year, monthFilter, rangeFromMonth, rangeToMonth) {
   const fromRange = getMonthRange(rangeFromMonth);
@@ -625,7 +623,6 @@ export default function YearOverview() {
     setShowPdfDialog(true);
   }
 
-
   function buildSiteDailyBlocks(sourceRows) {
     const groupedBlocks = {};
 
@@ -1008,7 +1005,6 @@ export default function YearOverview() {
       drewSomething = true;
     }
 
-
     if (pdfOptions.includeSiteDailyReport) {
       const siteBlocks = buildSiteDailyBlocks(selectedRows);
 
@@ -1111,7 +1107,6 @@ export default function YearOverview() {
       }
     }
 
-
     if (pdfOptions.includePayroll) {
       if (payrollSummary.length > 0) {
         doc.addPage();
@@ -1119,7 +1114,14 @@ export default function YearOverview() {
 
         doc.setFontSize(14);
         doc.text("Lohnverrechnung", 40, y);
-        y += 8;
+
+        doc.setFontSize(10);
+        doc.text(
+          "Hinweis: Gesamtstunden inkl. Fahrzeit. Urlaubstage sind mit 0,00 Stunden berücksichtigt. Krankenstandstage werden gemäß hinterlegter Sollzeit automatisch berücksichtigt.",
+          40,
+          54,
+          { maxWidth: 760 }
+        );
 
         autoTable(doc, {
           head: [[
@@ -1142,7 +1144,7 @@ export default function YearOverview() {
             row.vacationDates.length ? row.vacationDates.join(", ") : "—",
             row.sickDates.length ? row.sickDates.join(", ") : "—",
           ]),
-          startY: y + 8,
+          startY: 82,
           styles: { fontSize: 8.5, cellPadding: 3 },
           headStyles: { fillColor: [123, 74, 45] },
           margin: { left: 40, right: 40 },
