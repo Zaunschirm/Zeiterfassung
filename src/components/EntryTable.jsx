@@ -1,10 +1,16 @@
 import React, { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
+import { getWeatherFinalLabel } from "../utils/weather";
 
 const toHM = (mins = 0) =>
   `${String(Math.floor((mins ?? 0) / 60)).padStart(2, "0")}:${String(
     (mins ?? 0) % 60
   ).padStart(2, "0")}`;
+
+const formatTemp = (value) =>
+  typeof value === "number" && !Number.isNaN(value)
+    ? `${value.toFixed(1)} °C`
+    : "—";
 
 export default function EntryTable({ date }) {
   const [rows, setRows] = useState([]);
@@ -40,11 +46,12 @@ export default function EntryTable({ date }) {
       if (error) throw error;
       setRows(data || []);
     } catch (e) {
-      // Fallback localStorage
       const raw = localStorage.getItem("hbz_entries") || "[]";
       let list = JSON.parse(raw);
       if (date) list = list.filter((r) => r.work_date === date);
-      if (role === "mitarbeiter" && me?.id) list = list.filter((r) => r.employee_id === me.id);
+      if (role === "mitarbeiter" && me?.id) {
+        list = list.filter((r) => r.employee_id === me.id);
+      }
       setRows(list);
       console.warn("[EntryTable] fallback:", e);
     } finally {
@@ -55,7 +62,10 @@ export default function EntryTable({ date }) {
   async function remove(id) {
     if (!window.confirm("Diesen Eintrag wirklich löschen?")) return;
     try {
-      const { error } = await supabase.from("time_entries").delete().eq("id", id);
+      const { error } = await supabase
+        .from("time_entries")
+        .delete()
+        .eq("id", id);
       if (error) throw error;
       setRows((r) => r.filter((x) => x.id !== id));
     } catch (e) {
@@ -93,37 +103,42 @@ export default function EntryTable({ date }) {
               <th style={{ width: 90, textAlign: "center" }}>Ende</th>
               <th style={{ width: 110, textAlign: "right" }}>Pause</th>
               <th style={{ width: 110, textAlign: "right" }}>Fahrzeit</th>
-              <th style={{ minWidth: 280 }}>Notiz</th>
+              <th style={{ width: 170 }}>Wetter</th>
+              <th style={{ width: 120, textAlign: "center" }}>Temperatur</th>
+              <th style={{ minWidth: 220 }}>Notiz</th>
               <th style={{ width: 140, textAlign: "right" }}>Aktion</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((r) => {
               const abs = parseAbsence(r.note);
+
               return (
-              <tr key={r.id}>
-                <td>{r.employee_name || r.employee_id}</td>
-                <td>{r.project_name || r.project_code || r.project_id || "—"}</td>
-                <td style={{ textAlign: "center" }}>
-                  {abs.type ? (
-                    <span className="hbz-chip active" style={{ padding: "2px 8px" }}>
-                      {abs.type}
-                    </span>
-                  ) : (
-                    "—"
-                  )}
-                </td>
-                <td style={{ textAlign: "center" }}>{toHM(r.start_min)}</td>
-                <td style={{ textAlign: "center" }}>{toHM(r.end_min)}</td>
-                <td style={{ textAlign: "right" }}>{(r.break_min ?? 0)} min</td>
-                <td style={{ textAlign: "right" }}>{getTravel(r)} min</td>
-                <td>{abs.clean || ""}</td>
-                <td style={{ textAlign: "right" }}>
-                  <button className="hbz-btn btn-small" onClick={() => remove(r.id)}>
-                    Löschen
-                  </button>
-                </td>
-              </tr>
+                <tr key={r.id}>
+                  <td>{r.employee_name || r.employee_id}</td>
+                  <td>{r.project_name || r.project_code || r.project_id || "—"}</td>
+                  <td style={{ textAlign: "center" }}>
+                    {abs.type ? (
+                      <span className="hbz-chip active" style={{ padding: "2px 8px" }}>
+                        {abs.type}
+                      </span>
+                    ) : (
+                      "—"
+                    )}
+                  </td>
+                  <td style={{ textAlign: "center" }}>{toHM(r.start_min)}</td>
+                  <td style={{ textAlign: "center" }}>{toHM(r.end_min)}</td>
+                  <td style={{ textAlign: "right" }}>{r.break_min ?? 0} min</td>
+                  <td style={{ textAlign: "right" }}>{getTravel(r)} min</td>
+                  <td>{getWeatherFinalLabel(r) || "—"}</td>
+                  <td style={{ textAlign: "center" }}>{formatTemp(r.temperature)}</td>
+                  <td>{abs.clean || ""}</td>
+                  <td style={{ textAlign: "right" }}>
+                    <button className="hbz-btn btn-small" onClick={() => remove(r.id)}>
+                      Löschen
+                    </button>
+                  </td>
+                </tr>
               );
             })}
           </tbody>
