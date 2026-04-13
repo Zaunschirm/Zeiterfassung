@@ -11,19 +11,24 @@ export default function EmployeeList() {
   const [role, setRole] = useState("mitarbeiter");
   const [saving, setSaving] = useState(false);
 
+  const [editId, setEditId] = useState(null);
+
   async function load() {
     setErr("");
     setLoading(true);
+
     const { data, error } = await supabase
       .from("employees")
       .select("id, name, role, disabled, code")
       .order("name", { ascending: true });
 
     setLoading(false);
+
     if (error) {
       setErr(error.message);
       return;
     }
+
     setRows(data || []);
   }
 
@@ -67,6 +72,25 @@ export default function EmployeeList() {
     load();
   }
 
+  async function toggleActive(row) {
+    const nextDisabled = !row.disabled;
+
+    const { error } = await supabase
+      .from("employees")
+      .update({
+        disabled: nextDisabled,
+        active: nextDisabled ? false : true,
+      })
+      .eq("id", row.id);
+
+    if (error) {
+      alert("Status konnte nicht geändert werden.");
+      return;
+    }
+
+    load();
+  }
+
   async function remove(row) {
     if (!confirm(`Mitarbeiter „${row.name}“ wirklich löschen?`)) return;
 
@@ -80,20 +104,52 @@ export default function EmployeeList() {
     load();
   }
 
+  function editEmployee(row) {
+    setEditId(row.id);
+    setName(row.name || "");
+    setCode(row.code || "");
+    setRole(row.role || "mitarbeiter");
+  }
+
+  function clearForm() {
+    setEditId(null);
+    setName("");
+    setCode("");
+    setRole("mitarbeiter");
+  }
+
   async function createEmployee(e) {
     e.preventDefault();
     setErr("");
     setSaving(true);
 
     try {
-      const { error } = await supabase.from("employees").insert([
-        { name, code, role },
-      ]);
+      let error;
+
+      if (editId) {
+        ({ error } = await supabase
+          .from("employees")
+          .update({
+            name,
+            code,
+            role,
+          })
+          .eq("id", editId));
+      } else {
+        ({ error } = await supabase.from("employees").insert([
+          {
+            name,
+            code,
+            role,
+            active: true,
+            disabled: false,
+          },
+        ]));
+      }
+
       if (error) throw error;
 
-      setName("");
-      setCode("");
-      setRole("mitarbeiter");
+      clearForm();
       await load();
     } catch (e2) {
       setErr(String(e2?.message || e2));
@@ -146,10 +202,20 @@ export default function EmployeeList() {
             </select>
           </div>
 
-          <div className="employee-form-actions">
+          <div className="employee-form-actions" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button className="save-btn" disabled={saving}>
-              {saving ? "Speichere…" : "Anlegen"}
+              {saving ? "Speichere…" : editId ? "Änderungen speichern" : "Anlegen"}
             </button>
+
+            {editId && (
+              <button
+                type="button"
+                className="hbz-btn"
+                onClick={clearForm}
+              >
+                Abbrechen
+              </button>
+            )}
           </div>
         </form>
 
@@ -186,20 +252,60 @@ export default function EmployeeList() {
                 )}
 
                 {rows.map((r) => (
-                  <tr key={r.id}>
+                  <tr
+                    key={r.id}
+                    style={{
+                      opacity: r.disabled ? 0.5 : 1,
+                      background: r.disabled ? "#f5f1eb" : "transparent",
+                    }}
+                  >
                     <td>{r.name}</td>
                     <td>{r.code}</td>
                     <td>{r.role}</td>
-                    <td>{r.disabled ? "inaktiv" : "aktiv"}</td>
+                    <td>
+                      <span
+                        style={{
+                          display: "inline-block",
+                          padding: "4px 10px",
+                          borderRadius: "999px",
+                          fontSize: "12px",
+                          fontWeight: 600,
+                          background: r.disabled ? "#e5ddd2" : "#e7f4ea",
+                          color: r.disabled ? "#7b4a2d" : "#2f6b3a",
+                          border: r.disabled ? "1px solid #d2c2b2" : "1px solid #cfe4d3",
+                        }}
+                      >
+                        {r.disabled ? "deaktiviert" : "aktiv"}
+                      </span>
+                    </td>
                     <td className="num">
                       <div className="employee-action-group">
                         <button
+                          type="button"
+                          className="hbz-btn btn-small"
+                          onClick={() => editEmployee(r)}
+                        >
+                          Bearbeiten
+                        </button>
+
+                        <button
+                          type="button"
+                          className="hbz-btn btn-small"
+                          onClick={() => toggleActive(r)}
+                        >
+                          {r.disabled ? "Aktivieren" : "Deaktivieren"}
+                        </button>
+
+                        <button
+                          type="button"
                           className="hbz-btn btn-small"
                           onClick={() => resetPin(r)}
                         >
                           PIN zurücksetzen
                         </button>
+
                         <button
+                          type="button"
                           className="hbz-btn btn-small"
                           onClick={() => remove(r)}
                         >
