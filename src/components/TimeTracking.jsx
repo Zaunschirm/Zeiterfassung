@@ -2,6 +2,10 @@ import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 import DaySlider from "./DaySlider";
 import EntryTable from "./EntryTable";
+import {
+  WEATHER_MANUAL_OPTIONS,
+  fetchWeatherForBooking,
+} from "../utils/weather";
 
 // --------------------------------------------------
 // Helfer/Format
@@ -12,12 +16,18 @@ const toHM = (m) =>
   `${String(Math.floor((m ?? 0) / 60)).padStart(2, "0")}:${String(
     (m ?? 0) % 60
   ).padStart(2, "0")}`;
+const formatTravelLabel = (m) => {
+  const hh = Math.floor((m || 0) / 60);
+  const mm = (m || 0) % 60;
+  if (hh > 0) return `${hh}:${String(mm).padStart(2, "0")} h`;
+  return `${m || 0} min`;
+};
 
 // Vorhandenes Pausenraster lassen wir wie gehabt – hier als Fallback:
 const PAUSE_OPTIONS = [0, 15, 30, 45, 60, 75, 90];
 
 // Fahrzeit-Optionen (0–90 in 15er-Schritten)
-const TRAVEL_OPTIONS = [0, 15, 30, 45, 60, 75, 90];
+const TRAVEL_OPTIONS = [0, 15, 30, 45, 60, 75, 90, 105, 120, 135, 150];
 
 // --------------------------------------------------
 // Komponente
@@ -67,6 +77,15 @@ export default function TimeTracking() {
   );
 
   const [note, setNote] = useState("");
+  const [weatherAuto, setWeatherAuto] = useState("");
+  const [weatherManual, setWeatherManual] = useState("");
+  const [weatherCode, setWeatherCode] = useState(null);
+  const [temperature, setTemperature] = useState(null);
+  const [precipitation, setPrecipitation] = useState(null);
+  const [weatherSource, setWeatherSource] = useState("");
+  const [weatherFetchedAt, setWeatherFetchedAt] = useState(null);
+  const [weatherLoading, setWeatherLoading] = useState(false);
+  const [weatherError, setWeatherError] = useState("");
 
   // Einträge für den Tag (Tabelle unten)
   const [entriesToday, setEntriesToday] = useState([]);
@@ -83,6 +102,12 @@ export default function TimeTracking() {
     () => workMinutes + (travelMinutes || 0),
     [workMinutes, travelMinutes]
   );
+  const selectedProject = useMemo(
+    () => projects.find((p) => String(p.id) === String(projectId)) || null,
+    [projects, projectId]
+  );
+  const projectAddress = selectedProject?.address || "";
+  const finalWeather = weatherManual || weatherAuto || "";
 
   // --------------------------------------------------
   // Daten laden
@@ -92,7 +117,7 @@ export default function TimeTracking() {
       try {
         const { data: proj } = await supabase
           .from("projects")
-          .select("id, name, code, active")
+          .select("id, name, code, active, address")
           .order("name", { ascending: true });
         setProjects((proj || []).filter((p) => p?.active !== false));
 
@@ -136,6 +161,72 @@ export default function TimeTracking() {
   useEffect(() => {
     loadEntriesForDay();
   }, [date]);
+
+
+  const loadWeatherForCurrentBooking = async () => {
+    if (absenceType === "krank" || absenceType === "urlaub") {
+      setWeatherAuto("");
+      setWeatherManual("");
+      setWeatherCode(null);
+      setTemperature(null);
+      setPrecipitation(null);
+      setWeatherSource("");
+      setWeatherFetchedAt(null);
+      setWeatherError("");
+      return;
+    }
+
+    if (!projectAddress) {
+      setWeatherAuto("");
+      setWeatherCode(null);
+      setTemperature(null);
+      setPrecipitation(null);
+      setWeatherSource("");
+      setWeatherFetchedAt(null);
+      setWeatherError("Beim Projekt ist keine Baustellenadresse hinterlegt.");
+      return;
+    }
+
+    try {
+      setWeatherLoading(true);
+      setWeatherError("");
+      const weather = await fetchWeatherForBooking({
+        address: projectAddress,
+        date,
+        startMin: fromMin,
+        endMin: toMin,
+      });
+      setWeatherAuto(weather?.weather_auto || "");
+      setWeatherCode(
+        typeof weather?.weather_code !== "undefined" ? weather.weather_code : null
+      );
+      setTemperature(
+        typeof weather?.temperature === "number" ? weather.temperature : null
+      );
+      setPrecipitation(
+        typeof weather?.precipitation === "number" ? weather.precipitation : null
+      );
+      setWeatherSource(weather?.weather_source || "");
+      setWeatherFetchedAt(weather?.weather_fetched_at || null);
+    } catch (e) {
+      console.warn("[TimeTracking] weather fallback:", e);
+      setWeatherAuto("");
+      setWeatherCode(null);
+      setTemperature(null);
+      setPrecipitation(null);
+      setWeatherSource("");
+      setWeatherFetchedAt(null);
+      setWeatherError("Wetter konnte nicht geladen werden.");
+    } finally {
+      setWeatherLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!projectId || absenceType) return;
+    loadWeatherForCurrentBooking();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, date, fromMin, toMin, absenceType]);
 
   // --------------------------------------------------
   // UI-Interaktionen
@@ -202,6 +293,14 @@ export default function TimeTracking() {
       // Fahrzeit
       travel_minutes: travelMinutes ?? 0,
       travel_cost_center: travelCostCenter,
+      weather_auto: weatherAuto || null,
+      weather_manual: weatherManual || null,
+      weather_final: finalWeather || null,
+      weather_code: weatherCode,
+      temperature,
+      precipitation,
+      weather_source: weatherSource || null,
+      weather_fetched_at: weatherFetchedAt || null,
 
       // NEU: Krank / Urlaub
       absence_type: absenceType || null,
@@ -221,6 +320,7 @@ export default function TimeTracking() {
       setNote("");
       setBreakMinutes(0);
       setTravelMinutes(0);
+      setWeatherManual("");
 
       await loadEntriesForDay();
     } catch (e) {
@@ -304,6 +404,12 @@ export default function TimeTracking() {
             />
           </div>
         </div>
+
+        {projectAddress && !absenceType && (
+          <div className="help" style={{ marginTop: 8 }}>
+            Baustelle: <b>{projectAddress}</b>
+          </div>
+        )}
 
         <hr className="hr-soft" />
 
@@ -400,10 +506,7 @@ export default function TimeTracking() {
             <div className="hbz-chipbar">
               {PAUSE_OPTIONS.map((m) => {
                 const active = breakMinutes === m;
-                let label = `${m} min`;
-                if (m === 60) label = "1:00 h";
-                if (m === 75) label = "1:15 h";
-                if (m === 90) label = "1:30 h";
+                const label = formatTravelLabel(m);
                 return (
                   <button
                     key={m}
@@ -424,11 +527,7 @@ export default function TimeTracking() {
             <div className="hbz-chipbar">
               {TRAVEL_OPTIONS.map((m) => {
                 const active = travelMinutes === m;
-                // Schönerer Text ab 60 min
-                let label = `${m} min`;
-                if (m === 60) label = "1:00 h";
-                if (m === 75) label = "1:15 h";
-                if (m === 90) label = "1:30 h";
+                const label = formatTravelLabel(m);
 
                 return (
                   <button
@@ -455,6 +554,44 @@ export default function TimeTracking() {
                   totalWithTravel % 60
                 ).padStart(2, "0")} h`
               : "0:00 h"}</b>
+          </div>
+        </div>
+
+        <div className="hbz-row" style={{ marginTop: 12 }}>
+          <div className="hbz-col">
+            <label className="hbz-label">Wetter automatisch</label>
+            <div className="hbz-input" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span>{weatherLoading ? "Lade Wetter…" : weatherAuto || "—"}</span>
+              <button
+                type="button"
+                className="hbz-btn btn-small"
+                onClick={loadWeatherForCurrentBooking}
+                disabled={weatherLoading || !projectAddress || !!absenceType}
+              >
+                Aktualisieren
+              </button>
+            </div>
+            <div className="help" style={{ marginTop: 4 }}>
+              Temperatur: {typeof temperature === "number" ? `${temperature.toFixed(1)} °C` : "—"} · Niederschlag: {typeof precipitation === "number" ? `${precipitation.toFixed(1)} mm` : "—"} · Quelle: {weatherSource || "—"}
+            </div>
+            {weatherError && <div className="help" style={{ marginTop: 4 }}>{weatherError}</div>}
+          </div>
+
+          <div className="hbz-col" style={{ maxWidth: 260 }}>
+            <label className="hbz-label">Wetter manuell</label>
+            <select
+              className="hbz-input"
+              value={weatherManual || "Automatisch"}
+              disabled={!!absenceType}
+              onChange={(e) => setWeatherManual(e.target.value === "Automatisch" ? "" : e.target.value)}
+            >
+              {WEATHER_MANUAL_OPTIONS.map((opt) => (
+                <option key={opt} value={opt}>{opt}</option>
+              ))}
+            </select>
+            <div className="help" style={{ marginTop: 4 }}>
+              Finales Wetter: <b>{finalWeather || "—"}</b>
+            </div>
           </div>
         </div>
 

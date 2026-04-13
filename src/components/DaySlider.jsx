@@ -2,6 +2,11 @@ import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { getSession } from "../lib/session";
 import EmployeePicker from "./EmployeePicker.jsx";
+import {
+  WEATHER_MANUAL_OPTIONS,
+  fetchWeatherForBooking,
+  getWeatherFinalLabel,
+} from "../utils/weather";
 
 // Utils
 const toHM = (m) =>
@@ -16,9 +21,22 @@ const hmToMin = (hm) => {
   return (isNaN(h) ? 0 : h) * 60 + (isNaN(m) ? 0 : m);
 };
 const h2 = (m) => Math.round((m / 60) * 100) / 100;
+const formatTravelLabel = (m) => {
+  const hh = Math.floor(m / 60);
+  const mm = m % 60;
+  if (hh > 0) return `${hh}:${String(mm).padStart(2, "0")} h`;
+  return `${m} min`;
+};
+
+const formatTemp = (value) =>
+  typeof value === "number" && !Number.isNaN(value) ? `${value.toFixed(1)} °C` : "—";
+
+const formatPrecip = (value) =>
+  typeof value === "number" && !Number.isNaN(value) ? `${value.toFixed(1)} mm` : "—";
+
 
 const PAUSE_OPTIONS = [0, 15, 30, 45, 60, 75, 90];
-const TRAVEL_OPTIONS = [0, 15, 30, 45, 60, 75, 90];
+const TRAVEL_OPTIONS = [0, 15, 30, 45, 60, 75, 90, 105, 120, 135, 150];
 
 const BUAK_WEEK_TYPES_2026 = {
   1: "K",
@@ -125,6 +143,15 @@ export default function DaySlider() {
   const [breakMin, setBreakMin] = useState(30);
   const [travelMin, setTravelMin] = useState(0);
   const [note, setNote] = useState("");
+  const [weatherAuto, setWeatherAuto] = useState("");
+  const [weatherManual, setWeatherManual] = useState("");
+  const [weatherCode, setWeatherCode] = useState(null);
+  const [temperature, setTemperature] = useState(null);
+  const [precipitation, setPrecipitation] = useState(null);
+  const [weatherSource, setWeatherSource] = useState("");
+  const [weatherFetchedAt, setWeatherFetchedAt] = useState(null);
+  const [weatherLoading, setWeatherLoading] = useState(false);
+  const [weatherError, setWeatherError] = useState("");
 
   const [absenceType, setAbsenceType] = useState(null);
 
@@ -273,6 +300,89 @@ export default function DaySlider() {
 
   const totalHours = useMemo(() => h2(totalMinWithTravel), [totalMinWithTravel]);
   const totalOvertime = useMemo(() => Math.max(totalHours - 9, 0), [totalHours]);
+  const selectedProject = useMemo(
+    () => projects.find((p) => String(p.id) === String(projectId)) || null,
+    [projects, projectId]
+  );
+  const projectAddress = selectedProject?.address || "";
+  const finalWeather = weatherManual || weatherAuto || "";
+
+  async function loadWeatherForCurrentBooking(force = false) {
+    if (absenceType === "krank" || absenceType === "urlaub") {
+      setWeatherAuto("");
+      setWeatherCode(null);
+      setTemperature(null);
+      setPrecipitation(null);
+      setWeatherSource("");
+      setWeatherFetchedAt(null);
+      setWeatherError("");
+      if (!weatherManual) setWeatherManual("");
+      return;
+    }
+
+    if (!projectAddress) {
+      setWeatherAuto("");
+      setWeatherCode(null);
+      setTemperature(null);
+      setPrecipitation(null);
+      setWeatherSource("");
+      setWeatherFetchedAt(null);
+      setWeatherError("Beim Projekt ist keine Baustellenadresse hinterlegt.");
+      return;
+    }
+
+    try {
+      setWeatherLoading(true);
+      setWeatherError("");
+      const weather = await fetchWeatherForBooking({
+        address: projectAddress,
+        date,
+        startMin: fromMin,
+        endMin: toMin,
+      });
+
+      if (!weather?.ok && !force) {
+        setWeatherAuto("");
+        setWeatherCode(null);
+        setTemperature(null);
+        setPrecipitation(null);
+        setWeatherSource("");
+        setWeatherFetchedAt(null);
+        setWeatherError("Wetter konnte nicht automatisch geladen werden.");
+        return;
+      }
+
+      setWeatherAuto(weather?.weather_auto || "");
+      setWeatherCode(
+        typeof weather?.weather_code !== "undefined" ? weather.weather_code : null
+      );
+      setTemperature(
+        typeof weather?.temperature === "number" ? weather.temperature : null
+      );
+      setPrecipitation(
+        typeof weather?.precipitation === "number" ? weather.precipitation : null
+      );
+      setWeatherSource(weather?.weather_source || "");
+      setWeatherFetchedAt(weather?.weather_fetched_at || null);
+    } catch (e) {
+      logSbError("[DaySlider] weather load error:", e);
+      setWeatherAuto("");
+      setWeatherCode(null);
+      setTemperature(null);
+      setPrecipitation(null);
+      setWeatherSource("");
+      setWeatherFetchedAt(null);
+      setWeatherError("Wetter konnte nicht geladen werden.");
+    } finally {
+      setWeatherLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!projectId || absenceType) return;
+    loadWeatherForCurrentBooking();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, date, fromMin, toMin, absenceType]);
 
   async function loadEntries() {
     try {
@@ -350,6 +460,14 @@ export default function DaySlider() {
       break_min: breakMin,
       travel_minutes: travelMin,
       travel_cost_center: "FAHRZEIT",
+      weather_auto: weatherAuto || null,
+      weather_manual: weatherManual || null,
+      weather_final: finalWeather || null,
+      weather_code: weatherCode,
+      temperature,
+      precipitation,
+      weather_source: weatherSource || null,
+      weather_fetched_at: weatherFetchedAt || null,
       note: `${
         absenceType === "krank"
           ? "[Krank] "
@@ -394,6 +512,7 @@ export default function DaySlider() {
       setAbsenceType(null);
       setBreakMin(30);
       setTravelMin(0);
+      setWeatherManual("");
       await loadEntries();
     } catch (err) {
       logSbError("save error:", err);
@@ -412,6 +531,9 @@ export default function DaySlider() {
       to_hm: toHM(row.end_min ?? row.to_min ?? 0),
       break_min: row.break_min ?? 0,
       travel_minutes: row.travel_minutes ?? row.travel_min ?? 0,
+      weather_manual: row.weather_manual || "",
+      weather_auto: row.weather_auto || "",
+      weather_final: getWeatherFinalLabel(row),
       note: row.note || "",
     });
   }
@@ -437,6 +559,9 @@ export default function DaySlider() {
       end_min: to_m,
       break_min: parseInt(editState.break_min || "0", 10) || 0,
       travel_minutes: parseInt(editState.travel_minutes || "0", 10) || 0,
+      weather_manual: editState.weather_manual?.trim() || null,
+      weather_final:
+        (editState.weather_manual || "").trim() || editState.weather_auto || null,
       note: editState.note?.trim() || null,
     };
 
@@ -474,7 +599,8 @@ export default function DaySlider() {
     { label: "Start", value: toHM(fromMin) },
     { label: "Ende", value: toHM(toMin) },
     { label: "Pause", value: `${breakMin} min` },
-    { label: "Fahrzeit", value: `${travelMin} min` },
+    { label: "Fahrzeit", value: formatTravelLabel(travelMin) },
+    { label: "Wetter", value: finalWeather || "—" },
   ];
 
   return (
@@ -544,6 +670,12 @@ export default function DaySlider() {
             </select>
           </div>
         </div>
+
+        {projectAddress && absenceType !== "krank" && absenceType !== "urlaub" && (
+          <div className="help" style={{ marginTop: 8 }}>
+            Baustelle: <b>{projectAddress}</b>
+          </div>
+        )}
 
         {(absenceType === "krank" || absenceType === "urlaub") && (
           <div className="help" style={{ marginTop: 8 }}>
@@ -634,10 +766,7 @@ export default function DaySlider() {
             <div className="hbz-chipbar">
               {PAUSE_OPTIONS.map((m) => {
                 const active = breakMin === m;
-                let label = `${m} min`;
-                if (m === 60) label = "1:00 h";
-                if (m === 75) label = "1:15 h";
-                if (m === 90) label = "1:30 h";
+                const label = formatTravelLabel(m);
                 return (
                   <button
                     key={m}
@@ -712,10 +841,7 @@ export default function DaySlider() {
             <div className="hbz-chipbar">
               {TRAVEL_OPTIONS.map((m) => {
                 const active = travelMin === m;
-                let label = `${m} min`;
-                if (m === 60) label = "1:00 h";
-                if (m === 75) label = "1:15 h";
-                if (m === 90) label = "1:30 h";
+                const label = formatTravelLabel(m);
                 return (
                   <button
                     key={m}
@@ -735,6 +861,57 @@ export default function DaySlider() {
               Kostenstelle: <b>FAHRZEIT</b> – wird zur Arbeitszeit dazugerechnet
               und in den Auswertungen separat ausgewiesen.
             </div>
+          </div>
+
+          <div className="year-section">
+            <div className="month-card-title">Wetter</div>
+            <div className="month-card-field">
+              <label className="hbz-label">Automatisch von Baustelle + Buchung</label>
+              <div className="hbz-input" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span>{weatherLoading ? "Lade Wetter…" : weatherAuto || "—"}</span>
+                <button
+                  type="button"
+                  className="hbz-btn btn-small"
+                  onClick={() => loadWeatherForCurrentBooking(true)}
+                  disabled={weatherLoading || !projectAddress || !!absenceType}
+                >
+                  Aktualisieren
+                </button>
+              </div>
+            </div>
+
+            <div className="month-card-edit-grid" style={{ marginTop: 10 }}>
+              <div className="month-card-field">
+                <label className="hbz-label">Manuell ändern</label>
+                <select
+                  className="hbz-input"
+                  value={weatherManual || "Automatisch"}
+                  disabled={!!absenceType}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setWeatherManual(value === "Automatisch" ? "" : value);
+                  }}
+                >
+                  {WEATHER_MANUAL_OPTIONS.map((opt) => (
+                    <option key={opt} value={opt}>
+                      {opt}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="month-card-field">
+                <label className="hbz-label">Finales Wetter</label>
+                <div className="hbz-input">{finalWeather || "—"}</div>
+              </div>
+            </div>
+
+            <div className="month-card-meta" style={{ marginTop: 10 }}>
+              <span>Temperatur: {formatTemp(temperature)}</span>
+              <span>Niederschlag: {formatPrecip(precipitation)}</span>
+              <span>Quelle: {weatherSource || "—"}</span>
+            </div>
+
+            {weatherError && <div className="help" style={{ marginTop: 8 }}>{weatherError}</div>}
           </div>
         </div>
 
@@ -801,6 +978,7 @@ export default function DaySlider() {
                       <th className="num">Fahrzeit</th>
                       <th className="num">Stunden</th>
                       <th className="num">Überstunden</th>
+                      <th>Wetter</th>
                       <th>Notiz</th>
                       <th className="num">Aktion</th>
                     </tr>
@@ -829,6 +1007,7 @@ export default function DaySlider() {
                             <td className="num">{travelM} min</td>
                             <td className="num">{hrs.toFixed(2)}</td>
                             <td className="num">{ot.toFixed(2)}</td>
+                            <td>{getWeatherFinalLabel(r) || "—"}</td>
                             <td>{r.note || ""}</td>
                             <td className="num">
                               {isManager ? (
@@ -964,6 +1143,25 @@ export default function DaySlider() {
                             })()}
                           </td>
                           <td>
+                            <select
+                              className="hbz-input"
+                              value={editState.weather_manual || "Automatisch"}
+                              onChange={(e) =>
+                                setEditState((s) => ({
+                                  ...s,
+                                  weather_manual:
+                                    e.target.value === "Automatisch" ? "" : e.target.value,
+                                }))
+                              }
+                            >
+                              {WEATHER_MANUAL_OPTIONS.map((opt) => (
+                                <option key={opt} value={opt}>
+                                  {opt}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td>
                             <input
                               type="text"
                               className="hbz-input"
@@ -1045,6 +1243,10 @@ export default function DaySlider() {
                           <span>Ende: {toHM(end)}</span>
                           <span>Pause: {breakM} min</span>
                           <span>Fahrzeit: {travelM} min</span>
+                        </div>
+
+                        <div className="month-card-row">
+                          <strong>Wetter:</strong> {getWeatherFinalLabel(r) || "—"}
                         </div>
 
                         {r.note && (
@@ -1194,6 +1396,27 @@ export default function DaySlider() {
                             }
                           />
                         </div>
+                      </div>
+
+                      <div className="month-card-field">
+                        <label className="hbz-label">Wetter</label>
+                        <select
+                          className="hbz-input"
+                          value={editState.weather_manual || "Automatisch"}
+                          onChange={(e) =>
+                            setEditState((s) => ({
+                              ...s,
+                              weather_manual:
+                                e.target.value === "Automatisch" ? "" : e.target.value,
+                            }))
+                          }
+                        >
+                          {WEATHER_MANUAL_OPTIONS.map((opt) => (
+                            <option key={opt} value={opt}>
+                              {opt}
+                            </option>
+                          ))}
+                        </select>
                       </div>
 
                       <div className="month-card-field">

@@ -11,6 +11,7 @@ const supabase =
 const emptyForm = {
   name: "",
   cost_center: "",
+  address: "",
   active: true,
 };
 
@@ -53,7 +54,8 @@ export default function ProjectAdmin() {
       list = list.filter(
         (p) =>
           p.name?.toLowerCase().includes(q) ||
-          p.cost_center?.toLowerCase().includes(q)
+          p.cost_center?.toLowerCase().includes(q) ||
+          p.address?.toLowerCase().includes(q)
       );
     }
 
@@ -83,6 +85,7 @@ export default function ProjectAdmin() {
     const payload = {
       name: form.name?.trim(),
       cost_center: form.cost_center?.trim() || null,
+      address: form.address?.trim() || null,
       active: !!form.active,
     };
 
@@ -132,6 +135,7 @@ export default function ProjectAdmin() {
     setForm({
       name: p.name || "",
       cost_center: p.cost_center || "",
+      address: p.address || "",
       active: !!p.active,
     });
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -186,6 +190,20 @@ export default function ProjectAdmin() {
               onChange={onChange}
               placeholder="optional"
             />
+          </div>
+
+          <div style={{ gridColumn: "1 / -1" }}>
+            <label className="hbz-label">Baustellenadresse</label>
+            <input
+              className="hbz-input"
+              name="address"
+              value={form.address}
+              onChange={onChange}
+              placeholder="z. B. Hauptstraße 12, 8010 Graz"
+            />
+            <div className="help" style={{ marginTop: 6 }}>
+              Diese Adresse wird für das automatische Wetter in der Tageserfassung verwendet.
+            </div>
           </div>
 
           <div className="project-active-row" style={{ gridColumn: "1 / -1" }}>
@@ -259,6 +277,12 @@ export default function ProjectAdmin() {
                   >
                     Kostenstelle{sortArrow("cost_center")}
                   </th>
+                  <th
+                    onClick={() => toggleSort("address")}
+                    style={{ cursor: "pointer" }}
+                  >
+                    Baustellenadresse{sortArrow("address")}
+                  </th>
                   <th>Aktiv</th>
                   <th className="num">Aktion</th>
                 </tr>
@@ -268,6 +292,7 @@ export default function ProjectAdmin() {
                   <tr key={p.id}>
                     <td>{p.name}</td>
                     <td>{p.cost_center || "—"}</td>
+                    <td>{p.address || "—"}</td>
                     <td>{p.active ? "Ja" : "Nein"}</td>
                     <td className="num">
                       <div className="employee-action-group">
@@ -290,7 +315,7 @@ export default function ProjectAdmin() {
 
                 {filtered.length === 0 && (
                   <tr>
-                    <td colSpan={4} className="employee-empty">
+                    <td colSpan={5} className="employee-empty">
                       Keine Projekte gefunden
                     </td>
                   </tr>
