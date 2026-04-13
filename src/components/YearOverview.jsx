@@ -78,6 +78,94 @@ function uniq(arr) {
   return Array.from(new Set(arr));
 }
 
+
+function isVacationRow(r) {
+  const note = (r?.note || "").toString();
+  return note.includes("[Urlaub]");
+}
+
+function isSickRow(r) {
+  const note = (r?.note || "").toString();
+  return note.includes("[Krank]");
+}
+
+function isAbsenceRow(r) {
+  return isVacationRow(r) || isSickRow(r);
+}
+
+function formatDateAT(value) {
+  if (!value) return "";
+  const parts = String(value).split("-");
+  if (parts.length !== 3) return String(value);
+  return `${parts[2]}.${parts[1]}.${parts[0]}`;
+}
+
+function buildPayrollMonthlySummary(sourceRows, monthList) {
+  const employeeMonthMap = new Map();
+
+  for (const ym of monthList || []) {
+    for (const r of sourceRows || []) {
+      const employee = r.employee_name || r.employee_id || "—";
+      const date = r.work_date || "";
+      if (!date || !String(date).startsWith(`${ym}-`)) continue;
+
+      const key = `${employee}||${ym}`;
+      const current =
+        employeeMonthMap.get(key) || {
+          key,
+          employee,
+          month: ym,
+          totalMinutes: 0,
+          workDays: new Set(),
+          vacationDates: [],
+          sickDates: [],
+        };
+
+      const { total } = splitMinutes(r);
+      current.totalMinutes += total || 0;
+
+      if (isVacationRow(r)) {
+        current.vacationDates.push(date);
+      } else if (isSickRow(r)) {
+        current.sickDates.push(date);
+      } else if ((total || 0) > 0) {
+        current.workDays.add(date);
+      }
+
+      employeeMonthMap.set(key, current);
+    }
+  }
+
+  return Array.from(employeeMonthMap.values())
+    .map((item) => {
+      const totalHours = h2(item.totalMinutes);
+      const sollHours = calcBuakSollHoursForMonth(item.month) || 0;
+      const overtime = totalHours - sollHours;
+
+      return {
+        key: item.key,
+        employee: item.employee,
+        month: item.month,
+        totalHours,
+        workDays: item.workDays.size,
+        sollHours,
+        overtime,
+        vacationDates: item.vacationDates
+          .sort((a, b) => a.localeCompare(b))
+          .map(formatDateAT),
+        sickDates: item.sickDates
+          .sort((a, b) => a.localeCompare(b))
+          .map(formatDateAT),
+      };
+    })
+    .sort((a, b) => {
+      return (
+        a.employee.localeCompare(b.employee) || a.month.localeCompare(b.month)
+      );
+    });
+}
+
+
 function getRangeFromFilters(year, monthFilter, rangeFromMonth, rangeToMonth) {
   const fromRange = getMonthRange(rangeFromMonth);
   const toRange = getMonthRange(rangeToMonth);
@@ -163,6 +251,7 @@ export default function YearOverview() {
     includeTravel: true,
     includeDays: true,
     includeBuak: true,
+    includePayroll: true,
   });
 
   if (!isAdmin) {
@@ -730,6 +819,11 @@ export default function YearOverview() {
       return { workH: h2(work), travelH: h2(travel), totalH: h2(total) };
     })();
 
+    const payrollSummary = buildPayrollMonthlySummary(
+      selectedRows,
+      activeRange.monthList
+    );
+
     const selectedEmployeeCount = uniq(
       selectedRows.map((r) => r.employee_name || String(r.employee_id || "—"))
     ).length;
@@ -770,6 +864,7 @@ export default function YearOverview() {
           pdfOptions.includeTravel ? "Fahrzeit" : null,
           pdfOptions.includeDays ? "Anzahl Tage" : null,
           pdfOptions.includeBuak ? "BUAK Sollstunden" : null,
+          pdfOptions.includePayroll ? "Lohnverrechnung" : null,
         ]
           .filter(Boolean)
           .join(", ") || "—"
@@ -1012,6 +1107,48 @@ export default function YearOverview() {
           y
         );
         y += 16;
+        drewSomething = true;
+      }
+    }
+
+
+    if (pdfOptions.includePayroll) {
+      if (payrollSummary.length > 0) {
+        doc.addPage();
+        y = 40;
+
+        doc.setFontSize(14);
+        doc.text("Lohnverrechnung", 40, y);
+        y += 8;
+
+        autoTable(doc, {
+          head: [[
+            "Monat",
+            "Mitarbeiter",
+            "Gesamtstunden inkl. Fahrzeit",
+            "Arbeitstage",
+            "Sollstunden",
+            "Überstunden",
+            "Urlaub (Datum)",
+            "Krankenstand (Datum)",
+          ]],
+          body: payrollSummary.map((row) => [
+            row.month,
+            row.employee,
+            row.totalHours.toFixed(2),
+            row.workDays,
+            row.sollHours.toFixed(2),
+            row.overtime.toFixed(2),
+            row.vacationDates.length ? row.vacationDates.join(", ") : "—",
+            row.sickDates.length ? row.sickDates.join(", ") : "—",
+          ]),
+          startY: y + 8,
+          styles: { fontSize: 8.5, cellPadding: 3 },
+          headStyles: { fillColor: [123, 74, 45] },
+          margin: { left: 40, right: 40 },
+        });
+
+        y = (doc.lastAutoTable?.finalY || y) + 12;
         drewSomething = true;
       }
     }
@@ -1544,6 +1681,7 @@ export default function YearOverview() {
                         includeTravel: true,
                         includeDays: true,
                         includeBuak: true,
+                        includePayroll: true,
                       }))
                     }
                   >
@@ -1564,6 +1702,7 @@ export default function YearOverview() {
                         includeTravel: true,
                         includeDays: true,
                         includeBuak: true,
+                        includePayroll: true,
                       }))
                     }
                   >
@@ -1584,6 +1723,7 @@ export default function YearOverview() {
                         includeTravel: true,
                         includeDays: true,
                         includeBuak: true,
+                        includePayroll: true,
                       }))
                     }
                   >
@@ -1776,6 +1916,27 @@ export default function YearOverview() {
                         </span>
                         <span className="export-option-example">
                           Beispiel: Soll 1.704,00 h · Ist 1.740,00 h · Abweichung +36,00 h
+                        </span>
+                      </div>
+                    </label>
+
+                    <label className="export-option">
+                      <input
+                        type="checkbox"
+                        checked={pdfOptions.includePayroll}
+                        onChange={(e) =>
+                          setPdfOptions((p) => ({
+                            ...p,
+                            includePayroll: e.target.checked,
+                          }))
+                        }
+                      />
+                      <div className="export-option-body">
+                        <span className="export-option-title">
+                          Lohnverrechnung
+                        </span>
+                        <span className="export-option-example">
+                          Beispiel: Monat · Gesamtstunden inkl. Fahrzeit · Arbeitstage · Sollstunden · Überstunden · Urlaub/Krank mit Datum
                         </span>
                       </div>
                     </label>
