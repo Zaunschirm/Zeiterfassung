@@ -90,6 +90,7 @@ export default function MonthlyOverview() {
     selectedEmployeeCodes: [],
     includeDetails: true,
     includeDailySeparate: false,
+    includeSiteDailyReport: false,
     includeWeekly: true,
     includeTotals: true,
     includeTravel: true,
@@ -534,6 +535,64 @@ export default function MonthlyOverview() {
     setShowPdfDialog(true);
   }
 
+
+  function buildSiteDailyBlocks(sourceRows) {
+    const groupedBlocks = {};
+
+    for (const r of sourceRows) {
+      const date = r.work_date || "";
+      const project = r.project_name || r.project_code || "—";
+      const projectId = r.project_id || project;
+      const employee = r.employee_name || r.employee_id || "—";
+      const key = `${date}||${projectId}`;
+      const workMinutes =
+        (r.work_minutes != null
+          ? r.work_minutes
+          : Math.max(
+              (r.end_min ?? r.to_min ?? 0) - (r.start_min ?? r.from_min ?? 0) - (r.break_min ?? 0),
+              0
+            )) || 0;
+      const travelMinutes = r.travel_minutes ?? r.travel_min ?? r.travel ?? 0;
+      const totalMinutes =
+        r.total_minutes != null ? r.total_minutes : workMinutes + travelMinutes;
+
+      if (!groupedBlocks[key]) {
+        groupedBlocks[key] = {
+          date,
+          project,
+          projectId,
+          rowsByEmployee: {},
+          totalMinutes: 0,
+        };
+      }
+
+      if (!groupedBlocks[key].rowsByEmployee[employee]) {
+        groupedBlocks[key].rowsByEmployee[employee] = {
+          employee,
+          workMinutes: 0,
+          travelMinutes: 0,
+          totalMinutes: 0,
+        };
+      }
+
+      groupedBlocks[key].rowsByEmployee[employee].workMinutes += workMinutes;
+      groupedBlocks[key].rowsByEmployee[employee].travelMinutes += travelMinutes;
+      groupedBlocks[key].rowsByEmployee[employee].totalMinutes += totalMinutes;
+      groupedBlocks[key].totalMinutes += totalMinutes;
+    }
+
+    return Object.values(groupedBlocks)
+      .map((block) => ({
+        ...block,
+        employeeRows: Object.values(block.rowsByEmployee).sort((a, b) =>
+          a.employee.localeCompare(b.employee)
+        ),
+      }))
+      .sort((a, b) =>
+        a.date.localeCompare(b.date) || String(a.project).localeCompare(String(b.project))
+      );
+  }
+
   function exportPDF() {
     try {
       const selectedPdfCodes =
@@ -667,6 +726,7 @@ export default function MonthlyOverview() {
           [
             pdfOptions.includeDetails ? "Tagesdetails" : null,
             pdfOptions.includeDailySeparate ? "Einzelbuchungen separat" : null,
+            pdfOptions.includeSiteDailyReport ? "Regiebericht / Tagesliste AG" : null,
             pdfOptions.includeWeekly ? "Wochenübersicht" : null,
             pdfOptions.includeTotals ? "Summen" : null,
             pdfOptions.includeTravel ? "Fahrzeit" : null,
@@ -927,7 +987,113 @@ export default function MonthlyOverview() {
         });
       }
 
-      doc.save(`Monatsübersicht_${month}.pdf`);
+
+      if (pdfOptions.includeSiteDailyReport && exportRows.length > 0) {
+        const siteBlocks = buildSiteDailyBlocks(exportRows);
+
+        if (siteBlocks.length > 0) {
+          if (currentY > doc.internal.pageSize.getHeight() - 140) {
+            doc.addPage();
+            currentY = 40;
+          }
+
+          doc.setFontSize(14);
+          doc.text("Regiebericht / Tagesliste für AG", 40, currentY);
+          currentY += 8;
+
+          siteBlocks.forEach((block, idx) => {
+            if (currentY > doc.internal.pageSize.getHeight() - 140) {
+              doc.addPage();
+              currentY = 40;
+            }
+
+            doc.setFontSize(11);
+            doc.text(
+              `${block.date} – ${block.project || "Ohne Projekt"}`,
+              40,
+              currentY + 12
+            );
+
+            autoTable(doc, {
+              head: [[
+                "Mitarbeiter",
+                "Arbeitszeit (h)",
+                ...(pdfOptions.includeTravel ? ["Fahrzeit (h)"] : []),
+                "Gesamtstunden (h)",
+              ]],
+              body: block.employeeRows.map((row) => [
+                row.employee,
+                h2(row.workMinutes).toFixed(2),
+                ...(pdfOptions.includeTravel ? [h2(row.travelMinutes).toFixed(2)] : []),
+                h2(row.totalMinutes).toFixed(2),
+              ]),
+              startY: currentY + 20,
+              styles: { fontSize: 9, cellPadding: 3 },
+              headStyles: { fillColor: [123, 74, 45] },
+              margin: { left: 40, right: 40 },
+            });
+
+            currentY = (doc.lastAutoTable?.finalY || currentY) + 8;
+            doc.setFontSize(10);
+            doc.text(
+              `Tagessumme ${block.date}: ${h2(block.totalMinutes).toFixed(2)} h`,
+              40,
+              currentY
+            );
+            currentY += 18;
+
+            if (
+              currentY > doc.internal.pageSize.getHeight() - 100 &&
+              idx < siteBlocks.length - 1
+            ) {
+              doc.addPage();
+              currentY = 40;
+            }
+          });
+
+          const siteTotalsByEmployee = {};
+          let grandTotalMinutes = 0;
+
+          for (const block of siteBlocks) {
+            grandTotalMinutes += block.totalMinutes;
+            for (const row of block.employeeRows) {
+              if (!siteTotalsByEmployee[row.employee]) {
+                siteTotalsByEmployee[row.employee] = 0;
+              }
+              siteTotalsByEmployee[row.employee] += row.totalMinutes;
+            }
+          }
+
+          if (currentY > doc.internal.pageSize.getHeight() - 140) {
+            doc.addPage();
+            currentY = 40;
+          }
+
+          doc.setFontSize(13);
+          doc.text("Gesamtzusammenstellung", 40, currentY);
+          autoTable(doc, {
+            head: [["Mitarbeiter", "Gesamtstunden (h)"]],
+            body: Object.entries(siteTotalsByEmployee)
+              .sort((a, b) => a[0].localeCompare(b[0]))
+              .map(([employee, minutes]) => [employee, h2(minutes).toFixed(2)]),
+            startY: currentY + 8,
+            styles: { fontSize: 9, cellPadding: 3 },
+            headStyles: { fillColor: [200, 200, 200] },
+            margin: { left: 40, right: 40 },
+          });
+          currentY = (doc.lastAutoTable?.finalY || currentY) + 10;
+          doc.setFontSize(11);
+          doc.text(
+            `Gesamtsumme Abrechnung: ${h2(grandTotalMinutes).toFixed(2)} h`,
+            40,
+            currentY
+          );
+          currentY += 16;
+        }
+      }
+
+
+            doc.save(`Monatsübersicht_${month}.pdf`);
     } catch (err) {
       console.error("PDF Export Fehler:", err);
       alert(
@@ -1673,6 +1839,7 @@ export default function MonthlyOverview() {
                         ...prev,
                         includeDetails: true,
                         includeDailySeparate: true,
+                        includeSiteDailyReport: true,
                         includeWeekly: true,
                         includeTotals: true,
                         includeTravel: true,
@@ -1694,6 +1861,7 @@ export default function MonthlyOverview() {
                         ...prev,
                         includeDetails: true,
                         includeDailySeparate: false,
+                        includeSiteDailyReport: true,
                         includeWeekly: true,
                         includeTotals: true,
                         includeTravel: true,
@@ -1715,6 +1883,7 @@ export default function MonthlyOverview() {
                         ...prev,
                         includeDetails: false,
                         includeDailySeparate: false,
+                        includeSiteDailyReport: false,
                         includeWeekly: false,
                         includeTotals: true,
                         includeTravel: true,
@@ -1769,6 +1938,27 @@ export default function MonthlyOverview() {
                         </span>
                         <span className="export-option-example">
                           Beispiel: 03.04.2026 Vormittag Montage, 03.04.2026 Nachmittag Nacharbeit
+                        </span>
+                      </div>
+                    </label>
+
+                    <label className="export-option">
+                      <input
+                        type="checkbox"
+                        checked={pdfOptions.includeSiteDailyReport}
+                        onChange={(e) =>
+                          setPdfOptions((prev) => ({
+                            ...prev,
+                            includeSiteDailyReport: e.target.checked,
+                          }))
+                        }
+                      />
+                      <div className="export-option-body">
+                        <span className="export-option-title">
+                          Regiebericht / Tagesliste AG
+                        </span>
+                        <span className="export-option-example">
+                          Beispiel: 03.04.2026 · Stefan Zaunschirm · Arbeit 8,50 h · Fahrzeit 0,50 h · Gesamt 9,00 h
                         </span>
                       </div>
                     </label>

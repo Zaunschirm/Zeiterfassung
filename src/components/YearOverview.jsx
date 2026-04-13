@@ -155,6 +155,7 @@ export default function YearOverview() {
   const [pdfOptions, setPdfOptions] = useState({
     selectedEmployeeCodes: [],
     includeProjects: true,
+    includeSiteDailyReport: false,
     includeEmployees: true,
     includeEmployeeProjects: true,
     includeWorkHours: true,
@@ -535,6 +536,56 @@ export default function YearOverview() {
     setShowPdfDialog(true);
   }
 
+
+  function buildSiteDailyBlocks(sourceRows) {
+    const groupedBlocks = {};
+
+    for (const r of sourceRows) {
+      const date = r.work_date || "";
+      const project = r.project_name || r.project_code || "—";
+      const projectId = r.project_id || project;
+      const employee = r.employee_name || r.employee_id || "—";
+      const key = `${date}||${projectId}`;
+
+      const { work, travel, total } = splitMinutes(r);
+
+      if (!groupedBlocks[key]) {
+        groupedBlocks[key] = {
+          date,
+          project,
+          projectId,
+          rowsByEmployee: {},
+          totalMinutes: 0,
+        };
+      }
+
+      if (!groupedBlocks[key].rowsByEmployee[employee]) {
+        groupedBlocks[key].rowsByEmployee[employee] = {
+          employee,
+          workMinutes: 0,
+          travelMinutes: 0,
+          totalMinutes: 0,
+        };
+      }
+
+      groupedBlocks[key].rowsByEmployee[employee].workMinutes += work || 0;
+      groupedBlocks[key].rowsByEmployee[employee].travelMinutes += travel || 0;
+      groupedBlocks[key].rowsByEmployee[employee].totalMinutes += total || 0;
+      groupedBlocks[key].totalMinutes += total || 0;
+    }
+
+    return Object.values(groupedBlocks)
+      .map((block) => ({
+        ...block,
+        employeeRows: Object.values(block.rowsByEmployee).sort((a, b) =>
+          a.employee.localeCompare(b.employee)
+        ),
+      }))
+      .sort((a, b) =>
+        a.date.localeCompare(b.date) || String(a.project).localeCompare(String(b.project))
+      );
+  }
+
   function exportPDF() {
     const selectedRows = rows.filter((r) => {
       const emp = employees.find((e) => e.id === r.employee_id);
@@ -711,6 +762,7 @@ export default function YearOverview() {
       `Inhalt: ${
         [
           pdfOptions.includeProjects ? "Projekte" : null,
+          pdfOptions.includeSiteDailyReport ? "Regiebericht / Tagesliste AG" : null,
           pdfOptions.includeEmployees ? "Mitarbeiter" : null,
           pdfOptions.includeEmployeeProjects ? "Mitarbeiter x Projekt" : null,
           pdfOptions.includeWorkHours ? "Arbeitsstunden" : null,
@@ -859,6 +911,109 @@ export default function YearOverview() {
       });
       y = (doc.lastAutoTable?.finalY || y) + 20;
       drewSomething = true;
+    }
+
+
+    if (pdfOptions.includeSiteDailyReport) {
+      const siteBlocks = buildSiteDailyBlocks(selectedRows);
+
+      if (siteBlocks.length > 0) {
+        if (y > doc.internal.pageSize.getHeight() - 140) {
+          doc.addPage();
+          y = 40;
+        }
+
+        doc.setFontSize(14);
+        doc.text("Regiebericht / Tagesliste für AG", 40, y);
+        y += 8;
+
+        siteBlocks.forEach((block, idx) => {
+          if (y > doc.internal.pageSize.getHeight() - 140) {
+            doc.addPage();
+            y = 40;
+          }
+
+          doc.setFontSize(11);
+          doc.text(
+            `${block.date} – ${block.project || "Ohne Projekt"}`,
+            40,
+            y + 12
+          );
+
+          autoTable(doc, {
+            head: [[
+              "Mitarbeiter",
+              "Arbeitszeit (h)",
+              ...(pdfOptions.includeTravel ? ["Fahrzeit (h)"] : []),
+              "Gesamtstunden (h)",
+            ]],
+            body: block.employeeRows.map((row) => [
+              row.employee,
+              h2(row.workMinutes).toFixed(2),
+              ...(pdfOptions.includeTravel ? [h2(row.travelMinutes).toFixed(2)] : []),
+              h2(row.totalMinutes).toFixed(2),
+            ]),
+            startY: y + 20,
+            styles: { fontSize: 9, cellPadding: 3 },
+            headStyles: { fillColor: [123, 74, 45] },
+            margin: { left: 40, right: 40 },
+          });
+
+          y = (doc.lastAutoTable?.finalY || y) + 8;
+          doc.setFontSize(10);
+          doc.text(
+            `Tagessumme ${block.date}: ${h2(block.totalMinutes).toFixed(2)} h`,
+            40,
+            y
+          );
+          y += 18;
+
+          if (y > doc.internal.pageSize.getHeight() - 100 && idx < siteBlocks.length - 1) {
+            doc.addPage();
+            y = 40;
+          }
+        });
+
+        const siteTotalsByEmployee = {};
+        let grandTotalMinutes = 0;
+
+        for (const block of siteBlocks) {
+          grandTotalMinutes += block.totalMinutes;
+          for (const row of block.employeeRows) {
+            if (!siteTotalsByEmployee[row.employee]) {
+              siteTotalsByEmployee[row.employee] = 0;
+            }
+            siteTotalsByEmployee[row.employee] += row.totalMinutes;
+          }
+        }
+
+        if (y > doc.internal.pageSize.getHeight() - 140) {
+          doc.addPage();
+          y = 40;
+        }
+
+        doc.setFontSize(13);
+        doc.text("Gesamtzusammenstellung", 40, y);
+        autoTable(doc, {
+          head: [["Mitarbeiter", "Gesamtstunden (h)"]],
+          body: Object.entries(siteTotalsByEmployee)
+            .sort((a, b) => a[0].localeCompare(b[0]))
+            .map(([employee, minutes]) => [employee, h2(minutes).toFixed(2)]),
+          startY: y + 8,
+          styles: { fontSize: 9, cellPadding: 3 },
+          headStyles: { fillColor: [200, 200, 200] },
+          margin: { left: 40, right: 40 },
+        });
+        y = (doc.lastAutoTable?.finalY || y) + 10;
+        doc.setFontSize(11);
+        doc.text(
+          `Gesamtsumme Abrechnung: ${h2(grandTotalMinutes).toFixed(2)} h`,
+          40,
+          y
+        );
+        y += 16;
+        drewSomething = true;
+      }
     }
 
     if (!drewSomething) {
@@ -1381,6 +1536,7 @@ export default function YearOverview() {
                       setPdfOptions((p) => ({
                         ...p,
                         includeProjects: true,
+                        includeSiteDailyReport: true,
                         includeEmployees: true,
                         includeEmployeeProjects: true,
                         includeWorkHours: true,
@@ -1400,6 +1556,7 @@ export default function YearOverview() {
                       setPdfOptions((p) => ({
                         ...p,
                         includeProjects: false,
+                        includeSiteDailyReport: true,
                         includeEmployees: true,
                         includeEmployeeProjects: false,
                         includeWorkHours: true,
@@ -1419,6 +1576,7 @@ export default function YearOverview() {
                       setPdfOptions((p) => ({
                         ...p,
                         includeProjects: true,
+                        includeSiteDailyReport: false,
                         includeEmployees: true,
                         includeEmployeeProjects: true,
                         includeWorkHours: true,
@@ -1452,6 +1610,27 @@ export default function YearOverview() {
                         <span className="export-option-title">Projekte</span>
                         <span className="export-option-example">
                           Beispiel: Projekt A · 245,00 h · 18 Tage
+                        </span>
+                      </div>
+                    </label>
+
+                    <label className="export-option">
+                      <input
+                        type="checkbox"
+                        checked={pdfOptions.includeSiteDailyReport}
+                        onChange={(e) =>
+                          setPdfOptions((p) => ({
+                            ...p,
+                            includeSiteDailyReport: e.target.checked,
+                          }))
+                        }
+                      />
+                      <div className="export-option-body">
+                        <span className="export-option-title">
+                          Regiebericht / Tagesliste AG
+                        </span>
+                        <span className="export-option-example">
+                          Beispiel: 03.04.2026 · Stefan Zaunschirm · Arbeit 8,50 h · Fahrzeit 0,50 h · Gesamt 9,00 h
                         </span>
                       </div>
                     </label>
