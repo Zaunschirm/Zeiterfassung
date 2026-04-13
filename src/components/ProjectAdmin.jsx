@@ -292,7 +292,43 @@ export default function ProjectAdmin() {
                   <tr key={p.id}>
                     <td>{p.name}</td>
                     <td>{p.cost_center || "—"}</td>
-                    <td>{p.address || "—"}</td>
+                    <td>
+                      {p.address ? (
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                          <span>{p.address}</span>
+                          <button
+                            type="button"
+                            className="hbz-btn btn-small"
+                            onClick={() =>
+                              window.open(
+                                `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+                                  p.address
+                                )}`,
+                                "_blank"
+                              )
+                            }
+                          >
+                            Route öffnen
+                          </button>
+                          <button
+                            type="button"
+                            className="hbz-btn btn-small"
+                            onClick={async () => {
+                              try {
+                                await navigator.clipboard.writeText(p.address);
+                                setMessage("✅ Adresse kopiert.");
+                              } catch {
+                                setMessage("❌ Adresse konnte nicht kopiert werden.");
+                              }
+                            }}
+                          >
+                            Adresse kopieren
+                          </button>
+                        </div>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
                     <td>{p.active ? "Ja" : "Nein"}</td>
                     <td className="num">
                       <div className="employee-action-group">

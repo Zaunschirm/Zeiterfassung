@@ -672,8 +672,49 @@ export default function DaySlider() {
         </div>
 
         {projectAddress && absenceType !== "krank" && absenceType !== "urlaub" && (
-          <div className="help" style={{ marginTop: 8 }}>
-            Baustelle: <b>{projectAddress}</b>
+          <div
+            className="help"
+            style={{
+              marginTop: 8,
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              flexWrap: "wrap",
+            }}
+          >
+            <span>
+              Baustelle: <b>{projectAddress}</b>
+            </span>
+
+            <button
+              type="button"
+              className="hbz-btn btn-small"
+              onClick={() =>
+                window.open(
+                  `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+                    projectAddress
+                  )}`,
+                  "_blank"
+                )
+              }
+            >
+              Route öffnen
+            </button>
+
+            <button
+              type="button"
+              className="hbz-btn btn-small"
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(projectAddress);
+                  alert("Adresse kopiert.");
+                } catch {
+                  alert("Adresse konnte nicht kopiert werden.");
+                }
+              }}
+            >
+              Adresse kopieren
+            </button>
           </div>
         )}
 
