@@ -161,7 +161,7 @@ export default function DaySlider() {
 
   const [employees, setEmployees] = useState([]);
   const [selectedCodes, setSelectedCodes] = useState(
-    isStaff ? [session?.code].filter(Boolean) : []
+    session?.code ? [session.code] : []
   );
   const [employeeRow, setEmployeeRow] = useState(null);
 
@@ -243,9 +243,19 @@ export default function DaySlider() {
             .order("name", { ascending: true });
 
           if (error) throw error;
-          setEmployees(data || []);
-          if (!selectedCodes.length && data && data.length) {
-            setSelectedCodes(data.map((e) => e.code));
+          const list = data || [];
+          setEmployees(list);
+
+          if (session?.code) {
+            const me = list.find((e) => e.code === session.code);
+            if (me) {
+              setSelectedCodes([me.code]);
+              setEmployeeRow(me);
+            } else if (!selectedCodes.length) {
+              setSelectedCodes([]);
+            }
+          } else if (!selectedCodes.length) {
+            setSelectedCodes([]);
           }
         } else {
           const { data, error } = await supabase
