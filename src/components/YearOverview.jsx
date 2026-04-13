@@ -1729,6 +1729,27 @@ export default function YearOverview() {
                   >
                     Intern detailliert
                   </button>
+
+                  <button
+                    className="hbz-btn btn-small hbz-btn-primary"
+                    onClick={() =>
+                      setPdfOptions((p) => ({
+                        ...p,
+                        includeProjects: false,
+                        includeSiteDailyReport: false,
+                        includeEmployees: false,
+                        includeEmployeeProjects: false,
+                        includeWorkHours: false,
+                        includeTotalHours: true,
+                        includeTravel: false,
+                        includeDays: true,
+                        includeBuak: true,
+                        includePayroll: true,
+                      }))
+                    }
+                  >
+                    Lohnverrechnung
+                  </button>
                 </div>
 
                 <div className="export-card-grid">
