@@ -1566,7 +1566,7 @@ export default function MonthlyOverview() {
               <div className="month-modal-box">
                 <div className="month-modal-box-title">Mitarbeiter</div>
 
-                <div className="month-chip-actions">
+                <div className="export-quick-actions">
                   <button
                     type="button"
                     className="hbz-btn btn-small"
@@ -1578,6 +1578,19 @@ export default function MonthlyOverview() {
                     }
                   >
                     Alle
+                  </button>
+
+                  <button
+                    type="button"
+                    className="hbz-btn btn-small"
+                    onClick={() =>
+                      setPdfOptions((prev) => ({
+                        ...prev,
+                        selectedEmployeeCodes: [],
+                      }))
+                    }
+                  >
+                    Keine
                   </button>
 
                   <button
@@ -1617,7 +1630,7 @@ export default function MonthlyOverview() {
                     return (
                       <label
                         key={`pdf-emp-${e.id}`}
-                        className="month-check-row"
+                        className="export-option"
                       >
                         <input
                           type="checkbox"
@@ -1634,7 +1647,14 @@ export default function MonthlyOverview() {
                             }));
                           }}
                         />
-                        <span>{e.name || e.code}</span>
+                        <div className="export-option-body">
+                          <span className="export-option-title">
+                            {e.name || e.code}
+                          </span>
+                          <span className="export-option-example">
+                            Beispiel: Export nur für diesen Mitarbeiter
+                          </span>
+                        </div>
                       </label>
                     );
                   })}
@@ -1642,134 +1662,260 @@ export default function MonthlyOverview() {
               </div>
 
               <div className="month-modal-box">
-                <div className="month-modal-box-title">Inhalt</div>
+                <div className="month-modal-box-title">Exportinhalt</div>
 
-                <div className="month-modal-checklist">
-                  <label className="month-check-row">
-                    <input
-                      type="checkbox"
-                      checked={pdfOptions.includeDetails}
-                      onChange={(e) =>
-                        setPdfOptions((prev) => ({
-                          ...prev,
-                          includeDetails: e.target.checked,
-                        }))
-                      }
-                    />
-                    <span>Tagesdetails</span>
-                  </label>
+                <div className="export-quick-actions">
+                  <button
+                    type="button"
+                    className="hbz-btn btn-small"
+                    onClick={() =>
+                      setPdfOptions((prev) => ({
+                        ...prev,
+                        includeDetails: true,
+                        includeDailySeparate: true,
+                        includeWeekly: true,
+                        includeTotals: true,
+                        includeTravel: true,
+                        includeOvertime: true,
+                        includeAbsence: true,
+                        includeWorkdays: true,
+                        includeBuak: true,
+                      }))
+                    }
+                  >
+                    Vorlage AG
+                  </button>
 
-                  <label className="month-check-row">
-                    <input
-                      type="checkbox"
-                      checked={pdfOptions.includeDailySeparate}
-                      onChange={(e) =>
-                        setPdfOptions((prev) => ({
-                          ...prev,
-                          includeDailySeparate: e.target.checked,
-                        }))
-                      }
-                    />
-                    <span>Jede Buchung / jeden Tag separat auflisten</span>
-                  </label>
+                  <button
+                    type="button"
+                    className="hbz-btn btn-small"
+                    onClick={() =>
+                      setPdfOptions((prev) => ({
+                        ...prev,
+                        includeDetails: true,
+                        includeDailySeparate: false,
+                        includeWeekly: true,
+                        includeTotals: true,
+                        includeTravel: true,
+                        includeOvertime: true,
+                        includeAbsence: false,
+                        includeWorkdays: true,
+                        includeBuak: true,
+                      }))
+                    }
+                  >
+                    Vorlage intern
+                  </button>
 
-                  <label className="month-check-row">
-                    <input
-                      type="checkbox"
-                      checked={pdfOptions.includeWeekly}
-                      onChange={(e) =>
-                        setPdfOptions((prev) => ({
-                          ...prev,
-                          includeWeekly: e.target.checked,
-                        }))
-                      }
-                    />
-                    <span>Wochenübersicht</span>
-                  </label>
+                  <button
+                    type="button"
+                    className="hbz-btn btn-small"
+                    onClick={() =>
+                      setPdfOptions((prev) => ({
+                        ...prev,
+                        includeDetails: false,
+                        includeDailySeparate: false,
+                        includeWeekly: false,
+                        includeTotals: true,
+                        includeTravel: true,
+                        includeOvertime: true,
+                        includeAbsence: false,
+                        includeWorkdays: true,
+                        includeBuak: true,
+                      }))
+                    }
+                  >
+                    Nur Summen
+                  </button>
+                </div>
 
-                  <label className="month-check-row">
-                    <input
-                      type="checkbox"
-                      checked={pdfOptions.includeTotals}
-                      onChange={(e) =>
-                        setPdfOptions((prev) => ({
-                          ...prev,
-                          includeTotals: e.target.checked,
-                        }))
-                      }
-                    />
-                    <span>Summen</span>
-                  </label>
+                <div className="export-card-grid">
+                  <div className="export-section">
+                    <div className="export-section-title">Arbeitszeit</div>
 
-                  <label className="month-check-row">
-                    <input
-                      type="checkbox"
-                      checked={pdfOptions.includeTravel}
-                      onChange={(e) =>
-                        setPdfOptions((prev) => ({
-                          ...prev,
-                          includeTravel: e.target.checked,
-                        }))
-                      }
-                    />
-                    <span>Fahrzeit</span>
-                  </label>
+                    <label className="export-option">
+                      <input
+                        type="checkbox"
+                        checked={pdfOptions.includeDetails}
+                        onChange={(e) =>
+                          setPdfOptions((prev) => ({
+                            ...prev,
+                            includeDetails: e.target.checked,
+                          }))
+                        }
+                      />
+                      <div className="export-option-body">
+                        <span className="export-option-title">Tagesdetails</span>
+                        <span className="export-option-example">
+                          Beispiel: 03.04.2026 · Stefan Zaunschirm · Projekt A · 07:00–16:30
+                        </span>
+                      </div>
+                    </label>
 
-                  <label className="month-check-row">
-                    <input
-                      type="checkbox"
-                      checked={pdfOptions.includeOvertime}
-                      onChange={(e) =>
-                        setPdfOptions((prev) => ({
-                          ...prev,
-                          includeOvertime: e.target.checked,
-                        }))
-                      }
-                    />
-                    <span>Überstunden</span>
-                  </label>
+                    <label className="export-option">
+                      <input
+                        type="checkbox"
+                        checked={pdfOptions.includeDailySeparate}
+                        onChange={(e) =>
+                          setPdfOptions((prev) => ({
+                            ...prev,
+                            includeDailySeparate: e.target.checked,
+                          }))
+                        }
+                      />
+                      <div className="export-option-body">
+                        <span className="export-option-title">
+                          Jede Buchung separat
+                        </span>
+                        <span className="export-option-example">
+                          Beispiel: 03.04.2026 Vormittag Montage, 03.04.2026 Nachmittag Nacharbeit
+                        </span>
+                      </div>
+                    </label>
 
-                  <label className="month-check-row">
-                    <input
-                      type="checkbox"
-                      checked={pdfOptions.includeAbsence}
-                      onChange={(e) =>
-                        setPdfOptions((prev) => ({
-                          ...prev,
-                          includeAbsence: e.target.checked,
-                        }))
-                      }
-                    />
-                    <span>Krank / Urlaub anzeigen</span>
-                  </label>
+                    <label className="export-option">
+                      <input
+                        type="checkbox"
+                        checked={pdfOptions.includeWeekly}
+                        onChange={(e) =>
+                          setPdfOptions((prev) => ({
+                            ...prev,
+                            includeWeekly: e.target.checked,
+                          }))
+                        }
+                      />
+                      <div className="export-option-body">
+                        <span className="export-option-title">
+                          Wochenübersicht
+                        </span>
+                        <span className="export-option-example">
+                          Beispiel: KW 14 · 42,00 h · Lange Woche
+                        </span>
+                      </div>
+                    </label>
 
-                  <label className="month-check-row">
-                    <input
-                      type="checkbox"
-                      checked={pdfOptions.includeWorkdays}
-                      onChange={(e) =>
-                        setPdfOptions((prev) => ({
-                          ...prev,
-                          includeWorkdays: e.target.checked,
-                        }))
-                      }
-                    />
-                    <span>Arbeitstage</span>
-                  </label>
+                    <label className="export-option">
+                      <input
+                        type="checkbox"
+                        checked={pdfOptions.includeTotals}
+                        onChange={(e) =>
+                          setPdfOptions((prev) => ({
+                            ...prev,
+                            includeTotals: e.target.checked,
+                          }))
+                        }
+                      />
+                      <div className="export-option-body">
+                        <span className="export-option-title">Summen</span>
+                        <span className="export-option-example">
+                          Beispiel: Stefan Zaunschirm · 168,50 h gesamt
+                        </span>
+                      </div>
+                    </label>
+                  </div>
 
-                  <label className="month-check-row">
-                    <input
-                      type="checkbox"
-                      checked={pdfOptions.includeBuak}
-                      onChange={(e) =>
-                        setPdfOptions((prev) => ({
-                          ...prev,
-                          includeBuak: e.target.checked,
-                        }))
-                      }
-                    />
-                    <span>BUAK / Sollstunden / kurze-lange Woche</span>
-                  </label>
+                  <div className="export-section">
+                    <div className="export-section-title">Zusatzwerte</div>
+
+                    <label className="export-option">
+                      <input
+                        type="checkbox"
+                        checked={pdfOptions.includeTravel}
+                        onChange={(e) =>
+                          setPdfOptions((prev) => ({
+                            ...prev,
+                            includeTravel: e.target.checked,
+                          }))
+                        }
+                      />
+                      <div className="export-option-body">
+                        <span className="export-option-title">Fahrzeit</span>
+                        <span className="export-option-example">
+                          Beispiel: 12,50 h Fahrzeit im Monat
+                        </span>
+                      </div>
+                    </label>
+
+                    <label className="export-option">
+                      <input
+                        type="checkbox"
+                        checked={pdfOptions.includeOvertime}
+                        onChange={(e) =>
+                          setPdfOptions((prev) => ({
+                            ...prev,
+                            includeOvertime: e.target.checked,
+                          }))
+                        }
+                      />
+                      <div className="export-option-body">
+                        <span className="export-option-title">Überstunden</span>
+                        <span className="export-option-example">
+                          Beispiel: 10,50 h Tag = 1,50 h Überstunden
+                        </span>
+                      </div>
+                    </label>
+
+                    <label className="export-option">
+                      <input
+                        type="checkbox"
+                        checked={pdfOptions.includeWorkdays}
+                        onChange={(e) =>
+                          setPdfOptions((prev) => ({
+                            ...prev,
+                            includeWorkdays: e.target.checked,
+                          }))
+                        }
+                      />
+                      <div className="export-option-body">
+                        <span className="export-option-title">Arbeitstage</span>
+                        <span className="export-option-example">
+                          Beispiel: 19 Arbeitstage
+                        </span>
+                      </div>
+                    </label>
+
+                    <label className="export-option">
+                      <input
+                        type="checkbox"
+                        checked={pdfOptions.includeBuak}
+                        onChange={(e) =>
+                          setPdfOptions((prev) => ({
+                            ...prev,
+                            includeBuak: e.target.checked,
+                          }))
+                        }
+                      />
+                      <div className="export-option-body">
+                        <span className="export-option-title">
+                          BUAK / Sollstunden
+                        </span>
+                        <span className="export-option-example">
+                          Beispiel: Soll 164,00 h · Ist 168,50 h · Abweichung +4,50 h
+                        </span>
+                      </div>
+                    </label>
+
+                    <label className="export-option">
+                      <input
+                        type="checkbox"
+                        checked={pdfOptions.includeAbsence}
+                        onChange={(e) =>
+                          setPdfOptions((prev) => ({
+                            ...prev,
+                            includeAbsence: e.target.checked,
+                          }))
+                        }
+                      />
+                      <div className="export-option-body">
+                        <span className="export-option-title">
+                          Krank / Urlaub
+                        </span>
+                        <span className="export-option-example">
+                          Beispiel: 05.04.2026 Krank, 12.04.2026 Urlaub
+                        </span>
+                      </div>
+                    </label>
+                  </div>
                 </div>
               </div>
             </div>

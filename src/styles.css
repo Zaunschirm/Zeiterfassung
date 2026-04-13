@@ -1796,6 +1796,88 @@ body::-webkit-scrollbar-thumb {
   margin-top: 16px;
 }
 
+
+/* Export Dialog modern */
+.export-card-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.export-section {
+  border: 1px solid rgba(203, 182, 156, 0.45);
+  border-radius: 16px;
+  background: linear-gradient(180deg, #fffdfa, #f8f1e7);
+  padding: 12px;
+}
+
+.export-section-title {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #7b4a2d;
+  margin-bottom: 10px;
+}
+
+.export-quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.export-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(203, 182, 156, 0.42);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.72);
+  transition: all 0.18s ease;
+}
+
+.export-option:hover {
+  background: #fffaf3;
+  border-color: rgba(171, 141, 109, 0.7);
+  transform: translateY(-1px);
+}
+
+.export-option input[type="checkbox"] {
+  accent-color: #7b4a2d;
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  flex: 0 0 auto;
+}
+
+.export-option-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.export-option-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #433023;
+  line-height: 1.2;
+}
+
+.export-option-example {
+  font-size: 11px;
+  color: #7a614e;
+  line-height: 1.35;
+}
+
+@media (max-width: 768px) {
+  .export-option {
+    padding: 10px;
+  }
+}
+
 /* Zeiterfassung table polish */
 .zt-table {
   width: 100%;

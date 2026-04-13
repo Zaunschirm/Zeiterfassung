@@ -1302,7 +1302,7 @@ export default function YearOverview() {
               <div className="year-modal-box">
                 <div className="year-modal-box-title">Mitarbeiter</div>
 
-                <div className="year-chip-actions">
+                <div className="export-quick-actions">
                   <button
                     className="hbz-btn btn-small"
                     onClick={() =>
@@ -1320,6 +1320,18 @@ export default function YearOverview() {
                     onClick={() =>
                       setPdfOptions((prev) => ({
                         ...prev,
+                        selectedEmployeeCodes: [],
+                      }))
+                    }
+                  >
+                    Keine
+                  </button>
+
+                  <button
+                    className="hbz-btn btn-small"
+                    onClick={() =>
+                      setPdfOptions((prev) => ({
+                        ...prev,
                         selectedEmployeeCodes: [...selectedCodes],
                       }))
                     }
@@ -1330,7 +1342,7 @@ export default function YearOverview() {
 
                 <div className="year-modal-checklist">
                   {employees.map((e) => (
-                    <label key={e.id} className="year-check-row">
+                    <label key={e.id} className="export-option">
                       <input
                         type="checkbox"
                         checked={pdfOptions.selectedEmployeeCodes.includes(
@@ -1348,127 +1360,247 @@ export default function YearOverview() {
                           }));
                         }}
                       />
-                      <span>{e.name}</span>
+                      <div className="export-option-body">
+                        <span className="export-option-title">{e.name}</span>
+                        <span className="export-option-example">
+                          Beispiel: Jahresauswertung nur für diesen Mitarbeiter
+                        </span>
+                      </div>
                     </label>
                   ))}
                 </div>
               </div>
 
               <div className="year-modal-box">
-                <div className="year-modal-box-title">Inhalt</div>
+                <div className="year-modal-box-title">Exportinhalt</div>
 
-                <div className="year-modal-checklist">
-                  <label className="year-check-row">
-                    <input
-                      type="checkbox"
-                      checked={pdfOptions.includeProjects}
-                      onChange={(e) =>
-                        setPdfOptions((p) => ({
-                          ...p,
-                          includeProjects: e.target.checked,
-                        }))
-                      }
-                    />
-                    <span>Projekte</span>
-                  </label>
+                <div className="export-quick-actions">
+                  <button
+                    className="hbz-btn btn-small"
+                    onClick={() =>
+                      setPdfOptions((p) => ({
+                        ...p,
+                        includeProjects: true,
+                        includeEmployees: true,
+                        includeEmployeeProjects: true,
+                        includeWorkHours: true,
+                        includeTotalHours: true,
+                        includeTravel: true,
+                        includeDays: true,
+                        includeBuak: true,
+                      }))
+                    }
+                  >
+                    Alles
+                  </button>
 
-                  <label className="year-check-row">
-                    <input
-                      type="checkbox"
-                      checked={pdfOptions.includeEmployees}
-                      onChange={(e) =>
-                        setPdfOptions((p) => ({
-                          ...p,
-                          includeEmployees: e.target.checked,
-                        }))
-                      }
-                    />
-                    <span>Mitarbeiter</span>
-                  </label>
+                  <button
+                    className="hbz-btn btn-small"
+                    onClick={() =>
+                      setPdfOptions((p) => ({
+                        ...p,
+                        includeProjects: false,
+                        includeEmployees: true,
+                        includeEmployeeProjects: false,
+                        includeWorkHours: true,
+                        includeTotalHours: true,
+                        includeTravel: true,
+                        includeDays: true,
+                        includeBuak: true,
+                      }))
+                    }
+                  >
+                    AG kompakt
+                  </button>
 
-                  <label className="year-check-row">
-                    <input
-                      type="checkbox"
-                      checked={pdfOptions.includeEmployeeProjects}
-                      onChange={(e) =>
-                        setPdfOptions((p) => ({
-                          ...p,
-                          includeEmployeeProjects: e.target.checked,
-                        }))
-                      }
-                    />
-                    <span>Mitarbeiter x Projekt</span>
-                  </label>
+                  <button
+                    className="hbz-btn btn-small"
+                    onClick={() =>
+                      setPdfOptions((p) => ({
+                        ...p,
+                        includeProjects: true,
+                        includeEmployees: true,
+                        includeEmployeeProjects: true,
+                        includeWorkHours: true,
+                        includeTotalHours: true,
+                        includeTravel: true,
+                        includeDays: true,
+                        includeBuak: true,
+                      }))
+                    }
+                  >
+                    Intern detailliert
+                  </button>
+                </div>
 
-                  <label className="year-check-row">
-                    <input
-                      type="checkbox"
-                      checked={pdfOptions.includeWorkHours}
-                      onChange={(e) =>
-                        setPdfOptions((p) => ({
-                          ...p,
-                          includeWorkHours: e.target.checked,
-                        }))
-                      }
-                    />
-                    <span>Arbeitsstunden</span>
-                  </label>
+                <div className="export-card-grid">
+                  <div className="export-section">
+                    <div className="export-section-title">Auswertung</div>
 
-                  <label className="year-check-row">
-                    <input
-                      type="checkbox"
-                      checked={pdfOptions.includeTotalHours}
-                      onChange={(e) =>
-                        setPdfOptions((p) => ({
-                          ...p,
-                          includeTotalHours: e.target.checked,
-                        }))
-                      }
-                    />
-                    <span>Gesamtstunden</span>
-                  </label>
+                    <label className="export-option">
+                      <input
+                        type="checkbox"
+                        checked={pdfOptions.includeProjects}
+                        onChange={(e) =>
+                          setPdfOptions((p) => ({
+                            ...p,
+                            includeProjects: e.target.checked,
+                          }))
+                        }
+                      />
+                      <div className="export-option-body">
+                        <span className="export-option-title">Projekte</span>
+                        <span className="export-option-example">
+                          Beispiel: Projekt A · 245,00 h · 18 Tage
+                        </span>
+                      </div>
+                    </label>
 
-                  <label className="year-check-row">
-                    <input
-                      type="checkbox"
-                      checked={pdfOptions.includeTravel}
-                      onChange={(e) =>
-                        setPdfOptions((p) => ({
-                          ...p,
-                          includeTravel: e.target.checked,
-                        }))
-                      }
-                    />
-                    <span>Fahrzeit</span>
-                  </label>
+                    <label className="export-option">
+                      <input
+                        type="checkbox"
+                        checked={pdfOptions.includeEmployees}
+                        onChange={(e) =>
+                          setPdfOptions((p) => ({
+                            ...p,
+                            includeEmployees: e.target.checked,
+                          }))
+                        }
+                      />
+                      <div className="export-option-body">
+                        <span className="export-option-title">Mitarbeiter</span>
+                        <span className="export-option-example">
+                          Beispiel: Stefan Zaunschirm · 1.622,50 h im Jahr
+                        </span>
+                      </div>
+                    </label>
 
-                  <label className="year-check-row">
-                    <input
-                      type="checkbox"
-                      checked={pdfOptions.includeDays}
-                      onChange={(e) =>
-                        setPdfOptions((p) => ({
-                          ...p,
-                          includeDays: e.target.checked,
-                        }))
-                      }
-                    />
-                    <span>Anzahl Tage</span>
-                  </label>
+                    <label className="export-option">
+                      <input
+                        type="checkbox"
+                        checked={pdfOptions.includeEmployeeProjects}
+                        onChange={(e) =>
+                          setPdfOptions((p) => ({
+                            ...p,
+                            includeEmployeeProjects: e.target.checked,
+                          }))
+                        }
+                      />
+                      <div className="export-option-body">
+                        <span className="export-option-title">
+                          Mitarbeiter x Projekt
+                        </span>
+                        <span className="export-option-example">
+                          Beispiel: Stefan Zaunschirm · Projekt A · 132,00 h
+                        </span>
+                      </div>
+                    </label>
+                  </div>
 
-                  <label className="year-check-row">
-                    <input
-                      type="checkbox"
-                      checked={pdfOptions.includeBuak}
-                      onChange={(e) =>
-                        setPdfOptions((p) => ({
-                          ...p,
-                          includeBuak: e.target.checked,
-                        }))
-                      }
-                    />
-                    <span>BUAK Sollstunden</span>
-                  </label>
+                  <div className="export-section">
+                    <div className="export-section-title">Kennzahlen</div>
+
+                    <label className="export-option">
+                      <input
+                        type="checkbox"
+                        checked={pdfOptions.includeWorkHours}
+                        onChange={(e) =>
+                          setPdfOptions((p) => ({
+                            ...p,
+                            includeWorkHours: e.target.checked,
+                          }))
+                        }
+                      />
+                      <div className="export-option-body">
+                        <span className="export-option-title">
+                          Arbeitsstunden
+                        </span>
+                        <span className="export-option-example">
+                          Beispiel: reine Arbeitszeit ohne Fahrzeit
+                        </span>
+                      </div>
+                    </label>
+
+                    <label className="export-option">
+                      <input
+                        type="checkbox"
+                        checked={pdfOptions.includeTotalHours}
+                        onChange={(e) =>
+                          setPdfOptions((p) => ({
+                            ...p,
+                            includeTotalHours: e.target.checked,
+                          }))
+                        }
+                      />
+                      <div className="export-option-body">
+                        <span className="export-option-title">
+                          Gesamtstunden
+                        </span>
+                        <span className="export-option-example">
+                          Beispiel: Arbeitszeit + Fahrzeit = 1.740,00 h
+                        </span>
+                      </div>
+                    </label>
+
+                    <label className="export-option">
+                      <input
+                        type="checkbox"
+                        checked={pdfOptions.includeTravel}
+                        onChange={(e) =>
+                          setPdfOptions((p) => ({
+                            ...p,
+                            includeTravel: e.target.checked,
+                          }))
+                        }
+                      />
+                      <div className="export-option-body">
+                        <span className="export-option-title">Fahrzeit</span>
+                        <span className="export-option-example">
+                          Beispiel: 96,50 h Fahrzeit im Zeitraum
+                        </span>
+                      </div>
+                    </label>
+
+                    <label className="export-option">
+                      <input
+                        type="checkbox"
+                        checked={pdfOptions.includeDays}
+                        onChange={(e) =>
+                          setPdfOptions((p) => ({
+                            ...p,
+                            includeDays: e.target.checked,
+                          }))
+                        }
+                      />
+                      <div className="export-option-body">
+                        <span className="export-option-title">Anzahl Tage</span>
+                        <span className="export-option-example">
+                          Beispiel: 204 Arbeitstage im Jahr
+                        </span>
+                      </div>
+                    </label>
+
+                    <label className="export-option">
+                      <input
+                        type="checkbox"
+                        checked={pdfOptions.includeBuak}
+                        onChange={(e) =>
+                          setPdfOptions((p) => ({
+                            ...p,
+                            includeBuak: e.target.checked,
+                          }))
+                        }
+                      />
+                      <div className="export-option-body">
+                        <span className="export-option-title">
+                          BUAK Sollstunden
+                        </span>
+                        <span className="export-option-example">
+                          Beispiel: Soll 1.704,00 h · Ist 1.740,00 h · Abweichung +36,00 h
+                        </span>
+                      </div>
+                    </label>
+                  </div>
                 </div>
               </div>
             </div>
