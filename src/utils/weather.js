@@ -47,7 +47,7 @@ export const WEATHER_MANUAL_OPTIONS = [
   "Sonstiges",
 ];
 
-const GEOCODE_CACHE_KEY = "hbz_project_geocode_cache_v1";
+const GEOCODE_CACHE_KEY = "hbz_project_geocode_cache_v2";
 
 function readCache() {
   try {
@@ -65,16 +65,70 @@ function writeCache(cache) {
   }
 }
 
+function normalizeAddress(input) {
+  return String(input || "")
+    .replace(/\bSt\.\b/g, "Sankt")
+    .replace(/\s+/g, " ")
+    .replace(/\s*,\s*/g, ", ")
+    .trim();
+}
+
+function buildAddressVariants(address) {
+  const cleaned = normalizeAddress(address);
+  if (!cleaned) return [];
+
+  const variants = new Set();
+  variants.add(cleaned);
+
+  const parts = cleaned
+    .split(",")
+    .map((p) => p.trim())
+    .filter(Boolean);
+
+  const first = parts[0] || "";
+  const rest = parts.slice(1).join(", ").trim();
+
+  // Hausnummer entfernen
+  const firstWithoutNumber = first.replace(/\s+\d+[a-zA-Z/-]*\b/g, "").trim();
+
+  if (firstWithoutNumber && rest) {
+    variants.add(`${firstWithoutNumber}, ${rest}`);
+  }
+
+  // Nur PLZ + Ort
+  const zipCityMatch = cleaned.match(/\b\d{4,5}\s+[^,]+/);
+  if (zipCityMatch?.[0]) {
+    variants.add(zipCityMatch[0].trim());
+  }
+
+  // Nur letzter Teil nach Komma
+  if (parts.length >= 2) {
+    variants.add(parts[parts.length - 1]);
+  }
+
+  // Nur Ort ohne PLZ
+  if (zipCityMatch?.[0]) {
+    const cityOnly = zipCityMatch[0].replace(/\b\d{4,5}\s+/, "").trim();
+    if (cityOnly) variants.add(cityOnly);
+  }
+
+  return [...variants].filter(Boolean);
+}
+
 function pickBestGeocode(results = []) {
   if (!Array.isArray(results) || results.length === 0) return null;
+
   const preferred = [...results].sort((a, b) => {
     const aRank = String(a.country_code || "").toUpperCase() === "AT" ? 0 : 1;
     const bRank = String(b.country_code || "").toUpperCase() === "AT" ? 0 : 1;
-    const aScore = Number(a.importance || 0);
-    const bScore = Number(b.importance || 0);
+
+    const aPop = Number(a.population || 0);
+    const bPop = Number(b.population || 0);
+
     if (aRank !== bRank) return aRank - bRank;
-    return bScore - aScore;
+    return bPop - aPop;
   });
+
   return preferred[0] || null;
 }
 
@@ -93,16 +147,10 @@ export function getWeatherFinalLabel(entry) {
   return "";
 }
 
-async function geocodeAddress(address) {
-  const query = String(address || "").trim();
-  if (!query) return null;
-
-  const cache = readCache();
-  if (cache[query]) return cache[query];
-
+async function geocodeOne(query) {
   const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(
     query
-  )}&count=5&language=de&format=json`;
+  )}&count=10&language=de&format=json`;
 
   const res = await fetch(url);
   if (!res.ok) {
@@ -110,26 +158,49 @@ async function geocodeAddress(address) {
   }
 
   const json = await res.json();
-  const best = pickBestGeocode(json?.results || []);
-  if (!best) return null;
+  return pickBestGeocode(json?.results || []);
+}
 
-  const result = {
-    latitude: best.latitude,
-    longitude: best.longitude,
-    name: best.name || query,
-    admin1: best.admin1 || "",
-    country_code: best.country_code || "",
-  };
+async function geocodeAddress(address) {
+  const cleanAddress = normalizeAddress(address);
+  if (!cleanAddress) return null;
 
-  cache[query] = result;
-  writeCache(cache);
-  return result;
+  const cache = readCache();
+  if (cache[cleanAddress]) return cache[cleanAddress];
+
+  const variants = buildAddressVariants(cleanAddress);
+
+  for (const variant of variants) {
+    try {
+      const best = await geocodeOne(variant);
+      if (best?.latitude && best?.longitude) {
+        const result = {
+          latitude: best.latitude,
+          longitude: best.longitude,
+          name: best.name || variant,
+          admin1: best.admin1 || "",
+          country_code: best.country_code || "",
+          resolved_from: variant,
+        };
+
+        cache[cleanAddress] = result;
+        writeCache(cache);
+        return result;
+      }
+    } catch (err) {
+      console.warn("[weather] Geocoding-Variante fehlgeschlagen:", variant, err);
+    }
+  }
+
+  return null;
 }
 
 function buildWeatherUrl({ latitude, longitude, date }) {
   const today = new Date();
   const requested = new Date(`${date}T12:00:00`);
-  const isPast = requested < new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+
+  const isPast = requested < todayStart;
 
   const base = isPast
     ? "https://archive-api.open-meteo.com/v1/archive"
@@ -167,7 +238,8 @@ function pickHourlyIndex(hourly = {}, midpointHour = 12) {
 }
 
 export async function fetchWeatherForBooking({ address, date, startMin, endMin }) {
-  const cleanAddress = String(address || "").trim();
+  const cleanAddress = normalizeAddress(address);
+
   if (!cleanAddress) {
     return {
       ok: false,
@@ -182,7 +254,8 @@ export async function fetchWeatherForBooking({ address, date, startMin, endMin }
   }
 
   const geo = await geocodeAddress(cleanAddress);
-  if (!geo?.latitude || !geo?.longitude) {
+
+  if (!geo || typeof geo.latitude !== "number" || typeof geo.longitude !== "number") {
     return {
       ok: false,
       reason: "geocode-not-found",
@@ -195,7 +268,9 @@ export async function fetchWeatherForBooking({ address, date, startMin, endMin }
     };
   }
 
-  const midpointMin = Math.round(((Number(startMin) || 0) + (Number(endMin) || 0)) / 2);
+  const midpointMin = Math.round(
+    ((Number(startMin) || 0) + (Number(endMin) || 0)) / 2
+  );
   const midpointHour = Math.max(0, Math.min(23, Math.round(midpointMin / 60)));
 
   const url = buildWeatherUrl({
@@ -211,6 +286,7 @@ export async function fetchWeatherForBooking({ address, date, startMin, endMin }
 
   const json = await res.json();
   const idx = pickHourlyIndex(json?.hourly || {}, midpointHour);
+
   const weatherCode =
     idx >= 0 && Array.isArray(json?.hourly?.weather_code)
       ? json.hourly.weather_code[idx]
