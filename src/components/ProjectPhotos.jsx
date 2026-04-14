@@ -22,13 +22,27 @@ function getPublicURL(path) {
   return data?.publicUrl || "";
 }
 
+function getPossiblePrefixes(projectId) {
+  if (!projectId) return [];
+  return [
+    `${projectId}/`,
+    `project-${projectId}/`,
+    `project_${projectId}/`,
+  ];
+}
+
+function getFileNameFromPath(path) {
+  return path?.split("/").pop() || "Foto";
+}
+
 export default function ProjectPhotos() {
   const [projects, setProjects] = useState([]);
-  const [photoRows, setPhotoRows] = useState([]);
+  const [dbPhotos, setDbPhotos] = useState([]);
+  const [legacyByProject, setLegacyByProject] = useState({});
   const [selectedProject, setSelectedProject] = useState("");
   const [uploading, setUploading] = useState(false);
   const [busyZip, setBusyZip] = useState(false);
-  const [deletingId, setDeletingId] = useState(null);
+  const [deletingKey, setDeletingKey] = useState(null);
   const [msg, setMsg] = useState("");
 
   useEffect(() => {
@@ -40,7 +54,10 @@ export default function ProjectPhotos() {
 
     const [{ data: projectsData, error: projectsError }, { data: photosData, error: photosError }] =
       await Promise.all([
-        supabase.from("projects").select("id, name, active").order("name", { ascending: true }),
+        supabase
+          .from("projects")
+          .select("id, name, active")
+          .order("name", { ascending: true }),
         supabase
           .from("project_photos")
           .select("id, project_id, file_path, caption, created_at, taken_at")
@@ -59,8 +76,71 @@ export default function ProjectPhotos() {
       return;
     }
 
-    setProjects(projectsData || []);
-    setPhotoRows(photosData || []);
+    const projectList = projectsData || [];
+    const dbList = photosData || [];
+
+    setProjects(projectList);
+    setDbPhotos(dbList);
+
+    if (!selectedProject && projectList.length > 0) {
+      const firstActive = projectList.find((p) => p.active) || projectList[0];
+      setSelectedProject(firstActive?.id || "");
+    }
+
+    await loadLegacyForProjects(projectList, dbList);
+  }
+
+  async function loadLegacyForProjects(projectList, currentDbPhotos) {
+    const dbPathSet = new Set((currentDbPhotos || []).map((x) => x.file_path).filter(Boolean));
+    const result = {};
+
+    for (const project of projectList) {
+      const prefixes = getPossiblePrefixes(project.id);
+      const collected = [];
+
+      for (const prefix of prefixes) {
+        const { data, error } = await supabase.storage.from(BUCKET).list(prefix, {
+          limit: 500,
+          sortBy: { column: "name", order: "desc" },
+        });
+
+        if (error) {
+          continue;
+        }
+
+        for (const item of data || []) {
+          if (!item?.name) continue;
+          const fullPath = `${prefix}${item.name}`;
+
+          if (dbPathSet.has(fullPath)) continue;
+
+          collected.push({
+            key: `legacy:${fullPath}`,
+            source: "legacy",
+            id: null,
+            project_id: project.id,
+            file_path: fullPath,
+            caption: null,
+            created_at: item.created_at || item.updated_at || null,
+            taken_at: item.created_at || item.updated_at || null,
+            name: item.name,
+          });
+        }
+      }
+
+      const uniqueMap = new Map();
+      for (const row of collected) {
+        uniqueMap.set(row.file_path, row);
+      }
+
+      result[project.id] = Array.from(uniqueMap.values()).sort((a, b) => {
+        const av = new Date(b.created_at || b.taken_at || 0).getTime();
+        const bv = new Date(a.created_at || a.taken_at || 0).getTime();
+        return av - bv;
+      });
+    }
+
+    setLegacyByProject(result);
   }
 
   const projectStats = useMemo(() => {
@@ -73,20 +153,36 @@ export default function ProjectPhotos() {
       });
     }
 
-    for (const row of photoRows) {
-      const entry = map.get(row.project_id) || { count: 0, lastAdded: null };
-      entry.count += 1;
+    for (const row of dbPhotos) {
+      const existing = map.get(row.project_id) || { count: 0, lastAdded: null };
+      existing.count += 1;
 
       const candidate = row.created_at || row.taken_at || null;
-      if (!entry.lastAdded || new Date(candidate) > new Date(entry.lastAdded)) {
-        entry.lastAdded = candidate;
+      if (candidate && (!existing.lastAdded || new Date(candidate) > new Date(existing.lastAdded))) {
+        existing.lastAdded = candidate;
       }
 
-      map.set(row.project_id, entry);
+      map.set(row.project_id, existing);
+    }
+
+    for (const projectId of Object.keys(legacyByProject)) {
+      const legacyPhotos = legacyByProject[projectId] || [];
+      const existing = map.get(projectId) || { count: 0, lastAdded: null };
+
+      existing.count += legacyPhotos.length;
+
+      for (const row of legacyPhotos) {
+        const candidate = row.created_at || row.taken_at || null;
+        if (candidate && (!existing.lastAdded || new Date(candidate) > new Date(existing.lastAdded))) {
+          existing.lastAdded = candidate;
+        }
+      }
+
+      map.set(projectId, existing);
     }
 
     return map;
-  }, [projects, photoRows]);
+  }, [projects, dbPhotos, legacyByProject]);
 
   const projectCards = useMemo(() => {
     return projects.map((p) => {
@@ -105,14 +201,23 @@ export default function ProjectPhotos() {
 
   const selectedPhotos = useMemo(() => {
     if (!selectedProject) return [];
-    return photoRows
+
+    const dbRows = dbPhotos
       .filter((p) => p.project_id === selectedProject)
-      .sort((a, b) => {
-        const da = new Date(b.created_at || b.taken_at || 0).getTime();
-        const db = new Date(a.created_at || a.taken_at || 0).getTime();
-        return da - db;
-      });
-  }, [photoRows, selectedProject]);
+      .map((p) => ({
+        ...p,
+        key: `db:${p.id}`,
+        source: "db",
+      }));
+
+    const legacyRows = legacyByProject[selectedProject] || [];
+
+    return [...dbRows, ...legacyRows].sort((a, b) => {
+      const av = new Date(b.created_at || b.taken_at || 0).getTime();
+      const bv = new Date(a.created_at || a.taken_at || 0).getTime();
+      return av - bv;
+    });
+  }, [dbPhotos, legacyByProject, selectedProject]);
 
   async function handleUpload(e) {
     const files = Array.from(e.target.files || []);
@@ -123,13 +228,9 @@ export default function ProjectPhotos() {
 
     try {
       for (const file of files) {
-        const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
         const stamp = new Date().toISOString().replace(/[:.]/g, "-");
         const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-        const filePath = `project-${selectedProject}/${stamp}_${safeName}.${ext}`.replace(
-          /\.([a-zA-Z0-9]+)\.([a-zA-Z0-9]+)$/,
-          ".$2"
-        );
+        const filePath = `project-${selectedProject}/${stamp}_${safeName}`;
 
         const { error: uploadError } = await supabase.storage
           .from(BUCKET)
@@ -166,10 +267,10 @@ export default function ProjectPhotos() {
   }
 
   async function handleDelete(photo) {
-    if (!photo?.id) return;
+    if (!photo?.file_path) return;
     if (!confirm("Foto wirklich löschen?")) return;
 
-    setDeletingId(photo.id);
+    setDeletingKey(photo.key);
     setMsg("");
 
     try {
@@ -179,20 +280,30 @@ export default function ProjectPhotos() {
 
       if (storageError) throw storageError;
 
-      const { error: dbError } = await supabase
-        .from("project_photos")
-        .delete()
-        .eq("id", photo.id);
+      if (photo.source === "db" && photo.id) {
+        const { error: dbError } = await supabase
+          .from("project_photos")
+          .delete()
+          .eq("id", photo.id);
 
-      if (dbError) throw dbError;
+        if (dbError) throw dbError;
 
-      setPhotoRows((prev) => prev.filter((p) => p.id !== photo.id));
+        setDbPhotos((prev) => prev.filter((p) => p.id !== photo.id));
+      } else {
+        setLegacyByProject((prev) => ({
+          ...prev,
+          [selectedProject]: (prev[selectedProject] || []).filter(
+            (p) => p.file_path !== photo.file_path
+          ),
+        }));
+      }
+
       setMsg("🗑️ Foto gelöscht.");
     } catch (err) {
       console.error(err);
       setMsg("❌ Fehler beim Löschen: " + (err?.message || err));
     } finally {
-      setDeletingId(null);
+      setDeletingKey(null);
     }
   }
 
@@ -217,8 +328,7 @@ export default function ProjectPhotos() {
         const res = await fetch(url);
         if (!res.ok) throw new Error("Download fehlgeschlagen.");
         const blob = await res.blob();
-        const filename = photo.file_path.split("/").pop() || `foto_${photo.id}.jpg`;
-        folder.file(filename, blob);
+        folder.file(getFileNameFromPath(photo.file_path), blob);
       }
 
       const content = await zip.generateAsync({ type: "blob" });
@@ -352,10 +462,10 @@ export default function ProjectPhotos() {
                 <div className="project-photo-grid">
                   {selectedPhotos.map((photo) => {
                     const url = getPublicURL(photo.file_path);
-                    const filename = photo.file_path?.split("/").pop() || `foto_${photo.id}`;
+                    const filename = getFileNameFromPath(photo.file_path);
 
                     return (
-                      <div key={photo.id} className="project-photo-card">
+                      <div key={photo.key} className="project-photo-card">
                         <img
                           src={url}
                           alt={photo.caption || filename}
@@ -377,6 +487,19 @@ export default function ProjectPhotos() {
                           Hinzugefügt: {formatDateTime(photo.created_at || photo.taken_at)}
                         </div>
 
+                        {photo.source === "legacy" && (
+                          <div
+                            style={{
+                              marginTop: 6,
+                              fontSize: 11,
+                              color: "#7b4a2d",
+                              fontWeight: 600,
+                            }}
+                          >
+                            Altes Foto
+                          </div>
+                        )}
+
                         <div className="project-photo-actions">
                           <button
                             className="hbz-btn btn-small"
@@ -390,9 +513,9 @@ export default function ProjectPhotos() {
                           <button
                             className="hbz-btn btn-small"
                             onClick={() => handleDelete(photo)}
-                            disabled={deletingId === photo.id}
+                            disabled={deletingKey === photo.key}
                           >
-                            {deletingId === photo.id ? "Löschen…" : "Löschen"}
+                            {deletingKey === photo.key ? "Löschen…" : "Löschen"}
                           </button>
                         </div>
                       </div>
