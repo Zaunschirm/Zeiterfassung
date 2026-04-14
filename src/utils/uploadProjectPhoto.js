@@ -1,4 +1,3 @@
-// src/utils/uploadProjectPhoto.js
 import { supabase } from "../lib/supabase";
 
 /**
@@ -6,12 +5,12 @@ import { supabase } from "../lib/supabase";
  * und legt danach einen Datensatz in "project_photos" an.
  *
  * @param {Object} params
- * @param {File}   params.file           - Datei aus <input type="file">
- * @param {number} params.projectId      - projects.id
- * @param {string} [params.projectCode]  - z.B. "ZS" (nur für hübschen Pfad)
- * @param {number} [params.employeeId]   - optional
- * @param {string} [params.caption]      - optional
- * @returns {Promise<string>}            - der Storage-Pfad
+ * @param {File}   params.file
+ * @param {string} params.projectId
+ * @param {string} [params.projectCode]
+ * @param {number|string|null} [params.employeeId]
+ * @param {string|null} [params.caption]
+ * @returns {Promise<string>}
  */
 export async function uploadProjectPhoto({
   file,
@@ -23,7 +22,6 @@ export async function uploadProjectPhoto({
   if (!file) throw new Error("Kein Foto ausgewählt.");
   if (!projectId) throw new Error("Projekt fehlt.");
 
-  // 1) Pfad erzeugen: z.B. "ZS/2025-11/20251101_121530_MeinFoto.jpg"
   const now = new Date();
   const yyyy = now.getFullYear();
   const mm = String(now.getMonth() + 1).padStart(2, "0");
@@ -33,33 +31,33 @@ export async function uploadProjectPhoto({
   const ss = String(now.getSeconds()).padStart(2, "0");
   const stamp = `${yyyy}${mm}${dd}_${hh}${mi}${ss}`;
 
-  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+  const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
+  const baseName = file.name.replace(/\.[^.]+$/, "");
+  const safeName = baseName.replace(/[^a-zA-Z0-9._-]/g, "_");
   const folder = projectCode ? projectCode : `project_${projectId}`;
-  const path = `${folder}/${yyyy}-${mm}/${stamp}_${safeName}`;
+  const path = `${folder}/${yyyy}-${mm}/${stamp}_${safeName}.${ext}`;
 
-  // 2) Upload in Storage
-  const { error: upErr } = await supabase
-    .storage
+  const { error: upErr } = await supabase.storage
     .from("project-photos")
     .upload(path, file, {
-      upsert: false,                 // keine Überschreibung
+      upsert: false,
       cacheControl: "3600",
       contentType: file.type || "image/jpeg",
     });
 
   if (upErr) throw new Error("Upload fehlgeschlagen: " + upErr.message);
 
-  // 3) Datensatz in DB anlegen
-  const { error: dbErr } = await supabase.from("project_photos").insert([{
-    project_id: Number(projectId),
-    employee_id: employeeId ? Number(employeeId) : null,
+  const payload = {
+    project_id: projectId,
+    employee_id: employeeId || null,
     file_path: path,
     caption: caption || null,
     taken_at: now.toISOString(),
-  }]);
+  };
+
+  const { error: dbErr } = await supabase.from("project_photos").insert([payload]);
 
   if (dbErr) {
-    // Rollback Storage, wenn DB-Insert fehlschlägt
     await supabase.storage.from("project-photos").remove([path]);
     throw new Error("DB-Speichern fehlgeschlagen: " + dbErr.message);
   }

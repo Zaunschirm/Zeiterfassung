@@ -1,81 +1,162 @@
-import React, { useEffect, useState } from "react";
-import { createClient } from "@supabase/supabase-js";
-
-const supabase =
-  window.supabase ??
-  createClient(
-    import.meta.env.VITE_SUPABASE_URL,
-    import.meta.env.VITE_SUPABASE_ANON_KEY
-  );
+import React, { useEffect, useMemo, useState } from "react";
+import { supabase } from "../lib/supabase";
 
 const BUCKET = "project-photos";
 
+function formatDateTime(value) {
+  if (!value) return "—";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString("de-AT", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function getPublicURL(path) {
+  if (!path) return "";
+  const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
+  return data?.publicUrl || "";
+}
+
 export default function ProjectPhotos() {
   const [projects, setProjects] = useState([]);
+  const [photoRows, setPhotoRows] = useState([]);
   const [selectedProject, setSelectedProject] = useState("");
-  const [photos, setPhotos] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [busyZip, setBusyZip] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
   const [msg, setMsg] = useState("");
 
   useEffect(() => {
-    (async () => {
-      const { data, error } = await supabase
-        .from("projects")
-        .select("id, name")
-        .order("name", { ascending: true });
-
-      if (error) {
-        console.error(error);
-        setMsg("❌ Projekte konnten nicht geladen werden: " + error.message);
-      } else {
-        setProjects(data || []);
-      }
-    })();
+    loadAll();
   }, []);
 
-  useEffect(() => {
-    if (!selectedProject) {
-      setPhotos([]);
+  async function loadAll() {
+    setMsg("");
+
+    const [{ data: projectsData, error: projectsError }, { data: photosData, error: photosError }] =
+      await Promise.all([
+        supabase.from("projects").select("id, name, active").order("name", { ascending: true }),
+        supabase
+          .from("project_photos")
+          .select("id, project_id, file_path, caption, created_at, taken_at")
+          .order("created_at", { ascending: false }),
+      ]);
+
+    if (projectsError) {
+      console.error(projectsError);
+      setMsg("❌ Projekte konnten nicht geladen werden: " + projectsError.message);
       return;
     }
-    loadPhotos(selectedProject);
-  }, [selectedProject]);
 
-  async function loadPhotos(projectId) {
-    setMsg("");
-    const { data, error } = await supabase.storage
-      .from(BUCKET)
-      .list(projectId + "/", {
-        limit: 500,
-        sortBy: { column: "created_at", order: "desc" },
-      });
-
-    if (error) {
-      console.error(error);
-      setMsg("❌ Fehler beim Laden der Fotos: " + error.message);
-    } else {
-      setPhotos(data || []);
+    if (photosError) {
+      console.error(photosError);
+      setMsg("❌ Fotos konnten nicht geladen werden: " + photosError.message);
+      return;
     }
+
+    setProjects(projectsData || []);
+    setPhotoRows(photosData || []);
   }
+
+  const projectStats = useMemo(() => {
+    const map = new Map();
+
+    for (const p of projects) {
+      map.set(p.id, {
+        count: 0,
+        lastAdded: null,
+      });
+    }
+
+    for (const row of photoRows) {
+      const entry = map.get(row.project_id) || { count: 0, lastAdded: null };
+      entry.count += 1;
+
+      const candidate = row.created_at || row.taken_at || null;
+      if (!entry.lastAdded || new Date(candidate) > new Date(entry.lastAdded)) {
+        entry.lastAdded = candidate;
+      }
+
+      map.set(row.project_id, entry);
+    }
+
+    return map;
+  }, [projects, photoRows]);
+
+  const projectCards = useMemo(() => {
+    return projects.map((p) => {
+      const stats = projectStats.get(p.id) || { count: 0, lastAdded: null };
+      return {
+        ...p,
+        photoCount: stats.count || 0,
+        lastAdded: stats.lastAdded || null,
+      };
+    });
+  }, [projects, projectStats]);
+
+  const selectedProjectInfo = useMemo(() => {
+    return projectCards.find((p) => p.id === selectedProject) || null;
+  }, [projectCards, selectedProject]);
+
+  const selectedPhotos = useMemo(() => {
+    if (!selectedProject) return [];
+    return photoRows
+      .filter((p) => p.project_id === selectedProject)
+      .sort((a, b) => {
+        const da = new Date(b.created_at || b.taken_at || 0).getTime();
+        const db = new Date(a.created_at || a.taken_at || 0).getTime();
+        return da - db;
+      });
+  }, [photoRows, selectedProject]);
 
   async function handleUpload(e) {
     const files = Array.from(e.target.files || []);
     if (!files.length || !selectedProject) return;
+
     setUploading(true);
     setMsg("");
 
     try {
       for (const file of files) {
-        const filePath = `${selectedProject}/${Date.now()}_${file.name}`;
-        const { error } = await supabase.storage
+        const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
+        const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+        const filePath = `project-${selectedProject}/${stamp}_${safeName}.${ext}`.replace(
+          /\.([a-zA-Z0-9]+)\.([a-zA-Z0-9]+)$/,
+          ".$2"
+        );
+
+        const { error: uploadError } = await supabase.storage
           .from(BUCKET)
-          .upload(filePath, file, { cacheControl: "3600", upsert: false });
-        if (error) throw error;
+          .upload(filePath, file, {
+            cacheControl: "3600",
+            upsert: false,
+            contentType: file.type || "image/jpeg",
+          });
+
+        if (uploadError) throw uploadError;
+
+        const { error: insertError } = await supabase.from("project_photos").insert({
+          project_id: selectedProject,
+          file_path: filePath,
+          caption: null,
+          taken_at: new Date().toISOString(),
+        });
+
+        if (insertError) {
+          await supabase.storage.from(BUCKET).remove([filePath]);
+          throw insertError;
+        }
       }
 
       setMsg("✅ Upload erfolgreich.");
-      await loadPhotos(selectedProject);
+      await loadAll();
+      e.target.value = "";
     } catch (err) {
       console.error(err);
       setMsg("❌ Fehler beim Hochladen: " + (err?.message || err));
@@ -85,27 +166,39 @@ export default function ProjectPhotos() {
   }
 
   async function handleDelete(photo) {
-    if (!confirm(`Foto „${photo.name}“ wirklich löschen?`)) return;
+    if (!photo?.id) return;
+    if (!confirm("Foto wirklich löschen?")) return;
 
-    const path = `${selectedProject}/${photo.name}`;
-    const { error } = await supabase.storage.from(BUCKET).remove([path]);
+    setDeletingId(photo.id);
+    setMsg("");
 
-    if (error) {
-      setMsg("❌ Fehler beim Löschen: " + error.message);
-    } else {
+    try {
+      const { error: storageError } = await supabase.storage
+        .from(BUCKET)
+        .remove([photo.file_path]);
+
+      if (storageError) throw storageError;
+
+      const { error: dbError } = await supabase
+        .from("project_photos")
+        .delete()
+        .eq("id", photo.id);
+
+      if (dbError) throw dbError;
+
+      setPhotoRows((prev) => prev.filter((p) => p.id !== photo.id));
       setMsg("🗑️ Foto gelöscht.");
-      setPhotos((list) => list.filter((p) => p.name !== photo.name));
+    } catch (err) {
+      console.error(err);
+      setMsg("❌ Fehler beim Löschen: " + (err?.message || err));
+    } finally {
+      setDeletingId(null);
     }
   }
 
-  function getPublicURL(photo) {
-    const path = `${selectedProject}/${photo.name}`;
-    const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
-    return data?.publicUrl || "";
-  }
-
   async function downloadAllAsZip() {
-    if (!selectedProject || photos.length === 0) return;
+    if (!selectedProject || selectedPhotos.length === 0) return;
+
     setBusyZip(true);
     setMsg("");
 
@@ -115,30 +208,26 @@ export default function ProjectPhotos() {
         import("file-saver"),
       ]);
 
-      const chunks = (arr, size) =>
-        Array.from({ length: Math.ceil(arr.length / size) }, (_, i) =>
-          arr.slice(i * size, i * size + size)
-        );
-
       const zip = new JSZip();
       const folder = zip.folder("projektfotos");
       if (!folder) throw new Error("ZIP-Ordner konnte nicht erstellt werden.");
 
-      for (const group of chunks(photos, 6)) {
-        await Promise.all(
-          group.map(async (photo) => {
-            const url = getPublicURL(photo);
-            const res = await fetch(url);
-            if (!res.ok) throw new Error(`Download fehlgeschlagen: ${photo.name}`);
-            const blob = await res.blob();
-            folder.file(photo.name, blob);
-          })
-        );
+      for (const photo of selectedPhotos) {
+        const url = getPublicURL(photo.file_path);
+        const res = await fetch(url);
+        if (!res.ok) throw new Error("Download fehlgeschlagen.");
+        const blob = await res.blob();
+        const filename = photo.file_path.split("/").pop() || `foto_${photo.id}.jpg`;
+        folder.file(filename, blob);
       }
 
       const content = await zip.generateAsync({ type: "blob" });
       const today = new Date().toISOString().slice(0, 10);
-      saveAs(content, `Projektfotos_${selectedProject}_${today}.zip`);
+      const projectName = (selectedProjectInfo?.name || "Projekt")
+        .replace(/[^a-zA-Z0-9_-]/g, "_")
+        .slice(0, 60);
+
+      saveAs(content, `Projektfotos_${projectName}_${today}.zip`);
       setMsg("📦 ZIP erstellt.");
     } catch (e) {
       console.error(e);
@@ -166,89 +255,158 @@ export default function ProjectPhotos() {
             onChange={(e) => setSelectedProject(e.target.value)}
           >
             <option value="">– Projekt wählen –</option>
-            {projects.map((p) => (
+            {projectCards.map((p) => (
               <option key={p.id} value={p.id}>
-                {p.name}
+                {p.name} ({p.photoCount} Fotos)
               </option>
             ))}
           </select>
         </div>
 
-        {selectedProject && (
-          <div className="project-photos-upload">
-            <label className="hbz-label">Fotos hochladen</label>
-            <input
-              type="file"
-              accept="image/*"
-              multiple
-              className="hbz-input"
-              onChange={handleUpload}
-              disabled={uploading}
-            />
-            {uploading && <p className="text-xs opacity-70">⏳ Lade hoch…</p>}
-          </div>
-        )}
-
-        {msg && <div className="project-photos-msg">{msg}</div>}
-
-        {selectedProject && photos.length > 0 && (
-          <div className="project-photos-toolbar">
-            <button
-              className="hbz-btn"
-              onClick={downloadAllAsZip}
-              disabled={busyZip}
+        <div className="project-list" style={{ marginBottom: 16 }}>
+          {projectCards.map((p) => (
+            <div
+              key={p.id}
+              className="project-list-row"
+              style={{
+                cursor: "pointer",
+                border:
+                  selectedProject === p.id
+                    ? "1px solid rgba(123, 74, 45, 0.9)"
+                    : undefined,
+                boxShadow:
+                  selectedProject === p.id
+                    ? "0 0 0 2px rgba(123, 74, 45, 0.08)"
+                    : undefined,
+              }}
+              onClick={() => setSelectedProject(p.id)}
             >
-              {busyZip ? "Erstelle ZIP…" : "Alle als ZIP herunterladen"}
-            </button>
-          </div>
-        )}
+              <div className="project-list-info">
+                <div className="project-list-title">{p.name}</div>
+                <div className="project-list-status">
+                  📷 {p.photoCount} Foto{p.photoCount === 1 ? "" : "s"} · Zuletzt ergänzt:{" "}
+                  {formatDateTime(p.lastAdded)}
+                </div>
+              </div>
+
+              <div className="project-list-actions">
+                <button
+                  type="button"
+                  className="hbz-btn btn-small"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedProject(p.id);
+                  }}
+                >
+                  Öffnen
+                </button>
+              </div>
+            </div>
+          ))}
+
+          {projectCards.length === 0 && (
+            <div className="project-empty-state">Keine Projekte vorhanden.</div>
+          )}
+        </div>
 
         {selectedProject && (
-          <div className="project-photos-section">
-            <div className="project-photos-section-head">
-              <h3>Fotos im Projekt</h3>
-              <span className="badge-soft">{photos.length} Fotos</span>
+          <>
+            <div className="project-photos-upload">
+              <label className="hbz-label">
+                Fotos hochladen für: <strong>{selectedProjectInfo?.name || "Projekt"}</strong>
+              </label>
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                className="hbz-input"
+                onChange={handleUpload}
+                disabled={uploading}
+              />
+              {uploading && <p className="text-xs opacity-70">⏳ Lade hoch…</p>}
             </div>
 
-            {photos.length === 0 ? (
-              <div className="project-empty-state">Keine Fotos vorhanden.</div>
-            ) : (
-              <div className="project-photo-grid">
-                {photos.map((photo) => {
-                  const url = getPublicURL(photo);
-                  return (
-                    <div key={photo.id || photo.name} className="project-photo-card">
-                      <img
-                        src={url}
-                        alt={photo.name}
-                        className="project-photo-image"
-                        onClick={() => window.open(url, "_blank")}
-                      />
+            {msg && <div className="project-photos-msg">{msg}</div>}
 
-                      <div className="project-photo-name">{photo.name}</div>
+            <div className="project-photos-toolbar">
+              <button
+                className="hbz-btn"
+                onClick={downloadAllAsZip}
+                disabled={busyZip || selectedPhotos.length === 0}
+              >
+                {busyZip ? "Erstelle ZIP…" : "Alle als ZIP herunterladen"}
+              </button>
+            </div>
 
-                      <div className="project-photo-actions">
-                        <button
-                          className="hbz-btn btn-small"
-                          onClick={() => window.open(url, "_blank")}
-                        >
-                          Ansehen
-                        </button>
-                        <a className="hbz-btn btn-small" href={url} download>
-                          Download
-                        </a>
-                        <button
-                          className="hbz-btn btn-small"
-                          onClick={() => handleDelete(photo)}
-                        >
-                          Löschen
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
+            <div className="project-photos-section">
+              <div className="project-photos-section-head">
+                <h3>Fotos im Projekt</h3>
+                <span className="badge-soft">
+                  {selectedPhotos.length} Foto{selectedPhotos.length === 1 ? "" : "s"}
+                </span>
               </div>
-            )}
+
+              {selectedPhotos.length === 0 ? (
+                <div className="project-empty-state">Keine Fotos vorhanden.</div>
+              ) : (
+                <div className="project-photo-grid">
+                  {selectedPhotos.map((photo) => {
+                    const url = getPublicURL(photo.file_path);
+                    const filename = photo.file_path?.split("/").pop() || `foto_${photo.id}`;
+
+                    return (
+                      <div key={photo.id} className="project-photo-card">
+                        <img
+                          src={url}
+                          alt={photo.caption || filename}
+                          className="project-photo-image"
+                          onClick={() => window.open(url, "_blank")}
+                        />
+
+                        <div className="project-photo-name">
+                          {photo.caption?.trim() || filename}
+                        </div>
+
+                        <div
+                          style={{
+                            fontSize: 11,
+                            color: "#7a614e",
+                            marginTop: 6,
+                          }}
+                        >
+                          Hinzugefügt: {formatDateTime(photo.created_at || photo.taken_at)}
+                        </div>
+
+                        <div className="project-photo-actions">
+                          <button
+                            className="hbz-btn btn-small"
+                            onClick={() => window.open(url, "_blank")}
+                          >
+                            Ansehen
+                          </button>
+                          <a className="hbz-btn btn-small" href={url} download>
+                            Download
+                          </a>
+                          <button
+                            className="hbz-btn btn-small"
+                            onClick={() => handleDelete(photo)}
+                            disabled={deletingId === photo.id}
+                          >
+                            {deletingId === photo.id ? "Löschen…" : "Löschen"}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+        {!selectedProject && (
+          <div className="project-empty-state">
+            Bitte zuerst ein Projekt auswählen, dann werden die Fotos angezeigt.
           </div>
         )}
       </div>

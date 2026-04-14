@@ -15,8 +15,22 @@ const emptyForm = {
   active: true,
 };
 
+function formatDateTime(value) {
+  if (!value) return "—";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString("de-AT", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 export default function ProjectAdmin() {
   const [projects, setProjects] = useState([]);
+  const [photoRows, setPhotoRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState(emptyForm);
@@ -32,23 +46,67 @@ export default function ProjectAdmin() {
 
   async function fetchProjects() {
     setLoading(true);
-    const { data, error } = await supabase
-      .from("projects")
-      .select("*")
-      .order("created_at", { ascending: false });
 
-    if (error) {
-      console.error(error);
-      setMessage("❌ Fehler: " + error.message);
-    } else {
-      setProjects(data || []);
+    const [{ data: projectsData, error: projectsError }, { data: photosData, error: photosError }] =
+      await Promise.all([
+        supabase.from("projects").select("*").order("created_at", { ascending: false }),
+        supabase
+          .from("project_photos")
+          .select("id, project_id, created_at, taken_at")
+          .order("created_at", { ascending: false }),
+      ]);
+
+    if (projectsError) {
+      console.error(projectsError);
+      setMessage("❌ Fehler: " + projectsError.message);
+      setLoading(false);
+      return;
     }
+
+    if (photosError) {
+      console.error(photosError);
+      setMessage("❌ Fotos konnten nicht geladen werden: " + photosError.message);
+      setLoading(false);
+      return;
+    }
+
+    setProjects(projectsData || []);
+    setPhotoRows(photosData || []);
     setLoading(false);
   }
 
+  const photoStats = useMemo(() => {
+    const map = new Map();
+
+    for (const row of photoRows) {
+      const existing = map.get(row.project_id) || {
+        count: 0,
+        lastAdded: null,
+      };
+
+      existing.count += 1;
+
+      const candidate = row.created_at || row.taken_at || null;
+      if (!existing.lastAdded || new Date(candidate) > new Date(existing.lastAdded)) {
+        existing.lastAdded = candidate;
+      }
+
+      map.set(row.project_id, existing);
+    }
+
+    return map;
+  }, [photoRows]);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    let list = projects;
+    let list = projects.map((p) => {
+      const stats = photoStats.get(p.id) || { count: 0, lastAdded: null };
+      return {
+        ...p,
+        photo_count: stats.count || 0,
+        last_photo_at: stats.lastAdded || null,
+      };
+    });
 
     if (q) {
       list = list.filter(
@@ -61,13 +119,24 @@ export default function ProjectAdmin() {
 
     list = [...list].sort((a, b) => {
       const dir = sortDir === "asc" ? 1 : -1;
+
+      if (sortField === "photo_count") {
+        return ((a.photo_count || 0) - (b.photo_count || 0)) * dir;
+      }
+
+      if (sortField === "last_photo_at") {
+        const av = a.last_photo_at ? new Date(a.last_photo_at).getTime() : 0;
+        const bv = b.last_photo_at ? new Date(b.last_photo_at).getTime() : 0;
+        return (av - bv) * dir;
+      }
+
       const valA = (a[sortField] || "").toString().toLowerCase();
       const valB = (b[sortField] || "").toString().toLowerCase();
       return valA.localeCompare(valB) * dir;
     });
 
     return list;
-  }, [projects, search, sortField, sortDir]);
+  }, [projects, photoStats, search, sortField, sortDir]);
 
   function onChange(e) {
     const { name, value, type, checked } = e.target;
@@ -246,7 +315,7 @@ export default function ProjectAdmin() {
       <div className="hbz-card project-page-card">
         <div className="project-page-head">
           <h3 className="project-page-title">Projekte</h3>
-          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
             <span className="badge-soft">{filtered.length} Projekte</span>
             <input
               className="hbz-input"
@@ -265,23 +334,20 @@ export default function ProjectAdmin() {
             <table className="employee-table">
               <thead>
                 <tr>
-                  <th
-                    onClick={() => toggleSort("name")}
-                    style={{ cursor: "pointer" }}
-                  >
+                  <th onClick={() => toggleSort("name")} style={{ cursor: "pointer" }}>
                     Name{sortArrow("name")}
                   </th>
-                  <th
-                    onClick={() => toggleSort("cost_center")}
-                    style={{ cursor: "pointer" }}
-                  >
+                  <th onClick={() => toggleSort("cost_center")} style={{ cursor: "pointer" }}>
                     Kostenstelle{sortArrow("cost_center")}
                   </th>
-                  <th
-                    onClick={() => toggleSort("address")}
-                    style={{ cursor: "pointer" }}
-                  >
+                  <th onClick={() => toggleSort("address")} style={{ cursor: "pointer" }}>
                     Baustellenadresse{sortArrow("address")}
+                  </th>
+                  <th onClick={() => toggleSort("photo_count")} style={{ cursor: "pointer" }}>
+                    Fotos{sortArrow("photo_count")}
+                  </th>
+                  <th onClick={() => toggleSort("last_photo_at")} style={{ cursor: "pointer" }}>
+                    Zuletzt ergänzt{sortArrow("last_photo_at")}
                   </th>
                   <th>Aktiv</th>
                   <th className="num">Aktion</th>
@@ -294,7 +360,14 @@ export default function ProjectAdmin() {
                     <td>{p.cost_center || "—"}</td>
                     <td>
                       {p.address ? (
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                            flexWrap: "wrap",
+                          }}
+                        >
                           <span>{p.address}</span>
                           <button
                             type="button"
@@ -329,13 +402,12 @@ export default function ProjectAdmin() {
                         "—"
                       )}
                     </td>
+                    <td>{p.photo_count || 0}</td>
+                    <td>{formatDateTime(p.last_photo_at)}</td>
                     <td>{p.active ? "Ja" : "Nein"}</td>
                     <td className="num">
                       <div className="employee-action-group">
-                        <button
-                          className="hbz-btn btn-small"
-                          onClick={() => onEdit(p)}
-                        >
+                        <button className="hbz-btn btn-small" onClick={() => onEdit(p)}>
                           Bearbeiten
                         </button>
                         <button
@@ -351,7 +423,7 @@ export default function ProjectAdmin() {
 
                 {filtered.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="employee-empty">
+                    <td colSpan={7} className="employee-empty">
                       Keine Projekte gefunden
                     </td>
                   </tr>
