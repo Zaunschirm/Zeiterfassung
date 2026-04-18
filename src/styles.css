@@ -2492,4 +2492,288 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   .workassign-edit-row {
     width: 100%;
   }
+}/* ===== Arbeitseinteilung Board / 123-erfasst Stil ===== */
+
+.workassign-board-page {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.workassign-board-head {
+  padding: 14px 16px;
+}
+
+.workassign-board-head-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.workassign-board-kicker {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: #f4e8dc;
+  margin-bottom: 4px;
+}
+
+.workassign-board-title {
+  margin: 0;
+  font-size: 24px;
+  color: #fffaf4;
+}
+
+.workassign-board-subtitle {
+  margin-top: 4px;
+  color: rgba(255, 248, 241, 0.92);
+  font-size: 13px;
+}
+
+.workassign-board-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.workassign-board-head.hbz-card {
+  background: linear-gradient(135deg, rgba(123, 74, 45, 0.96), rgba(196, 154, 108, 0.92));
+  color: #fff8f1;
+  border: none;
+  box-shadow: 0 18px 34px rgba(97, 60, 36, 0.22);
+}
+
+.workassign-board-head .hbz-btn {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fffaf4;
+  border-color: rgba(255, 255, 255, 0.28);
+}
+
+.workassign-board-head .hbz-btn:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.workassign-board-toolbar {
+  margin-top: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.workassign-board-toolbar .help {
+  color: rgba(255, 248, 241, 0.88);
+  font-size: 12px;
+}
+
+.workassign-board-datefield {
+  min-width: 170px;
+}
+
+.workassign-board-datefield .hbz-label {
+  color: #fff8f1;
+}
+
+.workassign-board-datefield .hbz-input {
+  background: rgba(255, 255, 255, 0.14);
+  color: #fffaf4;
+  border-color: rgba(255, 255, 255, 0.28);
+}
+
+.workassign-board-datefield .hbz-input:focus {
+  background: rgba(255, 255, 255, 0.22);
+  border-color: rgba(255, 255, 255, 0.55);
+}
+
+.workassign-board-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(220px, 1fr));
+  gap: 10px;
+  align-items: start;
+}
+
+.workassign-col {
+  min-height: 420px;
+  background: linear-gradient(180deg, #fffdfa, #f8f1e7);
+  border: 1px solid rgba(203, 182, 156, 0.45);
+  border-radius: 18px;
+  padding: 10px;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.04);
+}
+
+.workassign-col-dragover {
+  border-color: #7b4a2d;
+  box-shadow: 0 0 0 2px rgba(123, 74, 45, 0.12);
+}
+
+.workassign-col-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-bottom: 8px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid rgba(203, 182, 156, 0.4);
+}
+
+.workassign-col-day {
+  font-size: 16px;
+  font-weight: 800;
+  color: #3f2c1b;
+  text-transform: capitalize;
+}
+
+.workassign-col-date {
+  font-size: 12px;
+  color: #6f5745;
+}
+
+.workassign-col-count {
+  margin-top: 2px;
+  font-size: 11px;
+  color: #7b4a2d;
+  font-weight: 700;
+}
+
+.workassign-col-add {
+  display: grid;
+  grid-template-columns: 1fr 1fr 40px;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.workassign-col-add .hbz-select {
+  padding: 6px 9px;
+  font-size: 12px;
+}
+
+.workassign-col-add .hbz-btn {
+  padding: 0;
+  height: 34px;
+  justify-content: center;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.workassign-card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.workassign-col-empty {
+  border: 1px dashed rgba(171, 141, 109, 0.6);
+  border-radius: 14px;
+  padding: 14px 10px;
+  text-align: center;
+  color: #7a614e;
+  font-size: 12px;
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.workassign-card {
+  border: 1px solid rgba(203, 182, 156, 0.42);
+  border-radius: 14px;
+  background: #fff;
+  padding: 8px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.03);
+}
+
+.workassign-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.workassign-card-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: #2f241b;
+  line-height: 1.2;
+}
+
+.workassign-card-drag {
+  font-size: 14px;
+  color: #8b6f59;
+  user-select: none;
+}
+
+.workassign-card-projects {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.workassign-card-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 11px;
+  line-height: 1.2;
+  border: 1px solid rgba(171, 141, 109, 0.7);
+  background: #f7ede1;
+  color: #5a3a23;
+}
+
+.workassign-card-chip-remove {
+  border: none;
+  background: transparent;
+  color: #7b4a2d;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 0;
+}
+
+.workassign-card-addrow {
+  display: grid;
+  grid-template-columns: 1fr 38px;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.workassign-card-addrow .hbz-select {
+  padding: 6px 9px;
+  font-size: 12px;
+}
+
+.workassign-card-addrow .hbz-btn {
+  height: 32px;
+  padding: 0;
+  justify-content: center;
+  font-size: 18px;
+  line-height: 1;
+}
+
+@media (max-width: 1400px) {
+  .workassign-board-grid {
+    grid-template-columns: repeat(3, minmax(220px, 1fr));
+  }
+}
+
+@media (max-width: 1000px) {
+  .workassign-board-grid {
+    grid-template-columns: repeat(2, minmax(220px, 1fr));
+  }
+}
+
+@media (max-width: 700px) {
+  .workassign-board-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .workassign-col-add {
+    grid-template-columns: 1fr;
+  }
+
+  .workassign-card-addrow {
+    grid-template-columns: 1fr 48px;
+  }
 }
