@@ -5,7 +5,7 @@ import { getSession } from "../lib/session";
 function startOfWeek(dateStr) {
   const d = new Date(`${dateStr}T00:00:00`);
   const day = d.getDay();
-  const diff = day === 0 ? -6 : 1 - day;
+  const diff = day === 0 ? -6 : 1 - day; // Montag als Start
   d.setDate(d.getDate() + diff);
   return d;
 }
@@ -195,7 +195,7 @@ export default function WorkAssignments() {
 
         const employeeData = employeesRes.data || [];
         setEmployees(employeeData);
-      setProjects(projectsRes.data || []);
+        setProjects(projectsRes.data || []);
         setEmployeeOrder(
           employeeData
             .slice()
@@ -292,7 +292,13 @@ export default function WorkAssignments() {
       await loadAssignments();
     } catch (e) {
       console.error("[WorkAssignments] persist employee order error:", e);
-      window.alert("Mitarbeiter-Reihenfolge konnte nicht gespeichert werden.");
+      alert(
+        e?.message ||
+          e?.details ||
+          e?.hint ||
+          JSON.stringify(e) ||
+          "Mitarbeiter-Reihenfolge konnte nicht gespeichert werden."
+      );
     } finally {
       setBusyKey("");
     }
@@ -310,19 +316,30 @@ export default function WorkAssignments() {
     try {
       setBusyKey(`add-${employeeId}-${dateStr}-${projectId}`);
 
-      const { error } = await supabase.from("work_assignments").insert({
+      const payload = {
         employee_id: Number(employeeId),
         assignment_date: dateStr,
         project_id: Number(projectId),
         sort_order: getNextSortOrderForEmployee(employeeId),
-      });
+      };
 
-      if (error) throw error;
+      const { error } = await supabase.from("work_assignments").insert(payload);
+
+      if (error) {
+        console.error("[WorkAssignments] insert payload:", payload);
+        throw error;
+      }
 
       await loadAssignments();
     } catch (e) {
       console.error("[WorkAssignments] add project error:", e);
-      window.alert("Projekt konnte nicht hinzugefügt werden.");
+      alert(
+        e?.message ||
+          e?.details ||
+          e?.hint ||
+          JSON.stringify(e) ||
+          "Projekt konnte nicht hinzugefügt werden."
+      );
     } finally {
       setBusyKey("");
     }
@@ -345,7 +362,13 @@ export default function WorkAssignments() {
       await loadAssignments();
     } catch (e) {
       console.error("[WorkAssignments] remove project error:", e);
-      window.alert("Projekt konnte nicht gelöscht werden.");
+      alert(
+        e?.message ||
+          e?.details ||
+          e?.hint ||
+          JSON.stringify(e) ||
+          "Projekt konnte nicht gelöscht werden."
+      );
     } finally {
       setBusyKey("");
     }
@@ -494,9 +517,7 @@ export default function WorkAssignments() {
                   return (
                     <tr
                       key={employee.id}
-                      className={
-                        hoverRow === rowKey ? "workassign-row-hover" : ""
-                      }
+                      className={hoverRow === rowKey ? "workassign-row-hover" : ""}
                     >
                       <td
                         className="workassign-sticky-left workassign-employee-cell"
@@ -559,10 +580,7 @@ export default function WorkAssignments() {
                                   const project = projectMap.get(String(row.project_id));
 
                                   return (
-                                    <span
-                                      className="workassign-cell-chip"
-                                      key={row.id}
-                                    >
+                                    <span className="workassign-cell-chip" key={row.id}>
                                       {projectLabel(project)}
                                       {isAdmin ? (
                                         <button
