@@ -91,6 +91,7 @@ export default function WorkAssignments() {
   const [error, setError] = useState("");
   const [dragEmployeeId, setDragEmployeeId] = useState(null);
   const [dragProjectId, setDragProjectId] = useState(null);
+  const [selectedProjectId, setSelectedProjectId] = useState(null);
   const [hoverCell, setHoverCell] = useState("");
   const [hoverRow, setHoverRow] = useState("");
 
@@ -381,6 +382,7 @@ export default function WorkAssignments() {
     e.dataTransfer.setData("projectId", value);
     e.dataTransfer.effectAllowed = "copy";
     setDragProjectId(value);
+    setSelectedProjectId(value);
   }
 
   function onProjectDragEnd() {
@@ -407,6 +409,7 @@ export default function WorkAssignments() {
       e.dataTransfer.getData("projectId") ||
       e.dataTransfer.getData("text/plain") ||
       dragProjectId ||
+      selectedProjectId ||
       "";
 
     if (!droppedProjectId || droppedProjectId === "undefined" || droppedProjectId === "null") {
@@ -417,6 +420,11 @@ export default function WorkAssignments() {
     await addProjectToCell(employeeId, dateStr, droppedProjectId);
     setHoverCell("");
     setDragProjectId(null);
+  }
+
+  async function onCellClick(employeeId, dateStr) {
+    if (!isAdmin || !selectedProjectId) return;
+    await addProjectToCell(employeeId, dateStr, selectedProjectId);
   }
 
   async function onRowDrop(e, targetEmployeeId) {
@@ -479,8 +487,7 @@ export default function WorkAssignments() {
 
         <div className="workassign-dispo-toolbar">
           <div className="help">
-            Projekte oben greifen und auf Mitarbeiter + Tag ziehen. Nur Admin kann
-            bearbeiten. Alle anderen sehen alles.
+            Projekte oben greifen und auf Mitarbeiter + Tag ziehen. Du kannst alternativ auch ein Projekt anklicken und danach die Zelle anklicken.
           </div>
 
           <div className="field-inline workassign-dispo-datefield">
@@ -500,23 +507,31 @@ export default function WorkAssignments() {
       <div className="hbz-card workassign-project-palette-card">
         <div className="workassign-project-palette-head">
           <div className="month-card-title">Projekte</div>
-          <div className="help">Diese Projekt-Chips in die gewünschte Zelle ziehen.</div>
+          <div className="help">
+            Projekt ziehen oder anklicken und dann auf eine Zelle klicken.
+          </div>
         </div>
 
         <div className="workassign-project-palette">
-          {projects.map((project) => (
-            <div
-              key={project.id}
-              className={`workassign-project-token ${
-                dragProjectId === String(project.id) ? "workassign-project-token-dragging" : ""
-              }`}
-              draggable={isAdmin}
-              onDragStart={(e) => onProjectDragStart(e, project.id)}
-              onDragEnd={onProjectDragEnd}
-            >
-              {projectLabel(project)}
-            </div>
-          ))}
+          {projects.map((project) => {
+            const active = String(selectedProjectId || "") === String(project.id);
+
+            return (
+              <button
+                key={project.id}
+                type="button"
+                className={`workassign-project-token${
+                  active ? " workassign-project-token-dragging" : ""
+                }`}
+                draggable={isAdmin}
+                onClick={() => setSelectedProjectId(String(project.id))}
+                onDragStart={(e) => onProjectDragStart(e, project.id)}
+                onDragEnd={onProjectDragEnd}
+              >
+                {projectLabel(project)}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -587,6 +602,7 @@ export default function WorkAssignments() {
                             className={`workassign-drop-cell ${
                               hoverCell === cellKey ? "workassign-drop-cell-hover" : ""
                             }`}
+                            onClick={() => onCellClick(employee.id, dateStr)}
                             onDragOver={(e) => {
                               if (!isAdmin) return;
                               e.preventDefault();
@@ -611,7 +627,10 @@ export default function WorkAssignments() {
                                         <button
                                           type="button"
                                           className="workassign-cell-chip-remove"
-                                          onClick={() => removeProject(row.id)}
+                                          onClick={(ev) => {
+                                            ev.stopPropagation();
+                                            removeProject(row.id);
+                                          }}
                                           disabled={busyKey === `remove-${row.id}`}
                                         >
                                           ×
