@@ -5,7 +5,7 @@ import { getSession } from "../lib/session";
 function startOfWeek(dateStr) {
   const d = new Date(`${dateStr}T00:00:00`);
   const day = d.getDay();
-  const diff = day === 0 ? -6 : 1 - day; // Montag als Start
+  const diff = day === 0 ? -6 : 1 - day;
   d.setDate(d.getDate() + diff);
   return d;
 }
@@ -16,6 +16,7 @@ function toIso(date) {
 
 function getWeekDates(dateStr) {
   const start = startOfWeek(dateStr);
+
   return Array.from({ length: 5 }, (_, i) => {
     const d = new Date(start);
     d.setDate(start.getDate() + i);
@@ -246,7 +247,6 @@ export default function WorkAssignments() {
 
   useEffect(() => {
     loadAssignments();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [weekAnchor]);
 
   function shiftWeek(direction) {
@@ -374,32 +374,54 @@ export default function WorkAssignments() {
     }
   }
 
-  function onProjectDragStart(projectId) {
+  function onProjectDragStart(e, projectId) {
     if (!isAdmin) return;
+    e.dataTransfer.setData("projectId", String(projectId));
+    e.dataTransfer.effectAllowed = "copy";
     setDragProjectId(String(projectId));
     setDragEmployeeId(null);
   }
 
-  function onEmployeeDragStart(employeeId) {
+  function onEmployeeDragStart(e, employeeId) {
     if (!isAdmin) return;
+    e.dataTransfer.setData("employeeId", String(employeeId));
+    e.dataTransfer.effectAllowed = "move";
     setDragEmployeeId(String(employeeId));
     setDragProjectId(null);
   }
 
-  async function onCellDrop(employeeId, dateStr) {
-    if (!isAdmin || !dragProjectId) return;
-    await addProjectToCell(employeeId, dateStr, dragProjectId);
+  async function onCellDrop(e, employeeId, dateStr) {
+    if (!isAdmin) return;
+
+    const droppedProjectId =
+      e.dataTransfer.getData("projectId") || dragProjectId || "";
+
+    if (!droppedProjectId) {
+      alert("Kein Projekt übergeben.");
+      return;
+    }
+
+    await addProjectToCell(employeeId, dateStr, droppedProjectId);
     setDragProjectId(null);
     setHoverCell("");
   }
 
-  async function onRowDrop(targetEmployeeId) {
-    if (!isAdmin || !dragEmployeeId) return;
-    if (String(dragEmployeeId) === String(targetEmployeeId)) return;
+  async function onRowDrop(e, targetEmployeeId) {
+    if (!isAdmin) return;
+
+    const droppedEmployeeId =
+      e.dataTransfer.getData("employeeId") || dragEmployeeId || "";
+
+    if (!droppedEmployeeId) return;
+    if (String(droppedEmployeeId) === String(targetEmployeeId)) return;
 
     const currentOrder = orderedEmployees.map((emp) => String(emp.id));
-    const fromIndex = currentOrder.findIndex((id) => id === String(dragEmployeeId));
-    const toIndex = currentOrder.findIndex((id) => id === String(targetEmployeeId));
+    const fromIndex = currentOrder.findIndex(
+      (id) => id === String(droppedEmployeeId)
+    );
+    const toIndex = currentOrder.findIndex(
+      (id) => id === String(targetEmployeeId)
+    );
 
     if (fromIndex < 0 || toIndex < 0) return;
 
@@ -479,7 +501,7 @@ export default function WorkAssignments() {
                   : ""
               }`}
               draggable={isAdmin}
-              onDragStart={() => onProjectDragStart(project.id)}
+              onDragStart={(e) => onProjectDragStart(e, project.id)}
               onDragEnd={() => setDragProjectId(null)}
             >
               {projectLabel(project)}
@@ -522,7 +544,7 @@ export default function WorkAssignments() {
                       <td
                         className="workassign-sticky-left workassign-employee-cell"
                         draggable={isAdmin}
-                        onDragStart={() => onEmployeeDragStart(employee.id)}
+                        onDragStart={(e) => onEmployeeDragStart(e, employee.id)}
                         onDragOver={(e) => {
                           if (!isAdmin || !dragEmployeeId) return;
                           e.preventDefault();
@@ -533,7 +555,7 @@ export default function WorkAssignments() {
                         }}
                         onDrop={(e) => {
                           e.preventDefault();
-                          onRowDrop(employee.id);
+                          onRowDrop(e, employee.id);
                         }}
                       >
                         <div className="workassign-employee-cell-inner">
@@ -569,7 +591,7 @@ export default function WorkAssignments() {
                             }}
                             onDrop={async (e) => {
                               e.preventDefault();
-                              await onCellDrop(employee.id, dateStr);
+                              await onCellDrop(e, employee.id, dateStr);
                             }}
                           >
                             <div className="workassign-cell-content">
