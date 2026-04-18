@@ -232,8 +232,8 @@ export default function WorkAssignments() {
   }
 
   return (
-    <div className="month-overview workassign-page">
-      <div className="month-overview-hero hbz-card">
+    <div className="month-overview workassign-page workassign-compact-page">
+      <div className="month-overview-hero hbz-card workassign-hero-compact">
         <div className="month-overview-hero__content">
           <div>
             <div className="month-overview-kicker">Planung</div>
@@ -269,8 +269,8 @@ export default function WorkAssignments() {
         </div>
       </div>
 
-      <div className="hbz-card month-main-card">
-        <div className="workassign-toolbar">
+      <div className="hbz-card month-main-card workassign-main-compact">
+        <div className="workassign-toolbar workassign-toolbar-compact">
           <div>
             <div className="month-card-title">Wochenübersicht</div>
             <div className="help">
@@ -291,7 +291,7 @@ export default function WorkAssignments() {
         </div>
 
         {error && (
-          <div className="year-error-box" style={{ marginTop: 12 }}>
+          <div className="year-error-box" style={{ marginTop: 10 }}>
             {error}
           </div>
         )}
@@ -299,28 +299,26 @@ export default function WorkAssignments() {
         {loading ? (
           <div className="month-empty-state">Lade Arbeitseinteilung…</div>
         ) : (
-          <div className="workassign-day-list">
+          <div className="workassign-day-grid">
             {weekDateStrings.map((dateStr) => (
-              <section key={dateStr} className="workassign-day-card">
-                <div className="workassign-day-head">
+              <section key={dateStr} className="workassign-day-card compact">
+                <div className="workassign-day-head compact">
                   <div>
-                    <div className="workassign-day-title">
+                    <div className="workassign-day-title compact">
                       {formatDisplayDate(dateStr)}
                     </div>
-                    <div className="help">
+                    <div className="help compact">
                       {
                         rows.filter((row) => row.assignment_date === dateStr)
                           .length
                       }{" "}
-                      Einteilungen in dieser Tagesliste
+                      Einteilungen
                     </div>
                   </div>
-                  <span className="badge-soft">
-                    {employees.length} Mitarbeiter
-                  </span>
+                  <span className="badge-soft">{employees.length} MA</span>
                 </div>
 
-                <div className="workassign-list">
+                <div className="workassign-list compact">
                   {employees.map((employee) => {
                     const key = `${employee.id}_${dateStr}`;
                     const assignments = getAssignments(employee.id, dateStr);
@@ -334,72 +332,74 @@ export default function WorkAssignments() {
                     );
 
                     return (
-                      <div className="workassign-row" key={key}>
-                        <div className="workassign-row-main">
-                          <div className="workassign-employee-name">
+                      <div className="workassign-row compact" key={key}>
+                        <div className="workassign-row-top compact">
+                          <div className="workassign-employee-name compact">
                             {employee.name}
                           </div>
 
-                          <div className="workassign-projects">
-                            {assignments.length === 0 ? (
-                              <span className="workassign-empty">
-                                Keine Einteilung
-                              </span>
-                            ) : (
-                              assignments.map((row) => (
-                                <span
-                                  className="workassign-project-chip"
-                                  key={row.id}
-                                >
-                                  {projectLabel(row.projects)}
-                                  {isAdmin && (
-                                    <button
-                                      type="button"
-                                      className="workassign-chip-remove"
-                                      onClick={() => removeAssignment(row.id)}
-                                      disabled={savingKey === String(row.id)}
-                                    >
-                                      ×
-                                    </button>
-                                  )}
-                                </span>
-                              ))
-                            )}
-                          </div>
+                          {isAdmin && (
+                            <div className="workassign-edit-row compact">
+                              <select
+                                className="hbz-select"
+                                value={newSelection[key] || ""}
+                                onChange={(e) =>
+                                  setNewSelection((prev) => ({
+                                    ...prev,
+                                    [key]: e.target.value,
+                                  }))
+                                }
+                              >
+                                <option value="">Projekt wählen…</option>
+                                {availableProjects.map((project) => (
+                                  <option key={project.id} value={project.id}>
+                                    {projectLabel(project)}
+                                  </option>
+                                ))}
+                              </select>
+
+                              <button
+                                type="button"
+                                className="hbz-btn hbz-btn-primary"
+                                onClick={() =>
+                                  addAssignment(employee.id, dateStr)
+                                }
+                                disabled={
+                                  !newSelection[key] || savingKey === key
+                                }
+                              >
+                                +
+                              </button>
+                            </div>
+                          )}
                         </div>
 
-                        {isAdmin && (
-                          <div className="workassign-edit-row">
-                            <select
-                              className="hbz-select"
-                              value={newSelection[key] || ""}
-                              onChange={(e) =>
-                                setNewSelection((prev) => ({
-                                  ...prev,
-                                  [key]: e.target.value,
-                                }))
-                              }
-                            >
-                              <option value="">Projekt wählen…</option>
-                              {availableProjects.map((project) => (
-                                <option key={project.id} value={project.id}>
-                                  {projectLabel(project)}
-                                </option>
-                              ))}
-                            </select>
-
-                            <button
-                              type="button"
-                              className="hbz-btn hbz-btn-primary"
-                              onClick={() => addAssignment(employee.id, dateStr)}
-                              disabled={
-                                !newSelection[key] || savingKey === key
-                              }
-                            >
-                              Hinzufügen
-                            </button>
-                          </div>
-                        )}
+                        <div className="workassign-projects compact">
+                          {assignments.length === 0 ? (
+                            <span className="workassign-empty compact">
+                              Keine Einteilung
+                            </span>
+                          ) : (
+                            assignments.map((row) => (
+                              <span
+                                className="workassign-project-chip compact"
+                                key={row.id}
+                              >
+                                {projectLabel(row.projects)}
+                                {isAdmin && (
+                                  <button
+                                    type="button"
+                                    className="workassign-chip-remove"
+                                    onClick={() => removeAssignment(row.id)}
+                                    disabled={savingKey === String(row.id)}
+                                  >
+                                    ×
+                                  </button>
+                                )}
+                              </span>
+                            ))
+                          )}
+                        </div>
                       </div>
                     );
                   })}

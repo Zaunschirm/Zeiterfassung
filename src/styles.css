@@ -2358,3 +2358,138 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     max-width: none;
   }
 }
+/* ===== Arbeitseinteilung KOMPAKT ===== */
+
+.workassign-page {
+  margin-top: 8px;
+}
+
+/* HEADER kleiner */
+.workassign-page .month-overview-hero {
+  padding: 10px 16px;
+}
+
+.workassign-page .month-overview-title {
+  font-size: 20px;
+}
+
+.workassign-page .month-overview-subtitle {
+  font-size: 13px;
+}
+
+/* Toolbar kompakter */
+.workassign-toolbar {
+  margin-bottom: 8px !important;
+}
+
+.workassign-toolbar .month-card-title {
+  font-size: 14px;
+  margin-bottom: 2px;
+}
+
+.workassign-toolbar .help {
+  font-size: 11px;
+}
+
+/* GRID statt Liste (2 Spalten!) */
+.workassign-day-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+/* Tageskarten kleiner */
+.workassign-day-card {
+  padding: 10px 12px !important;
+  border-radius: 14px !important;
+}
+
+/* Tagesheader kompakter */
+.workassign-day-head {
+  margin-bottom: 6px !important;
+}
+
+.workassign-day-title {
+  font-size: 15px !important;
+  line-height: 1.2;
+}
+
+.workassign-day-head .help {
+  font-size: 11px;
+}
+
+/* Mitarbeiterliste enger */
+.workassign-list {
+  gap: 6px !important;
+}
+
+/* Mitarbeiter-Zeile kompakt */
+.workassign-row {
+  padding: 8px 10px !important;
+  border-radius: 12px !important;
+}
+
+/* Name kleiner */
+.workassign-employee-name {
+  font-size: 14px !important;
+}
+
+/* Projekte enger */
+.workassign-projects {
+  margin-top: 4px !important;
+  gap: 5px !important;
+}
+
+/* Projekt Chips kleiner */
+.workassign-project-chip {
+  padding: 3px 7px !important;
+  font-size: 11px !important;
+}
+
+/* Auswahl + Button kompakt */
+.workassign-edit-row {
+  gap: 6px !important;
+}
+
+.workassign-edit-row .hbz-select {
+  font-size: 12px;
+  padding: 5px 8px;
+}
+
+.workassign-edit-row .hbz-btn {
+  height: 30px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+/* "Keine Einteilung" kleiner */
+.workassign-empty {
+  font-size: 11px;
+}
+
+/* ===== RESPONSIVE ===== */
+
+/* Tablet */
+@media (max-width: 1100px) {
+  .workassign-day-list {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Handy */
+@media (max-width: 768px) {
+  .workassign-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .workassign-row {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .workassign-edit-row {
+    width: 100%;
+  }
+}
