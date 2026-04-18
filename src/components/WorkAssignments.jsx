@@ -2,16 +2,20 @@ import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { getSession } from "../lib/session";
 
+function formatLocalDate(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
 function startOfWeek(dateStr) {
-  const d = new Date(`${dateStr}T00:00:00`);
+  const d = new Date(`${dateStr}T12:00:00`);
   const day = d.getDay();
   const diff = day === 0 ? -6 : 1 - day; // Montag
   d.setDate(d.getDate() + diff);
+  d.setHours(12, 0, 0, 0);
   return d;
-}
-
-function toIso(date) {
-  return date.toISOString().slice(0, 10);
 }
 
 function getWeekDates(dateStr) {
@@ -19,29 +23,30 @@ function getWeekDates(dateStr) {
   return Array.from({ length: 5 }, (_, i) => {
     const d = new Date(start);
     d.setDate(start.getDate() + i);
+    d.setHours(12, 0, 0, 0);
     return d;
   });
 }
 
 function getWeekNumber(dateStr) {
-  const d = new Date(`${dateStr}T00:00:00`);
+  const d = new Date(`${dateStr}T12:00:00`);
   const dayNum = (d.getDay() + 6) % 7;
   d.setDate(d.getDate() - dayNum + 3);
-  const firstThursday = new Date(d.getFullYear(), 0, 4);
+  const firstThursday = new Date(d.getFullYear(), 0, 4, 12, 0, 0, 0);
   const firstDayNum = (firstThursday.getDay() + 6) % 7;
   firstThursday.setDate(firstThursday.getDate() - firstDayNum + 3);
   return 1 + Math.round((d - firstThursday) / (7 * 24 * 60 * 60 * 1000));
 }
 
 function dayShort(dateStr) {
-  const label = new Date(`${dateStr}T00:00:00`).toLocaleDateString("de-AT", {
+  const label = new Date(`${dateStr}T12:00:00`).toLocaleDateString("de-AT", {
     weekday: "short",
   });
   return label.replace(".", "");
 }
 
 function dayLabel(dateStr) {
-  return new Date(`${dateStr}T00:00:00`).toLocaleDateString("de-AT", {
+  return new Date(`${dateStr}T12:00:00`).toLocaleDateString("de-AT", {
     day: "2-digit",
     month: "2-digit",
   });
@@ -76,9 +81,7 @@ export default function WorkAssignments() {
   const session = getSession()?.user || null;
   const isAdmin = normalizeRole(session?.role) === "admin";
 
-  const [weekAnchor, setWeekAnchor] = useState(
-    () => new Date().toISOString().slice(0, 10)
-  );
+  const [weekAnchor, setWeekAnchor] = useState(() => formatLocalDate(new Date()));
   const [employees, setEmployees] = useState([]);
   const [projects, setProjects] = useState([]);
   const [assignments, setAssignments] = useState([]);
@@ -91,7 +94,7 @@ export default function WorkAssignments() {
   const [hoverRow, setHoverRow] = useState("");
 
   const weekDates = useMemo(() => getWeekDates(weekAnchor), [weekAnchor]);
-  const weekDateStrings = useMemo(() => weekDates.map(toIso), [weekDates]);
+  const weekDateStrings = useMemo(() => weekDates.map(formatLocalDate), [weekDates]);
 
   const weekLabel = useMemo(() => {
     const first = weekDates[0];
@@ -114,9 +117,7 @@ export default function WorkAssignments() {
 
     for (const row of assignments) {
       const key = `${row.employee_id}__${row.assignment_date}`;
-      if (!map.has(key)) {
-        map.set(key, []);
-      }
+      if (!map.has(key)) map.set(key, []);
       map.get(key).push(row);
     }
 
@@ -147,10 +148,7 @@ export default function WorkAssignments() {
     const byId = new Map(employees.map((emp) => [String(emp.id), emp]));
 
     if (employeeOrder.length) {
-      const ordered = employeeOrder
-        .map((id) => byId.get(String(id)))
-        .filter(Boolean);
-
+      const ordered = employeeOrder.map((id) => byId.get(String(id))).filter(Boolean);
       const missing = employees
         .filter((emp) => !employeeOrder.includes(String(emp.id)))
         .sort(employeeDefaultSort);
@@ -196,10 +194,7 @@ export default function WorkAssignments() {
         setEmployees(employeeData);
         setProjects(projectsRes.data || []);
         setEmployeeOrder(
-          employeeData
-            .slice()
-            .sort(employeeDefaultSort)
-            .map((emp) => String(emp.id))
+          employeeData.slice().sort(employeeDefaultSort).map((emp) => String(emp.id))
         );
       } catch (e) {
         console.error("[WorkAssignments] bootstrap error:", e);
@@ -248,7 +243,8 @@ export default function WorkAssignments() {
   function shiftWeek(direction) {
     const start = startOfWeek(weekAnchor);
     start.setDate(start.getDate() + direction * 7);
-    setWeekAnchor(toIso(start));
+    start.setHours(12, 0, 0, 0);
+    setWeekAnchor(formatLocalDate(start));
   }
 
   function getCellRows(employeeId, dateStr) {
@@ -397,8 +393,6 @@ export default function WorkAssignments() {
 
     const droppedProjectId = e.dataTransfer.getData("text/plain");
 
-    console.log("DROP projectId:", droppedProjectId);
-
     if (!droppedProjectId || droppedProjectId === "undefined") {
       alert("Fehler: Projekt-ID fehlt!");
       return;
@@ -456,7 +450,7 @@ export default function WorkAssignments() {
             <button
               className="hbz-btn"
               type="button"
-              onClick={() => setWeekAnchor(new Date().toISOString().slice(0, 10))}
+              onClick={() => setWeekAnchor(formatLocalDate(new Date()))}
             >
               Diese KW
             </button>
@@ -489,9 +483,7 @@ export default function WorkAssignments() {
       <div className="hbz-card workassign-project-palette-card">
         <div className="workassign-project-palette-head">
           <div className="month-card-title">Projekte</div>
-          <div className="help">
-            Diese Projekt-Chips in die gewünschte Zelle ziehen.
-          </div>
+          <div className="help">Diese Projekt-Chips in die gewünschte Zelle ziehen.</div>
         </div>
 
         <div className="workassign-project-palette">
