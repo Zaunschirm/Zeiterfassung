@@ -5,7 +5,7 @@ import { getSession } from "../lib/session";
 function startOfWeek(dateStr) {
   const d = new Date(`${dateStr}T00:00:00`);
   const day = d.getDay();
-  const diff = day === 0 ? -6 : 1 - day;
+  const diff = day === 0 ? -6 : 1 - day; // Montag
   d.setDate(d.getDate() + diff);
   return d;
 }
@@ -16,7 +16,6 @@ function toIso(date) {
 
 function getWeekDates(dateStr) {
   const start = startOfWeek(dateStr);
-
   return Array.from({ length: 5 }, (_, i) => {
     const d = new Date(start);
     d.setDate(start.getDate() + i);
@@ -35,9 +34,10 @@ function getWeekNumber(dateStr) {
 }
 
 function dayShort(dateStr) {
-  return new Date(`${dateStr}T00:00:00`).toLocaleDateString("de-AT", {
+  const label = new Date(`${dateStr}T00:00:00`).toLocaleDateString("de-AT", {
     weekday: "short",
   });
+  return label.replace(".", "");
 }
 
 function dayLabel(dateStr) {
@@ -86,7 +86,6 @@ export default function WorkAssignments() {
   const [loading, setLoading] = useState(false);
   const [busyKey, setBusyKey] = useState("");
   const [error, setError] = useState("");
-  const [dragProjectId, setDragProjectId] = useState(null);
   const [dragEmployeeId, setDragEmployeeId] = useState(null);
   const [hoverCell, setHoverCell] = useState("");
   const [hoverRow, setHoverRow] = useState("");
@@ -183,7 +182,6 @@ export default function WorkAssignments() {
             .eq("active", true)
             .eq("disabled", false)
             .order("name", { ascending: true }),
-
           supabase
             .from("projects")
             .select("id, name, cost_center, active")
@@ -219,15 +217,13 @@ export default function WorkAssignments() {
     try {
       const { data, error } = await supabase
         .from("work_assignments")
-        .select(
-          `
-            id,
-            assignment_date,
-            employee_id,
-            project_id,
-            sort_order
-          `
-        )
+        .select(`
+          id,
+          assignment_date,
+          employee_id,
+          project_id,
+          sort_order
+        `)
         .in("assignment_date", weekDateStrings)
         .order("assignment_date", { ascending: true })
         .order("sort_order", { ascending: true })
@@ -307,19 +303,25 @@ export default function WorkAssignments() {
   async function addProjectToCell(employeeId, dateStr, projectId) {
     if (!isAdmin || !projectId) return;
 
+    const projectIdNumber = Number(projectId);
+    if (!projectIdNumber || Number.isNaN(projectIdNumber)) {
+      alert("Fehler: Projekt-ID fehlt oder ist ungültig.");
+      return;
+    }
+
     const existing = getCellRows(employeeId, dateStr).some(
-      (row) => String(row.project_id) === String(projectId)
+      (row) => String(row.project_id) === String(projectIdNumber)
     );
 
     if (existing) return;
 
     try {
-      setBusyKey(`add-${employeeId}-${dateStr}-${projectId}`);
+      setBusyKey(`add-${employeeId}-${dateStr}-${projectIdNumber}`);
 
       const payload = {
         employee_id: Number(employeeId),
         assignment_date: dateStr,
-        project_id: Number(projectId),
+        project_id: projectIdNumber,
         sort_order: getNextSortOrderForEmployee(employeeId),
       };
 
@@ -376,37 +378,38 @@ export default function WorkAssignments() {
 
   function onProjectDragStart(e, projectId) {
     if (!isAdmin) return;
-    e.dataTransfer.setData("projectId", String(projectId));
+    e.dataTransfer.clearData();
+    e.dataTransfer.setData("text/plain", String(projectId));
     e.dataTransfer.effectAllowed = "copy";
-    setDragProjectId(String(projectId));
-    setDragEmployeeId(null);
   }
 
   function onEmployeeDragStart(e, employeeId) {
     if (!isAdmin) return;
+    e.dataTransfer.clearData();
     e.dataTransfer.setData("employeeId", String(employeeId));
     e.dataTransfer.effectAllowed = "move";
     setDragEmployeeId(String(employeeId));
-    setDragProjectId(null);
   }
 
   async function onCellDrop(e, employeeId, dateStr) {
+    e.preventDefault();
     if (!isAdmin) return;
 
-    const droppedProjectId =
-      e.dataTransfer.getData("projectId") || dragProjectId || "";
+    const droppedProjectId = e.dataTransfer.getData("text/plain");
 
-    if (!droppedProjectId) {
-      alert("Kein Projekt übergeben.");
+    console.log("DROP projectId:", droppedProjectId);
+
+    if (!droppedProjectId || droppedProjectId === "undefined") {
+      alert("Fehler: Projekt-ID fehlt!");
       return;
     }
 
     await addProjectToCell(employeeId, dateStr, droppedProjectId);
-    setDragProjectId(null);
     setHoverCell("");
   }
 
   async function onRowDrop(e, targetEmployeeId) {
+    e.preventDefault();
     if (!isAdmin) return;
 
     const droppedEmployeeId =
@@ -495,14 +498,9 @@ export default function WorkAssignments() {
           {projects.map((project) => (
             <div
               key={project.id}
-              className={`workassign-project-token ${
-                dragProjectId === String(project.id)
-                  ? "workassign-project-token-dragging"
-                  : ""
-              }`}
+              className="workassign-project-token"
               draggable={isAdmin}
               onDragStart={(e) => onProjectDragStart(e, project.id)}
-              onDragEnd={() => setDragProjectId(null)}
             >
               {projectLabel(project)}
             </div>
@@ -553,15 +551,10 @@ export default function WorkAssignments() {
                         onDragLeave={() => {
                           if (hoverRow === rowKey) setHoverRow("");
                         }}
-                        onDrop={(e) => {
-                          e.preventDefault();
-                          onRowDrop(e, employee.id);
-                        }}
+                        onDrop={(e) => onRowDrop(e, employee.id)}
                       >
                         <div className="workassign-employee-cell-inner">
-                          {isAdmin ? (
-                            <span className="workassign-row-drag">↕</span>
-                          ) : null}
+                          {isAdmin ? <span className="workassign-row-drag">↕</span> : null}
                           <span className="workassign-employee-name">
                             {employee.name}
                           </span>
@@ -582,17 +575,14 @@ export default function WorkAssignments() {
                               hoverCell === cellKey ? "workassign-drop-cell-hover" : ""
                             }`}
                             onDragOver={(e) => {
-                              if (!isAdmin || !dragProjectId) return;
+                              if (!isAdmin) return;
                               e.preventDefault();
                               setHoverCell(cellKey);
                             }}
                             onDragLeave={() => {
                               if (hoverCell === cellKey) setHoverCell("");
                             }}
-                            onDrop={async (e) => {
-                              e.preventDefault();
-                              await onCellDrop(e, employee.id, dateStr);
-                            }}
+                            onDrop={(e) => onCellDrop(e, employee.id, dateStr)}
                           >
                             <div className="workassign-cell-content">
                               {cellRows.length === 0 ? (
