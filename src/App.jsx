@@ -9,6 +9,7 @@ import NavBar from "./components/NavBar.jsx";
 import DaySlider from "./components/DaySlider.jsx";
 import ProjectAdmin from "./components/ProjectAdmin.jsx";
 import YearOverview from "./components/YearOverview.jsx";
+import WorkAssignments from "./components/WorkAssignments.jsx";
 
 import { getSession, setSession, clearSession } from "./lib/session";
 import { APP_VERSION } from "./version";
@@ -88,6 +89,7 @@ export default function App() {
               <Routes>
                 <Route path="/zeiterfassung" element={<DaySlider />} />
                 <Route path="/projekte" element={<ProjectAdmin />} />
+                <Route path="/arbeitseinteilung" element={<WorkAssignments />} />
                 <Route path="/jahresuebersicht" element={<YearOverview />} />
                 <Route path="/monatsuebersicht" element={<MonthlyOverview />} />
                 <Route path="/projektfotos" element={<ProjectPhotos />} />

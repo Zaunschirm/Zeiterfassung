@@ -127,6 +127,23 @@ function getBuakWeekLabel(dateStr) {
 const logSbError = (prefix, error) =>
   console.error(prefix, error?.message || error);
 
+function startOfWeek(dateStr) {
+  const d = new Date(`${dateStr}T00:00:00`);
+  const day = d.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  d.setDate(d.getDate() + diff);
+  return d;
+}
+
+function getWeekDays(dateStr, count = 5) {
+  const start = startOfWeek(dateStr);
+  return Array.from({ length: count }, (_, index) => {
+    const d = new Date(start);
+    d.setDate(start.getDate() + index);
+    return d.toISOString().slice(0, 10);
+  });
+}
+
 export default function DaySlider() {
   const session = getSession()?.user || null;
   const role = (session?.role || "mitarbeiter").toLowerCase();
@@ -158,6 +175,8 @@ export default function DaySlider() {
   const [projects, setProjects] = useState([]);
   const [projectId, setProjectId] = useState(null);
   const [projectLoadNote, setProjectLoadNote] = useState(null);
+  const [assignmentSuggestions, setAssignmentSuggestions] = useState([]);
+  const [assignmentInfo, setAssignmentInfo] = useState("");
 
   const [employees, setEmployees] = useState([]);
   const [selectedCodes, setSelectedCodes] = useState(
@@ -393,6 +412,77 @@ export default function DaySlider() {
     loadWeatherForCurrentBooking();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, date, fromMin, toMin, absenceType]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadAssignmentSuggestions() {
+      try {
+        setAssignmentSuggestions([]);
+        setAssignmentInfo("");
+
+        const relevantIds = isManager
+          ? employees
+              .filter((e) => selectedCodes.includes(e.code))
+              .map((e) => e.id)
+          : employeeRow?.id
+          ? [employeeRow.id]
+          : [];
+
+        if (!date || relevantIds.length === 0) return;
+
+        const weekDates = getWeekDays(date);
+        const { data, error } = await supabase
+          .from("work_assignments")
+          .select("assignment_date, employee_id, project_id, projects(id, name, code)")
+          .in("employee_id", relevantIds)
+          .in("assignment_date", weekDates);
+
+        if (error) throw error;
+
+        const todayRows = (data || []).filter((row) => row.assignment_date === date);
+
+        const uniqueProjects = [];
+        const seen = new Set();
+        for (const row of todayRows) {
+          const prj = row.projects || null;
+          const id = prj?.id || row.project_id;
+          if (!id || seen.has(String(id))) continue;
+          seen.add(String(id));
+          uniqueProjects.push({
+            id,
+            name: prj?.name || projects.find((p) => String(p.id) === String(id))?.name || `Projekt ${id}`,
+            code: prj?.code || projects.find((p) => String(p.id) === String(id))?.code || "",
+          });
+        }
+
+        if (cancelled) return;
+
+        setAssignmentSuggestions(uniqueProjects);
+
+        if (todayRows.length > 0) {
+          const persons = new Set(todayRows.map((row) => row.employee_id)).size;
+          setAssignmentInfo(
+            persons > 1
+              ? `Arbeitseinteilung gefunden: ${uniqueProjects.length} Projekt${uniqueProjects.length === 1 ? "" : "e"} für ${persons} Mitarbeiter.`
+              : `Arbeitseinteilung gefunden: ${uniqueProjects.length} Projekt${uniqueProjects.length === 1 ? "" : "e"} für diesen Tag.`
+          );
+        }
+
+        if (!absenceType && !projectId && uniqueProjects.length > 0) {
+          setProjectId(uniqueProjects[0].id);
+        }
+      } catch (e) {
+        logSbError("[DaySlider] work assignments load error:", e);
+      }
+    }
+
+    loadAssignmentSuggestions();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [date, isManager, selectedCodes, employeeRow?.id, employees, projects, absenceType]);
 
   async function loadEntries() {
     try {
@@ -680,6 +770,35 @@ export default function DaySlider() {
             </select>
           </div>
         </div>
+
+        {assignmentSuggestions.length > 0 && absenceType !== "krank" && absenceType !== "urlaub" && (
+          <div className="assignment-prefill-box">
+            <div className="assignment-prefill-head">
+              <strong>Arbeitseinteilung</strong>
+              {assignmentInfo ? <span className="badge-soft">{assignmentInfo}</span> : null}
+            </div>
+
+            <div className="assignment-chip-list">
+              {assignmentSuggestions.map((item) => {
+                const active = String(projectId || "") === String(item.id);
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={`assignment-chip${active ? " active" : ""}`}
+                    onClick={() => setProjectId(item.id)}
+                  >
+                    {item.code ? `${item.code} · ${item.name}` : item.name}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="help" style={{ marginTop: 8 }}>
+              Das erste eingeteilte Projekt wird automatisch vorgeschlagen, du kannst es aber jederzeit ändern.
+            </div>
+          </div>
+        )}
 
         {projectAddress && absenceType !== "krank" && absenceType !== "urlaub" && (
           <div

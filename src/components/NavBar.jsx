@@ -19,6 +19,7 @@ export default function NavBar({ onLogout, currentUser, role }) {
 
   const mainLinks = [
     { to: "/zeiterfassung", label: "Zeiterfassung" },
+    { to: "/arbeitseinteilung", label: "Arbeitseinteilung" },
     { to: "/projektfotos", label: "Projektfotos" },
     { to: "/monatsuebersicht", label: "Monatsübersicht" },
   ];
