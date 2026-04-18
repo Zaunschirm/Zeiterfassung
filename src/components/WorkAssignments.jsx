@@ -45,14 +45,17 @@ function formatDisplayDate(dateStr) {
 
 function projectLabel(project) {
   if (!project) return "—";
-  return project.code ? `${project.code} · ${project.name}` : project.name;
+  if (project.cost_center) return `${project.cost_center} · ${project.name}`;
+  return project.name || "—";
 }
 
 export default function WorkAssignments() {
   const session = getSession()?.user || null;
   const isAdmin = (session?.role || "").toLowerCase() === "admin";
 
-  const [weekAnchor, setWeekAnchor] = useState(() => new Date().toISOString().slice(0, 10));
+  const [weekAnchor, setWeekAnchor] = useState(
+    () => new Date().toISOString().slice(0, 10)
+  );
   const [employees, setEmployees] = useState([]);
   const [projects, setProjects] = useState([]);
   const [rows, setRows] = useState([]);
@@ -62,27 +65,36 @@ export default function WorkAssignments() {
   const [newSelection, setNewSelection] = useState({});
 
   const weekDates = useMemo(() => getWeekDates(weekAnchor), [weekAnchor]);
-  const weekDateStrings = useMemo(() => weekDates.map(formatDateISO), [weekDates]);
+  const weekDateStrings = useMemo(
+    () => weekDates.map(formatDateISO),
+    [weekDates]
+  );
+
   const weekLabel = useMemo(() => {
     const first = weekDates[0];
     const last = weekDates[weekDates.length - 1];
-    return `KW ${getWeekNumber(weekAnchor)} · ${first.toLocaleDateString("de-AT")} – ${last.toLocaleDateString("de-AT")}`;
+    return `KW ${getWeekNumber(weekAnchor)} · ${first.toLocaleDateString(
+      "de-AT"
+    )} – ${last.toLocaleDateString("de-AT")}`;
   }, [weekAnchor, weekDates]);
 
   useEffect(() => {
     async function bootstrap() {
       setError("");
+
       try {
         const [employeesRes, projectsRes] = await Promise.all([
           supabase
             .from("employees")
             .select("id, name, code, role, active, disabled")
-            .eq("disabled", false)
             .eq("active", true)
+            .eq("disabled", false)
             .order("name", { ascending: true }),
+
           supabase
             .from("projects")
-            .select("id, name, code, active, disabled")
+            .select("id, name, cost_center, active")
+            .eq("active", true)
             .order("name", { ascending: true }),
         ]);
 
@@ -90,9 +102,11 @@ export default function WorkAssignments() {
         if (projectsRes.error) throw projectsRes.error;
 
         setEmployees(employeesRes.data || []);
-        setProjects((projectsRes.data || []).filter((p) => p?.disabled !== true && p?.active !== false));
+        setProjects(projectsRes.data || []);
       } catch (e) {
         console.error("[WorkAssignments] bootstrap error:", e);
+        setEmployees([]);
+        setProjects([]);
         setError("Mitarbeiter oder Projekte konnten nicht geladen werden.");
       }
     }
@@ -103,14 +117,30 @@ export default function WorkAssignments() {
   async function loadAssignments() {
     setLoading(true);
     setError("");
+
     try {
       const { data, error } = await supabase
         .from("work_assignments")
-        .select("id, assignment_date, employee_id, project_id, projects(id, name, code)")
+        .select(
+          `
+            id,
+            assignment_date,
+            employee_id,
+            project_id,
+            projects (
+              id,
+              name,
+              cost_center,
+              active
+            )
+          `
+        )
         .in("assignment_date", weekDateStrings)
-        .order("assignment_date", { ascending: true });
+        .order("assignment_date", { ascending: true })
+        .order("id", { ascending: true });
 
       if (error) throw error;
+
       setRows(data || []);
     } catch (e) {
       console.error("[WorkAssignments] load error:", e);
@@ -123,7 +153,8 @@ export default function WorkAssignments() {
 
   useEffect(() => {
     loadAssignments();
-  }, [weekLabel]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [weekAnchor]);
 
   function shiftWeek(direction) {
     const start = startOfWeek(weekAnchor);
@@ -132,12 +163,17 @@ export default function WorkAssignments() {
   }
 
   function getAssignments(employeeId, dateStr) {
-    return rows.filter((row) => row.employee_id === employeeId && row.assignment_date === dateStr);
+    return rows.filter(
+      (row) =>
+        String(row.employee_id) === String(employeeId) &&
+        row.assignment_date === dateStr
+    );
   }
 
   async function addAssignment(employeeId, dateStr) {
     const key = `${employeeId}_${dateStr}`;
     const selectedProjectId = newSelection[key];
+
     if (!selectedProjectId) return;
 
     const exists = rows.some(
@@ -146,24 +182,28 @@ export default function WorkAssignments() {
         row.assignment_date === dateStr &&
         String(row.project_id) === String(selectedProjectId)
     );
+
     if (exists) {
-      alert("Dieses Projekt ist an diesem Tag schon eingeteilt.");
+      window.alert("Dieses Projekt ist an diesem Tag schon eingeteilt.");
       return;
     }
 
     try {
       setSavingKey(key);
+
       const { error } = await supabase.from("work_assignments").insert({
         employee_id: employeeId,
         assignment_date: dateStr,
         project_id: selectedProjectId,
       });
+
       if (error) throw error;
+
       setNewSelection((prev) => ({ ...prev, [key]: "" }));
       await loadAssignments();
     } catch (e) {
       console.error("[WorkAssignments] add error:", e);
-      alert("Projekt konnte nicht hinzugefügt werden.");
+      window.alert("Projekt konnte nicht hinzugefügt werden.");
     } finally {
       setSavingKey("");
     }
@@ -171,14 +211,21 @@ export default function WorkAssignments() {
 
   async function removeAssignment(id) {
     if (!window.confirm("Einteilung wirklich löschen?")) return;
+
     try {
       setSavingKey(String(id));
-      const { error } = await supabase.from("work_assignments").delete().eq("id", id);
+
+      const { error } = await supabase
+        .from("work_assignments")
+        .delete()
+        .eq("id", id);
+
       if (error) throw error;
+
       await loadAssignments();
     } catch (e) {
       console.error("[WorkAssignments] delete error:", e);
-      alert("Einteilung konnte nicht gelöscht werden.");
+      window.alert("Einteilung konnte nicht gelöscht werden.");
     } finally {
       setSavingKey("");
     }
@@ -195,13 +242,27 @@ export default function WorkAssignments() {
           </div>
 
           <div className="month-overview-actions">
-            <button className="hbz-btn" type="button" onClick={() => shiftWeek(-1)}>
+            <button
+              className="hbz-btn"
+              type="button"
+              onClick={() => shiftWeek(-1)}
+            >
               ← KW zurück
             </button>
-            <button className="hbz-btn" type="button" onClick={() => setWeekAnchor(new Date().toISOString().slice(0, 10))}>
+            <button
+              className="hbz-btn"
+              type="button"
+              onClick={() =>
+                setWeekAnchor(new Date().toISOString().slice(0, 10))
+              }
+            >
               Diese KW
             </button>
-            <button className="hbz-btn" type="button" onClick={() => shiftWeek(1)}>
+            <button
+              className="hbz-btn"
+              type="button"
+              onClick={() => shiftWeek(1)}
+            >
               KW vor →
             </button>
           </div>
@@ -213,7 +274,8 @@ export default function WorkAssignments() {
           <div>
             <div className="month-card-title">Wochenübersicht</div>
             <div className="help">
-              Alle sehen alles. Bearbeiten darf nur der Admin. Die Projekte hier werden in der Zeiterfassung automatisch vorgeschlagen.
+              Alle sehen alles. Bearbeiten darf nur der Admin. Die Projekte hier
+              werden in der Zeiterfassung automatisch vorgeschlagen.
             </div>
           </div>
 
@@ -228,7 +290,11 @@ export default function WorkAssignments() {
           </div>
         </div>
 
-        {error && <div className="year-error-box" style={{ marginTop: 12 }}>{error}</div>}
+        {error && (
+          <div className="year-error-box" style={{ marginTop: 12 }}>
+            {error}
+          </div>
+        )}
 
         {loading ? (
           <div className="month-empty-state">Lade Arbeitseinteilung…</div>
@@ -238,30 +304,53 @@ export default function WorkAssignments() {
               <section key={dateStr} className="workassign-day-card">
                 <div className="workassign-day-head">
                   <div>
-                    <div className="workassign-day-title">{formatDisplayDate(dateStr)}</div>
-                    <div className="help">{rows.filter((row) => row.assignment_date === dateStr).length} Einteilungen in dieser Tagesliste</div>
+                    <div className="workassign-day-title">
+                      {formatDisplayDate(dateStr)}
+                    </div>
+                    <div className="help">
+                      {
+                        rows.filter((row) => row.assignment_date === dateStr)
+                          .length
+                      }{" "}
+                      Einteilungen in dieser Tagesliste
+                    </div>
                   </div>
-                  <span className="badge-soft">{employees.length} Mitarbeiter</span>
+                  <span className="badge-soft">
+                    {employees.length} Mitarbeiter
+                  </span>
                 </div>
 
                 <div className="workassign-list">
                   {employees.map((employee) => {
                     const key = `${employee.id}_${dateStr}`;
                     const assignments = getAssignments(employee.id, dateStr);
+
                     const availableProjects = projects.filter(
-                      (project) => !assignments.some((row) => String(row.project_id) === String(project.id))
+                      (project) =>
+                        !assignments.some(
+                          (row) =>
+                            String(row.project_id) === String(project.id)
+                        )
                     );
 
                     return (
                       <div className="workassign-row" key={key}>
                         <div className="workassign-row-main">
-                          <div className="workassign-employee-name">{employee.name}</div>
+                          <div className="workassign-employee-name">
+                            {employee.name}
+                          </div>
+
                           <div className="workassign-projects">
                             {assignments.length === 0 ? (
-                              <span className="workassign-empty">Keine Einteilung</span>
+                              <span className="workassign-empty">
+                                Keine Einteilung
+                              </span>
                             ) : (
                               assignments.map((row) => (
-                                <span className="workassign-project-chip" key={row.id}>
+                                <span
+                                  className="workassign-project-chip"
+                                  key={row.id}
+                                >
                                   {projectLabel(row.projects)}
                                   {isAdmin && (
                                     <button
@@ -284,7 +373,12 @@ export default function WorkAssignments() {
                             <select
                               className="hbz-select"
                               value={newSelection[key] || ""}
-                              onChange={(e) => setNewSelection((prev) => ({ ...prev, [key]: e.target.value }))}
+                              onChange={(e) =>
+                                setNewSelection((prev) => ({
+                                  ...prev,
+                                  [key]: e.target.value,
+                                }))
+                              }
                             >
                               <option value="">Projekt wählen…</option>
                               {availableProjects.map((project) => (
@@ -293,11 +387,14 @@ export default function WorkAssignments() {
                                 </option>
                               ))}
                             </select>
+
                             <button
                               type="button"
                               className="hbz-btn hbz-btn-primary"
                               onClick={() => addAssignment(employee.id, dateStr)}
-                              disabled={!newSelection[key] || savingKey === key}
+                              disabled={
+                                !newSelection[key] || savingKey === key
+                              }
                             >
                               Hinzufügen
                             </button>
