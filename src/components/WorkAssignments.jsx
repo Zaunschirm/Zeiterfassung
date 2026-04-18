@@ -12,7 +12,7 @@ function formatLocalDate(date) {
 function startOfWeek(dateStr) {
   const d = new Date(`${dateStr}T12:00:00`);
   const day = d.getDay();
-  const diff = day === 0 ? -6 : 1 - day; // Montag
+  const diff = day === 0 ? -6 : 1 - day;
   d.setDate(d.getDate() + diff);
   d.setHours(12, 0, 0, 0);
   return d;
@@ -90,6 +90,7 @@ export default function WorkAssignments() {
   const [busyKey, setBusyKey] = useState("");
   const [error, setError] = useState("");
   const [dragEmployeeId, setDragEmployeeId] = useState(null);
+  const [dragProjectId, setDragProjectId] = useState(null);
   const [hoverCell, setHoverCell] = useState("");
   const [hoverRow, setHoverRow] = useState("");
 
@@ -374,9 +375,16 @@ export default function WorkAssignments() {
 
   function onProjectDragStart(e, projectId) {
     if (!isAdmin) return;
+    const value = String(projectId);
     e.dataTransfer.clearData();
-    e.dataTransfer.setData("text/plain", String(projectId));
+    e.dataTransfer.setData("text/plain", value);
+    e.dataTransfer.setData("projectId", value);
     e.dataTransfer.effectAllowed = "copy";
+    setDragProjectId(value);
+  }
+
+  function onProjectDragEnd() {
+    setDragProjectId(null);
   }
 
   function onEmployeeDragStart(e, employeeId) {
@@ -387,19 +395,28 @@ export default function WorkAssignments() {
     setDragEmployeeId(String(employeeId));
   }
 
+  function onEmployeeDragEnd() {
+    setDragEmployeeId(null);
+  }
+
   async function onCellDrop(e, employeeId, dateStr) {
     e.preventDefault();
     if (!isAdmin) return;
 
-    const droppedProjectId = e.dataTransfer.getData("text/plain");
+    const droppedProjectId =
+      e.dataTransfer.getData("projectId") ||
+      e.dataTransfer.getData("text/plain") ||
+      dragProjectId ||
+      "";
 
-    if (!droppedProjectId || droppedProjectId === "undefined") {
-      alert("Fehler: Projekt-ID fehlt!");
+    if (!droppedProjectId || droppedProjectId === "undefined" || droppedProjectId === "null") {
+      alert("Fehler: Projekt-ID fehlt oder ist ungültig.");
       return;
     }
 
     await addProjectToCell(employeeId, dateStr, droppedProjectId);
     setHoverCell("");
+    setDragProjectId(null);
   }
 
   async function onRowDrop(e, targetEmployeeId) {
@@ -490,9 +507,12 @@ export default function WorkAssignments() {
           {projects.map((project) => (
             <div
               key={project.id}
-              className="workassign-project-token"
+              className={`workassign-project-token ${
+                dragProjectId === String(project.id) ? "workassign-project-token-dragging" : ""
+              }`}
               draggable={isAdmin}
               onDragStart={(e) => onProjectDragStart(e, project.id)}
+              onDragEnd={onProjectDragEnd}
             >
               {projectLabel(project)}
             </div>
@@ -535,6 +555,7 @@ export default function WorkAssignments() {
                         className="workassign-sticky-left workassign-employee-cell"
                         draggable={isAdmin}
                         onDragStart={(e) => onEmployeeDragStart(e, employee.id)}
+                        onDragEnd={onEmployeeDragEnd}
                         onDragOver={(e) => {
                           if (!isAdmin || !dragEmployeeId) return;
                           e.preventDefault();
