@@ -86,12 +86,12 @@ export default function WorkAssignments() {
   const [projects, setProjects] = useState([]);
   const [assignments, setAssignments] = useState([]);
   const [employeeOrder, setEmployeeOrder] = useState([]);
+  const [selectedProjectId, setSelectedProjectId] = useState("");
   const [loading, setLoading] = useState(false);
   const [busyKey, setBusyKey] = useState("");
   const [error, setError] = useState("");
   const [dragEmployeeId, setDragEmployeeId] = useState(null);
   const [hoverRow, setHoverRow] = useState("");
-  const [selectedProjectId, setSelectedProjectId] = useState("");
 
   const weekDates = useMemo(() => getWeekDates(weekAnchor), [weekAnchor]);
   const weekDateStrings = useMemo(() => weekDates.map(formatLocalDate), [weekDates]);
@@ -376,7 +376,7 @@ export default function WorkAssignments() {
     if (!isAdmin) return;
 
     if (!selectedProjectId) {
-      alert("Bitte zuerst oben ein Projekt auswählen.");
+      alert("Bitte oben ein Projekt auswählen.");
       return;
     }
 
@@ -455,7 +455,7 @@ export default function WorkAssignments() {
 
         <div className="workassign-dispo-toolbar">
           <div className="help">
-            Projekt oben anklicken und danach unten auf die gewünschte Zelle klicken.
+            Projekt oben im Dropdown auswählen und danach unten auf die gewünschte Zelle klicken.
             Mitarbeiter können weiter per Ziehen sortiert werden.
           </div>
 
@@ -475,29 +475,37 @@ export default function WorkAssignments() {
 
       <div className="hbz-card workassign-project-palette-card">
         <div className="workassign-project-palette-head">
-          <div className="month-card-title">Projekte</div>
+          <div className="month-card-title">Projekt auswählen</div>
           <div className="help">
-            Projekt auswählen, dann auf Mitarbeiter + Tag klicken.
+            Dann unten auf Mitarbeiter + Tag klicken.
           </div>
         </div>
 
-        <div className="workassign-project-palette">
-          {projects.map((project) => {
-            const active = String(selectedProjectId) === String(project.id);
-
-            return (
-              <button
-                key={project.id}
-                type="button"
-                className={`workassign-project-token${
-                  active ? " workassign-project-token-dragging" : ""
-                }`}
-                onClick={() => setSelectedProjectId(String(project.id))}
-              >
-                {projectLabel(project)}
-              </button>
-            );
-          })}
+        <div className="hbz-row">
+          <div className="hbz-col">
+            <label className="hbz-label">Projekt</label>
+            <select
+              className="hbz-select"
+              value={selectedProjectId}
+              onChange={(e) => setSelectedProjectId(e.target.value)}
+            >
+              <option value="">Bitte Projekt wählen…</option>
+              {projects.map((project) => (
+                <option key={project.id} value={project.id}>
+                  {projectLabel(project)}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="hbz-col-auto" style={{ display: "flex", alignItems: "end" }}>
+            <button
+              type="button"
+              className="hbz-btn"
+              onClick={() => setSelectedProjectId("")}
+            >
+              Auswahl löschen
+            </button>
+          </div>
         </div>
       </div>
 
