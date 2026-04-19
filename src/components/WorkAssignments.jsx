@@ -90,10 +90,8 @@ export default function WorkAssignments() {
   const [busyKey, setBusyKey] = useState("");
   const [error, setError] = useState("");
   const [dragEmployeeId, setDragEmployeeId] = useState(null);
-  const [dragProjectId, setDragProjectId] = useState(null);
-  const [selectedProjectId, setSelectedProjectId] = useState(null);
-  const [hoverCell, setHoverCell] = useState("");
   const [hoverRow, setHoverRow] = useState("");
+  const [selectedProjectId, setSelectedProjectId] = useState("");
 
   const weekDates = useMemo(() => getWeekDates(weekAnchor), [weekAnchor]);
   const weekDateStrings = useMemo(() => weekDates.map(formatLocalDate), [weekDates]);
@@ -374,19 +372,15 @@ export default function WorkAssignments() {
     }
   }
 
-  function onProjectDragStart(e, projectId) {
+  async function onCellClick(employeeId, dateStr) {
     if (!isAdmin) return;
-    const value = String(projectId);
-    e.dataTransfer.clearData();
-    e.dataTransfer.setData("text/plain", value);
-    e.dataTransfer.setData("projectId", value);
-    e.dataTransfer.effectAllowed = "copy";
-    setDragProjectId(value);
-    setSelectedProjectId(value);
-  }
 
-  function onProjectDragEnd() {
-    setDragProjectId(null);
+    if (!selectedProjectId) {
+      alert("Bitte zuerst oben ein Projekt auswählen.");
+      return;
+    }
+
+    await addProjectToCell(employeeId, dateStr, selectedProjectId);
   }
 
   function onEmployeeDragStart(e, employeeId) {
@@ -399,32 +393,6 @@ export default function WorkAssignments() {
 
   function onEmployeeDragEnd() {
     setDragEmployeeId(null);
-  }
-
-  async function onCellDrop(e, employeeId, dateStr) {
-    e.preventDefault();
-    if (!isAdmin) return;
-
-    const droppedProjectId =
-      e.dataTransfer.getData("projectId") ||
-      e.dataTransfer.getData("text/plain") ||
-      dragProjectId ||
-      selectedProjectId ||
-      "";
-
-    if (!droppedProjectId || droppedProjectId === "undefined" || droppedProjectId === "null") {
-      alert("Fehler: Projekt-ID fehlt oder ist ungültig.");
-      return;
-    }
-
-    await addProjectToCell(employeeId, dateStr, droppedProjectId);
-    setHoverCell("");
-    setDragProjectId(null);
-  }
-
-  async function onCellClick(employeeId, dateStr) {
-    if (!isAdmin || !selectedProjectId) return;
-    await addProjectToCell(employeeId, dateStr, selectedProjectId);
   }
 
   async function onRowDrop(e, targetEmployeeId) {
@@ -487,7 +455,8 @@ export default function WorkAssignments() {
 
         <div className="workassign-dispo-toolbar">
           <div className="help">
-            Projekte oben greifen und auf Mitarbeiter + Tag ziehen. Du kannst alternativ auch ein Projekt anklicken und danach die Zelle anklicken.
+            Projekt oben anklicken und danach unten auf die gewünschte Zelle klicken.
+            Mitarbeiter können weiter per Ziehen sortiert werden.
           </div>
 
           <div className="field-inline workassign-dispo-datefield">
@@ -508,13 +477,13 @@ export default function WorkAssignments() {
         <div className="workassign-project-palette-head">
           <div className="month-card-title">Projekte</div>
           <div className="help">
-            Projekt ziehen oder anklicken und dann auf eine Zelle klicken.
+            Projekt auswählen, dann auf Mitarbeiter + Tag klicken.
           </div>
         </div>
 
         <div className="workassign-project-palette">
           {projects.map((project) => {
-            const active = String(selectedProjectId || "") === String(project.id);
+            const active = String(selectedProjectId) === String(project.id);
 
             return (
               <button
@@ -523,10 +492,7 @@ export default function WorkAssignments() {
                 className={`workassign-project-token${
                   active ? " workassign-project-token-dragging" : ""
                 }`}
-                draggable={isAdmin}
                 onClick={() => setSelectedProjectId(String(project.id))}
-                onDragStart={(e) => onProjectDragStart(e, project.id)}
-                onDragEnd={onProjectDragEnd}
               >
                 {projectLabel(project)}
               </button>
@@ -594,24 +560,12 @@ export default function WorkAssignments() {
 
                       {weekDateStrings.map((dateStr) => {
                         const cellRows = getCellRows(employee.id, dateStr);
-                        const cellKey = `${employee.id}__${dateStr}`;
 
                         return (
                           <td
-                            key={cellKey}
-                            className={`workassign-drop-cell ${
-                              hoverCell === cellKey ? "workassign-drop-cell-hover" : ""
-                            }`}
+                            key={`${employee.id}__${dateStr}`}
+                            className="workassign-drop-cell"
                             onClick={() => onCellClick(employee.id, dateStr)}
-                            onDragOver={(e) => {
-                              if (!isAdmin) return;
-                              e.preventDefault();
-                              setHoverCell(cellKey);
-                            }}
-                            onDragLeave={() => {
-                              if (hoverCell === cellKey) setHoverCell("");
-                            }}
-                            onDrop={(e) => onCellDrop(e, employee.id, dateStr)}
                           >
                             <div className="workassign-cell-content">
                               {cellRows.length === 0 ? (
