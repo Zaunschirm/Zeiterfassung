@@ -413,28 +413,37 @@ export default function MonthlyOverview() {
     const from_m = hmToMin(editState.from_hm);
     const to_m = hmToMin(editState.to_hm);
     const br_m = parseInt(editState.break_min || "0", 10);
-    const prj = projects.find((p) => p.id === editState.project_id) || null;
+    const travel_m = parseInt(editState.travel_minutes || "0", 10);
+    const project_id = String(editState.project_id || "").trim() || null;
 
     const update = {
-      project_id: prj ? prj.id : null,
+      project_id,
       start_min: from_m,
       end_min: to_m,
-      break_min: isNaN(br_m) ? 0 : br_m,
+      break_min: isNaN(br_m) ? 0 : Math.max(br_m, 0),
       note: (editState.note || "").trim() || null,
+      travel_minutes: isNaN(travel_m) ? 0 : Math.max(0, Math.min(travel_m, 150)),
     };
 
-    if (typeof editState.travel_minutes !== "undefined") {
-      update.travel_minutes = parseInt(editState.travel_minutes || "0", 10);
-    }
-
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("time_entries")
       .update(update)
-      .eq("id", editId);
+      .eq("id", editId)
+      .select("id")
+      .single();
 
     if (error) {
-      console.error("update error:", error);
-      alert("Aktualisieren fehlgeschlagen.");
+      console.error("update error:", error, update);
+      alert(
+        `Aktualisieren fehlgeschlagen. ${
+          error.message || error.details || error.hint || ""
+        }`.trim()
+      );
+      return;
+    }
+
+    if (!data?.id) {
+      alert("Aktualisieren fehlgeschlagen. Kein Datensatz gefunden.");
       return;
     }
 
@@ -1385,6 +1394,7 @@ export default function MonthlyOverview() {
                             <input
                               type="number"
                               min={0}
+                              max={150}
                               step={15}
                               className="hbz-input"
                               value={editState.travel_minutes ?? 0}
