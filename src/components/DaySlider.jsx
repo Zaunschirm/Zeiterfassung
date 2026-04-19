@@ -201,6 +201,25 @@ export default function DaySlider() {
   }, []);
 
   useEffect(() => {
+    function handlePrevDay() {
+      shiftDate(-1);
+    }
+
+    function handleNextDay() {
+      shiftDate(1);
+    }
+
+    window.addEventListener("hbz-prev-day", handlePrevDay);
+    window.addEventListener("hbz-next-day", handleNextDay);
+
+    return () => {
+      window.removeEventListener("hbz-prev-day", handlePrevDay);
+      window.removeEventListener("hbz-next-day", handleNextDay);
+    };
+  }, []);
+
+
+  useEffect(() => {
     async function loadProjects() {
       try {
         const tryList = async (source) => {

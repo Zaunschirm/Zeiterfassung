@@ -74,6 +74,38 @@ export default function App() {
     navigate("/", { replace: true });
   };
 
+
+  useEffect(() => {
+    function isTyping(target) {
+      if (!target) return false;
+      const tag = target.tagName?.toLowerCase();
+      return (
+        tag === "input" ||
+        tag === "textarea" ||
+        tag === "select" ||
+        target.isContentEditable
+      );
+    }
+
+    function handleKeyDown(e) {
+      if (isTyping(e.target)) return;
+      if (location.pathname !== "/zeiterfassung") return;
+
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        window.dispatchEvent(new CustomEvent("hbz-prev-day"));
+      }
+
+      if (e.key === "ArrowRight") {
+        e.preventDefault();
+        window.dispatchEvent(new CustomEvent("hbz-next-day"));
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [location.pathname]);
+
   return (
     <div className="app-root">
       {loggedIn ? (
