@@ -242,6 +242,25 @@ export default function WorkAssignments() {
     loadAssignments();
   }, [weekAnchor]);
 
+
+  useEffect(() => {
+    function handlePrevWeek() {
+      shiftWeek(-1);
+    }
+
+    function handleNextWeek() {
+      shiftWeek(1);
+    }
+
+    window.addEventListener("hbz-prev-day", handlePrevWeek);
+    window.addEventListener("hbz-next-day", handleNextWeek);
+
+    return () => {
+      window.removeEventListener("hbz-prev-day", handlePrevWeek);
+      window.removeEventListener("hbz-next-day", handleNextWeek);
+    };
+  }, [weekAnchor]);
+
   function shiftWeek(direction) {
     const start = startOfWeek(weekAnchor);
     start.setDate(start.getDate() + direction * 7);

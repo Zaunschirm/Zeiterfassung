@@ -89,7 +89,7 @@ export default function App() {
 
     function handleKeyDown(e) {
       if (isTyping(e.target)) return;
-      if (location.pathname !== "/zeiterfassung") return;
+      if (location.pathname !== "/zeiterfassung" && location.pathname !== "/arbeitseinteilung") return;
 
       if (e.key === "ArrowLeft") {
         e.preventDefault();
