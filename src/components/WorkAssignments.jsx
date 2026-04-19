@@ -180,6 +180,7 @@ export default function WorkAssignments() {
             .eq("active", true)
             .eq("disabled", false)
             .order("name", { ascending: true }),
+
           supabase
             .from("projects")
             .select("id, name, cost_center, active")
@@ -299,25 +300,25 @@ export default function WorkAssignments() {
   async function addProjectToCell(employeeId, dateStr, projectId) {
     if (!isAdmin || !projectId) return;
 
-    const projectIdNumber = Number(projectId);
-    if (!projectIdNumber || Number.isNaN(projectIdNumber)) {
+    const projectIdValue = String(projectId).trim();
+    if (!projectIdValue) {
       alert("Fehler: Projekt-ID fehlt oder ist ungültig.");
       return;
     }
 
     const existing = getCellRows(employeeId, dateStr).some(
-      (row) => String(row.project_id) === String(projectIdNumber)
+      (row) => String(row.project_id) === projectIdValue
     );
 
     if (existing) return;
 
     try {
-      setBusyKey(`add-${employeeId}-${dateStr}-${projectIdNumber}`);
+      setBusyKey(`add-${employeeId}-${dateStr}-${projectIdValue}`);
 
       const payload = {
         employee_id: Number(employeeId),
         assignment_date: dateStr,
-        project_id: projectIdNumber,
+        project_id: projectIdValue,
         sort_order: getNextSortOrderForEmployee(employeeId),
       };
 
@@ -375,12 +376,14 @@ export default function WorkAssignments() {
   async function onCellClick(employeeId, dateStr) {
     if (!isAdmin) return;
 
-    if (!selectedProjectId) {
+    const projectIdValue = String(selectedProjectId || "").trim();
+
+    if (!projectIdValue) {
       alert("Bitte oben ein Projekt auswählen.");
       return;
     }
 
-    await addProjectToCell(employeeId, dateStr, selectedProjectId);
+    await addProjectToCell(employeeId, dateStr, projectIdValue);
   }
 
   function onEmployeeDragStart(e, employeeId) {
@@ -497,6 +500,7 @@ export default function WorkAssignments() {
               ))}
             </select>
           </div>
+
           <div className="hbz-col-auto" style={{ display: "flex", alignItems: "end" }}>
             <button
               type="button"
