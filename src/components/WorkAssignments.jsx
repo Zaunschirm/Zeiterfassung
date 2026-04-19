@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { getSession } from "../lib/session";
 
@@ -86,12 +86,14 @@ export default function WorkAssignments() {
   const [projects, setProjects] = useState([]);
   const [assignments, setAssignments] = useState([]);
   const [employeeOrder, setEmployeeOrder] = useState([]);
-  const [selectedProjectId, setSelectedProjectId] = useState("");
   const [loading, setLoading] = useState(false);
   const [busyKey, setBusyKey] = useState("");
   const [error, setError] = useState("");
   const [dragEmployeeId, setDragEmployeeId] = useState(null);
+  const [dragProjectId, setDragProjectId] = useState("");
   const [hoverRow, setHoverRow] = useState("");
+  const [hoverCell, setHoverCell] = useState("");
+  const projectRef = useRef(null);
 
   const weekDates = useMemo(() => getWeekDates(weekAnchor), [weekAnchor]);
   const weekDateStrings = useMemo(() => weekDates.map(formatLocalDate), [weekDates]);
@@ -180,7 +182,6 @@ export default function WorkAssignments() {
             .eq("active", true)
             .eq("disabled", false)
             .order("name", { ascending: true }),
-
           supabase
             .from("projects")
             .select("id, name, cost_center, active")
@@ -376,7 +377,7 @@ export default function WorkAssignments() {
   async function onCellClick(employeeId, dateStr) {
     if (!isAdmin) return;
 
-    const projectIdValue = String(selectedProjectId || "").trim();
+    const projectIdValue = projectRef.current?.value?.trim();
 
     if (!projectIdValue) {
       alert("Bitte oben ein Projekt auswählen.");
@@ -384,6 +385,49 @@ export default function WorkAssignments() {
     }
 
     await addProjectToCell(employeeId, dateStr, projectIdValue);
+  }
+
+  function onProjectDragStart(e) {
+    if (!isAdmin) return;
+
+    const projectIdValue = projectRef.current?.value?.trim();
+
+    if (!projectIdValue) {
+      e.preventDefault();
+      alert("Bitte zuerst oben im Dropdown ein Projekt auswählen.");
+      return;
+    }
+
+    e.dataTransfer.clearData();
+    e.dataTransfer.setData("projectId", projectIdValue);
+    e.dataTransfer.setData("text/plain", projectIdValue);
+    e.dataTransfer.effectAllowed = "copy";
+    setDragProjectId(projectIdValue);
+  }
+
+  function onProjectDragEnd() {
+    setDragProjectId("");
+  }
+
+  async function onCellDrop(e, employeeId, dateStr) {
+    e.preventDefault();
+    if (!isAdmin) return;
+
+    const droppedProjectId =
+      e.dataTransfer.getData("projectId") ||
+      e.dataTransfer.getData("text/plain") ||
+      dragProjectId ||
+      projectRef.current?.value?.trim() ||
+      "";
+
+    if (!droppedProjectId) {
+      alert("Fehler: Projekt-ID fehlt oder ist ungültig.");
+      return;
+    }
+
+    await addProjectToCell(employeeId, dateStr, droppedProjectId);
+    setHoverCell("");
+    setDragProjectId("");
   }
 
   function onEmployeeDragStart(e, employeeId) {
@@ -459,7 +503,7 @@ export default function WorkAssignments() {
         <div className="workassign-dispo-toolbar">
           <div className="help">
             Projekt oben im Dropdown auswählen und danach unten auf die gewünschte Zelle klicken.
-            Mitarbeiter können weiter per Ziehen sortiert werden.
+            Oder rechts den kleinen Drag-Button verwenden. Mitarbeiter können weiter per Ziehen sortiert werden.
           </div>
 
           <div className="field-inline workassign-dispo-datefield">
@@ -480,18 +524,14 @@ export default function WorkAssignments() {
         <div className="workassign-project-palette-head">
           <div className="month-card-title">Projekt auswählen</div>
           <div className="help">
-            Dann unten auf Mitarbeiter + Tag klicken.
+            Danach Zelle klicken oder den Drag-Button benutzen.
           </div>
         </div>
 
         <div className="hbz-row">
           <div className="hbz-col">
             <label className="hbz-label">Projekt</label>
-            <select
-              className="hbz-select"
-              value={selectedProjectId}
-              onChange={(e) => setSelectedProjectId(e.target.value)}
-            >
+            <select ref={projectRef} className="hbz-select" defaultValue="">
               <option value="">Bitte Projekt wählen…</option>
               {projects.map((project) => (
                 <option key={project.id} value={project.id}>
@@ -501,13 +541,29 @@ export default function WorkAssignments() {
             </select>
           </div>
 
-          <div className="hbz-col-auto" style={{ display: "flex", alignItems: "end" }}>
+          <div
+            className="hbz-col-auto"
+            style={{ display: "flex", alignItems: "end", gap: 8 }}
+          >
             <button
               type="button"
               className="hbz-btn"
-              onClick={() => setSelectedProjectId("")}
+              onClick={() => {
+                if (projectRef.current) projectRef.current.value = "";
+              }}
             >
               Auswahl löschen
+            </button>
+
+            <button
+              type="button"
+              className="hbz-btn hbz-btn-primary"
+              draggable={isAdmin}
+              onDragStart={onProjectDragStart}
+              onDragEnd={onProjectDragEnd}
+              title="Projekt in eine Zelle ziehen"
+            >
+              Projekt ziehen
             </button>
           </div>
         </div>
@@ -572,12 +628,24 @@ export default function WorkAssignments() {
 
                       {weekDateStrings.map((dateStr) => {
                         const cellRows = getCellRows(employee.id, dateStr);
+                        const cellKey = `${employee.id}__${dateStr}`;
 
                         return (
                           <td
-                            key={`${employee.id}__${dateStr}`}
-                            className="workassign-drop-cell"
+                            key={cellKey}
+                            className={`workassign-drop-cell ${
+                              hoverCell === cellKey ? "workassign-drop-cell-hover" : ""
+                            }`}
                             onClick={() => onCellClick(employee.id, dateStr)}
+                            onDragOver={(e) => {
+                              if (!isAdmin) return;
+                              e.preventDefault();
+                              setHoverCell(cellKey);
+                            }}
+                            onDragLeave={() => {
+                              if (hoverCell === cellKey) setHoverCell("");
+                            }}
+                            onDrop={(e) => onCellDrop(e, employee.id, dateStr)}
                           >
                             <div className="workassign-cell-content">
                               {cellRows.length === 0 ? (
