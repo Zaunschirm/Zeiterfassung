@@ -1,5 +1,39 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
+
+const PERMISSION_OPTIONS = [
+  { key: "writeOwnTime", label: "Eigene Stunden schreiben" },
+  { key: "writeAllTime", label: "Für alle MA Stunden schreiben" },
+  { key: "editOwnTime", label: "Eigene Stunden bearbeiten" },
+  { key: "editAllTime", label: "Alle Stunden bearbeiten" },
+  { key: "deleteOwnTime", label: "Eigene Stunden löschen" },
+  { key: "deleteAllTime", label: "Alle Stunden löschen" },
+  { key: "viewMonthlyOverview", label: "Monatsübersicht sehen" },
+  { key: "viewYearOverview", label: "Jahresübersicht sehen" },
+  { key: "viewAssignments", label: "Arbeitseinteilung sehen" },
+  { key: "manageAssignments", label: "Arbeitseinteilung bearbeiten" },
+  { key: "manageProjects", label: "Projekte bearbeiten" },
+  { key: "manageEmployees", label: "Mitarbeiter verwalten" },
+];
+
+const EMPTY_PERMISSIONS = Object.fromEntries(PERMISSION_OPTIONS.map((p) => [p.key, false]));
+
+function normalizePermissions(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { ...EMPTY_PERMISSIONS };
+  }
+  return {
+    ...EMPTY_PERMISSIONS,
+    ...value,
+  };
+}
+
+function permissionSummary(permissions) {
+  const active = PERMISSION_OPTIONS.filter((p) => !!permissions?.[p.key]).map((p) => p.label);
+  if (!active.length) return "Keine Sonderrechte";
+  if (active.length <= 2) return active.join(", ");
+  return `${active.slice(0, 2).join(", ")} +${active.length - 2}`;
+}
 
 export default function EmployeeList() {
   const [rows, setRows] = useState([]);
@@ -9,9 +43,15 @@ export default function EmployeeList() {
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
   const [role, setRole] = useState("mitarbeiter");
+  const [permissions, setPermissions] = useState({ ...EMPTY_PERMISSIONS });
   const [saving, setSaving] = useState(false);
 
   const [editId, setEditId] = useState(null);
+
+  const activePermissionCount = useMemo(
+    () => Object.values(permissions).filter(Boolean).length,
+    [permissions]
+  );
 
   async function load() {
     setErr("");
@@ -19,7 +59,7 @@ export default function EmployeeList() {
 
     const { data, error } = await supabase
       .from("employees")
-      .select("id, name, role, disabled, code")
+      .select("id, name, role, disabled, code, permissions")
       .order("name", { ascending: true });
 
     setLoading(false);
@@ -29,7 +69,10 @@ export default function EmployeeList() {
       return;
     }
 
-    setRows(data || []);
+    setRows((data || []).map((row) => ({
+      ...row,
+      permissions: normalizePermissions(row.permissions),
+    })));
   }
 
   useEffect(() => {
@@ -46,6 +89,56 @@ export default function EmployeeList() {
     } catch {
       return Buffer.from(s, "utf-8").toString("base64");
     }
+  }
+
+  function setPermission(key, checked) {
+    setPermissions((prev) => ({
+      ...prev,
+      [key]: checked,
+    }));
+  }
+
+  function setRecommendedPermissions(nextRole) {
+    if (nextRole === "admin") {
+      setPermissions({
+        ...EMPTY_PERMISSIONS,
+        writeOwnTime: true,
+        writeAllTime: true,
+        editOwnTime: true,
+        editAllTime: true,
+        deleteOwnTime: true,
+        deleteAllTime: true,
+        viewMonthlyOverview: true,
+        viewYearOverview: true,
+        viewAssignments: true,
+        manageAssignments: true,
+        manageProjects: true,
+        manageEmployees: true,
+      });
+      return;
+    }
+
+    if (nextRole === "teamleiter") {
+      setPermissions({
+        ...EMPTY_PERMISSIONS,
+        writeOwnTime: true,
+        writeAllTime: true,
+        editOwnTime: true,
+        editAllTime: true,
+        deleteOwnTime: true,
+        deleteAllTime: true,
+        viewMonthlyOverview: true,
+        viewAssignments: true,
+        manageAssignments: true,
+      });
+      return;
+    }
+
+    setPermissions({
+      ...EMPTY_PERMISSIONS,
+      writeOwnTime: true,
+      editOwnTime: true,
+    });
   }
 
   async function resetPin(row) {
@@ -109,6 +202,7 @@ export default function EmployeeList() {
     setName(row.name || "");
     setCode(row.code || "");
     setRole(row.role || "mitarbeiter");
+    setPermissions(normalizePermissions(row.permissions));
   }
 
   function clearForm() {
@@ -116,6 +210,7 @@ export default function EmployeeList() {
     setName("");
     setCode("");
     setRole("mitarbeiter");
+    setPermissions({ ...EMPTY_PERMISSIONS });
   }
 
   async function createEmployee(e) {
@@ -126,21 +221,22 @@ export default function EmployeeList() {
     try {
       let error;
 
+      const payload = {
+        name,
+        code,
+        role,
+        permissions,
+      };
+
       if (editId) {
         ({ error } = await supabase
           .from("employees")
-          .update({
-            name,
-            code,
-            role,
-          })
+          .update(payload)
           .eq("id", editId));
       } else {
         ({ error } = await supabase.from("employees").insert([
           {
-            name,
-            code,
-            role,
+            ...payload,
             active: true,
             disabled: false,
           },
@@ -216,6 +312,54 @@ export default function EmployeeList() {
                 Abbrechen
               </button>
             )}
+
+            <button
+              type="button"
+              className="hbz-btn"
+              onClick={() => setRecommendedPermissions(role)}
+            >
+              Rechte aus Rolle übernehmen
+            </button>
+          </div>
+
+          <div style={{ gridColumn: "1 / -1" }}>
+            <label className="hbz-label">Rechte</label>
+            <div
+              style={{
+                border: "1px solid #e6ded2",
+                borderRadius: 14,
+                padding: 14,
+                background: "#fcfaf7",
+              }}
+            >
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", gap: 10 }}>
+                {PERMISSION_OPTIONS.map((item) => (
+                  <label
+                    key={item.key}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                      padding: "8px 10px",
+                      borderRadius: 10,
+                      background: permissions[item.key] ? "#f2e5d7" : "#fff",
+                      border: permissions[item.key] ? "1px solid #d8b695" : "1px solid #ece4da",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={!!permissions[item.key]}
+                      onChange={(e) => setPermission(item.key, e.target.checked)}
+                    />
+                    <span>{item.label}</span>
+                  </label>
+                ))}
+              </div>
+
+              <div style={{ marginTop: 12, fontSize: 13, opacity: 0.8 }}>
+                Aktive Rechte: <strong>{activePermissionCount}</strong>
+              </div>
+            </div>
           </div>
         </form>
 
@@ -238,6 +382,7 @@ export default function EmployeeList() {
                   <th>Name</th>
                   <th>Code</th>
                   <th>Rolle</th>
+                  <th>Rechte</th>
                   <th>Status</th>
                   <th className="num">Aktionen</th>
                 </tr>
@@ -245,7 +390,7 @@ export default function EmployeeList() {
               <tbody>
                 {rows.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="employee-empty">
+                    <td colSpan={6} className="employee-empty">
                       Keine Mitarbeiter gefunden.
                     </td>
                   </tr>
@@ -262,6 +407,7 @@ export default function EmployeeList() {
                     <td>{r.name}</td>
                     <td>{r.code}</td>
                     <td>{r.role}</td>
+                    <td style={{ minWidth: 240 }}>{permissionSummary(r.permissions)}</td>
                     <td>
                       <span
                         style={{
