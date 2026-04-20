@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { getSession } from "../lib/session";
+import { hasPermission } from "../lib/permissions";
 
 function formatLocalDate(date) {
   const y = date.getFullYear();
@@ -79,7 +80,9 @@ function employeeDefaultSort(a, b) {
 
 export default function WorkAssignments() {
   const session = getSession()?.user || null;
-  const isAdmin = normalizeRole(session?.role) === "admin";
+  const canViewAssignments =
+    hasPermission(session, "viewAssignments") || hasPermission(session, "manageAssignments");
+  const canEditAssignments = hasPermission(session, "manageAssignments");
 
   const [weekAnchor, setWeekAnchor] = useState(() => formatLocalDate(new Date()));
   const [employees, setEmployees] = useState([]);
@@ -242,25 +245,6 @@ export default function WorkAssignments() {
     loadAssignments();
   }, [weekAnchor]);
 
-
-  useEffect(() => {
-    function handlePrevWeek() {
-      shiftWeek(-1);
-    }
-
-    function handleNextWeek() {
-      shiftWeek(1);
-    }
-
-    window.addEventListener("hbz-prev-day", handlePrevWeek);
-    window.addEventListener("hbz-next-day", handleNextWeek);
-
-    return () => {
-      window.removeEventListener("hbz-prev-day", handlePrevWeek);
-      window.removeEventListener("hbz-next-day", handleNextWeek);
-    };
-  }, [weekAnchor]);
-
   function shiftWeek(direction) {
     const start = startOfWeek(weekAnchor);
     start.setDate(start.getDate() + direction * 7);
@@ -318,7 +302,7 @@ export default function WorkAssignments() {
   }
 
   async function addProjectToCell(employeeId, dateStr, projectId) {
-    if (!isAdmin || !projectId) return;
+    if (!canEditAssignments || !projectId) return;
 
     const projectIdValue = String(projectId).trim();
     if (!projectIdValue) {
@@ -365,7 +349,7 @@ export default function WorkAssignments() {
   }
 
   async function removeProject(rowId) {
-    if (!isAdmin) return;
+    if (!canEditAssignments) return;
     if (!window.confirm("Projekt aus der Arbeitseinteilung entfernen?")) return;
 
     try {
@@ -394,7 +378,7 @@ export default function WorkAssignments() {
   }
 
   async function onCellClick(employeeId, dateStr) {
-    if (!isAdmin) return;
+    if (!canEditAssignments) return;
 
     const projectIdValue = projectRef.current?.value?.trim();
 
@@ -407,7 +391,7 @@ export default function WorkAssignments() {
   }
 
   function onProjectDragStart(e) {
-    if (!isAdmin) return;
+    if (!canEditAssignments) return;
 
     const projectIdValue = projectRef.current?.value?.trim();
 
@@ -430,7 +414,7 @@ export default function WorkAssignments() {
 
   async function onCellDrop(e, employeeId, dateStr) {
     e.preventDefault();
-    if (!isAdmin) return;
+    if (!canEditAssignments) return;
 
     const droppedProjectId =
       e.dataTransfer.getData("projectId") ||
@@ -450,7 +434,7 @@ export default function WorkAssignments() {
   }
 
   function onEmployeeDragStart(e, employeeId) {
-    if (!isAdmin) return;
+    if (!canEditAssignments) return;
     e.dataTransfer.clearData();
     e.dataTransfer.setData("employeeId", String(employeeId));
     e.dataTransfer.effectAllowed = "move";
@@ -463,7 +447,7 @@ export default function WorkAssignments() {
 
   async function onRowDrop(e, targetEmployeeId) {
     e.preventDefault();
-    if (!isAdmin) return;
+    if (!canEditAssignments) return;
 
     const droppedEmployeeId =
       e.dataTransfer.getData("employeeId") || dragEmployeeId || "";
@@ -521,8 +505,9 @@ export default function WorkAssignments() {
 
         <div className="workassign-dispo-toolbar">
           <div className="help">
-            Projekt oben im Dropdown auswählen und danach unten auf die gewünschte Zelle klicken.
-            Oder rechts den kleinen Drag-Button verwenden. Mitarbeiter können weiter per Ziehen sortiert werden.
+            {canEditAssignments
+              ? "Projekt oben im Dropdown auswählen und danach unten auf die gewünschte Zelle klicken. Oder rechts den kleinen Drag-Button verwenden. Mitarbeiter können weiter per Ziehen sortiert werden."
+              : "Hier siehst du die Arbeitseinteilung der Woche. Änderungen sind mit deinem Benutzer nicht erlaubt."}
           </div>
 
           <div className="field-inline workassign-dispo-datefield">
@@ -543,7 +528,7 @@ export default function WorkAssignments() {
         <div className="workassign-project-palette-head">
           <div className="month-card-title">Projekt auswählen</div>
           <div className="help">
-            Danach Zelle klicken oder den Drag-Button benutzen.
+            {canEditAssignments ? "Danach Zelle klicken oder den Drag-Button benutzen." : "Nur Anzeige – Änderungen sind deaktiviert."}
           </div>
         </div>
 
@@ -577,7 +562,7 @@ export default function WorkAssignments() {
             <button
               type="button"
               className="hbz-btn hbz-btn-primary"
-              draggable={isAdmin}
+              draggable={canEditAssignments}
               onDragStart={onProjectDragStart}
               onDragEnd={onProjectDragEnd}
               title="Projekt in eine Zelle ziehen"
@@ -589,7 +574,9 @@ export default function WorkAssignments() {
       </div>
 
       <div className="hbz-card workassign-matrix-card">
-        {loading ? (
+        {!canViewAssignments ? (
+          <div className="year-error-box">Du hast keine Berechtigung für die Arbeitseinteilung.</div>
+        ) : loading ? (
           <div className="month-empty-state">Lade Arbeitseinteilung…</div>
         ) : (
           <div className="workassign-matrix-wrap">
@@ -621,11 +608,11 @@ export default function WorkAssignments() {
                     >
                       <td
                         className="workassign-sticky-left workassign-employee-cell"
-                        draggable={isAdmin}
+                        draggable={canEditAssignments}
                         onDragStart={(e) => onEmployeeDragStart(e, employee.id)}
                         onDragEnd={onEmployeeDragEnd}
                         onDragOver={(e) => {
-                          if (!isAdmin || !dragEmployeeId) return;
+                          if (!canEditAssignments || !dragEmployeeId) return;
                           e.preventDefault();
                           setHoverRow(rowKey);
                         }}
@@ -635,7 +622,7 @@ export default function WorkAssignments() {
                         onDrop={(e) => onRowDrop(e, employee.id)}
                       >
                         <div className="workassign-employee-cell-inner">
-                          {isAdmin ? <span className="workassign-row-drag">↕</span> : null}
+                          {canEditAssignments ? <span className="workassign-row-drag">↕</span> : null}
                           <span className="workassign-employee-name">
                             {employee.name}
                           </span>
@@ -655,9 +642,12 @@ export default function WorkAssignments() {
                             className={`workassign-drop-cell ${
                               hoverCell === cellKey ? "workassign-drop-cell-hover" : ""
                             }`}
-                            onClick={() => onCellClick(employee.id, dateStr)}
+                            onClick={() => {
+                              if (!canEditAssignments) return;
+                              onCellClick(employee.id, dateStr);
+                            }}
                             onDragOver={(e) => {
-                              if (!isAdmin) return;
+                              if (!canEditAssignments) return;
                               e.preventDefault();
                               setHoverCell(cellKey);
                             }}
@@ -676,7 +666,7 @@ export default function WorkAssignments() {
                                   return (
                                     <span className="workassign-cell-chip" key={row.id}>
                                       {projectLabel(project)}
-                                      {isAdmin ? (
+                                      {canEditAssignments ? (
                                         <button
                                           type="button"
                                           className="workassign-cell-chip-remove"

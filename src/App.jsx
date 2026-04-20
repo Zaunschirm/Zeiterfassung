@@ -13,6 +13,7 @@ import WorkAssignments from "./components/WorkAssignments.jsx";
 
 import { getSession, setSession, clearSession } from "./lib/session";
 import { APP_VERSION } from "./version";
+import { hasPermission } from "./lib/permissions";
 import "./styles.css";
 
 export default function App() {
@@ -22,6 +23,9 @@ export default function App() {
 
   const location = useLocation();
   const navigate = useNavigate();
+
+  const canViewAssignments =
+    hasPermission(currentUser, "viewAssignments") || hasPermission(currentUser, "manageAssignments");
 
   useEffect(() => {
     try {
@@ -74,38 +78,6 @@ export default function App() {
     navigate("/", { replace: true });
   };
 
-
-  useEffect(() => {
-    function isTyping(target) {
-      if (!target) return false;
-      const tag = target.tagName?.toLowerCase();
-      return (
-        tag === "input" ||
-        tag === "textarea" ||
-        tag === "select" ||
-        target.isContentEditable
-      );
-    }
-
-    function handleKeyDown(e) {
-      if (isTyping(e.target)) return;
-      if (location.pathname !== "/zeiterfassung" && location.pathname !== "/arbeitseinteilung") return;
-
-      if (e.key === "ArrowLeft") {
-        e.preventDefault();
-        window.dispatchEvent(new CustomEvent("hbz-prev-day"));
-      }
-
-      if (e.key === "ArrowRight") {
-        e.preventDefault();
-        window.dispatchEvent(new CustomEvent("hbz-next-day"));
-      }
-    }
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [location.pathname]);
-
   return (
     <div className="app-root">
       {loggedIn ? (
@@ -121,7 +93,10 @@ export default function App() {
               <Routes>
                 <Route path="/zeiterfassung" element={<DaySlider />} />
                 <Route path="/projekte" element={<ProjectAdmin />} />
-                <Route path="/arbeitseinteilung" element={<WorkAssignments />} />
+                <Route
+                  path="/arbeitseinteilung"
+                  element={canViewAssignments ? <WorkAssignments /> : <Navigate to="/zeiterfassung" replace />}
+                />
                 <Route path="/jahresuebersicht" element={<YearOverview />} />
                 <Route path="/monatsuebersicht" element={<MonthlyOverview />} />
                 <Route path="/projektfotos" element={<ProjectPhotos />} />
