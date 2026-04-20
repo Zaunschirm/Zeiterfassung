@@ -14,6 +14,7 @@ import WorkAssignments from "./components/WorkAssignments.jsx";
 import { getSession, setSession, clearSession } from "./lib/session";
 import { APP_VERSION } from "./version";
 import { hasPermission } from "./lib/permissions";
+import { supabase } from "./lib/supabase";
 import "./styles.css";
 
 export default function App() {
@@ -26,20 +27,52 @@ export default function App() {
 
   const canViewAssignments =
     hasPermission(currentUser, "viewAssignments") || hasPermission(currentUser, "manageAssignments");
+  const canViewMonthlyOverview = hasPermission(currentUser, "viewMonthlyOverview");
+  const canViewYearOverview = hasPermission(currentUser, "viewYearOverview");
+  const canManageProjects = hasPermission(currentUser, "manageProjects");
+  const canManageEmployees = hasPermission(currentUser, "manageEmployees");
 
   useEffect(() => {
-    try {
-      const stored = getSession();
-      const user = stored?.user || null;
+    let mounted = true;
 
-      if (user) {
-        setCurrentUser(user);
-        setRole(user?.role || "mitarbeiter");
+    async function bootstrap() {
+      try {
+        const stored = getSession();
+        const user = stored?.user || null;
+
+        if (!user) return;
+
+        let nextUser = user;
+
+        try {
+          let query = supabase
+            .from("employees")
+            .select("id, name, code, role, active, disabled, permissions")
+            .limit(1);
+
+          if (user?.code) query = query.eq("code", user.code);
+          else if (user?.id) query = query.eq("id", user.id);
+
+          const { data, error } = await query.maybeSingle();
+          if (error) throw error;
+          if (data) nextUser = { ...user, ...data };
+        } catch (e) {
+          console.error("[App] User hydrate error:", e);
+        }
+
+        if (!mounted) return;
+        setCurrentUser(nextUser);
+        setRole(nextUser?.role || "mitarbeiter");
         setLoggedIn(true);
+      } catch (e) {
+        console.error("[App] Session load error:", e);
       }
-    } catch (e) {
-      console.error("[App] Session load error:", e);
     }
+
+    bootstrap();
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -48,15 +81,33 @@ export default function App() {
     }
   }, [loggedIn, location.pathname, navigate]);
 
-  const handleLogin = (user, persistent = false) => {
+  const handleLogin = async (user, persistent = false) => {
     if (!user) return;
 
-    setLoggedIn(true);
-    setCurrentUser(user);
-    setRole(user?.role || "mitarbeiter");
+    let nextUser = user;
 
     try {
-      setSession({ user }, persistent);
+      let query = supabase
+        .from("employees")
+        .select("id, name, code, role, active, disabled, permissions")
+        .limit(1);
+
+      if (user?.code) query = query.eq("code", user.code);
+      else if (user?.id) query = query.eq("id", user.id);
+
+      const { data, error } = await query.maybeSingle();
+      if (error) throw error;
+      if (data) nextUser = { ...user, ...data };
+    } catch (e) {
+      console.error("[App] Login hydrate error:", e);
+    }
+
+    setLoggedIn(true);
+    setCurrentUser(nextUser);
+    setRole(nextUser?.role || "mitarbeiter");
+
+    try {
+      setSession({ user: nextUser }, persistent);
     } catch (e) {
       console.error("[App] Session save error:", e);
     }
@@ -92,15 +143,27 @@ export default function App() {
             <div className="app-page">
               <Routes>
                 <Route path="/zeiterfassung" element={<DaySlider />} />
-                <Route path="/projekte" element={<ProjectAdmin />} />
+                <Route
+                  path="/projekte"
+                  element={canManageProjects ? <ProjectAdmin /> : <Navigate to="/zeiterfassung" replace />}
+                />
                 <Route
                   path="/arbeitseinteilung"
                   element={canViewAssignments ? <WorkAssignments /> : <Navigate to="/zeiterfassung" replace />}
                 />
-                <Route path="/jahresuebersicht" element={<YearOverview />} />
-                <Route path="/monatsuebersicht" element={<MonthlyOverview />} />
+                <Route
+                  path="/jahresuebersicht"
+                  element={canViewYearOverview ? <YearOverview /> : <Navigate to="/zeiterfassung" replace />}
+                />
+                <Route
+                  path="/monatsuebersicht"
+                  element={canViewMonthlyOverview ? <MonthlyOverview /> : <Navigate to="/zeiterfassung" replace />}
+                />
                 <Route path="/projektfotos" element={<ProjectPhotos />} />
-                <Route path="/mitarbeiter" element={<EmployeeList />} />
+                <Route
+                  path="/mitarbeiter"
+                  element={canManageEmployees ? <EmployeeList /> : <Navigate to="/zeiterfassung" replace />}
+                />
                 <Route path="/" element={<Navigate to="/zeiterfassung" replace />} />
                 <Route path="*" element={<Navigate to="/zeiterfassung" replace />} />
               </Routes>

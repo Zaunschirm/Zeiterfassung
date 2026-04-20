@@ -80,9 +80,10 @@ function employeeDefaultSort(a, b) {
 
 export default function WorkAssignments() {
   const session = getSession()?.user || null;
+  const [currentUser, setCurrentUser] = useState(session);
   const canViewAssignments =
-    hasPermission(session, "viewAssignments") || hasPermission(session, "manageAssignments");
-  const canEditAssignments = hasPermission(session, "manageAssignments");
+    hasPermission(currentUser || session, "viewAssignments") || hasPermission(currentUser || session, "manageAssignments");
+  const canEditAssignments = hasPermission(currentUser || session, "manageAssignments");
 
   const [weekAnchor, setWeekAnchor] = useState(() => formatLocalDate(new Date()));
   const [employees, setEmployees] = useState([]);
@@ -97,6 +98,36 @@ export default function WorkAssignments() {
   const [hoverRow, setHoverRow] = useState("");
   const [hoverCell, setHoverCell] = useState("");
   const projectRef = useRef(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function hydrateCurrentUser() {
+      if (!session?.code && !session?.id) return;
+
+      try {
+        let query = supabase
+          .from("employees")
+          .select("id, code, name, role, active, disabled, permissions")
+          .limit(1);
+
+        if (session?.code) query = query.eq("code", session.code);
+        else if (session?.id) query = query.eq("id", session.id);
+
+        const { data, error } = await query.maybeSingle();
+        if (error) throw error;
+        if (!cancelled && data) setCurrentUser((prev) => ({ ...(prev || {}), ...data }));
+      } catch (e) {
+        console.error("[WorkAssignments] current user load error:", e);
+      }
+    }
+
+    hydrateCurrentUser();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.code, session?.id]);
 
   const weekDates = useMemo(() => getWeekDates(weekAnchor), [weekAnchor]);
   const weekDateStrings = useMemo(() => weekDates.map(formatLocalDate), [weekDates]);

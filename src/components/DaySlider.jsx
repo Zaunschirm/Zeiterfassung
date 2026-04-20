@@ -147,8 +147,9 @@ function getWeekDays(dateStr, count = 5) {
 
 export default function DaySlider() {
   const session = getSession()?.user || null;
-  const role = (session?.role || "mitarbeiter").toLowerCase();
-  const permissions = getUserPermissions(session);
+  const [currentUser, setCurrentUser] = useState(session);
+  const role = (currentUser?.role || session?.role || "mitarbeiter").toLowerCase();
+  const permissions = getUserPermissions(currentUser || session);
   const canWriteOwnTime = !!permissions.writeOwnTime;
   const canWriteAllTime = !!permissions.writeAllTime;
   const canEditOwnTime = !!permissions.editOwnTime;
