@@ -1631,9 +1631,9 @@ function exportCSV() {
             <button
               type="button"
               className="hbz-btn btn-small"
-              onClick={handleLastMonth}
+              onClick={handleLast3Months}
             >
-              Letzter Monat
+              Letzte 3 Monate
             </button>
 
             <button
@@ -1647,7 +1647,7 @@ function exportCSV() {
 
           <div className="year-range-grid">
             <div className="field-inline">
-              <label className="hbz-label">Einzelner Monat</label>
+              <label className="hbz-label">Monat</label>
               <input
                 type="month"
                 className="hbz-input"

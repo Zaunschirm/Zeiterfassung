@@ -56,6 +56,91 @@ const weekKey = (ymd) => {
   return `${id.year}-W${String(id.week).padStart(2, "0")}`;
 };
 
+function getMonthRange(ym) {
+  if (!ym || !/^\d{4}-\d{2}$/.test(ym)) return null;
+  const [y, m] = ym.split("-").map((x) => parseInt(x, 10));
+  const lastDay = new Date(y, m, 0).getDate();
+  return {
+    year: y,
+    month: m,
+    from: `${y}-${ym.slice(5)}-01`,
+    to: `${y}-${ym.slice(5)}-${String(lastDay).padStart(2, "0")}`,
+  };
+}
+
+function compareMonthStrings(a, b) {
+  if (!a || !b) return 0;
+  return a.localeCompare(b);
+}
+
+function getMonthListBetween(fromYm, toYm) {
+  if (!fromYm || !toYm) return [];
+
+  const [fromY, fromM] = fromYm.split("-").map(Number);
+  const [toY, toM] = toYm.split("-").map(Number);
+
+  const out = [];
+  let y = fromY;
+  let m = fromM;
+
+  while (y < toY || (y === toY && m <= toM)) {
+    out.push(`${y}-${String(m).padStart(2, "0")}`);
+    m += 1;
+    if (m > 12) {
+      m = 1;
+      y += 1;
+    }
+  }
+
+  return out;
+}
+
+function getRangeFromFilters(year, monthFilter, rangeFromMonth, rangeToMonth) {
+  const fromRange = getMonthRange(rangeFromMonth);
+  const toRange = getMonthRange(rangeToMonth);
+  const singleMonth = getMonthRange(monthFilter);
+
+  if (fromRange && toRange) {
+    const isNormalOrder = compareMonthStrings(rangeFromMonth, rangeToMonth) <= 0;
+    const useFrom = isNormalOrder ? fromRange : toRange;
+    const useTo = isNormalOrder ? toRange : fromRange;
+    const fromYm = isNormalOrder ? rangeFromMonth : rangeToMonth;
+    const toYm = isNormalOrder ? rangeToMonth : rangeFromMonth;
+
+    return {
+      mode: "range",
+      from: useFrom.from,
+      to: useTo.to,
+      label: `${fromYm} bis ${toYm}`,
+      yearForBuak: null,
+      monthList: getMonthListBetween(fromYm, toYm),
+    };
+  }
+
+  if (singleMonth) {
+    return {
+      mode: "month",
+      from: singleMonth.from,
+      to: singleMonth.to,
+      label: `Monat ${monthFilter}`,
+      yearForBuak: singleMonth.year,
+      monthList: [monthFilter],
+    };
+  }
+
+  return {
+    mode: "year",
+    from: `${year}-01-01`,
+    to: `${year}-12-31`,
+    label: `Jahr ${year}`,
+    yearForBuak: year,
+    monthList: Array.from(
+      { length: 12 },
+      (_, i) => `${year}-${String(i + 1).padStart(2, "0")}`
+    ),
+  };
+}
+
 const isAbsenceRow = (r) => {
   const note = (r?.note || "").toString();
   return note.includes("[Urlaub]") || note.includes("[Krank]");
@@ -77,10 +162,15 @@ export default function MonthlyOverview() {
   const isStaff = role === "mitarbeiter";
   const isManager = !isStaff;
 
-  const [month, setMonth] = useState(() => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-  });
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1;
+  const currentMonthStr = `${currentYear}-${String(currentMonth).padStart(2, "0")}`;
+
+  const [year, setYear] = useState(currentYear);
+  const [monthFilter, setMonthFilter] = useState(currentMonthStr);
+  const [rangeFromMonth, setRangeFromMonth] = useState("");
+  const [rangeToMonth, setRangeToMonth] = useState("");
 
   const [employees, setEmployees] = useState([]);
   const [projects, setProjects] = useState([]);
@@ -183,16 +273,20 @@ export default function MonthlyOverview() {
   useEffect(() => {
     loadMonth();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [month, selectedCodes, selectedProjectId, isManager, employees.length]);
+  }, [year, monthFilter, rangeFromMonth, rangeToMonth, selectedCodes, selectedProjectId, isManager, employees.length]);
 
   async function loadMonth() {
     try {
       setLoading(true);
 
-      const [y, m] = month.split("-");
-      const from = `${y}-${m}-01`;
-      const lastDay = new Date(parseInt(y, 10), parseInt(m, 10), 0).getDate();
-      const to = `${y}-${m}-${String(lastDay).padStart(2, "0")}`;
+      const range = getRangeFromFilters(
+        year,
+        monthFilter,
+        rangeFromMonth,
+        rangeToMonth
+      );
+      const from = range.from;
+      const to = range.to;
 
       let ids = [];
       if (isManager) {
@@ -260,6 +354,38 @@ export default function MonthlyOverview() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const activeRange = useMemo(
+    () => getRangeFromFilters(year, monthFilter, rangeFromMonth, rangeToMonth),
+    [year, monthFilter, rangeFromMonth, rangeToMonth]
+  );
+
+  const rangeLabel = useMemo(() => activeRange.label, [activeRange]);
+
+  function handleCurrentMonth() {
+    setYear(currentYear);
+    setRangeFromMonth("");
+    setRangeToMonth("");
+    setMonthFilter(currentMonthStr);
+  }
+
+  function handleLast3Months() {
+    const end = currentMonthStr;
+    const d = new Date(currentYear, currentMonth - 1, 1);
+    d.setMonth(d.getMonth() - 2);
+    const start = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    setYear(d.getFullYear());
+    setMonthFilter("");
+    setRangeFromMonth(start);
+    setRangeToMonth(end);
+  }
+
+  function handleCurrentYear() {
+    setYear(currentYear);
+    setMonthFilter("");
+    setRangeFromMonth("");
+    setRangeToMonth("");
+  }
 
   const grouped = useMemo(() => {
     const g = {};
@@ -499,7 +625,7 @@ export default function MonthlyOverview() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `Monatsübersicht_${month}.csv`;
+    a.download = `Auswertung_${rangeLabel.replace(/\s+/g, "_")}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -513,7 +639,7 @@ export default function MonthlyOverview() {
 
       const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
       doc.setFontSize(16);
-      doc.text(`Lohnverrechnung ${month}`, 40, 40);
+      doc.text(`Lohnverrechnung ${rangeLabel}`, 40, 40);
       doc.setFontSize(10);
       doc.text(
         `Mitarbeiter: ${
@@ -559,7 +685,7 @@ export default function MonthlyOverview() {
         margin: { left: 40, right: 40 },
       });
 
-      doc.save(`Lohnverrechnung_${month}.pdf`);
+      doc.save(`Lohnverrechnung_${rangeLabel.replace(/\s+/g, "_")}.pdf`);
     } catch (err) {
       console.error("Lohnverrechnung PDF Fehler:", err);
       alert("Lohnverrechnung PDF Fehler – bitte Konsole prüfen.");
@@ -581,7 +707,7 @@ export default function MonthlyOverview() {
 
       const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
       doc.setFontSize(16);
-      doc.text(`Abrechnung ${month}`, 40, 40);
+      doc.text(`Abrechnung ${rangeLabel}`, 40, 40);
       doc.setFontSize(10);
       doc.text("Tägliche Auflistung mit Arbeitszeit, Fahrzeit und Gesamtstunden", 40, 58);
 
@@ -609,7 +735,7 @@ export default function MonthlyOverview() {
         margin: { left: 40, right: 40 },
       });
 
-      doc.save(`Abrechnung_${month}.pdf`);
+      doc.save(`Abrechnung_${rangeLabel.replace(/\s+/g, "_")}.pdf`);
     } catch (err) {
       console.error("Abrechnung PDF Fehler:", err);
       alert("Abrechnung PDF Fehler – bitte Konsole prüfen.");
@@ -630,7 +756,7 @@ export default function MonthlyOverview() {
 
       const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
       doc.setFontSize(16);
-      doc.text(`Nachkalkulation ${month}`, 40, 40);
+      doc.text(`Nachkalkulation ${rangeLabel}`, 40, 40);
       doc.setFontSize(10);
       doc.text("Gesamtstunden und Fahrzeit getrennt", 40, 58);
 
@@ -676,7 +802,7 @@ export default function MonthlyOverview() {
         });
       }
 
-      doc.save(`Nachkalkulation_${month}.pdf`);
+      doc.save(`Nachkalkulation_${rangeLabel.replace(/\s+/g, "_")}.pdf`);
     } catch (err) {
       console.error("Nachkalkulation PDF Fehler:", err);
       alert("Nachkalkulation PDF Fehler – bitte Konsole prüfen.");
@@ -710,7 +836,7 @@ export default function MonthlyOverview() {
             <div className="month-overview-kicker">Auswertung</div>
             <h2 className="month-overview-title">Monatsübersicht</h2>
             <div className="month-overview-subtitle">
-              Monat: <b>{month}</b>
+              Zeitraum: <b>{rangeLabel}</b>
             </div>
           </div>
 
@@ -735,13 +861,75 @@ export default function MonthlyOverview() {
         <div className="hbz-card month-filter-card">
           <div className="month-card-title">Filter</div>
 
-          <div className="month-filter-grid">
+          <div className="month-chip-actions">
+            <button type="button" className="hbz-btn btn-small" onClick={handleCurrentMonth}>
+              Aktueller Monat
+            </button>
+            <button type="button" className="hbz-btn btn-small" onClick={handleLast3Months}>
+              Letzte 3 Monate
+            </button>
+            <button type="button" className="hbz-btn btn-small" onClick={handleCurrentYear}>
+              Aktuelles Jahr
+            </button>
+          </div>
+
+          <div className="year-range-grid">
+            <div className="field-inline">
+              <label className="hbz-label">Jahr</label>
+              <select
+                value={year}
+                onChange={(e) => setYear(parseInt(e.target.value, 10))}
+                className="hbz-select"
+              >
+                {Array.from({ length: 8 }, (_, i) => currentYear - i).map((y) => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </select>
+            </div>
+
             <div className="field-inline">
               <label className="hbz-label">Monat</label>
               <input
                 type="month"
-                value={month}
-                onChange={(e) => setMonth(e.target.value)}
+                value={monthFilter}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setRangeFromMonth("");
+                  setRangeToMonth("");
+                  setMonthFilter(v);
+                  const mr = getMonthRange(v);
+                  if (mr) setYear(mr.year);
+                }}
+                className="hbz-input"
+              />
+            </div>
+
+            <div className="field-inline">
+              <label className="hbz-label">Von</label>
+              <input
+                type="month"
+                value={rangeFromMonth}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setMonthFilter("");
+                  setRangeFromMonth(v);
+                  const mr = getMonthRange(v);
+                  if (mr) setYear(mr.year);
+                }}
+                className="hbz-input"
+              />
+            </div>
+
+            <div className="field-inline">
+              <label className="hbz-label">Bis</label>
+              <input
+                type="month"
+                value={rangeToMonth}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setMonthFilter("");
+                  setRangeToMonth(v);
+                }}
                 className="hbz-input"
               />
             </div>
@@ -761,6 +949,10 @@ export default function MonthlyOverview() {
                 ))}
               </select>
             </div>
+          </div>
+
+          <div className="year-range-active">
+            Aktuell ausgewählt: <b>{rangeLabel}</b>
           </div>
 
           {isManager && (
@@ -828,7 +1020,7 @@ export default function MonthlyOverview() {
           <div>
             <div className="month-card-title">Einträge</div>
             <div className="month-main-subtitle">
-              {loading ? "Lade…" : `Einträge für ${month}`}
+              {loading ? "Lade…" : `Einträge für ${rangeLabel}`}
             </div>
           </div>
         </div>
