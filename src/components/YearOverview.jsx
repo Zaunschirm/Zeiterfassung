@@ -506,7 +506,268 @@ export default function YearOverview() {
 
   const hasData = rows.length > 0;
 
-  function exportCSV() {
+  
+  function getSelectedExportRows() {
+    const activeCodes = selectedCodes?.length ? selectedCodes : employees.map((e) => e.code);
+
+    return rows.filter((r) => {
+      const emp = employees.find((e) => e.id === r.employee_id);
+      return activeCodes.includes(emp?.code);
+    });
+  }
+
+  function exportLohnverrechnungPDF() {
+    try {
+      const selectedRows = getSelectedExportRows();
+
+      if (!selectedRows.length) {
+        alert("Keine Daten für den Export ausgewählt.");
+        return;
+      }
+
+      const payrollMap = new Map();
+
+      for (const r of selectedRows) {
+        const employee = r.employee_name || r.employee_id || "—";
+        const date = r.work_date || "";
+        const key = employee;
+
+        const item =
+          payrollMap.get(key) || {
+            employee,
+            totalMinutes: 0,
+            workDays: new Set(),
+            vacationDates: [],
+            sickDates: [],
+          };
+
+        const { total } = splitMinutes(r);
+        item.totalMinutes += total || 0;
+
+        if (isVacationRow(r)) {
+          if (date) item.vacationDates.push(date);
+        } else if (isSickRow(r)) {
+          if (date) item.sickDates.push(date);
+        } else if ((total || 0) > 0 && date) {
+          item.workDays.add(date);
+        }
+
+        payrollMap.set(key, item);
+      }
+
+      const payrollRows = Array.from(payrollMap.values())
+        .map((item) => ({
+          employee: item.employee,
+          totalHours: h2(item.totalMinutes),
+          workDays: item.workDays.size,
+          vacationDates: item.vacationDates
+            .sort((a, b) => a.localeCompare(b))
+            .map(formatDateAT),
+          sickDates: item.sickDates
+            .sort((a, b) => a.localeCompare(b))
+            .map(formatDateAT),
+        }))
+        .sort((a, b) => a.employee.localeCompare(b.employee));
+
+      const doc = new jsPDF({
+        orientation: "landscape",
+        unit: "pt",
+        format: "a4",
+      });
+
+      doc.setFontSize(16);
+      doc.text(`Lohnverrechnung ${rangeLabel}`, 40, 40);
+
+      autoTable(doc, {
+        head: [[
+          "Mitarbeiter",
+          "Gesamtstunden",
+          "Arbeitstage",
+          "Urlaub (Datum)",
+          "Krankenstand (Datum)",
+        ]],
+        body: payrollRows.map((r) => [
+          r.employee,
+          r.totalHours.toFixed(2),
+          r.workDays,
+          r.vacationDates.join(", ") || "—",
+          r.sickDates.join(", ") || "—",
+        ]),
+        startY: 60,
+        styles: { fontSize: 9, cellPadding: 3, overflow: "linebreak" },
+        headStyles: { fillColor: [123, 74, 45] },
+        margin: { left: 40, right: 40 },
+      });
+
+      doc.save(`Lohnverrechnung_${rangeLabel.replace(/\s+/g, "_")}.pdf`);
+    } catch (err) {
+      console.error("Lohnverrechnung PDF Fehler:", err);
+      alert("Lohnverrechnung PDF Fehler – bitte F12 Konsole öffnen.");
+    }
+  }
+
+  function exportAbrechnungPDF() {
+    try {
+      const selectedRows = getSelectedExportRows().filter((r) => !isAbsenceRow(r));
+
+      if (!selectedRows.length) {
+        alert("Keine Daten für den Export ausgewählt.");
+        return;
+      }
+
+      const map = new Map();
+
+      for (const r of selectedRows) {
+        const employee = r.employee_name || r.employee_id || "—";
+        const project = r.project_name || r.project_code || "—";
+        const date = r.work_date || "";
+        const key = `${date}||${employee}||${project}`;
+        const current =
+          map.get(key) || {
+            date,
+            employee,
+            project,
+            work: 0,
+            travel: 0,
+            total: 0,
+          };
+
+        const { work, travel, total } = splitMinutes(r);
+        current.work += work || 0;
+        current.travel += travel || 0;
+        current.total += total || 0;
+
+        map.set(key, current);
+      }
+
+      const dailyRows = Array.from(map.values()).sort(
+        (a, b) =>
+          a.date.localeCompare(b.date) ||
+          a.employee.localeCompare(b.employee) ||
+          a.project.localeCompare(b.project)
+      );
+
+      const doc = new jsPDF({
+        orientation: "landscape",
+        unit: "pt",
+        format: "a4",
+      });
+
+      doc.setFontSize(16);
+      doc.text(`Abrechnung ${rangeLabel}`, 40, 40);
+
+      autoTable(doc, {
+        head: [[
+          "Datum",
+          "Mitarbeiter",
+          "Projekt",
+          "Arbeitszeit (h)",
+          "Fahrzeit (h)",
+          "Gesamtstunden (h)",
+        ]],
+        body: dailyRows.map((r) => [
+          formatDateAT(r.date),
+          r.employee,
+          r.project,
+          h2(r.work).toFixed(2),
+          h2(r.travel).toFixed(2),
+          h2(r.total).toFixed(2),
+        ]),
+        startY: 60,
+        styles: { fontSize: 9, cellPadding: 3, overflow: "linebreak" },
+        headStyles: { fillColor: [123, 74, 45] },
+        margin: { left: 40, right: 40 },
+      });
+
+      doc.save(`Abrechnung_${rangeLabel.replace(/\s+/g, "_")}.pdf`);
+    } catch (err) {
+      console.error("Abrechnung PDF Fehler:", err);
+      alert("Abrechnung PDF Fehler – bitte F12 Konsole öffnen.");
+    }
+  }
+
+  function exportNachkalkulationPDF() {
+    try {
+      const selectedRows = getSelectedExportRows().filter((r) => !isAbsenceRow(r));
+
+      if (!selectedRows.length) {
+        alert("Keine Daten für den Export ausgewählt.");
+        return;
+      }
+
+      const map = new Map();
+
+      for (const r of selectedRows) {
+        const key = String(r.project_id || r.project_name || r.project_code || "—");
+        const label = r.project_name || r.project_code || "—";
+        const current =
+          map.get(key) || {
+            project: label,
+            work: 0,
+            travel: 0,
+            total: 0,
+          };
+
+        const { work, travel, total } = splitMinutes(r);
+        current.work += work || 0;
+        current.travel += travel || 0;
+        current.total += total || 0;
+
+        map.set(key, current);
+      }
+
+      const projectRows = Array.from(map.values()).sort((a, b) =>
+        String(a.project).localeCompare(String(b.project))
+      );
+
+      const totalWork = projectRows.reduce((sum, r) => sum + r.work, 0);
+      const totalTravel = projectRows.reduce((sum, r) => sum + r.travel, 0);
+      const totalAll = projectRows.reduce((sum, r) => sum + r.total, 0);
+
+      const doc = new jsPDF({
+        orientation: "landscape",
+        unit: "pt",
+        format: "a4",
+      });
+
+      doc.setFontSize(16);
+      doc.text(`Nachkalkulation ${rangeLabel}`, 40, 40);
+
+      autoTable(doc, {
+        head: [[
+          "Projekt",
+          "Arbeitszeit (h)",
+          "Fahrzeit (h)",
+          "Gesamtstunden (h)",
+        ]],
+        body: projectRows.map((r) => [
+          r.project,
+          h2(r.work).toFixed(2),
+          h2(r.travel).toFixed(2),
+          h2(r.total).toFixed(2),
+        ]),
+        startY: 60,
+        styles: { fontSize: 9, cellPadding: 3, overflow: "linebreak" },
+        headStyles: { fillColor: [123, 74, 45] },
+        margin: { left: 40, right: 40 },
+      });
+
+      const finalY = (doc.lastAutoTable?.finalY || 60) + 18;
+      doc.setFontSize(11);
+      doc.text(
+        `Gesamt Arbeitszeit: ${h2(totalWork).toFixed(2)} h | Fahrzeit: ${h2(totalTravel).toFixed(2)} h | Gesamt: ${h2(totalAll).toFixed(2)} h`,
+        40,
+        finalY
+      );
+
+      doc.save(`Nachkalkulation_${rangeLabel.replace(/\s+/g, "_")}.pdf`);
+    } catch (err) {
+      console.error("Nachkalkulation PDF Fehler:", err);
+      alert("Nachkalkulation PDF Fehler – bitte F12 Konsole öffnen.");
+    }
+  }
+
+function exportCSV() {
     const lines = [];
     lines.push(`Auswertung ${rangeLabel}`);
     lines.push("");
@@ -1235,11 +1496,25 @@ export default function YearOverview() {
 
           <div className="year-overview-actions">
             <button
-              onClick={openPdfDialog}
+              onClick={exportLohnverrechnungPDF}
               className="hbz-btn hbz-btn-primary"
               disabled={!hasData}
             >
-              PDF export
+              Lohnverrechnung
+            </button>
+            <button
+              onClick={exportAbrechnungPDF}
+              className="hbz-btn"
+              disabled={!hasData}
+            >
+              Abrechnung
+            </button>
+            <button
+              onClick={exportNachkalkulationPDF}
+              className="hbz-btn"
+              disabled={!hasData}
+            >
+              Nachkalkulation
             </button>
             <button
               onClick={exportCSV}
@@ -1574,421 +1849,8 @@ export default function YearOverview() {
         )}
       </div>
 
-      {showPdfDialog && (
-        <div className="year-modal-backdrop">
-          <div className="year-modal">
-            <div className="year-modal-head">
-              <div>
-                <div className="year-card-title">PDF Export auswählen</div>
-                <div className="year-modal-subtitle">
-                  Zeitraum: <b>{rangeLabel}</b>
-                </div>
-              </div>
-              <button
-                className="hbz-btn"
-                onClick={() => setShowPdfDialog(false)}
-              >
-                Schließen
-              </button>
-            </div>
+      
 
-            <div className="year-modal-grid">
-              <div className="year-modal-box">
-                <div className="year-modal-box-title">Mitarbeiter</div>
-
-                <div className="export-quick-actions">
-                  <button
-                    className="hbz-btn btn-small"
-                    onClick={() =>
-                      setPdfOptions((prev) => ({
-                        ...prev,
-                        selectedEmployeeCodes: employees.map((e) => e.code),
-                      }))
-                    }
-                  >
-                    Alle
-                  </button>
-
-                  <button
-                    className="hbz-btn btn-small"
-                    onClick={() =>
-                      setPdfOptions((prev) => ({
-                        ...prev,
-                        selectedEmployeeCodes: [],
-                      }))
-                    }
-                  >
-                    Keine
-                  </button>
-
-                  <button
-                    className="hbz-btn btn-small"
-                    onClick={() =>
-                      setPdfOptions((prev) => ({
-                        ...prev,
-                        selectedEmployeeCodes: [...selectedCodes],
-                      }))
-                    }
-                  >
-                    Aktuelle Auswahl
-                  </button>
-                </div>
-
-                <div className="year-modal-checklist">
-                  {employees.map((e) => (
-                    <label key={e.id} className="export-option">
-                      <input
-                        type="checkbox"
-                        checked={pdfOptions.selectedEmployeeCodes.includes(
-                          e.code
-                        )}
-                        onChange={(ev) => {
-                          const checked = ev.target.checked;
-                          setPdfOptions((prev) => ({
-                            ...prev,
-                            selectedEmployeeCodes: checked
-                              ? [...prev.selectedEmployeeCodes, e.code]
-                              : prev.selectedEmployeeCodes.filter(
-                                  (c) => c !== e.code
-                                ),
-                          }));
-                        }}
-                      />
-                      <div className="export-option-body">
-                        <span className="export-option-title">{e.name}</span>
-                        <span className="export-option-example">
-                          Beispiel: Jahresauswertung nur für diesen Mitarbeiter
-                        </span>
-                      </div>
-                    </label>
-                  ))}
-                </div>
-              </div>
-
-              <div className="year-modal-box">
-                <div className="year-modal-box-title">Exportinhalt</div>
-
-                <div className="export-quick-actions">
-                  <button
-                    className="hbz-btn btn-small"
-                    onClick={() =>
-                      setPdfOptions((p) => ({
-                        ...p,
-                        includeProjects: true,
-                        includeSiteDailyReport: true,
-                        includeEmployees: true,
-                        includeEmployeeProjects: true,
-                        includeWorkHours: true,
-                        includeTotalHours: true,
-                        includeTravel: true,
-                        includeDays: true,
-                        includeBuak: true,
-                        includePayroll: true,
-                      }))
-                    }
-                  >
-                    Alles
-                  </button>
-
-                  <button
-                    className="hbz-btn btn-small"
-                    onClick={() =>
-                      setPdfOptions((p) => ({
-                        ...p,
-                        includeProjects: false,
-                        includeSiteDailyReport: true,
-                        includeEmployees: true,
-                        includeEmployeeProjects: false,
-                        includeWorkHours: true,
-                        includeTotalHours: true,
-                        includeTravel: true,
-                        includeDays: true,
-                        includeBuak: true,
-                        includePayroll: true,
-                      }))
-                    }
-                  >
-                    AG kompakt
-                  </button>
-
-                  <button
-                    className="hbz-btn btn-small"
-                    onClick={() =>
-                      setPdfOptions((p) => ({
-                        ...p,
-                        includeProjects: true,
-                        includeSiteDailyReport: false,
-                        includeEmployees: true,
-                        includeEmployeeProjects: true,
-                        includeWorkHours: true,
-                        includeTotalHours: true,
-                        includeTravel: true,
-                        includeDays: true,
-                        includeBuak: true,
-                        includePayroll: true,
-                      }))
-                    }
-                  >
-                    Intern detailliert
-                  </button>
-
-                  <button
-                    className="hbz-btn btn-small hbz-btn-primary"
-                    onClick={() =>
-                      setPdfOptions((p) => ({
-                        ...p,
-                        includeProjects: false,
-                        includeSiteDailyReport: false,
-                        includeEmployees: false,
-                        includeEmployeeProjects: false,
-                        includeWorkHours: false,
-                        includeTotalHours: true,
-                        includeTravel: false,
-                        includeDays: true,
-                        includeBuak: true,
-                        includePayroll: true,
-                      }))
-                    }
-                  >
-                    Lohnverrechnung
-                  </button>
-                </div>
-
-                <div className="export-card-grid">
-                  <div className="export-section">
-                    <div className="export-section-title">Auswertung</div>
-
-                    <label className="export-option">
-                      <input
-                        type="checkbox"
-                        checked={pdfOptions.includeProjects}
-                        onChange={(e) =>
-                          setPdfOptions((p) => ({
-                            ...p,
-                            includeProjects: e.target.checked,
-                          }))
-                        }
-                      />
-                      <div className="export-option-body">
-                        <span className="export-option-title">Projekte</span>
-                        <span className="export-option-example">
-                          Beispiel: Projekt A · 245,00 h · 18 Tage
-                        </span>
-                      </div>
-                    </label>
-
-                    <label className="export-option">
-                      <input
-                        type="checkbox"
-                        checked={pdfOptions.includeSiteDailyReport}
-                        onChange={(e) =>
-                          setPdfOptions((p) => ({
-                            ...p,
-                            includeSiteDailyReport: e.target.checked,
-                          }))
-                        }
-                      />
-                      <div className="export-option-body">
-                        <span className="export-option-title">
-                          Regiebericht / Tagesliste AG
-                        </span>
-                        <span className="export-option-example">
-                          Beispiel: 03.04.2026 · Stefan Zaunschirm · Arbeit 8,50 h · Fahrzeit 0,50 h · Gesamt 9,00 h
-                        </span>
-                      </div>
-                    </label>
-
-                    <label className="export-option">
-                      <input
-                        type="checkbox"
-                        checked={pdfOptions.includeEmployees}
-                        onChange={(e) =>
-                          setPdfOptions((p) => ({
-                            ...p,
-                            includeEmployees: e.target.checked,
-                          }))
-                        }
-                      />
-                      <div className="export-option-body">
-                        <span className="export-option-title">Mitarbeiter</span>
-                        <span className="export-option-example">
-                          Beispiel: Stefan Zaunschirm · 1.622,50 h im Jahr
-                        </span>
-                      </div>
-                    </label>
-
-                    <label className="export-option">
-                      <input
-                        type="checkbox"
-                        checked={pdfOptions.includeEmployeeProjects}
-                        onChange={(e) =>
-                          setPdfOptions((p) => ({
-                            ...p,
-                            includeEmployeeProjects: e.target.checked,
-                          }))
-                        }
-                      />
-                      <div className="export-option-body">
-                        <span className="export-option-title">
-                          Mitarbeiter x Projekt
-                        </span>
-                        <span className="export-option-example">
-                          Beispiel: Stefan Zaunschirm · Projekt A · 132,00 h
-                        </span>
-                      </div>
-                    </label>
-                  </div>
-
-                  <div className="export-section">
-                    <div className="export-section-title">Kennzahlen</div>
-
-                    <label className="export-option">
-                      <input
-                        type="checkbox"
-                        checked={pdfOptions.includeWorkHours}
-                        onChange={(e) =>
-                          setPdfOptions((p) => ({
-                            ...p,
-                            includeWorkHours: e.target.checked,
-                          }))
-                        }
-                      />
-                      <div className="export-option-body">
-                        <span className="export-option-title">
-                          Arbeitsstunden
-                        </span>
-                        <span className="export-option-example">
-                          Beispiel: reine Arbeitszeit ohne Fahrzeit
-                        </span>
-                      </div>
-                    </label>
-
-                    <label className="export-option">
-                      <input
-                        type="checkbox"
-                        checked={pdfOptions.includeTotalHours}
-                        onChange={(e) =>
-                          setPdfOptions((p) => ({
-                            ...p,
-                            includeTotalHours: e.target.checked,
-                          }))
-                        }
-                      />
-                      <div className="export-option-body">
-                        <span className="export-option-title">
-                          Gesamtstunden
-                        </span>
-                        <span className="export-option-example">
-                          Beispiel: Arbeitszeit + Fahrzeit = 1.740,00 h
-                        </span>
-                      </div>
-                    </label>
-
-                    <label className="export-option">
-                      <input
-                        type="checkbox"
-                        checked={pdfOptions.includeTravel}
-                        onChange={(e) =>
-                          setPdfOptions((p) => ({
-                            ...p,
-                            includeTravel: e.target.checked,
-                          }))
-                        }
-                      />
-                      <div className="export-option-body">
-                        <span className="export-option-title">Fahrzeit</span>
-                        <span className="export-option-example">
-                          Beispiel: 96,50 h Fahrzeit im Zeitraum
-                        </span>
-                      </div>
-                    </label>
-
-                    <label className="export-option">
-                      <input
-                        type="checkbox"
-                        checked={pdfOptions.includeDays}
-                        onChange={(e) =>
-                          setPdfOptions((p) => ({
-                            ...p,
-                            includeDays: e.target.checked,
-                          }))
-                        }
-                      />
-                      <div className="export-option-body">
-                        <span className="export-option-title">Anzahl Tage</span>
-                        <span className="export-option-example">
-                          Beispiel: 204 Arbeitstage im Jahr
-                        </span>
-                      </div>
-                    </label>
-
-                    <label className="export-option">
-                      <input
-                        type="checkbox"
-                        checked={pdfOptions.includeBuak}
-                        onChange={(e) =>
-                          setPdfOptions((p) => ({
-                            ...p,
-                            includeBuak: e.target.checked,
-                          }))
-                        }
-                      />
-                      <div className="export-option-body">
-                        <span className="export-option-title">
-                          BUAK Sollstunden
-                        </span>
-                        <span className="export-option-example">
-                          Beispiel: Soll 1.704,00 h · Ist 1.740,00 h · Abweichung +36,00 h
-                        </span>
-                      </div>
-                    </label>
-
-                    <label className="export-option">
-                      <input
-                        type="checkbox"
-                        checked={pdfOptions.includePayroll}
-                        onChange={(e) =>
-                          setPdfOptions((p) => ({
-                            ...p,
-                            includePayroll: e.target.checked,
-                          }))
-                        }
-                      />
-                      <div className="export-option-body">
-                        <span className="export-option-title">
-                          Lohnverrechnung
-                        </span>
-                        <span className="export-option-example">
-                          Beispiel: Monat · Gesamtstunden inkl. Fahrzeit · Arbeitstage · Sollstunden · Überstunden · Urlaub/Krank mit Datum
-                        </span>
-                      </div>
-                    </label>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="year-modal-actions">
-              <button
-                className="hbz-btn"
-                onClick={() => setShowPdfDialog(false)}
-              >
-                Abbrechen
-              </button>
-
-              <button
-                className="hbz-btn hbz-btn-primary"
-                onClick={() => {
-                  exportPDF();
-                  setShowPdfDialog(false);
-                }}
-              >
-                PDF exportieren
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
