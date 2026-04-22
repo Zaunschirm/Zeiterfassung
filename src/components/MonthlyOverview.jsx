@@ -61,6 +61,15 @@ const isAbsenceRow = (r) => {
   return note.includes("[Urlaub]") || note.includes("[Krank]");
 };
 
+const isVacationRow = (r) => (r?.note || "").toString().includes("[Urlaub]");
+const isSickRow = (r) => (r?.note || "").toString().includes("[Krank]");
+
+const getPureWorkMinutes = (r) => {
+  const total = r?._mins ?? entryMinutes(r);
+  const travel = r?._travel ?? getTravel(r);
+  return Math.max(total - travel, 0);
+};
+
 // ---------- Component ----------
 export default function MonthlyOverview() {
   const session = getSession()?.user || null;
@@ -85,25 +94,11 @@ export default function MonthlyOverview() {
   const [editId, setEditId] = useState(null);
   const [editState, setEditState] = useState(null);
 
-  const [showPdfDialog, setShowPdfDialog] = useState(false);
-  const [pdfOptions, setPdfOptions] = useState({
-    selectedEmployeeCodes: [],
-    includeDetails: true,
-    includeDailySeparate: false,
-    includeSiteDailyReport: false,
-    includeWeekly: true,
-    includeTotals: true,
-    includeTravel: true,
-    includeOvertime: true,
-    includeAbsence: true,
-    includeWorkdays: true,
-    includeBuak: true,
-  });
-
   const [isMobile, setIsMobile] = useState(false);
-
   useEffect(() => {
-    const handleResize = () => setIsMobile(window.innerWidth <= 768);
+    const handleResize = () => {
+      setIsMobile(window.innerWidth <= 768);
+    };
     handleResize();
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
@@ -121,18 +116,6 @@ export default function MonthlyOverview() {
     });
     return map;
   }, [employees]);
-
-  useEffect(() => {
-    setPdfOptions((prev) => ({
-      ...prev,
-      selectedEmployeeCodes:
-        selectedCodes.length > 0
-          ? [...selectedCodes]
-          : isStaff && session?.code
-          ? [session.code]
-          : [],
-    }));
-  }, [selectedCodes, isStaff, session?.code]);
 
   useEffect(() => {
     (async () => {
@@ -192,7 +175,6 @@ export default function MonthlyOverview() {
           }
         }
       }
-
       setProjects((prj.data || []).filter((p) => p?.disabled !== true));
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -413,37 +395,28 @@ export default function MonthlyOverview() {
     const from_m = hmToMin(editState.from_hm);
     const to_m = hmToMin(editState.to_hm);
     const br_m = parseInt(editState.break_min || "0", 10);
-    const travel_m = parseInt(editState.travel_minutes || "0", 10);
-    const project_id = String(editState.project_id || "").trim() || null;
+    const prj = projects.find((p) => p.id === editState.project_id) || null;
 
     const update = {
-      project_id,
+      project_id: prj ? prj.id : null,
       start_min: from_m,
       end_min: to_m,
-      break_min: isNaN(br_m) ? 0 : Math.max(br_m, 0),
+      break_min: isNaN(br_m) ? 0 : br_m,
       note: (editState.note || "").trim() || null,
-      travel_minutes: isNaN(travel_m) ? 0 : Math.max(0, Math.min(travel_m, 150)),
     };
 
-    const { data, error } = await supabase
-      .from("time_entries")
-      .update(update)
-      .eq("id", editId)
-      .select("id")
-      .single();
-
-    if (error) {
-      console.error("update error:", error, update);
-      alert(
-        `Aktualisieren fehlgeschlagen. ${
-          error.message || error.details || error.hint || ""
-        }`.trim()
-      );
-      return;
+    if (typeof editState.travel_minutes !== "undefined") {
+      update.travel_minutes = parseInt(editState.travel_minutes || "0", 10);
     }
 
-    if (!data?.id) {
-      alert("Aktualisieren fehlgeschlagen. Kein Datensatz gefunden.");
+    const { error } = await supabase
+      .from("time_entries")
+      .update(update)
+      .eq("id", editId);
+
+    if (error) {
+      console.error("update error:", error);
+      alert("Aktualisieren fehlgeschlagen.");
       return;
     }
 
@@ -531,584 +504,182 @@ export default function MonthlyOverview() {
     URL.revokeObjectURL(url);
   }
 
-  function openPdfDialog() {
-    setPdfOptions((prev) => ({
-      ...prev,
-      selectedEmployeeCodes:
-        selectedCodes.length > 0
-          ? [...selectedCodes]
-          : isStaff && session?.code
-          ? [session.code]
-          : employees.map((e) => e.code),
-    }));
-    setShowPdfDialog(true);
-  }
-
-
-  function buildSiteDailyBlocks(sourceRows) {
-    const groupedBlocks = {};
-
-    for (const r of sourceRows) {
-      const date = r.work_date || "";
-      const project = r.project_name || r.project_code || "—";
-      const projectId = r.project_id || project;
-      const employee = r.employee_name || r.employee_id || "—";
-      const key = `${date}||${projectId}`;
-      const workMinutes =
-        (r.work_minutes != null
-          ? r.work_minutes
-          : Math.max(
-              (r.end_min ?? r.to_min ?? 0) - (r.start_min ?? r.from_min ?? 0) - (r.break_min ?? 0),
-              0
-            )) || 0;
-      const travelMinutes = r.travel_minutes ?? r.travel_min ?? r.travel ?? 0;
-      const totalMinutes =
-        r.total_minutes != null ? r.total_minutes : workMinutes + travelMinutes;
-
-      if (!groupedBlocks[key]) {
-        groupedBlocks[key] = {
-          date,
-          project,
-          projectId,
-          rowsByEmployee: {},
-          totalMinutes: 0,
-        };
-      }
-
-      if (!groupedBlocks[key].rowsByEmployee[employee]) {
-        groupedBlocks[key].rowsByEmployee[employee] = {
-          employee,
-          workMinutes: 0,
-          travelMinutes: 0,
-          totalMinutes: 0,
-        };
-      }
-
-      groupedBlocks[key].rowsByEmployee[employee].workMinutes += workMinutes;
-      groupedBlocks[key].rowsByEmployee[employee].travelMinutes += travelMinutes;
-      groupedBlocks[key].rowsByEmployee[employee].totalMinutes += totalMinutes;
-      groupedBlocks[key].totalMinutes += totalMinutes;
-    }
-
-    return Object.values(groupedBlocks)
-      .map((block) => ({
-        ...block,
-        employeeRows: Object.values(block.rowsByEmployee).sort((a, b) =>
-          a.employee.localeCompare(b.employee)
-        ),
-      }))
-      .sort((a, b) =>
-        a.date.localeCompare(b.date) || String(a.project).localeCompare(String(b.project))
-      );
-  }
-
-  function exportPDF() {
+  function exportLohnverrechnungPDF() {
     try {
-      const selectedPdfCodes =
-        pdfOptions.selectedEmployeeCodes?.length > 0
-          ? pdfOptions.selectedEmployeeCodes
-          : selectedCodes;
-
-      const exportRowsBase = rows.filter((r) => {
-        const code = employeesById[r.employee_id]?.code;
-        return selectedPdfCodes.includes(code);
-      });
-
-      const exportRows = pdfOptions.includeAbsence
-        ? exportRowsBase
-        : exportRowsBase.filter((r) => !isAbsenceRow(r));
-
-      const exportGroupedBase = grouped.filter((r) => {
-        const code = employeesById[r.employee_id]?.code;
-        return selectedPdfCodes.includes(code);
-      });
-
-      const exportGrouped = pdfOptions.includeAbsence
-        ? exportGroupedBase
-        : exportGroupedBase.filter((r) => !isAbsenceRow(r));
-
-      if (!exportGrouped.length && !exportRows.length) {
-        alert("Keine Daten für den PDF Export ausgewählt.");
+      if (!grouped.length) {
+        alert("Keine Daten für den Export vorhanden.");
         return;
       }
 
-      const exportWeekly = (() => {
-        const w = {};
-        for (const r of exportGrouped) {
-          const wk = weekKey(r.work_date);
-          const emp = r.employee_name || r.employee_id;
-          const key = `${emp}||${wk}`;
-
-          if (!w[key]) {
-            w[key] = {
-              employee: emp,
-              weekKey: wk,
-              firstDate: r.work_date,
-              days: [],
-              _mins: 0,
-              _travel: 0,
-            };
-          }
-
-          w[key].days.push(r);
-          w[key]._mins += r._mins;
-          w[key]._travel += r._travel;
-
-          if (!w[key].firstDate || r.work_date < w[key].firstDate) {
-            w[key].firstDate = r.work_date;
-          }
-        }
-
-        return Object.values(w).sort(
-          (a, b) =>
-            a.employee.localeCompare(b.employee) ||
-            a.weekKey.localeCompare(b.weekKey)
-        );
-      })();
-
-      const exportTotalsByEmployee = (() => {
-        const t = {};
-        for (const r of exportGrouped) {
-          const name = r.employee_name || r.employee_id;
-          const hrs = h2(r._mins);
-          const travelHrs = h2(r._travel);
-          const ot = Math.max(hrs - 9, 0);
-
-          if (!t[name]) t[name] = { hrs: 0, travel: 0, ot: 0, _days: new Set() };
-
-          t[name].hrs += hrs;
-          t[name].travel += travelHrs;
-          t[name].ot += ot;
-
-          if (!isAbsenceRow(r) && hrs > 0) {
-            t[name]._days.add(r.work_date);
-          }
-        }
-
-        Object.values(t).forEach((v) => {
-          v.days = v._days ? v._days.size : 0;
-          delete v._days;
-        });
-
-        return t;
-      })();
-
-      const exportMonthTotals = (() => {
-        let workPlusTravel = 0;
-        let travel = 0;
-
-        for (const r of exportGrouped) {
-          workPlusTravel += r._mins;
-          travel += r._travel;
-        }
-
-        return {
-          totalHrs: h2(workPlusTravel),
-          travelHrs: h2(travel),
-        };
-      })();
-
-      const doc = new jsPDF({
-        orientation: "landscape",
-        unit: "pt",
-        format: "a4",
-      });
-
+      const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
       doc.setFontSize(16);
-      doc.text(`Monatsübersicht ${month}`, 40, 40);
-
-      const selectedEmployeeNames = employees
-        .filter((e) => selectedPdfCodes.includes(e.code))
-        .map((e) => e.name || e.code);
-
+      doc.text(`Lohnverrechnung ${month}`, 40, 40);
       doc.setFontSize(10);
       doc.text(
         `Mitarbeiter: ${
-          selectedEmployeeNames.length ? selectedEmployeeNames.join(", ") : "—"
+          selectedEmployees.length
+            ? selectedEmployees.map((e) => e.name || e.code).join(", ")
+            : employees.map((e) => e.name || e.code).join(", ")
         }`,
         40,
         58
       );
 
-      doc.text(
-        `Inhalt: ${
-          [
-            pdfOptions.includeDetails ? "Tagesdetails" : null,
-            pdfOptions.includeDailySeparate ? "Einzelbuchungen separat" : null,
-            pdfOptions.includeSiteDailyReport ? "Regiebericht / Tagesliste AG" : null,
-            pdfOptions.includeWeekly ? "Wochenübersicht" : null,
-            pdfOptions.includeTotals ? "Summen" : null,
-            pdfOptions.includeTravel ? "Fahrzeit" : null,
-            pdfOptions.includeOvertime ? "Überstunden" : null,
-            pdfOptions.includeAbsence ? "Abwesenheiten" : null,
-            pdfOptions.includeWorkdays ? "Arbeitstage" : null,
-            pdfOptions.includeBuak ? "BUAK/Soll" : null,
-          ]
-            .filter(Boolean)
-            .join(", ") || "—"
-        }`,
-        40,
-        74
-      );
+      const employeeNames = Object.keys(totalsByEmployee).sort((a, b) => a.localeCompare(b));
+      const body = employeeNames.map((name) => {
+        const t = totalsByEmployee[name] || { hrs: 0, days: 0 };
 
-      let currentY = 90;
+        const urlaubDates = grouped
+          .filter((r) => (r.employee_name || r.employee_id) === name && isVacationRow(r))
+          .map((r) => r.work_date)
+          .filter(Boolean)
+          .sort();
 
-      if (pdfOptions.includeDetails) {
-        const detailHead = [[
-          "Datum",
-          "Mitarbeiter",
-          "Projekt",
-          "Start",
-          "Ende",
-          "Pause (min)",
-          ...(pdfOptions.includeTravel ? ["Fahrzeit (min)"] : []),
-          "Stunden (inkl. Fahrzeit)",
-          ...(pdfOptions.includeOvertime ? ["Überstunden"] : []),
-          "Notiz",
-        ]];
+        const krankDates = grouped
+          .filter((r) => (r.employee_name || r.employee_id) === name && isSickRow(r))
+          .map((r) => r.work_date)
+          .filter(Boolean)
+          .sort();
 
-        const detailSource = pdfOptions.includeDailySeparate
-          ? exportRows
-          : exportGrouped;
+        return [
+          name,
+          t.hrs.toFixed(2),
+          String(t.days ?? 0),
+          urlaubDates.length ? urlaubDates.join(", ") : "-",
+          krankDates.length ? krankDates.join(", ") : "-",
+        ];
+      });
 
-        const detailBody = detailSource.map((r) => {
-          const start = r.start_min ?? r.from_min ?? 0;
-          const end = r.end_min ?? r.to_min ?? 0;
-          const pause = r.break_min ?? 0;
-          const travel = r._travel ?? r.travel_minutes ?? r.travel_min ?? 0;
+      autoTable(doc, {
+        head: [["Mitarbeiter", "Gesamtstunden", "Arbeitstage", "Urlaub (Datum)", "Krankenstand (Datum)"]],
+        body,
+        startY: 80,
+        styles: { fontSize: 10, cellPadding: 4, overflow: "linebreak" },
+        headStyles: { fillColor: [123, 74, 45] },
+        margin: { left: 40, right: 40 },
+      });
 
-          const mins =
-            typeof r._mins !== "undefined"
-              ? r._mins
-              : Math.max(end - start - pause, 0) + (travel || 0);
+      doc.save(`Lohnverrechnung_${month}.pdf`);
+    } catch (err) {
+      console.error("Lohnverrechnung PDF Fehler:", err);
+      alert("Lohnverrechnung PDF Fehler – bitte Konsole prüfen.");
+    }
+  }
 
-          const hrs = h2(mins);
-          const ot = Math.max(hrs - 9, 0);
-
-          return [
-            r.work_date,
-            r.employee_name || "",
-            r.project_name || "",
-            toHM(start),
-            toHM(end),
-            pause,
-            ...(pdfOptions.includeTravel ? [travel] : []),
-            hrs.toFixed(2),
-            ...(pdfOptions.includeOvertime ? [ot.toFixed(2)] : []),
-            (r.note || "").replace(/\r?\n/g, " "),
-          ];
-        });
-
-        autoTable(doc, {
-          head: detailHead,
-          body: detailBody,
-          startY: currentY,
-          styles: { fontSize: 9, cellPadding: 3, overflow: "linebreak" },
-          headStyles: { fillColor: [123, 74, 45] },
-          didDrawPage: () => {
-            doc.setFontSize(9);
-            const pageWidth = doc.internal.pageSize.getWidth();
-            doc.text(
-              `Erstellt am ${new Date().toLocaleDateString("de-AT")}`,
-              pageWidth - 40,
-              30,
-              { align: "right" }
-            );
-          },
-          margin: { left: 40, right: 40 },
-        });
-
-        currentY = (doc.lastAutoTable?.finalY || currentY) + 20;
+  function exportAbrechnungPDF() {
+    try {
+      if (!grouped.length) {
+        alert("Keine Daten für den Export vorhanden.");
+        return;
       }
 
-      if (pdfOptions.includeTotals) {
-        const sumHead = [[
-          "Mitarbeiter",
-          ...(pdfOptions.includeWorkdays ? ["Tage"] : []),
-          "Stunden gesamt (inkl. Fahrzeit)",
-          ...(pdfOptions.includeTravel ? ["Fahrzeit gesamt (h)"] : []),
-          ...(pdfOptions.includeOvertime
-            ? ["Überstunden (Summe Tages-Ü>9h)"]
-            : []),
-        ]];
+      const rowsForExport = grouped.filter((r) => !isAbsenceRow(r));
+      if (!rowsForExport.length) {
+        alert("Keine Arbeitsdaten für die Abrechnung vorhanden.");
+        return;
+      }
 
-        const sumBody = Object.entries(exportTotalsByEmployee).map(
-          ([name, t]) => [
-            name,
-            ...(pdfOptions.includeWorkdays ? [t.days ?? 0] : []),
-            t.hrs.toFixed(2),
-            ...(pdfOptions.includeTravel ? [t.travel.toFixed(2)] : []),
-            ...(pdfOptions.includeOvertime ? [t.ot.toFixed(2)] : []),
-          ]
-        );
+      const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
+      doc.setFontSize(16);
+      doc.text(`Abrechnung ${month}`, 40, 40);
+      doc.setFontSize(10);
+      doc.text("Tägliche Auflistung mit Arbeitszeit, Fahrzeit und Gesamtstunden", 40, 58);
 
+      const body = rowsForExport.map((r) => {
+        const totalHours = h2(r._mins);
+        const travelHours = h2(r._travel);
+        const pureWorkHours = h2(getPureWorkMinutes(r));
+
+        return [
+          r.work_date,
+          r.employee_name || "",
+          r.project_name || "—",
+          pureWorkHours.toFixed(2),
+          travelHours.toFixed(2),
+          totalHours.toFixed(2),
+        ];
+      });
+
+      autoTable(doc, {
+        head: [["Datum", "Mitarbeiter", "Projekt", "Arbeitszeit", "Fahrzeit", "Gesamtstunden"]],
+        body,
+        startY: 80,
+        styles: { fontSize: 9, cellPadding: 3, overflow: "linebreak" },
+        headStyles: { fillColor: [123, 74, 45] },
+        margin: { left: 40, right: 40 },
+      });
+
+      doc.save(`Abrechnung_${month}.pdf`);
+    } catch (err) {
+      console.error("Abrechnung PDF Fehler:", err);
+      alert("Abrechnung PDF Fehler – bitte Konsole prüfen.");
+    }
+  }
+
+  function exportNachkalkulationPDF() {
+    try {
+      if (!grouped.length) {
+        alert("Keine Daten für den Export vorhanden.");
+        return;
+      }
+
+      const rowsForExport = grouped.filter((r) => !isAbsenceRow(r));
+      const totalTravelMinutes = rowsForExport.reduce((sum, r) => sum + (r._travel || 0), 0);
+      const totalAllMinutes = rowsForExport.reduce((sum, r) => sum + (r._mins || 0), 0);
+      const totalWorkMinutes = Math.max(totalAllMinutes - totalTravelMinutes, 0);
+
+      const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
+      doc.setFontSize(16);
+      doc.text(`Nachkalkulation ${month}`, 40, 40);
+      doc.setFontSize(10);
+      doc.text("Gesamtstunden und Fahrzeit getrennt", 40, 58);
+
+      autoTable(doc, {
+        head: [["Auswertung", "Stunden"]],
+        body: [
+          ["Gesamtstunden Arbeit", h2(totalWorkMinutes).toFixed(2)],
+          ["Fahrzeit", h2(totalTravelMinutes).toFixed(2)],
+          ["Gesamtstunden inkl. Fahrzeit", h2(totalAllMinutes).toFixed(2)],
+        ],
+        startY: 80,
+        styles: { fontSize: 11, cellPadding: 5 },
+        headStyles: { fillColor: [123, 74, 45] },
+        margin: { left: 40, right: 40 },
+      });
+
+      const perProject = {};
+      rowsForExport.forEach((r) => {
+        const key = r.project_name || "Ohne Projekt";
+        if (!perProject[key]) perProject[key] = { work: 0, travel: 0, total: 0 };
+        perProject[key].travel += r._travel || 0;
+        perProject[key].total += r._mins || 0;
+        perProject[key].work += getPureWorkMinutes(r);
+      });
+
+      const projectBody = Object.entries(perProject)
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([project, vals]) => [
+          project,
+          h2(vals.work).toFixed(2),
+          h2(vals.travel).toFixed(2),
+          h2(vals.total).toFixed(2),
+        ]);
+
+      if (projectBody.length) {
         autoTable(doc, {
-          head: sumHead,
-          body: sumBody,
-          startY: currentY,
-          styles: { fontSize: 10, cellPadding: 4 },
+          head: [["Projekt", "Arbeitszeit", "Fahrzeit", "Gesamt"]],
+          body: projectBody,
+          startY: (doc.lastAutoTable?.finalY || 100) + 18,
+          styles: { fontSize: 10, cellPadding: 4, overflow: "linebreak" },
           headStyles: { fillColor: [200, 200, 200] },
           margin: { left: 40, right: 40 },
         });
-
-        currentY = (doc.lastAutoTable?.finalY || currentY) + 22;
       }
 
-      if (
-        pdfOptions.includeTotals ||
-        pdfOptions.includeBuak ||
-        pdfOptions.includeTravel
-      ) {
-        if (currentY > doc.internal.pageSize.getHeight() - 80) {
-          doc.addPage();
-          currentY = 40;
-        }
-
-        doc.setFontSize(12);
-
-        const monthSollPerEmployee = calcBuakSollHoursForMonth(month);
-        const employeeCountForSoll = Object.keys(exportTotalsByEmployee || {}).length;
-        const monthSollTotal = monthSollPerEmployee * employeeCountForSoll;
-        const monthAbw = exportMonthTotals.totalHrs - monthSollTotal;
-
-        const summaryParts = [];
-        if (pdfOptions.includeBuak) {
-          summaryParts.push(`Soll (BUAK): ${monthSollTotal.toFixed(2)} h`);
-        }
-        summaryParts.push(`Ist: ${exportMonthTotals.totalHrs.toFixed(2)} h`);
-        if (pdfOptions.includeBuak) {
-          summaryParts.push(`Abw.: ${monthAbw.toFixed(2)} h`);
-        }
-        if (pdfOptions.includeTravel) {
-          summaryParts.push(
-            `Fahrzeit: ${exportMonthTotals.travelHrs.toFixed(2)} h`
-          );
-        }
-
-        doc.text(`Monatssummen – ${summaryParts.join(" | ")}`, 40, currentY);
-        currentY += 18;
-      }
-
-      if (pdfOptions.includeWeekly && exportWeekly.length > 0) {
-        if (currentY > doc.internal.pageSize.getHeight() - 120) {
-          doc.addPage();
-          currentY = 40;
-        }
-
-        doc.setFontSize(14);
-        doc.text("Wochenübersicht (ISO, Mo–So)", 40, currentY);
-        currentY += 10;
-
-        exportWeekly.forEach((wk, idx) => {
-          const weekSoll = getBuakSollHoursForWeek(
-            wk.firstDate || wk.days?.[0]?.work_date
-          );
-          const weekType = getBuakWeekType(
-            wk.firstDate || wk.days?.[0]?.work_date
-          );
-
-          const weekTypeLabel =
-            weekType === "kurz"
-              ? "Kurze Woche"
-              : weekType === "lang"
-              ? "Lange Woche"
-              : "";
-
-          const weekHead = [[
-            "Woche",
-            "Mitarbeiter",
-            "Datum",
-            "Projekt",
-            "Start",
-            "Ende",
-            "Pause (min)",
-            ...(pdfOptions.includeTravel ? ["Fahrzeit (min)"] : []),
-            "Stunden (inkl. Fahrzeit)",
-            ...(pdfOptions.includeOvertime ? ["Ü (>9h/Tag)"] : []),
-          ]];
-
-          const weekBody = [];
-          wk.days.forEach((r) => {
-            const start = r.start_min ?? r.from_min ?? 0;
-            const end = r.end_min ?? r.to_min ?? 0;
-            const hrs = h2(r._mins);
-            const ot = Math.max(hrs - 9, 0);
-
-            weekBody.push([
-              wk.weekKey,
-              wk.employee,
-              r.work_date,
-              r.project_name || "",
-              toHM(start),
-              toHM(end),
-              r.break_min ?? 0,
-              ...(pdfOptions.includeTravel ? [r._travel ?? 0] : []),
-              hrs.toFixed(2),
-              ...(pdfOptions.includeOvertime ? [ot.toFixed(2)] : []),
-            ]);
-          });
-
-          const weekHours = h2(wk._mins);
-          const weekOT = Math.max(weekHours - weekSoll, 0);
-
-          autoTable(doc, {
-            head: weekHead,
-            body: weekBody,
-            startY: currentY + 10,
-            styles: { fontSize: 9, cellPadding: 3, overflow: "linebreak" },
-            headStyles: { fillColor: [235, 235, 235] },
-            margin: { left: 40, right: 40 },
-          });
-
-          currentY = (doc.lastAutoTable?.finalY || currentY) + 5;
-          doc.setFontSize(10);
-
-          const weekInfoParts = [];
-          if (pdfOptions.includeBuak) {
-            weekInfoParts.push(
-              `${weekTypeLabel}${weekTypeLabel ? ", " : ""}Soll ${weekSoll.toFixed(
-                2
-              )} h`
-            );
-          }
-          weekInfoParts.push(`${weekHours.toFixed(2)} h`);
-          if (pdfOptions.includeBuak) {
-            weekInfoParts.push(`Wochen-Ü (>Soll): ${weekOT.toFixed(2)} h`);
-          }
-
-          doc.text(
-            `Wochensumme ${wk.weekKey} – ${wk.employee}: ${weekInfoParts.join(
-              " | "
-            )}`,
-            40,
-            currentY
-          );
-
-          currentY += 18;
-
-          if (
-            currentY > doc.internal.pageSize.getHeight() - 80 &&
-            idx < exportWeekly.length - 1
-          ) {
-            doc.addPage();
-            currentY = 40;
-          }
-        });
-      }
-
-
-      if (pdfOptions.includeSiteDailyReport && exportRows.length > 0) {
-        const siteBlocks = buildSiteDailyBlocks(exportRows);
-
-        if (siteBlocks.length > 0) {
-          if (currentY > doc.internal.pageSize.getHeight() - 140) {
-            doc.addPage();
-            currentY = 40;
-          }
-
-          doc.setFontSize(14);
-          doc.text("Regiebericht / Tagesliste für AG", 40, currentY);
-          currentY += 8;
-
-          siteBlocks.forEach((block, idx) => {
-            if (currentY > doc.internal.pageSize.getHeight() - 140) {
-              doc.addPage();
-              currentY = 40;
-            }
-
-            doc.setFontSize(11);
-            doc.text(
-              `${block.date} – ${block.project || "Ohne Projekt"}`,
-              40,
-              currentY + 12
-            );
-
-            autoTable(doc, {
-              head: [[
-                "Mitarbeiter",
-                "Arbeitszeit (h)",
-                ...(pdfOptions.includeTravel ? ["Fahrzeit (h)"] : []),
-                "Gesamtstunden (h)",
-              ]],
-              body: block.employeeRows.map((row) => [
-                row.employee,
-                h2(row.workMinutes).toFixed(2),
-                ...(pdfOptions.includeTravel ? [h2(row.travelMinutes).toFixed(2)] : []),
-                h2(row.totalMinutes).toFixed(2),
-              ]),
-              startY: currentY + 20,
-              styles: { fontSize: 9, cellPadding: 3 },
-              headStyles: { fillColor: [123, 74, 45] },
-              margin: { left: 40, right: 40 },
-            });
-
-            currentY = (doc.lastAutoTable?.finalY || currentY) + 8;
-            doc.setFontSize(10);
-            doc.text(
-              `Tagessumme ${block.date}: ${h2(block.totalMinutes).toFixed(2)} h`,
-              40,
-              currentY
-            );
-            currentY += 18;
-
-            if (
-              currentY > doc.internal.pageSize.getHeight() - 100 &&
-              idx < siteBlocks.length - 1
-            ) {
-              doc.addPage();
-              currentY = 40;
-            }
-          });
-
-          const siteTotalsByEmployee = {};
-          let grandTotalMinutes = 0;
-
-          for (const block of siteBlocks) {
-            grandTotalMinutes += block.totalMinutes;
-            for (const row of block.employeeRows) {
-              if (!siteTotalsByEmployee[row.employee]) {
-                siteTotalsByEmployee[row.employee] = 0;
-              }
-              siteTotalsByEmployee[row.employee] += row.totalMinutes;
-            }
-          }
-
-          if (currentY > doc.internal.pageSize.getHeight() - 140) {
-            doc.addPage();
-            currentY = 40;
-          }
-
-          doc.setFontSize(13);
-          doc.text("Gesamtzusammenstellung", 40, currentY);
-          autoTable(doc, {
-            head: [["Mitarbeiter", "Gesamtstunden (h)"]],
-            body: Object.entries(siteTotalsByEmployee)
-              .sort((a, b) => a[0].localeCompare(b[0]))
-              .map(([employee, minutes]) => [employee, h2(minutes).toFixed(2)]),
-            startY: currentY + 8,
-            styles: { fontSize: 9, cellPadding: 3 },
-            headStyles: { fillColor: [200, 200, 200] },
-            margin: { left: 40, right: 40 },
-          });
-          currentY = (doc.lastAutoTable?.finalY || currentY) + 10;
-          doc.setFontSize(11);
-          doc.text(
-            `Gesamtsumme Abrechnung: ${h2(grandTotalMinutes).toFixed(2)} h`,
-            40,
-            currentY
-          );
-          currentY += 16;
-        }
-      }
-
-
-            doc.save(`Monatsübersicht_${month}.pdf`);
+      doc.save(`Nachkalkulation_${month}.pdf`);
     } catch (err) {
-      console.error("PDF Export Fehler:", err);
-      alert(
-        "PDF Export Fehler – bitte F12 Konsole öffnen.\n" +
-          (err?.message || err)
-      );
+      console.error("Nachkalkulation PDF Fehler:", err);
+      alert("Nachkalkulation PDF Fehler – bitte Konsole prüfen.");
     }
   }
 
@@ -1144,11 +715,17 @@ export default function MonthlyOverview() {
           </div>
 
           <div className="month-overview-actions">
-            <button onClick={openPdfDialog} className="hbz-btn hbz-btn-primary">
-              PDF Export
+            <button onClick={exportLohnverrechnungPDF} className="hbz-btn hbz-btn-primary">
+              Lohnverrechnung
+            </button>
+            <button onClick={exportAbrechnungPDF} className="hbz-btn">
+              Abrechnung
+            </button>
+            <button onClick={exportNachkalkulationPDF} className="hbz-btn">
+              Nachkalkulation
             </button>
             <button onClick={exportCSV} className="hbz-btn">
-              CSV Export
+              CSV export
             </button>
           </div>
         </div>
@@ -1176,7 +753,7 @@ export default function MonthlyOverview() {
                 onChange={(e) => setSelectedProjectId(e.target.value)}
                 className="hbz-select"
               >
-                <option value="">Alle Projekte</option>
+                <option value="">Alle</option>
                 {projects.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.code ? `${p.code} · ${p.name}` : p.name}
@@ -1218,7 +795,6 @@ export default function MonthlyOverview() {
                   return (
                     <button
                       key={e.id}
-                      type="button"
                       className={`month-chip ${active ? "active" : ""}`}
                       onClick={() => {
                         setSelectedCodes((prev) =>
@@ -1257,99 +833,357 @@ export default function MonthlyOverview() {
           </div>
         </div>
 
-        {grouped.length === 0 ? (
-          <div className="month-empty-state">Keine Einträge.</div>
-        ) : (
-          <>
-            {!isMobile && (
-              <div className="month-table-wrap">
-                <table className="month-table">
-                  <thead>
-                    <tr>
-                      <th>Datum</th>
-                      <th>Mitarbeiter</th>
-                      <th>Projekt</th>
-                      <th className="num">Start</th>
-                      <th className="num">Ende</th>
-                      <th className="num">Pause</th>
-                      <th className="num">Fahrzeit</th>
-                      <th className="num">Stunden</th>
-                      <th className="num">Überstunden</th>
-                      <th>Notiz</th>
-                      <th className="num">Aktion</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {grouped.map((r) => {
-                      const start = r.start_min ?? r.from_min ?? 0;
-                      const end = r.end_min ?? r.to_min ?? 0;
-                      const hrs = h2(r._mins);
-                      const ot = Math.max(hrs - 9, 0);
-                      const isEditing = editId === r.id;
+        <div className="mo-wrap">
+          {grouped.length === 0 ? (
+            <div className="month-empty-state">Keine Einträge.</div>
+          ) : (
+            <div className="mo-responsive">
+              {!isMobile && (
+                <div className="month-table-wrap">
+                  <table className="month-table">
+                    <thead>
+                      <tr>
+                        <th>Datum</th>
+                        <th>Mitarbeiter</th>
+                        <th>Projekt</th>
+                        <th className="num">Start</th>
+                        <th className="num">Ende</th>
+                        <th className="num">Pause</th>
+                        <th className="num">Fahrzeit</th>
+                        <th className="num">Stunden</th>
+                        <th className="num">Überstunden</th>
+                        <th>Notiz</th>
+                        <th className="num">Aktion</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {grouped.map((r) => {
+                        const start = r.start_min ?? r.from_min ?? 0;
+                        const end = r.end_min ?? r.to_min ?? 0;
+                        const hrs = h2(r._mins);
+                        const ot = Math.max(hrs - 9, 0);
+                        const isEditing = editId === r.id;
 
-                      if (!isEditing) {
+                        if (!isEditing) {
+                          return (
+                            <tr key={`${r.id}-${r.work_date}`}>
+                              <td>{r.work_date}</td>
+                              <td>{r.employee_name}</td>
+                              <td>{r.project_name || "—"}</td>
+                              <td className="num">{toHM(start)}</td>
+                              <td className="num">{toHM(end)}</td>
+                              <td className="num">{r.break_min ?? 0} min</td>
+                              <td className="num">{r._travel ?? 0} min</td>
+                              <td className="num">{hrs.toFixed(2)}</td>
+                              <td className="num">{ot.toFixed(2)}</td>
+                              <td>{r.note || ""}</td>
+                              <td className="num">
+                                {isManager ? (
+                                  <div className="month-action-group">
+                                    <button
+                                      className="hbz-btn btn-small"
+                                      onClick={() => startEdit(r)}
+                                    >
+                                      Bearbeiten
+                                    </button>
+                                    <button
+                                      className="hbz-btn btn-small"
+                                      onClick={() => deleteEntry(r.id)}
+                                    >
+                                      Löschen
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <span className="text-xs opacity-60">
+                                    nur Anzeige
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        }
+
                         return (
-                          <tr key={`${r.id}-${r.work_date}`}>
+                          <tr key={`${r.id}-edit`}>
                             <td>{r.work_date}</td>
                             <td>{r.employee_name}</td>
-                            <td>{r.project_name || "—"}</td>
-                            <td className="num">{toHM(start)}</td>
-                            <td className="num">{toHM(end)}</td>
-                            <td className="num">{r.break_min ?? 0} min</td>
-                            <td className="num">{r._travel ?? 0} min</td>
-                            <td className="num">{hrs.toFixed(2)}</td>
-                            <td className="num">{ot.toFixed(2)}</td>
-                            <td>{r.note || ""}</td>
+                            <td>
+                              <select
+                                className="hbz-input"
+                                value={editState.project_id ?? ""}
+                                onChange={(e) =>
+                                  setEditState((s) => ({
+                                    ...s,
+                                    project_id: e.target.value || null,
+                                  }))
+                                }
+                              >
+                                <option value="">— ohne Projekt —</option>
+                                {projects.map((p) => (
+                                  <option key={p.id} value={p.id}>
+                                    {p.code ? `${p.code} · ${p.name}` : p.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </td>
                             <td className="num">
-                              {isManager ? (
-                                <div className="month-action-group">
-                                  <button
-                                    className="hbz-btn btn-small"
-                                    type="button"
-                                    onClick={() => startEdit(r)}
-                                  >
-                                    Bearbeiten
-                                  </button>
-                                  <button
-                                    className="hbz-btn btn-small"
-                                    type="button"
-                                    onClick={() => deleteEntry(r.id)}
-                                  >
-                                    Löschen
-                                  </button>
-                                </div>
-                              ) : (
-                                <span className="help">nur Anzeige</span>
-                              )}
+                              <input
+                                type="time"
+                                className="hbz-input"
+                                value={editState.from_hm}
+                                onChange={(e) =>
+                                  setEditState((s) => ({
+                                    ...s,
+                                    from_hm: e.target.value,
+                                  }))
+                                }
+                              />
+                            </td>
+                            <td className="num">
+                              <input
+                                type="time"
+                                className="hbz-input"
+                                value={editState.to_hm}
+                                onChange={(e) =>
+                                  setEditState((s) => ({
+                                    ...s,
+                                    to_hm: e.target.value,
+                                  }))
+                                }
+                              />
+                            </td>
+                            <td className="num">
+                              <input
+                                type="number"
+                                min={0}
+                                step={5}
+                                className="hbz-input"
+                                value={editState.break_min}
+                                onChange={(e) =>
+                                  setEditState((s) => ({
+                                    ...s,
+                                    break_min: e.target.value,
+                                  }))
+                                }
+                              />
+                            </td>
+                            <td className="num">
+                              <input
+                                type="number"
+                                min={0}
+                                step={15}
+                                className="hbz-input"
+                                value={editState.travel_minutes ?? 0}
+                                onChange={(e) =>
+                                  setEditState((s) => ({
+                                    ...s,
+                                    travel_minutes: e.target.value,
+                                  }))
+                                }
+                              />
+                            </td>
+                            <td className="num">
+                              {(() => {
+                                const minsLive =
+                                  Math.max(
+                                    hmToMin(editState.to_hm) -
+                                      hmToMin(editState.from_hm) -
+                                      (parseInt(editState.break_min || "0", 10) ||
+                                        0),
+                                    0
+                                  ) +
+                                  (parseInt(
+                                    editState.travel_minutes || "0",
+                                    10
+                                  ) || 0);
+                                const hrsLive = h2(minsLive);
+                                return hrsLive.toFixed(2);
+                              })()}
+                            </td>
+                            <td className="num">
+                              {(() => {
+                                const minsLive =
+                                  Math.max(
+                                    hmToMin(editState.to_hm) -
+                                      hmToMin(editState.from_hm) -
+                                      (parseInt(editState.break_min || "0", 10) ||
+                                        0),
+                                    0
+                                  ) +
+                                  (parseInt(
+                                    editState.travel_minutes || "0",
+                                    10
+                                  ) || 0);
+                                const hrsLive = h2(minsLive);
+                                const otLive = Math.max(hrsLive - 9, 0);
+                                return otLive.toFixed(2);
+                              })()}
+                            </td>
+                            <td>
+                              <input
+                                type="text"
+                                className="hbz-input"
+                                value={editState.note}
+                                onChange={(e) =>
+                                  setEditState((s) => ({
+                                    ...s,
+                                    note: e.target.value,
+                                  }))
+                                }
+                              />
+                            </td>
+                            <td className="num">
+                              <div className="month-action-group">
+                                <button
+                                  className="hbz-btn btn-small"
+                                  onClick={saveEdit}
+                                >
+                                  Speichern
+                                </button>
+                                <button
+                                  className="hbz-btn btn-small"
+                                  onClick={cancelEdit}
+                                >
+                                  Abbrechen
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         );
-                      }
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
 
+              {isMobile && (
+                <div className="month-cards">
+                  {grouped.map((r) => {
+                    const start = r.start_min ?? r.from_min ?? 0;
+                    const end = r.end_min ?? r.to_min ?? 0;
+                    const hrs = h2(r._mins);
+                    const ot = Math.max(hrs - 9, 0);
+                    const isEditing = editId === r.id;
+
+                    if (!isEditing) {
                       return (
-                        <tr key={`${r.id}-edit`}>
-                          <td>{r.work_date}</td>
-                          <td>{r.employee_name}</td>
-                          <td>
-                            <select
-                              className="hbz-input"
-                              value={editState.project_id ?? ""}
-                              onChange={(e) =>
-                                setEditState((s) => ({
-                                  ...s,
-                                  project_id: e.target.value || null,
-                                }))
-                              }
-                            >
-                              <option value="">— ohne Projekt —</option>
-                              {projects.map((p) => (
-                                <option key={p.id} value={p.id}>
-                                  {p.code ? `${p.code} · ${p.name}` : p.name}
-                                </option>
-                              ))}
-                            </select>
-                          </td>
-                          <td className="num">
+                        <div
+                          key={`card-${r.id}-${r.work_date}`}
+                          className="month-card"
+                        >
+                          <div className="month-card-header">
+                            <div>
+                              <div className="month-card-date">{r.work_date}</div>
+                              <div className="month-card-emp">{r.employee_name}</div>
+                            </div>
+                            <div className="month-card-hours">
+                              <div className="month-card-mainhrs">
+                                {hrs.toFixed(2)} h
+                              </div>
+                              <div className="month-card-ot">
+                                Ü: {ot.toFixed(2)} h
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="month-card-row">
+                            <strong>Projekt:</strong> {r.project_name || "—"}
+                          </div>
+
+                          <div className="month-card-meta">
+                            <span>Start: {toHM(start)}</span>
+                            <span>Ende: {toHM(end)}</span>
+                            <span>Pause: {r.break_min ?? 0} min</span>
+                            <span>Fahrzeit: {r._travel ?? 0} min</span>
+                          </div>
+
+                          {r.note && (
+                            <div className="month-card-row">
+                              <strong>Notiz:</strong> {r.note}
+                            </div>
+                          )}
+
+                          <div className="month-card-actions">
+                            {isManager ? (
+                              <>
+                                <button
+                                  className="hbz-btn btn-small"
+                                  onClick={() => startEdit(r)}
+                                >
+                                  Bearbeiten
+                                </button>
+                                <button
+                                  className="hbz-btn btn-small"
+                                  onClick={() => deleteEntry(r.id)}
+                                >
+                                  Löschen
+                                </button>
+                              </>
+                            ) : (
+                              <span className="text-xs opacity-60">
+                                nur Anzeige
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    const minsLive =
+                      Math.max(
+                        hmToMin(editState.to_hm) -
+                          hmToMin(editState.from_hm) -
+                          (parseInt(editState.break_min || "0", 10) || 0),
+                        0
+                      ) +
+                      (parseInt(editState.travel_minutes || "0", 10) || 0);
+                    const hrsLive = h2(minsLive);
+                    const otLive = Math.max(hrsLive - 9, 0);
+
+                    return (
+                      <div
+                        key={`card-${r.id}-edit`}
+                        className="month-card month-card-edit"
+                      >
+                        <div className="month-card-header">
+                          <div>
+                            <div className="month-card-date">{r.work_date}</div>
+                            <div className="month-card-emp">{r.employee_name}</div>
+                          </div>
+                          <div className="month-card-hours">
+                            <div className="month-card-mainhrs">
+                              {hrsLive.toFixed(2)} h
+                            </div>
+                            <div className="month-card-ot">
+                              Ü: {otLive.toFixed(2)} h
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="month-card-field">
+                          <label className="hbz-label">Projekt</label>
+                          <select
+                            className="hbz-input"
+                            value={editState.project_id ?? ""}
+                            onChange={(e) =>
+                              setEditState((s) => ({
+                                ...s,
+                                project_id: e.target.value || null,
+                              }))
+                            }
+                          >
+                            <option value="">— ohne Projekt —</option>
+                            {projects.map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.code ? `${p.code} · ${p.name}` : p.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="month-card-edit-grid">
+                          <div className="month-card-field">
+                            <label className="hbz-label">Start</label>
                             <input
                               type="time"
                               className="hbz-input"
@@ -1361,8 +1195,9 @@ export default function MonthlyOverview() {
                                 }))
                               }
                             />
-                          </td>
-                          <td className="num">
+                          </div>
+                          <div className="month-card-field">
+                            <label className="hbz-label">Ende</label>
                             <input
                               type="time"
                               className="hbz-input"
@@ -1374,8 +1209,12 @@ export default function MonthlyOverview() {
                                 }))
                               }
                             />
-                          </td>
-                          <td className="num">
+                          </div>
+                        </div>
+
+                        <div className="month-card-edit-grid">
+                          <div className="month-card-field">
+                            <label className="hbz-label">Pause (min)</label>
                             <input
                               type="number"
                               min={0}
@@ -1389,12 +1228,12 @@ export default function MonthlyOverview() {
                                 }))
                               }
                             />
-                          </td>
-                          <td className="num">
+                          </div>
+                          <div className="month-card-field">
+                            <label className="hbz-label">Fahrzeit (min)</label>
                             <input
                               type="number"
                               min={0}
-                              max={150}
                               step={15}
                               className="hbz-input"
                               value={editState.travel_minutes ?? 0}
@@ -1405,743 +1244,52 @@ export default function MonthlyOverview() {
                                 }))
                               }
                             />
-                          </td>
-                          <td className="num">
-                            {(() => {
-                              const minsLive =
-                                Math.max(
-                                  hmToMin(editState.to_hm) -
-                                    hmToMin(editState.from_hm) -
-                                    (parseInt(editState.break_min || "0", 10) || 0),
-                                  0
-                                ) +
-                                (parseInt(editState.travel_minutes || "0", 10) || 0);
-                              const hrsLive = h2(minsLive);
-                              return hrsLive.toFixed(2);
-                            })()}
-                          </td>
-                          <td className="num">
-                            {(() => {
-                              const minsLive =
-                                Math.max(
-                                  hmToMin(editState.to_hm) -
-                                    hmToMin(editState.from_hm) -
-                                    (parseInt(editState.break_min || "0", 10) || 0),
-                                  0
-                                ) +
-                                (parseInt(editState.travel_minutes || "0", 10) || 0);
-                              const hrsLive = h2(minsLive);
-                              const otLive = Math.max(hrsLive - 9, 0);
-                              return otLive.toFixed(2);
-                            })()}
-                          </td>
-                          <td>
-                            <input
-                              type="text"
-                              className="hbz-input"
-                              value={editState.note}
-                              onChange={(e) =>
-                                setEditState((s) => ({
-                                  ...s,
-                                  note: e.target.value,
-                                }))
-                              }
-                            />
-                          </td>
-                          <td className="num">
-                            <div className="month-action-group">
-                              <button
-                                className="hbz-btn btn-small"
-                                type="button"
-                                onClick={saveEdit}
-                              >
-                                Speichern
-                              </button>
-                              <button
-                                className="hbz-btn btn-small"
-                                type="button"
-                                onClick={cancelEdit}
-                              >
-                                Abbrechen
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            {isMobile && (
-              <div className="month-cards">
-                {grouped.map((r) => {
-                  const start = r.start_min ?? r.from_min ?? 0;
-                  const end = r.end_min ?? r.to_min ?? 0;
-                  const hrs = h2(r._mins);
-                  const ot = Math.max(hrs - 9, 0);
-                  const isEditing = editId === r.id;
-
-                  if (!isEditing) {
-                    return (
-                      <div
-                        key={`card-${r.id}-${r.work_date}`}
-                        className="month-card"
-                      >
-                        <div className="month-card-header">
-                          <div>
-                            <div className="month-card-date">{r.work_date}</div>
-                            <div className="month-card-emp">{r.employee_name}</div>
-                          </div>
-                          <div className="month-card-hours">
-                            <div className="month-card-mainhrs">
-                              {hrs.toFixed(2)} h
-                            </div>
-                            <div className="month-card-ot">
-                              Ü: {ot.toFixed(2)} h
-                            </div>
                           </div>
                         </div>
 
-                        <div className="month-card-row">
-                          <strong>Projekt:</strong> {r.project_name || "—"}
-                        </div>
-
-                        <div className="month-card-meta">
-                          <span>Start: {toHM(start)}</span>
-                          <span>Ende: {toHM(end)}</span>
-                          <span>Pause: {r.break_min ?? 0} min</span>
-                          <span>Fahrzeit: {r._travel ?? 0} min</span>
-                        </div>
-
-                        {r.note && (
-                          <div className="month-card-row">
-                            <strong>Notiz:</strong> {r.note}
-                          </div>
-                        )}
-
-                        <div className="month-card-actions">
-                          {isManager ? (
-                            <>
-                              <button
-                                className="hbz-btn btn-small"
-                                type="button"
-                                onClick={() => startEdit(r)}
-                              >
-                                Bearbeiten
-                              </button>
-                              <button
-                                className="hbz-btn btn-small"
-                                type="button"
-                                onClick={() => deleteEntry(r.id)}
-                              >
-                                Löschen
-                              </button>
-                            </>
-                          ) : (
-                            <span className="help">nur Anzeige</span>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  }
-
-                  const minsLive =
-                    Math.max(
-                      hmToMin(editState.to_hm) -
-                        hmToMin(editState.from_hm) -
-                        (parseInt(editState.break_min || "0", 10) || 0),
-                      0
-                    ) +
-                    (parseInt(editState.travel_minutes || "0", 10) || 0);
-                  const hrsLive = h2(minsLive);
-                  const otLive = Math.max(hrsLive - 9, 0);
-
-                  return (
-                    <div
-                      key={`card-${r.id}-edit`}
-                      className="month-card month-card-edit"
-                    >
-                      <div className="month-card-header">
-                        <div>
-                          <div className="month-card-date">{r.work_date}</div>
-                          <div className="month-card-emp">{r.employee_name}</div>
-                        </div>
-                        <div className="month-card-hours">
-                          <div className="month-card-mainhrs">
-                            {hrsLive.toFixed(2)} h
-                          </div>
-                          <div className="month-card-ot">
-                            Ü: {otLive.toFixed(2)} h
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="month-card-field">
-                        <label className="hbz-label">Projekt</label>
-                        <select
-                          className="hbz-input"
-                          value={editState.project_id ?? ""}
-                          onChange={(e) =>
-                            setEditState((s) => ({
-                              ...s,
-                              project_id: e.target.value || null,
-                            }))
-                          }
-                        >
-                          <option value="">— ohne Projekt —</option>
-                          {projects.map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {p.code ? `${p.code} · ${p.name}` : p.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div className="month-card-edit-grid">
                         <div className="month-card-field">
-                          <label className="hbz-label">Start</label>
+                          <label className="hbz-label">Notiz</label>
                           <input
-                            type="time"
+                            type="text"
                             className="hbz-input"
-                            value={editState.from_hm}
+                            value={editState.note}
                             onChange={(e) =>
                               setEditState((s) => ({
                                 ...s,
-                                from_hm: e.target.value,
+                                note: e.target.value,
                               }))
                             }
                           />
                         </div>
-                        <div className="month-card-field">
-                          <label className="hbz-label">Ende</label>
-                          <input
-                            type="time"
-                            className="hbz-input"
-                            value={editState.to_hm}
-                            onChange={(e) =>
-                              setEditState((s) => ({
-                                ...s,
-                                to_hm: e.target.value,
-                              }))
-                            }
-                          />
-                        </div>
-                      </div>
 
-                      <div className="month-card-edit-grid">
-                        <div className="month-card-field">
-                          <label className="hbz-label">Pause (min)</label>
-                          <input
-                            type="number"
-                            min={0}
-                            step={5}
-                            className="hbz-input"
-                            value={editState.break_min}
-                            onChange={(e) =>
-                              setEditState((s) => ({
-                                ...s,
-                                break_min: e.target.value,
-                              }))
-                            }
-                          />
-                        </div>
-                        <div className="month-card-field">
-                          <label className="hbz-label">Fahrzeit (min)</label>
-                          <input
-                            type="number"
-                            min={0}
-                            step={15}
-                            className="hbz-input"
-                            value={editState.travel_minutes ?? 0}
-                            onChange={(e) =>
-                              setEditState((s) => ({
-                                ...s,
-                                travel_minutes: e.target.value,
-                              }))
-                            }
-                          />
-                        </div>
-                      </div>
-
-                      <div className="month-card-field">
-                        <label className="hbz-label">Notiz</label>
-                        <input
-                          type="text"
-                          className="hbz-input"
-                          value={editState.note}
-                          onChange={(e) =>
-                            setEditState((s) => ({
-                              ...s,
-                              note: e.target.value,
-                            }))
-                          }
-                        />
-                      </div>
-
-                      <div className="month-card-footer">
-                        <span className="month-card-summary">
-                          {hrsLive.toFixed(2)} h / Ü: {otLive.toFixed(2)} h
-                        </span>
-                        <div className="month-card-actions">
-                          <button
-                            className="hbz-btn btn-small"
-                            type="button"
-                            onClick={saveEdit}
-                          >
-                            Speichern
-                          </button>
-                          <button
-                            className="hbz-btn btn-small"
-                            type="button"
-                            onClick={cancelEdit}
-                          >
-                            Abbrechen
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            <div className="year-range-active" style={{ marginTop: 14 }}>
-              <strong>Monatssummen:</strong>{" "}
-              Gesamt inkl. Fahrzeit: {monthTotals.totalHrs.toFixed(2)} h
-              {" | "}
-              Fahrzeit: {monthTotals.travelHrs.toFixed(2)} h
-              {" | "}
-              Wochenblöcke: {weekly.length}
-            </div>
-          </>
-        )}
-      </div>
-
-      {showPdfDialog && (
-        <div className="month-modal-backdrop">
-          <div className="month-modal">
-            <div className="month-modal-head">
-              <div>
-                <div className="month-card-title">PDF Export auswählen</div>
-                <div className="month-modal-subtitle">
-                  Monat: <b>{month}</b>
-                </div>
-              </div>
-              <button
-                className="hbz-btn"
-                type="button"
-                onClick={() => setShowPdfDialog(false)}
-              >
-                Schließen
-              </button>
-            </div>
-
-            <div className="month-modal-grid">
-              <div className="month-modal-box">
-                <div className="month-modal-box-title">Mitarbeiter</div>
-
-                <div className="export-quick-actions">
-                  <button
-                    type="button"
-                    className="hbz-btn btn-small"
-                    onClick={() =>
-                      setPdfOptions((prev) => ({
-                        ...prev,
-                        selectedEmployeeCodes: employees.map((e) => e.code),
-                      }))
-                    }
-                  >
-                    Alle
-                  </button>
-
-                  <button
-                    type="button"
-                    className="hbz-btn btn-small"
-                    onClick={() =>
-                      setPdfOptions((prev) => ({
-                        ...prev,
-                        selectedEmployeeCodes: [],
-                      }))
-                    }
-                  >
-                    Keine
-                  </button>
-
-                  <button
-                    type="button"
-                    className="hbz-btn btn-small"
-                    onClick={() =>
-                      setPdfOptions((prev) => ({
-                        ...prev,
-                        selectedEmployeeCodes: session?.code
-                          ? [session.code]
-                          : [],
-                      }))
-                    }
-                  >
-                    Nur mich
-                  </button>
-
-                  <button
-                    type="button"
-                    className="hbz-btn btn-small"
-                    onClick={() =>
-                      setPdfOptions((prev) => ({
-                        ...prev,
-                        selectedEmployeeCodes: [...selectedCodes],
-                      }))
-                    }
-                  >
-                    Aktuelle Auswahl
-                  </button>
-                </div>
-
-                <div className="month-modal-checklist">
-                  {employees.map((e) => {
-                    const checked = pdfOptions.selectedEmployeeCodes.includes(
-                      e.code
-                    );
-                    return (
-                      <label
-                        key={`pdf-emp-${e.id}`}
-                        className="export-option"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={(ev) => {
-                            const isChecked = ev.target.checked;
-                            setPdfOptions((prev) => ({
-                              ...prev,
-                              selectedEmployeeCodes: isChecked
-                                ? [...prev.selectedEmployeeCodes, e.code]
-                                : prev.selectedEmployeeCodes.filter(
-                                    (c) => c !== e.code
-                                  ),
-                            }));
-                          }}
-                        />
-                        <div className="export-option-body">
-                          <span className="export-option-title">
-                            {e.name || e.code}
+                        <div className="month-card-footer">
+                          <span className="month-card-summary">
+                            {hrsLive.toFixed(2)} h / Ü: {otLive.toFixed(2)} h
                           </span>
-                          <span className="export-option-example">
-                            Beispiel: Export nur für diesen Mitarbeiter
-                          </span>
+                          <div className="month-card-actions">
+                            <button
+                              className="hbz-btn btn-small"
+                              onClick={saveEdit}
+                            >
+                              Speichern
+                            </button>
+                            <button
+                              className="hbz-btn btn-small"
+                              onClick={cancelEdit}
+                            >
+                              Abbrechen
+                            </button>
+                          </div>
                         </div>
-                      </label>
+                      </div>
                     );
                   })}
                 </div>
-              </div>
-
-              <div className="month-modal-box">
-                <div className="month-modal-box-title">Exportinhalt</div>
-
-                <div className="export-quick-actions">
-                  <button
-                    type="button"
-                    className="hbz-btn btn-small"
-                    onClick={() =>
-                      setPdfOptions((prev) => ({
-                        ...prev,
-                        includeDetails: true,
-                        includeDailySeparate: true,
-                        includeSiteDailyReport: true,
-                        includeWeekly: true,
-                        includeTotals: true,
-                        includeTravel: true,
-                        includeOvertime: true,
-                        includeAbsence: true,
-                        includeWorkdays: true,
-                        includeBuak: true,
-                      }))
-                    }
-                  >
-                    Vorlage AG
-                  </button>
-
-                  <button
-                    type="button"
-                    className="hbz-btn btn-small"
-                    onClick={() =>
-                      setPdfOptions((prev) => ({
-                        ...prev,
-                        includeDetails: true,
-                        includeDailySeparate: false,
-                        includeSiteDailyReport: true,
-                        includeWeekly: true,
-                        includeTotals: true,
-                        includeTravel: true,
-                        includeOvertime: true,
-                        includeAbsence: false,
-                        includeWorkdays: true,
-                        includeBuak: true,
-                      }))
-                    }
-                  >
-                    Vorlage intern
-                  </button>
-
-                  <button
-                    type="button"
-                    className="hbz-btn btn-small"
-                    onClick={() =>
-                      setPdfOptions((prev) => ({
-                        ...prev,
-                        includeDetails: false,
-                        includeDailySeparate: false,
-                        includeSiteDailyReport: false,
-                        includeWeekly: false,
-                        includeTotals: true,
-                        includeTravel: true,
-                        includeOvertime: true,
-                        includeAbsence: false,
-                        includeWorkdays: true,
-                        includeBuak: true,
-                      }))
-                    }
-                  >
-                    Nur Summen
-                  </button>
-                </div>
-
-                <div className="export-card-grid">
-                  <div className="export-section">
-                    <div className="export-section-title">Arbeitszeit</div>
-
-                    <label className="export-option">
-                      <input
-                        type="checkbox"
-                        checked={pdfOptions.includeDetails}
-                        onChange={(e) =>
-                          setPdfOptions((prev) => ({
-                            ...prev,
-                            includeDetails: e.target.checked,
-                          }))
-                        }
-                      />
-                      <div className="export-option-body">
-                        <span className="export-option-title">Tagesdetails</span>
-                        <span className="export-option-example">
-                          Beispiel: 03.04.2026 · Stefan Zaunschirm · Projekt A · 07:00–16:30
-                        </span>
-                      </div>
-                    </label>
-
-                    <label className="export-option">
-                      <input
-                        type="checkbox"
-                        checked={pdfOptions.includeDailySeparate}
-                        onChange={(e) =>
-                          setPdfOptions((prev) => ({
-                            ...prev,
-                            includeDailySeparate: e.target.checked,
-                          }))
-                        }
-                      />
-                      <div className="export-option-body">
-                        <span className="export-option-title">
-                          Jede Buchung separat
-                        </span>
-                        <span className="export-option-example">
-                          Beispiel: 03.04.2026 Vormittag Montage, 03.04.2026 Nachmittag Nacharbeit
-                        </span>
-                      </div>
-                    </label>
-
-                    <label className="export-option">
-                      <input
-                        type="checkbox"
-                        checked={pdfOptions.includeSiteDailyReport}
-                        onChange={(e) =>
-                          setPdfOptions((prev) => ({
-                            ...prev,
-                            includeSiteDailyReport: e.target.checked,
-                          }))
-                        }
-                      />
-                      <div className="export-option-body">
-                        <span className="export-option-title">
-                          Regiebericht / Tagesliste AG
-                        </span>
-                        <span className="export-option-example">
-                          Beispiel: 03.04.2026 · Stefan Zaunschirm · Arbeit 8,50 h · Fahrzeit 0,50 h · Gesamt 9,00 h
-                        </span>
-                      </div>
-                    </label>
-
-                    <label className="export-option">
-                      <input
-                        type="checkbox"
-                        checked={pdfOptions.includeWeekly}
-                        onChange={(e) =>
-                          setPdfOptions((prev) => ({
-                            ...prev,
-                            includeWeekly: e.target.checked,
-                          }))
-                        }
-                      />
-                      <div className="export-option-body">
-                        <span className="export-option-title">
-                          Wochenübersicht
-                        </span>
-                        <span className="export-option-example">
-                          Beispiel: KW 14 · 42,00 h · Lange Woche
-                        </span>
-                      </div>
-                    </label>
-
-                    <label className="export-option">
-                      <input
-                        type="checkbox"
-                        checked={pdfOptions.includeTotals}
-                        onChange={(e) =>
-                          setPdfOptions((prev) => ({
-                            ...prev,
-                            includeTotals: e.target.checked,
-                          }))
-                        }
-                      />
-                      <div className="export-option-body">
-                        <span className="export-option-title">Summen</span>
-                        <span className="export-option-example">
-                          Beispiel: Stefan Zaunschirm · 168,50 h gesamt
-                        </span>
-                      </div>
-                    </label>
-                  </div>
-
-                  <div className="export-section">
-                    <div className="export-section-title">Zusatzwerte</div>
-
-                    <label className="export-option">
-                      <input
-                        type="checkbox"
-                        checked={pdfOptions.includeTravel}
-                        onChange={(e) =>
-                          setPdfOptions((prev) => ({
-                            ...prev,
-                            includeTravel: e.target.checked,
-                          }))
-                        }
-                      />
-                      <div className="export-option-body">
-                        <span className="export-option-title">Fahrzeit</span>
-                        <span className="export-option-example">
-                          Beispiel: 12,50 h Fahrzeit im Monat
-                        </span>
-                      </div>
-                    </label>
-
-                    <label className="export-option">
-                      <input
-                        type="checkbox"
-                        checked={pdfOptions.includeOvertime}
-                        onChange={(e) =>
-                          setPdfOptions((prev) => ({
-                            ...prev,
-                            includeOvertime: e.target.checked,
-                          }))
-                        }
-                      />
-                      <div className="export-option-body">
-                        <span className="export-option-title">Überstunden</span>
-                        <span className="export-option-example">
-                          Beispiel: 10,50 h Tag = 1,50 h Überstunden
-                        </span>
-                      </div>
-                    </label>
-
-                    <label className="export-option">
-                      <input
-                        type="checkbox"
-                        checked={pdfOptions.includeWorkdays}
-                        onChange={(e) =>
-                          setPdfOptions((prev) => ({
-                            ...prev,
-                            includeWorkdays: e.target.checked,
-                          }))
-                        }
-                      />
-                      <div className="export-option-body">
-                        <span className="export-option-title">Arbeitstage</span>
-                        <span className="export-option-example">
-                          Beispiel: 19 Arbeitstage
-                        </span>
-                      </div>
-                    </label>
-
-                    <label className="export-option">
-                      <input
-                        type="checkbox"
-                        checked={pdfOptions.includeBuak}
-                        onChange={(e) =>
-                          setPdfOptions((prev) => ({
-                            ...prev,
-                            includeBuak: e.target.checked,
-                          }))
-                        }
-                      />
-                      <div className="export-option-body">
-                        <span className="export-option-title">
-                          BUAK / Sollstunden
-                        </span>
-                        <span className="export-option-example">
-                          Beispiel: Soll 164,00 h · Ist 168,50 h · Abweichung +4,50 h
-                        </span>
-                      </div>
-                    </label>
-
-                    <label className="export-option">
-                      <input
-                        type="checkbox"
-                        checked={pdfOptions.includeAbsence}
-                        onChange={(e) =>
-                          setPdfOptions((prev) => ({
-                            ...prev,
-                            includeAbsence: e.target.checked,
-                          }))
-                        }
-                      />
-                      <div className="export-option-body">
-                        <span className="export-option-title">
-                          Krank / Urlaub
-                        </span>
-                        <span className="export-option-example">
-                          Beispiel: 05.04.2026 Krank, 12.04.2026 Urlaub
-                        </span>
-                      </div>
-                    </label>
-                  </div>
-                </div>
-              </div>
+              )}
             </div>
-
-            <div className="month-modal-actions">
-              <button
-                className="hbz-btn"
-                type="button"
-                onClick={() => setShowPdfDialog(false)}
-              >
-                Abbrechen
-              </button>
-              <button
-                className="hbz-btn hbz-btn-primary"
-                type="button"
-                onClick={() => {
-                  exportPDF();
-                  setShowPdfDialog(false);
-                }}
-              >
-                PDF exportieren
-              </button>
-            </div>
-          </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 }
