@@ -39,7 +39,6 @@ export default function App() {
       try {
         const stored = getSession();
         const user = stored?.user || null;
-
         if (!user) return;
 
         let nextUser = user;
@@ -129,6 +128,50 @@ export default function App() {
     navigate("/", { replace: true });
   };
 
+  useEffect(() => {
+    function isTyping(target) {
+      if (!target) return false;
+      const tag = target.tagName?.toLowerCase();
+      return (
+        tag === "input" ||
+        tag === "textarea" ||
+        tag === "select" ||
+        target.isContentEditable
+      );
+    }
+
+    function handleKeyDown(e) {
+      if (isTyping(e.target)) return;
+
+      if (location.pathname === "/zeiterfassung") {
+        if (e.key === "ArrowLeft") {
+          e.preventDefault();
+          window.dispatchEvent(new CustomEvent("hbz-prev-day"));
+        }
+
+        if (e.key === "ArrowRight") {
+          e.preventDefault();
+          window.dispatchEvent(new CustomEvent("hbz-next-day"));
+        }
+      }
+
+      if (location.pathname === "/arbeitseinteilung") {
+        if (e.key === "ArrowLeft") {
+          e.preventDefault();
+          window.dispatchEvent(new CustomEvent("hbz-prev-week"));
+        }
+
+        if (e.key === "ArrowRight") {
+          e.preventDefault();
+          window.dispatchEvent(new CustomEvent("hbz-next-week"));
+        }
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [location.pathname]);
+
   return (
     <div className="app-root">
       {loggedIn ? (
@@ -143,27 +186,12 @@ export default function App() {
             <div className="app-page">
               <Routes>
                 <Route path="/zeiterfassung" element={<DaySlider />} />
-                <Route
-                  path="/projekte"
-                  element={canManageProjects ? <ProjectAdmin /> : <Navigate to="/zeiterfassung" replace />}
-                />
-                <Route
-                  path="/arbeitseinteilung"
-                  element={canViewAssignments ? <WorkAssignments /> : <Navigate to="/zeiterfassung" replace />}
-                />
-                <Route
-                  path="/jahresuebersicht"
-                  element={canViewYearOverview ? <YearOverview /> : <Navigate to="/zeiterfassung" replace />}
-                />
-                <Route
-                  path="/monatsuebersicht"
-                  element={canViewMonthlyOverview ? <MonthlyOverview /> : <Navigate to="/zeiterfassung" replace />}
-                />
+                <Route path="/projekte" element={canManageProjects ? <ProjectAdmin /> : <Navigate to="/zeiterfassung" replace />} />
+                <Route path="/arbeitseinteilung" element={canViewAssignments ? <WorkAssignments /> : <Navigate to="/zeiterfassung" replace />} />
+                <Route path="/jahresuebersicht" element={canViewYearOverview ? <YearOverview /> : <Navigate to="/zeiterfassung" replace />} />
+                <Route path="/monatsuebersicht" element={canViewMonthlyOverview ? <MonthlyOverview /> : <Navigate to="/zeiterfassung" replace />} />
                 <Route path="/projektfotos" element={<ProjectPhotos />} />
-                <Route
-                  path="/mitarbeiter"
-                  element={canManageEmployees ? <EmployeeList /> : <Navigate to="/zeiterfassung" replace />}
-                />
+                <Route path="/mitarbeiter" element={canManageEmployees ? <EmployeeList /> : <Navigate to="/zeiterfassung" replace />} />
                 <Route path="/" element={<Navigate to="/zeiterfassung" replace />} />
                 <Route path="*" element={<Navigate to="/zeiterfassung" replace />} />
               </Routes>

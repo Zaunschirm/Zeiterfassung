@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { getSession } from "../lib/session";
-import { getUserPermissions, hasPermission } from "../lib/permissions";
+import { getUserPermissions } from "../lib/permissions";
 import EmployeePicker from "./EmployeePicker.jsx";
 import {
   WEATHER_MANUAL_OPTIONS,
@@ -212,6 +212,36 @@ export default function DaySlider() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+
+    async function hydrateCurrentUser() {
+      if (!session?.code && !session?.id) return;
+
+      try {
+        let query = supabase
+          .from("employees")
+          .select("id, code, name, role, active, disabled, permissions")
+          .limit(1);
+
+        if (session?.code) query = query.eq("code", session.code);
+        else if (session?.id) query = query.eq("id", session.id);
+
+        const { data, error } = await query.maybeSingle();
+        if (error) throw error;
+        if (!cancelled && data) setCurrentUser((prev) => ({ ...(prev || {}), ...data }));
+      } catch (e) {
+        logSbError("[DaySlider] current user load error:", e);
+      }
+    }
+
+    hydrateCurrentUser();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.code, session?.id]);
+
+  useEffect(() => {
     async function loadProjects() {
       try {
         const tryList = async (source) => {
@@ -264,7 +294,7 @@ export default function DaySlider() {
   useEffect(() => {
     async function loadEmployees() {
       try {
-        if (canSelectEmployees) {
+        if (isManager) {
           const { data, error } = await supabase
             .from("employees")
             .select("id, code, name, role, active, disabled")
@@ -308,7 +338,7 @@ export default function DaySlider() {
 
     loadEmployees();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canSelectEmployees, session?.code]);
+  }, [isManager, session?.code]);
 
   useEffect(() => {
     if (!isStaff) return;
@@ -432,7 +462,7 @@ export default function DaySlider() {
         setAssignmentSuggestions([]);
         setAssignmentInfo("");
 
-        const relevantIds = canSelectEmployees
+        const relevantIds = isManager
           ? employees
               .filter((e) => selectedCodes.includes(e.code))
               .map((e) => e.id)
@@ -493,7 +523,7 @@ export default function DaySlider() {
     return () => {
       cancelled = true;
     };
-  }, [date, canSelectEmployees, selectedCodes, employeeRow?.id, employees, projects, absenceType]);
+  }, [date, isManager, selectedCodes, employeeRow?.id, employees, projects, absenceType]);
 
   async function loadEntries() {
     try {
@@ -505,7 +535,7 @@ export default function DaySlider() {
         .order("employee_name", { ascending: true })
         .order("start_min", { ascending: true });
 
-      if (canSeeAllEntries && selectedCodes.length) {
+      if (isManager && selectedCodes.length) {
         const selEmps = employees.filter((e) =>
           selectedCodes.includes(e.code)
         );
@@ -529,7 +559,7 @@ export default function DaySlider() {
   useEffect(() => {
     loadEntries();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [date, canSeeAllEntries, selectedCodes, employeeRow?.id]);
+  }, [date, isManager, selectedCodes, employeeRow?.id]);
 
   const shiftDate = (days) => {
     setDate((old) => {
@@ -539,25 +569,32 @@ export default function DaySlider() {
     });
   };
 
-  function canEditRow(row) {
-    if (!row) return false;
-    if (canEditAllTime) return true;
-    return !!(canEditOwnTime && employeeRow?.id && String(row.employee_id) === String(employeeRow.id));
-  }
 
-  function canDeleteRow(row) {
-    if (!row) return false;
-    if (canDeleteAllTime) return true;
-    return !!(canDeleteOwnTime && employeeRow?.id && String(row.employee_id) === String(employeeRow.id));
-  }
+  useEffect(() => {
+    function handlePrevDay() {
+      shiftDate(-1);
+    }
+
+    function handleNextDay() {
+      shiftDate(1);
+    }
+
+    window.addEventListener("hbz-prev-day", handlePrevDay);
+    window.addEventListener("hbz-next-day", handleNextDay);
+
+    return () => {
+      window.removeEventListener("hbz-prev-day", handlePrevDay);
+      window.removeEventListener("hbz-next-day", handleNextDay);
+    };
+  }, []);
+
+  const currentEmployeeId = employeeRow?.id || employees.find((e) => e.code === session?.code)?.id || null;
+  const isOwnEntry = (row) => String(row?.employee_id ?? "") === String(currentEmployeeId ?? "");
+  const canEditEntry = (row) => !!row && (canEditAllTime || (canEditOwnTime && isOwnEntry(row)));
+  const canDeleteEntry = (row) => !!row && (canDeleteAllTime || (canDeleteOwnTime && isOwnEntry(row)));
 
   async function handleSave() {
     setError("");
-
-    if (!canWriteOwnTime && !canWriteAllTime) {
-      alert("Du hast keine Berechtigung zum Schreiben von Stunden.");
-      return;
-    }
 
     const isAbsence = absenceType === "krank" || absenceType === "urlaub";
 
@@ -609,9 +646,7 @@ export default function DaySlider() {
       setSaving(true);
 
       if (canWriteAllTime) {
-        const chosen = employees.filter((e) =>
-          selectedCodes.includes(e.code)
-        );
+        const chosen = employees.filter((e) => selectedCodes.includes(e.code));
         if (chosen.length === 0) {
           alert("Bitte mindestens einen Mitarbeiter auswählen.");
           return;
@@ -621,6 +656,10 @@ export default function DaySlider() {
         if (error) throw error;
         alert(`Gespeichert für ${rows.length} Mitarbeiter.`);
       } else {
+        if (!canWriteOwnTime) {
+          alert("Du hast keine Berechtigung zum Schreiben von Stunden.");
+          return;
+        }
         if (!employeeRow) {
           alert("Mitarbeiterdaten konnten nicht geladen werden.");
           return;
@@ -651,7 +690,7 @@ export default function DaySlider() {
   }
 
   function startEdit(row) {
-    if (!canEditRow(row)) return;
+    if (!canEditEntry(row)) return;
     setEditId(row.id);
     setEditState({
       project_id: row.project_id,
@@ -674,8 +713,8 @@ export default function DaySlider() {
   async function saveEdit() {
     if (!editId || !editState) return;
 
-    const activeRow = entries.find((row) => String(row.id) === String(editId));
-    if (!canEditRow(activeRow)) return;
+    const targetRow = entries.find((row) => String(row.id) === String(editId));
+    if (!canEditEntry(targetRow)) return;
 
     const from_m = hmToMin(editState.from_hm);
     const to_m = hmToMin(editState.to_hm);
@@ -711,8 +750,8 @@ export default function DaySlider() {
   }
 
   async function deleteEntry(id) {
-    const activeRow = entries.find((row) => String(row.id) === String(id));
-    if (!canDeleteRow(activeRow)) return;
+    const targetRow = entries.find((row) => String(row.id) === String(id));
+    if (!canDeleteEntry(targetRow)) return;
     if (!window.confirm("Eintrag wirklich löschen?")) return;
     try {
       const { error } = await supabase
@@ -891,7 +930,7 @@ export default function DaySlider() {
           </div>
         )}
 
-        {canSelectEmployees && (
+        {isManager && (
           <div className="month-employee-block">
             <div className="month-employee-head">
               <label className="hbz-label">Mitarbeiter</label>
@@ -1212,35 +1251,30 @@ export default function DaySlider() {
                             <td>{getWeatherFinalLabel(r) || "—"}</td>
                             <td>{r.note || ""}</td>
                             <td className="num">
-                              {(() => {
-                                const canEditThisRow = canEditRow(r);
-                                const canDeleteThisRow = canDeleteRow(r);
-                                if (!canEditThisRow && !canDeleteThisRow) {
-                                  return <span className="help">nur Anzeige</span>;
-                                }
-                                return (
-                                  <div className="month-action-group">
-                                    {canEditThisRow ? (
-                                      <button
-                                        className="hbz-btn btn-small"
-                                        type="button"
-                                        onClick={() => startEdit(r)}
-                                      >
-                                        Bearbeiten
-                                      </button>
-                                    ) : null}
-                                    {canDeleteThisRow ? (
-                                      <button
-                                        className="hbz-btn btn-small"
-                                        type="button"
-                                        onClick={() => deleteEntry(r.id)}
-                                      >
-                                        Löschen
-                                      </button>
-                                    ) : null}
-                                  </div>
-                                );
-                              })()}
+                              {canEditEntry(r) || canDeleteEntry(r) ? (
+                                <div className="month-action-group">
+                                  {canEditEntry(r) ? (
+                                    <button
+                                      className="hbz-btn btn-small"
+                                      type="button"
+                                      onClick={() => startEdit(r)}
+                                    >
+                                      Bearbeiten
+                                    </button>
+                                  ) : null}
+                                  {canDeleteEntry(r) ? (
+                                    <button
+                                      className="hbz-btn btn-small"
+                                      type="button"
+                                      onClick={() => deleteEntry(r.id)}
+                                    >
+                                      Löschen
+                                    </button>
+                                  ) : null}
+                                </div>
+                              ) : (
+                                <span className="help">nur Anzeige</span>
+                              )}
                             </td>
                           </tr>
                         );
@@ -1467,35 +1501,30 @@ export default function DaySlider() {
                         )}
 
                         <div className="month-card-actions">
-                          {(() => {
-                            const canEditThisRow = canEditRow(r);
-                            const canDeleteThisRow = canDeleteRow(r);
-                            if (!canEditThisRow && !canDeleteThisRow) {
-                              return <span className="help">nur Anzeige</span>;
-                            }
-                            return (
-                              <>
-                                {canEditThisRow ? (
-                                  <button
-                                    className="hbz-btn btn-small"
-                                    type="button"
-                                    onClick={() => startEdit(r)}
-                                  >
-                                    Bearbeiten
-                                  </button>
-                                ) : null}
-                                {canDeleteThisRow ? (
-                                  <button
-                                    className="hbz-btn btn-small"
-                                    type="button"
-                                    onClick={() => deleteEntry(r.id)}
-                                  >
-                                    Löschen
-                                  </button>
-                                ) : null}
-                              </>
-                            );
-                          })()}
+                          {canEditEntry(r) || canDeleteEntry(r) ? (
+                            <>
+                              {canEditEntry(r) ? (
+                                <button
+                                  className="hbz-btn btn-small"
+                                  type="button"
+                                  onClick={() => startEdit(r)}
+                                >
+                                  Bearbeiten
+                                </button>
+                              ) : null}
+                              {canDeleteEntry(r) ? (
+                                <button
+                                  className="hbz-btn btn-small"
+                                  type="button"
+                                  onClick={() => deleteEntry(r.id)}
+                                >
+                                  Löschen
+                                </button>
+                              ) : null}
+                            </>
+                          ) : (
+                            <span className="help">nur Anzeige</span>
+                          )}
                         </div>
                       </div>
                     );

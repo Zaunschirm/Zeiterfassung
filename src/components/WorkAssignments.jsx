@@ -283,6 +283,25 @@ export default function WorkAssignments() {
     setWeekAnchor(formatLocalDate(start));
   }
 
+
+  useEffect(() => {
+    function handlePrevWeek() {
+      shiftWeek(-1);
+    }
+
+    function handleNextWeek() {
+      shiftWeek(1);
+    }
+
+    window.addEventListener("hbz-prev-week", handlePrevWeek);
+    window.addEventListener("hbz-next-week", handleNextWeek);
+
+    return () => {
+      window.removeEventListener("hbz-prev-week", handlePrevWeek);
+      window.removeEventListener("hbz-next-week", handleNextWeek);
+    };
+  }, [weekAnchor]);
+
   function getCellRows(employeeId, dateStr) {
     return cellMap.get(`${employeeId}__${dateStr}`) || [];
   }
@@ -673,10 +692,7 @@ export default function WorkAssignments() {
                             className={`workassign-drop-cell ${
                               hoverCell === cellKey ? "workassign-drop-cell-hover" : ""
                             }`}
-                            onClick={() => {
-                              if (!canEditAssignments) return;
-                              onCellClick(employee.id, dateStr);
-                            }}
+                            onClick={() => onCellClick(employee.id, dateStr)}
                             onDragOver={(e) => {
                               if (!canEditAssignments) return;
                               e.preventDefault();
