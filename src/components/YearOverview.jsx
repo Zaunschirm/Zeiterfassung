@@ -252,19 +252,6 @@ export default function YearOverview() {
     includePayroll: true,
   });
 
-  if (!isAdmin) {
-    return (
-      <div className="hbz-container">
-        <div className="hbz-card">
-          <h2 className="page-title">Jahresübersicht</h2>
-          <p className="text-sm">
-            Diese Auswertung ist nur für <b>Admin</b> sichtbar.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   useEffect(() => {
     (async () => {
       try {
@@ -1484,6 +1471,16 @@ function exportCSV() {
 
   return (
     <div className="year-overview">
+      {!isAdmin ? (
+        <div className="hbz-container">
+          <div className="hbz-card">
+            <h2 className="page-title">Jahresübersicht</h2>
+            <p className="text-sm">
+              Diese Auswertung ist nur für <b>Admin</b> sichtbar.
+            </p>
+          </div>
+        </div>
+      ) : (
       <div className="year-overview-hero hbz-card">
         <div className="year-overview-hero__content">
           <div>
@@ -1849,8 +1846,7 @@ function exportCSV() {
         )}
       </div>
 
-      
-
+      )}
     </div>
   );
 }
