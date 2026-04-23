@@ -709,7 +709,48 @@ export default function MonthlyOverview() {
       doc.setFontSize(16);
       doc.text(`Abrechnung ${rangeLabel}`, 40, 40);
       doc.setFontSize(10);
-      doc.text("Tägliche Auflistung mit Arbeitszeit, Fahrzeit und Gesamtstunden", 40, 58);
+      doc.text("Zuerst Projekt-Gesamtsummen, danach tägliche Auflistung je Mitarbeiter mit Arbeitszeit, Fahrzeit und Gesamtstunden", 40, 58);
+
+      const perProject = {};
+      rowsForExport.forEach((r) => {
+        const key = r.project_name || "Ohne Projekt";
+        if (!perProject[key]) {
+          perProject[key] = {
+            work: 0,
+            travel: 0,
+            total: 0,
+            days: new Set(),
+          };
+        }
+
+        const travel = r._travel || 0;
+        const total = r._mins || 0;
+        const work = getPureWorkMinutes(r);
+
+        perProject[key].travel += travel;
+        perProject[key].total += total;
+        perProject[key].work += work;
+        if (total > 0) perProject[key].days.add(r.work_date);
+      });
+
+      const projectBody = Object.entries(perProject)
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([project, vals]) => [
+          project,
+          h2(vals.work).toFixed(2),
+          h2(vals.travel).toFixed(2),
+          h2(vals.total).toFixed(2),
+          String(vals.days.size),
+        ]);
+
+      autoTable(doc, {
+        head: [["Projekt", "Arbeitszeit", "Fahrzeit", "Gesamtstunden", "Arbeitstage"]],
+        body: projectBody,
+        startY: 80,
+        styles: { fontSize: 10, cellPadding: 4, overflow: "linebreak" },
+        headStyles: { fillColor: [123, 74, 45] },
+        margin: { left: 40, right: 40 },
+      });
 
       const body = rowsForExport.map((r) => {
         const totalHours = h2(r._mins);
@@ -729,9 +770,9 @@ export default function MonthlyOverview() {
       autoTable(doc, {
         head: [["Datum", "Mitarbeiter", "Projekt", "Arbeitszeit", "Fahrzeit", "Gesamtstunden"]],
         body,
-        startY: 80,
+        startY: (doc.lastAutoTable?.finalY || 100) + 18,
         styles: { fontSize: 9, cellPadding: 3, overflow: "linebreak" },
-        headStyles: { fillColor: [123, 74, 45] },
+        headStyles: { fillColor: [200, 200, 200] },
         margin: { left: 40, right: 40 },
       });
 
