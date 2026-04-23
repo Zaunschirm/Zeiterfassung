@@ -705,43 +705,43 @@ export default function MonthlyOverview() {
         return;
       }
 
-      const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
-      doc.setFontSize(16);
-      doc.text(`Abrechnung ${rangeLabel}`, 40, 40);
-      doc.setFontSize(10);
-      doc.text("Zuerst Projekt-Gesamtsummen, danach tägliche Auflistung je Mitarbeiter mit Arbeitszeit, Fahrzeit und Gesamtstunden", 40, 58);
-
-      const perProject = {};
+      const perProject = new Map();
       rowsForExport.forEach((r) => {
-        const key = r.project_name || "Ohne Projekt";
-        if (!perProject[key]) {
-          perProject[key] = {
+        const key = r.project_id || r.project_name || "ohne";
+        const name = r.project_name || "Ohne Projekt";
+        const current =
+          perProject.get(key) || {
+            name,
             work: 0,
             travel: 0,
             total: 0,
             days: new Set(),
           };
-        }
 
-        const travel = r._travel || 0;
-        const total = r._mins || 0;
-        const work = getPureWorkMinutes(r);
+        const workMinutes = getPureWorkMinutes(r);
+        current.work += workMinutes;
+        current.travel += r._travel || 0;
+        current.total += r._mins || 0;
+        if (r.work_date) current.days.add(r.work_date);
 
-        perProject[key].travel += travel;
-        perProject[key].total += total;
-        perProject[key].work += work;
-        if (total > 0) perProject[key].days.add(r.work_date);
+        perProject.set(key, current);
       });
 
-      const projectBody = Object.entries(perProject)
-        .sort((a, b) => a[0].localeCompare(b[0]))
-        .map(([project, vals]) => [
-          project,
-          h2(vals.work).toFixed(2),
-          h2(vals.travel).toFixed(2),
-          h2(vals.total).toFixed(2),
-          String(vals.days.size),
+      const projectBody = Array.from(perProject.values())
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((p) => [
+          p.name,
+          h2(p.work).toFixed(2),
+          h2(p.travel).toFixed(2),
+          h2(p.total).toFixed(2),
+          String(p.days.size),
         ]);
+
+      const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
+      doc.setFontSize(16);
+      doc.text(`Abrechnung ${rangeLabel}`, 40, 40);
+      doc.setFontSize(10);
+      doc.text("Zuerst Projekt-Gesamtsumme, danach tägliche Auflistung je Mitarbeiter", 40, 58);
 
       autoTable(doc, {
         head: [["Projekt", "Arbeitszeit", "Fahrzeit", "Gesamtstunden", "Arbeitstage"]],
@@ -751,6 +751,12 @@ export default function MonthlyOverview() {
         headStyles: { fillColor: [123, 74, 45] },
         margin: { left: 40, right: 40 },
       });
+
+      let currentY = (doc.lastAutoTable?.finalY || 80) + 18;
+      if (currentY > doc.internal.pageSize.getHeight() - 120) {
+        doc.addPage();
+        currentY = 40;
+      }
 
       const body = rowsForExport.map((r) => {
         const totalHours = h2(r._mins);
@@ -770,7 +776,7 @@ export default function MonthlyOverview() {
       autoTable(doc, {
         head: [["Datum", "Mitarbeiter", "Projekt", "Arbeitszeit", "Fahrzeit", "Gesamtstunden"]],
         body,
-        startY: (doc.lastAutoTable?.finalY || 100) + 18,
+        startY: currentY,
         styles: { fontSize: 9, cellPadding: 3, overflow: "linebreak" },
         headStyles: { fillColor: [200, 200, 200] },
         margin: { left: 40, right: 40 },

@@ -241,7 +241,7 @@ export default function YearOverview() {
   const [pdfOptions, setPdfOptions] = useState({
     selectedEmployeeCodes: [],
     includeProjects: true,
-    includeSiteDailyReport: false,
+    includeSiteDailyReport: true,
     includeEmployees: true,
     includeEmployeeProjects: true,
     includeWorkHours: true,
@@ -835,6 +835,7 @@ export default function YearOverview() {
       40,
       58
     );
+    doc.text("Reihenfolge: zuerst Projekt-Gesamtsumme, danach Detailauswertung", 40, 72);
 
     doc.text(
       `Inhalt: ${
@@ -854,13 +855,17 @@ export default function YearOverview() {
           .join(", ") || "—"
       }`,
       40,
-      74
+      88
     );
 
-    let y = 92;
+    let y = 106;
     let drewSomething = false;
 
     if (pdfOptions.includeProjects) {
+      doc.setFontSize(12);
+      doc.text("Projekt-Zusammenfassung", 40, y);
+      y += 8;
+
       autoTable(doc, {
         head: [[
           "Projekt",
@@ -1002,7 +1007,7 @@ export default function YearOverview() {
         }
 
         doc.setFontSize(14);
-        doc.text("Regiebericht / Tagesliste für AG", 40, y);
+        doc.text("Abrechnung – tägliche Aufstellung", 40, y);
         y += 8;
 
         siteBlocks.forEach((block, idx) => {
@@ -1437,6 +1442,30 @@ export default function YearOverview() {
         ))}
       </div>
 
+      {byProject.length > 0 && (
+        <div className="hbz-card" style={{ marginBottom: "16px" }}>
+          <div className="month-card-title">Abrechnung – Projekte</div>
+          <div style={{ marginTop: "10px" }}>
+            {byProject.map((p) => (
+              <div
+                key={`project-summary-${p.id || p.name}`}
+                style={{ padding: "10px", borderBottom: "1px solid #eee" }}
+              >
+                <div style={{ fontWeight: 600 }}>
+                  {p.code ? `${p.code} · ${p.name}` : p.name}
+                </div>
+                <div style={{ fontSize: "14px", marginTop: "4px" }}>
+                  Arbeitszeit: {h2(p.work).toFixed(2)} h &nbsp;|&nbsp;
+                  Fahrzeit: {h2(p.travel).toFixed(2)} h &nbsp;|&nbsp;
+                  <strong>Gesamt: {h2(p.total).toFixed(2)} h</strong> &nbsp;|&nbsp;
+                  Tage: {p.days ?? 0}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="hbz-card year-main-card">
         <div className="year-main-header">
           <div>
@@ -1717,7 +1746,7 @@ export default function YearOverview() {
                       setPdfOptions((p) => ({
                         ...p,
                         includeProjects: true,
-                        includeSiteDailyReport: false,
+                        includeSiteDailyReport: true,
                         includeEmployees: true,
                         includeEmployeeProjects: true,
                         includeWorkHours: true,
@@ -1738,7 +1767,7 @@ export default function YearOverview() {
                       setPdfOptions((p) => ({
                         ...p,
                         includeProjects: false,
-                        includeSiteDailyReport: false,
+                        includeSiteDailyReport: true,
                         includeEmployees: false,
                         includeEmployeeProjects: false,
                         includeWorkHours: false,
