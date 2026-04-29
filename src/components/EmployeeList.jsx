@@ -44,6 +44,7 @@ export default function EmployeeList() {
   const [code, setCode] = useState("");
   const [role, setRole] = useState("mitarbeiter");
   const [permissions, setPermissions] = useState({ ...EMPTY_PERMISSIONS });
+  const [showInDailyCheck, setShowInDailyCheck] = useState(true);
   const [saving, setSaving] = useState(false);
 
   const [editId, setEditId] = useState(null);
@@ -59,7 +60,7 @@ export default function EmployeeList() {
 
     const { data, error } = await supabase
       .from("employees")
-      .select("id, name, role, disabled, code, permissions")
+      .select("id, name, role, disabled, code, permissions, show_in_daily_check")
       .order("name", { ascending: true });
 
     setLoading(false);
@@ -203,6 +204,7 @@ export default function EmployeeList() {
     setCode(row.code || "");
     setRole(row.role || "mitarbeiter");
     setPermissions(normalizePermissions(row.permissions));
+    setShowInDailyCheck(row.show_in_daily_check !== false);
   }
 
   function clearForm() {
@@ -211,6 +213,7 @@ export default function EmployeeList() {
     setCode("");
     setRole("mitarbeiter");
     setPermissions({ ...EMPTY_PERMISSIONS });
+    setShowInDailyCheck(true);
   }
 
   async function createEmployee(e) {
@@ -226,6 +229,7 @@ export default function EmployeeList() {
         code,
         role,
         permissions,
+        show_in_daily_check: showInDailyCheck,
       };
 
       if (editId) {
@@ -321,6 +325,20 @@ export default function EmployeeList() {
               Rechte aus Rolle übernehmen
             </button>
           </div>
+          <div style={{ gridColumn: "1 / -1" }}>
+            <label className="employee-control-check">
+              <input
+                type="checkbox"
+                checked={showInDailyCheck}
+                onChange={(e) => setShowInDailyCheck(e.target.checked)}
+              />
+              <span>
+                <strong>In Tageskontrolle anzeigen</strong>
+                <small>Wenn deaktiviert, wird diese Person bei „Wer fehlt?“ nicht mitgezählt.</small>
+              </span>
+            </label>
+          </div>
+
 
           <div style={{ gridColumn: "1 / -1" }}>
             <label className="hbz-label">Rechte</label>
@@ -384,13 +402,14 @@ export default function EmployeeList() {
                   <th>Rolle</th>
                   <th>Rechte</th>
                   <th>Status</th>
+                  <th>Tageskontrolle</th>
                   <th className="num">Aktionen</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="employee-empty">
+                    <td colSpan={7} className="employee-empty">
                       Keine Mitarbeiter gefunden.
                     </td>
                   </tr>
@@ -422,6 +441,11 @@ export default function EmployeeList() {
                         }}
                       >
                         {r.disabled ? "deaktiviert" : "aktiv"}
+                      </span>
+                    </td>
+                    <td>
+                      <span className={`daily-check-table-pill ${r.show_in_daily_check === false ? "off" : "on"}`}>
+                        {r.show_in_daily_check === false ? "Ausgeblendet" : "Wird geprüft"}
                       </span>
                     </td>
                     <td className="num">

@@ -2541,3 +2541,210 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   }
 }
 
+
+/* ===== Tageskontrolle Zeiterfassung ===== */
+.missing-reminder-card {
+  margin-bottom: 12px;
+  border-radius: 16px;
+  padding: 12px 14px;
+  border: 1px solid rgba(203, 182, 156, 0.55);
+  background: linear-gradient(180deg, #fffdfa, #f8f1e7);
+  color: #4c3828;
+}
+
+.missing-reminder-card.warning {
+  border-color: rgba(196, 126, 47, 0.45);
+  background: linear-gradient(180deg, #fff8ea, #f3e1c2);
+}
+
+.missing-reminder-card.soft {
+  color: #6d5644;
+}
+
+.daily-check-card {
+  overflow: hidden;
+}
+
+.daily-check-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.daily-check-summary {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.daily-check-counter {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1px solid rgba(203, 182, 156, 0.55);
+  background: #fffaf3;
+}
+
+.daily-check-counter.ok {
+  background: #eef8ef;
+  border-color: #cfe4d3;
+  color: #2f6b3a;
+}
+
+.daily-check-counter.missing {
+  background: #fff1ef;
+  border-color: #ecc3bd;
+  color: #9b2f24;
+}
+
+.daily-check-counter.absence {
+  background: #f3f6ff;
+  border-color: #cfd8ee;
+  color: #355278;
+}
+
+.daily-check-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.daily-check-item {
+  border-radius: 16px;
+  padding: 11px 12px;
+  border: 1px solid rgba(203, 182, 156, 0.45);
+  background: linear-gradient(180deg, #fffdfa, #f8f1e7);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.daily-check-name {
+  font-size: 13px;
+  font-weight: 800;
+  color: #3f2c1b;
+}
+
+.daily-check-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.daily-check-status small {
+  font-size: 10px;
+  font-weight: 600;
+  color: #806653;
+}
+
+.daily-check-item.status-ok {
+  background: linear-gradient(180deg, #ffffff, #eff8f0);
+  border-color: rgba(70, 150, 90, 0.3);
+}
+
+.daily-check-item.status-missing {
+  background: linear-gradient(180deg, #ffffff, #fff0ee);
+  border-color: rgba(190, 80, 65, 0.35);
+}
+
+.daily-check-item.status-urlaub {
+  background: linear-gradient(180deg, #ffffff, #fff7d8);
+  border-color: rgba(207, 168, 58, 0.38);
+}
+
+.daily-check-item.status-krank {
+  background: linear-gradient(180deg, #ffffff, #eef4ff);
+  border-color: rgba(82, 122, 176, 0.35);
+}
+
+.daily-check-item.status-not_required {
+  background: linear-gradient(180deg, #ffffff, #f2eee8);
+  opacity: 0.72;
+}
+
+.daily-check-empty {
+  margin-top: 12px;
+  padding: 14px;
+  border-radius: 16px;
+  background: #f9f1e6;
+  border: 1px dashed rgba(171, 141, 109, 0.65);
+  color: #6d5644;
+  text-align: center;
+  font-size: 13px;
+}
+
+.employee-control-check {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  border: 1px solid rgba(203, 182, 156, 0.5);
+  background: linear-gradient(180deg, #fffdfa, #f8f1e7);
+  border-radius: 14px;
+  padding: 12px 14px;
+  color: #433023;
+}
+
+.employee-control-check input[type="checkbox"] {
+  margin-top: 3px;
+  accent-color: #7b4a2d;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+}
+
+.employee-control-check span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.employee-control-check small {
+  font-size: 11px;
+  color: #7a614e;
+}
+
+.daily-check-table-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1px solid rgba(203, 182, 156, 0.5);
+}
+
+.daily-check-table-pill.on {
+  background: #eef8ef;
+  color: #2f6b3a;
+  border-color: #cfe4d3;
+}
+
+.daily-check-table-pill.off {
+  background: #f2eee8;
+  color: #7b4a2d;
+  border-color: #d2c2b2;
+}
+
+@media (max-width: 700px) {
+  .daily-check-item {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .daily-check-summary {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}

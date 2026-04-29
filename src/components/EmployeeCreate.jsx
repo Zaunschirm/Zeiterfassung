@@ -24,6 +24,7 @@ export default function EmployeeCreate() {
   const [code, setCode] = useState("");
   const [pin, setPin] = useState("");
   const [permissions, setPermissions] = useState({ ...EMPTY_PERMISSIONS });
+  const [showInDailyCheck, setShowInDailyCheck] = useState(true);
   const [ok, setOk] = useState("");
   const [err, setErr] = useState("");
 
@@ -105,6 +106,7 @@ export default function EmployeeCreate() {
         pin: encoded,
         active: true,
         permissions,
+        show_in_daily_check: showInDailyCheck,
       });
       if (error) throw error;
 
@@ -114,6 +116,7 @@ export default function EmployeeCreate() {
       setCode("");
       setPin("");
       setPermissions({ ...EMPTY_PERMISSIONS });
+      setShowInDailyCheck(true);
     } catch (ex) {
       setErr(ex.message);
     }
@@ -191,6 +194,20 @@ export default function EmployeeCreate() {
           </div>
 
           <div style={{ gridColumn: "1 / -1" }}>
+            <label className="employee-control-check">
+              <input
+                type="checkbox"
+                checked={showInDailyCheck}
+                onChange={(e) => setShowInDailyCheck(e.target.checked)}
+              />
+              <span>
+                <strong>In Tageskontrolle anzeigen</strong>
+                <small>Wenn deaktiviert, wird diese Person bei „Wer fehlt?“ nicht mitgezählt.</small>
+              </span>
+            </label>
+          </div>
+
+          <div style={{ gridColumn: "1 / -1" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
               <label className="hbz-label" style={{ margin: 0 }}>Rechte</label>
               <button
@@ -248,6 +265,7 @@ export default function EmployeeCreate() {
                 setCode("");
                 setPin("");
                 setPermissions({ ...EMPTY_PERMISSIONS });
+                setShowInDailyCheck(true);
               }}
             >
               Zurücksetzen
