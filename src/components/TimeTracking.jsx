@@ -6,7 +6,6 @@ import {
   WEATHER_MANUAL_OPTIONS,
   fetchWeatherForBooking,
 } from "../utils/weather";
-import { getBuakSollHoursForDay, getBuakWeekType } from "../utils/time";
 
 // --------------------------------------------------
 // Helfer/Format
@@ -29,67 +28,6 @@ const PAUSE_OPTIONS = [0, 15, 30, 45, 60, 75, 90];
 
 // Fahrzeit-Optionen (0–90 in 15er-Schritten)
 const TRAVEL_OPTIONS = [0, 15, 30, 45, 60, 75, 90, 105, 120, 135, 150];
-
-
-const normalizeText = (value) => String(value || "").trim().toLowerCase();
-
-function employeeKeys(emp) {
-  return [emp?.id, emp?.code, emp?.name].filter(Boolean).map((v) => String(v));
-}
-
-function entryKeys(entry) {
-  return [
-    entry?.employee_id,
-    entry?.employee_code,
-    entry?.code,
-    entry?.employee_name,
-    entry?.name,
-  ]
-    .filter(Boolean)
-    .map((v) => String(v));
-}
-
-function sameEmployee(emp, entry) {
-  const empSet = new Set(employeeKeys(emp));
-  return entryKeys(entry).some((key) => empSet.has(key));
-}
-
-function getEntryAbsenceType(entry) {
-  const raw = normalizeText(entry?.absence_type || entry?.absence || entry?.type);
-  const note = normalizeText(entry?.note || entry?.notes || entry?.description);
-
-  if (raw.includes("urlaub") || note.includes("[urlaub]") || note.includes("urlaub")) return "urlaub";
-  if (raw.includes("krank") || note.includes("[krank]") || note.includes("krankenstand")) return "krank";
-  return null;
-}
-
-function formatDateAT(iso) {
-  if (!iso) return "";
-  const [y, m, d] = String(iso).split("-");
-  if (!y || !m || !d) return iso;
-  return `${d}.${m}.${y}`;
-}
-
-function getPreviousMonthRange(now = new Date()) {
-  const y = now.getFullYear();
-  const m = now.getMonth();
-  const first = new Date(y, m - 1, 1, 12, 0, 0);
-  const last = new Date(y, m, 0, 12, 0, 0);
-  const pad = (n) => String(n).padStart(2, "0");
-  const toIso = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-  return { start: toIso(first), end: toIso(last) };
-}
-
-function eachDateISO(startIso, endIso) {
-  const result = [];
-  const d = new Date(`${startIso}T12:00:00`);
-  const end = new Date(`${endIso}T12:00:00`);
-  while (!isNaN(d.getTime()) && d <= end) {
-    result.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`);
-    d.setDate(d.getDate() + 1);
-  }
-  return result;
-}
 
 // --------------------------------------------------
 // Komponente
@@ -151,8 +89,6 @@ export default function TimeTracking() {
 
   // Einträge für den Tag (Tabelle unten)
   const [entriesToday, setEntriesToday] = useState([]);
-  const [missingPreviousMonthDays, setMissingPreviousMonthDays] = useState([]);
-  const [missingReminderLoading, setMissingReminderLoading] = useState(false);
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -187,7 +123,7 @@ export default function TimeTracking() {
 
         const { data: emp } = await supabase
           .from("employees")
-          .select("id, code, name, role, active, disabled, show_in_daily_check")
+          .select("id, code, name, role, active, disabled")
           .eq("active", true)
           .eq("disabled", false)
           .order("name", { ascending: true });
@@ -226,106 +162,6 @@ export default function TimeTracking() {
     loadEntriesForDay();
   }, [date]);
 
-
-  useEffect(() => {
-    const loadMissingPreviousMonthForCurrentUser = async () => {
-      const me = employeeFromLS || {};
-      const role = normalizeText(me?.role);
-      const today = new Date();
-
-      if (!me?.id && !me?.code && !me?.name) {
-        setMissingPreviousMonthDays([]);
-        return;
-      }
-
-      if (today.getDate() < 7 || role === "admin" || role === "teamleiter") {
-        setMissingPreviousMonthDays([]);
-        return;
-      }
-
-      const { start, end } = getPreviousMonthRange(today);
-      const checkDays = eachDateISO(start, end).filter((day) => getBuakSollHoursForDay(day) > 0);
-
-      if (!checkDays.length) {
-        setMissingPreviousMonthDays([]);
-        return;
-      }
-
-      setMissingReminderLoading(true);
-      try {
-        const { data, error } = await supabase
-          .from("v_time_entries_expanded")
-          .select("*")
-          .gte("work_date", start)
-          .lte("work_date", end);
-
-        if (error) throw error;
-
-        const missing = checkDays.filter((day) => {
-          const dayEntries = (data || []).filter((entry) => entry?.work_date === day);
-          return !dayEntries.some((entry) => sameEmployee(me, entry));
-        });
-
-        setMissingPreviousMonthDays(missing);
-      } catch (e) {
-        console.warn("[TimeTracking] Monats-Erinnerung konnte nicht geladen werden:", e);
-        setMissingPreviousMonthDays([]);
-      } finally {
-        setMissingReminderLoading(false);
-      }
-    };
-
-    loadMissingPreviousMonthForCurrentUser();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const buakSollForSelectedDay = useMemo(() => getBuakSollHoursForDay(date), [date]);
-  const buakWeekTypeForSelectedDay = useMemo(() => getBuakWeekType(date), [date]);
-
-  const dailyControlRows = useMemo(() => {
-    const checkEmployees = (employees || []).filter(
-      (emp) => emp?.active !== false && emp?.disabled !== true && emp?.show_in_daily_check !== false
-    );
-
-    return checkEmployees.map((emp) => {
-      const empEntries = (entriesToday || []).filter((entry) => sameEmployee(emp, entry));
-      const absence = empEntries.map(getEntryAbsenceType).find(Boolean);
-
-      let status = "missing";
-      let label = "Fehlt";
-      let icon = "❌";
-
-      if (buakSollForSelectedDay <= 0) {
-        status = "not_required";
-        label = "Nicht prüfpflichtig";
-        icon = "—";
-      } else if (absence === "urlaub") {
-        status = "urlaub";
-        label = "Urlaub";
-        icon = "🟡";
-      } else if (absence === "krank") {
-        status = "krank";
-        label = "Krank";
-        icon = "🔵";
-      } else if (empEntries.length > 0) {
-        status = "ok";
-        label = "Eingetragen";
-        icon = "✅";
-      }
-
-      return {
-        employee: emp,
-        status,
-        label,
-        icon,
-        entryCount: empEntries.length,
-      };
-    });
-  }, [employees, entriesToday, buakSollForSelectedDay]);
-
-  const missingDailyCount = dailyControlRows.filter((row) => row.status === "missing").length;
-  const okDailyCount = dailyControlRows.filter((row) => row.status === "ok").length;
-  const absenceDailyCount = dailyControlRows.filter((row) => row.status === "urlaub" || row.status === "krank").length;
 
   const loadWeatherForCurrentBooking = async () => {
     if (absenceType === "krank" || absenceType === "urlaub") {
@@ -518,6 +354,76 @@ export default function TimeTracking() {
   // --------------------------------------------------
   return (
     <div className="hbz-container">
+
+      {/* Tageskontrolle: Admin/Teamleiter sehen sofort, wer am gewählten BUAK-Arbeitstag fehlt */}
+      <div className="hbz-card tight daily-control-card">
+        <div className="daily-control-head">
+          <div>
+            <div className="hbz-section-title" style={{ marginBottom: 4 }}>Tageskontrolle</div>
+            <div className="help">
+              {buakSollForSelectedDay > 0 ? (
+                <>
+                  {date} · {buakWeekTypeForSelectedDay === "kurz" ? "Kurze Woche" : buakWeekTypeForSelectedDay === "lang" ? "Lange Woche" : "BUAK"} · Soll: <b>{buakSollForSelectedDay} h</b>
+                </>
+              ) : (
+                <>
+                  {date} · laut BUAK kein prüfpflichtiger Arbeitstag
+                </>
+              )}
+            </div>
+          </div>
+
+          <div className="daily-control-summary">
+            <span className="daily-control-count ok">✅ {okDailyCount}</span>
+            <span className="daily-control-count missing">❌ {missingDailyCount}</span>
+            <span className="daily-control-count absence">🟡/🔵 {absenceDailyCount}</span>
+          </div>
+        </div>
+
+        {dailyControlRows.length === 0 ? (
+          <div className="daily-control-empty">Keine Mitarbeiter für die Tageskontrolle aktiviert.</div>
+        ) : (
+          <div className="daily-control-grid">
+            {dailyControlRows.map((row) => {
+              const emp = row.employee || {};
+              const key = emp.id ?? emp.code ?? emp.name;
+              return (
+                <div key={key} className={`daily-control-chip daily-control-${row.status}`}>
+                  <span className="daily-control-name">{emp.name ?? key}</span>
+                  <span className="daily-control-state">
+                    <span aria-hidden="true">{row.icon}</span> {row.label}
+                    {row.entryCount > 1 ? ` (${row.entryCount})` : ""}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {missingPreviousMonthDays.length > 0 && (
+        <div className="hbz-card tight missing-reminder-card">
+          <div className="hbz-section-title" style={{ marginBottom: 4 }}>Fehlende Zeiteinträge vom Vormonat</div>
+          <div className="help" style={{ marginBottom: 8 }}>
+            Bitte folgende BUAK-Arbeitstage nachtragen:
+          </div>
+          <div className="daily-control-grid">
+            {missingPreviousMonthDays.map((day) => (
+              <span key={day} className="daily-control-chip daily-control-missing">
+                <span className="daily-control-name">{formatDateAT(day)}</span>
+                <span className="daily-control-state">❌ fehlt</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {missingReminderLoading && (
+        <div className="hbz-card tight missing-reminder-card">
+          <div className="help">Prüfe fehlende Einträge vom Vormonat…</div>
+        </div>
+      )}
+
       <div className="hbz-card tight">
         <div className="hbz-row">
           <h2
@@ -541,23 +447,6 @@ export default function TimeTracking() {
         </div>
 
         <hr className="hr-soft" />
-
-        {missingReminderLoading && (
-          <div className="missing-reminder-card soft">
-            Prüfe fehlende Einträge vom Vormonat…
-          </div>
-        )}
-
-        {!missingReminderLoading && missingPreviousMonthDays.length > 0 && (
-          <div className="missing-reminder-card warning">
-            <div>
-              <strong>Fehlende Zeiteinträge vom Vormonat</strong>
-              <div className="help">
-                Bitte diese BUAK-Arbeitstage noch nachtragen: {missingPreviousMonthDays.map(formatDateAT).join(", ")}
-              </div>
-            </div>
-          </div>
-        )}
 
         <div className="hbz-row">
           <div className="hbz-col">
@@ -884,48 +773,6 @@ export default function TimeTracking() {
             {saving ? "Speichere…" : "Speichern"}
           </button>
         </div>
-      </div>
-
-      {/* Tageskontrolle */}
-      <div className="hbz-card tight daily-check-card" style={{ marginTop: 12 }}>
-        <div className="daily-check-head">
-          <div>
-            <div className="hbz-section-title" style={{ margin: 0 }}>
-              Tageskontrolle {formatDateAT(date)}
-            </div>
-            <div className="help" style={{ marginTop: 4 }}>
-              BUAK: {buakSollForSelectedDay > 0 ? `${buakSollForSelectedDay} Sollstunden` : "kein prüfpflichtiger Arbeitstag"}
-              {buakWeekTypeForSelectedDay ? ` · ${buakWeekTypeForSelectedDay === "kurz" ? "Kurze Woche" : "Lange Woche"}` : ""}
-            </div>
-          </div>
-          <div className="daily-check-summary">
-            <span className="daily-check-counter ok">✅ {okDailyCount}</span>
-            <span className="daily-check-counter missing">❌ {missingDailyCount}</span>
-            <span className="daily-check-counter absence">🟡/🔵 {absenceDailyCount}</span>
-          </div>
-        </div>
-
-        {dailyControlRows.length === 0 ? (
-          <div className="daily-check-empty">
-            Keine Mitarbeiter für die Tageskontrolle aktiviert.
-          </div>
-        ) : (
-          <div className="daily-check-grid">
-            {dailyControlRows.map((row) => {
-              const key = row.employee?.id ?? row.employee?.code ?? row.employee?.name;
-              return (
-                <div key={key} className={`daily-check-item status-${row.status}`}>
-                  <div className="daily-check-name">{row.employee?.name || key}</div>
-                  <div className="daily-check-status">
-                    <span>{row.icon}</span>
-                    <span>{row.label}</span>
-                    {row.entryCount > 1 && <small>({row.entryCount} Einträge)</small>}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
       </div>
 
       {/* Tagesliste */}
