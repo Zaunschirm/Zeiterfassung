@@ -14,7 +14,14 @@ export default function EmployeePicker({
   onChange,
   enableMulti = true,
 }) {
-  const allCodes = useMemo(() => employees.map((e) => e.code), [employees]);
+  // Deaktivierte Mitarbeiter bleiben in Auswertungen sichtbar,
+  // sollen aber bei neuen Eingaben/Auswahlen nicht mehr auswählbar sein.
+  const selectableEmployees = useMemo(
+    () => (employees || []).filter((e) => e?.active !== false && e?.disabled !== true),
+    [employees]
+  );
+
+  const allCodes = useMemo(() => selectableEmployees.map((e) => e.code), [selectableEmployees]);
 
   function toggle(code) {
     if (!enableMulti) {
@@ -59,7 +66,7 @@ export default function EmployeePicker({
         className="hz-pill-row"
         style={{ display: "flex", flexWrap: "wrap", gap: 8, rowGap: 10, maxHeight: 120, overflowY: "auto" }}
       >
-        {employees.map((e) => {
+        {selectableEmployees.map((e) => {
           const active = selected.includes(e.code);
           return (
             <button

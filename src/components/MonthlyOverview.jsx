@@ -213,8 +213,6 @@ export default function MonthlyOverview() {
         const { data, error } = await supabase
           .from("employees")
           .select("id, code, name, role, active, disabled")
-          .eq("active", true)
-          .eq("disabled", false)
           .order("name", { ascending: true });
 
         if (!error) {

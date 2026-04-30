@@ -258,8 +258,6 @@ export default function YearOverview() {
         const { data: e } = await supabase
           .from("employees")
           .select("id, code, name, active, disabled")
-          .eq("active", true)
-          .eq("disabled", false)
           .order("name");
 
         setEmployees(e || []);

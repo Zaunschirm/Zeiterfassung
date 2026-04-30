@@ -674,8 +674,10 @@ export default function DaySlider() {
     if (!isManager) return [];
 
     const checkEmployees = (employees || [])
+      // Deaktiviert = nicht mehr in der Tageskontrolle prüfen.
+      // Wichtig: bestehende Stunden deaktivierter MA bleiben unten trotzdem sichtbar,
+      // weil die Eintragsliste direkt aus v_time_entries_expanded kommt.
       .filter((emp) => emp?.active !== false && emp?.disabled !== true)
-      .filter((emp) => emp?.show_in_daily_check !== false)
       .sort((a, b) => String(a?.name || "").localeCompare(String(b?.name || ""), "de"));
 
     const rowsForDay = (dailyCheckEntries || []).filter(
