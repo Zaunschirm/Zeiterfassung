@@ -586,13 +586,10 @@ export default function DaySlider() {
         .order("employee_name", { ascending: true })
         .order("start_min", { ascending: true });
 
-      if (isManager && selectedCodes.length) {
-        const selEmps = employees.filter((e) =>
-          selectedCodes.includes(e.code)
-        );
-        const ids = selEmps.map((e) => e.id);
-        if (ids.length) query = query.in("employee_id", ids);
-      } else if (isStaff && employeeRow?.id) {
+      // Wichtig: Admin/Teamleiter sehen in der unteren Tagesübersicht immer ALLE Einträge
+      // des ausgewählten Tages – unabhängig davon, welche Mitarbeiter oben zum Speichern
+      // ausgewählt sind. Die Mitarbeiter-Auswahl steuert nur, für wen neu gespeichert wird.
+      if (isStaff && employeeRow?.id) {
         query = query.eq("employee_id", employeeRow.id);
       }
 
