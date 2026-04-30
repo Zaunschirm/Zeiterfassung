@@ -125,6 +125,55 @@ function getBuakWeekLabel(dateStr) {
   }
 }
 
+
+function getBuakSollHoursForDay(dateStr) {
+  try {
+    if (!dateStr) return 0;
+    const iso = String(dateStr).slice(0, 10);
+    const d = new Date(iso + "T12:00:00");
+    if (isNaN(d.getTime())) return 0;
+
+    const dow = d.getDay();
+    if (dow === 0 || dow === 6) return 0;
+
+    const year = Number(iso.slice(0, 4));
+    if (year !== 2026) return 0;
+
+    const wk = isoWeekNumber(iso);
+    const type = BUAK_WEEK_TYPES_2026[wk];
+    if (!type) return 0;
+
+    const isFriday = dow === 5;
+    if (type === "L") return isFriday ? 6 : 9;
+    if (type === "K") return isFriday ? 0 : 9;
+
+    return 0;
+  } catch {
+    return 0;
+  }
+}
+
+function isAbsenceEntry(row, type) {
+  const note = String(row?.note || "").toLowerCase();
+  const absenceType = String(row?.absence_type || row?.absenceType || "").toLowerCase();
+
+  if (type === "urlaub") {
+    return absenceType === "urlaub" || note.includes("[urlaub]") || note.includes("urlaub");
+  }
+
+  if (type === "krank") {
+    return (
+      absenceType === "krank" ||
+      absenceType === "krankenstand" ||
+      note.includes("[krank]") ||
+      note.includes("krank") ||
+      note.includes("krankenstand")
+    );
+  }
+
+  return false;
+}
+
 const logSbError = (prefix, error) =>
   console.error(prefix, error?.message || error);
 
@@ -196,6 +245,8 @@ export default function DaySlider() {
   const [employeeRow, setEmployeeRow] = useState(null);
 
   const [entries, setEntries] = useState([]);
+  const [dailyCheckEntries, setDailyCheckEntries] = useState([]);
+  const [dailyCheckLoading, setDailyCheckLoading] = useState(false);
   const [editId, setEditId] = useState(null);
   const [editState, setEditState] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -297,7 +348,7 @@ export default function DaySlider() {
         if (isManager) {
           const { data, error } = await supabase
             .from("employees")
-            .select("id, code, name, role, active, disabled")
+            .select("id, code, name, role, active, disabled, show_in_daily_check")
             .eq("active", true)
             .eq("disabled", false)
             .order("name", { ascending: true });
@@ -320,7 +371,7 @@ export default function DaySlider() {
         } else {
           const { data, error } = await supabase
             .from("employees")
-            .select("id, code, name, role, active, disabled")
+            .select("id, code, name, role, active, disabled, show_in_daily_check")
             .eq("code", session?.code)
             .limit(1)
             .maybeSingle();
@@ -347,7 +398,7 @@ export default function DaySlider() {
       try {
         const { data, error } = await supabase
           .from("employees")
-          .select("id, code, name, role, active, disabled")
+          .select("id, code, name, role, active, disabled, show_in_daily_check")
           .eq("code", session.code)
           .limit(1)
           .maybeSingle();
@@ -556,8 +607,33 @@ export default function DaySlider() {
     }
   }
 
+  async function loadDailyCheckEntries() {
+    try {
+      if (!isManager) {
+        setDailyCheckEntries([]);
+        return;
+      }
+
+      setDailyCheckLoading(true);
+
+      const { data, error } = await supabase
+        .from("v_time_entries_expanded")
+        .select("*")
+        .eq("work_date", date);
+
+      if (error) throw error;
+      setDailyCheckEntries(data || []);
+    } catch (e) {
+      logSbError("[DaySlider] daily check entries load error:", e);
+      setDailyCheckEntries([]);
+    } finally {
+      setDailyCheckLoading(false);
+    }
+  }
+
   useEffect(() => {
     loadEntries();
+    loadDailyCheckEntries();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [date, isManager, selectedCodes, employeeRow?.id]);
 
@@ -592,6 +668,73 @@ export default function DaySlider() {
   const isOwnEntry = (row) => String(row?.employee_id ?? "") === String(currentEmployeeId ?? "");
   const canEditEntry = (row) => !!row && (canEditAllTime || (canEditOwnTime && isOwnEntry(row)));
   const canDeleteEntry = (row) => !!row && (canDeleteAllTime || (canDeleteOwnTime && isOwnEntry(row)));
+
+  const buakSollHoursToday = useMemo(() => getBuakSollHoursForDay(date), [date]);
+
+  const dailyCheckRows = useMemo(() => {
+    if (!isManager) return [];
+
+    const checkEmployees = (employees || [])
+      .filter((emp) => emp?.active !== false && emp?.disabled !== true)
+      .filter((emp) => emp?.show_in_daily_check !== false)
+      .sort((a, b) => String(a?.name || "").localeCompare(String(b?.name || ""), "de"));
+
+    const rowsForDay = (dailyCheckEntries || []).filter(
+      (row) => String(row?.work_date || row?.date || "").slice(0, 10) === date
+    );
+
+    return checkEmployees.map((emp) => {
+      const empEntries = rowsForDay.filter(
+        (row) => String(row?.employee_id || "") === String(emp.id || "")
+      );
+
+      const hasUrlaub = empEntries.some((row) => isAbsenceEntry(row, "urlaub"));
+      const hasKrank = empEntries.some((row) => isAbsenceEntry(row, "krank"));
+      const hasEntry = empEntries.length > 0;
+
+      let status = "missing";
+      let label = "Fehlt";
+      let icon = "❌";
+
+      if (buakSollHoursToday <= 0) {
+        status = "not_required";
+        label = "frei laut BUAK";
+        icon = "⚪";
+      } else if (hasUrlaub) {
+        status = "urlaub";
+        label = "Urlaub";
+        icon = "🟡";
+      } else if (hasKrank) {
+        status = "krank";
+        label = "Krank";
+        icon = "🔵";
+      } else if (hasEntry) {
+        status = "ok";
+        label = "Eingetragen";
+        icon = "✅";
+      }
+
+      return {
+        ...emp,
+        status,
+        statusLabel: label,
+        statusIcon: icon,
+        entryCount: empEntries.length,
+      };
+    });
+  }, [date, dailyCheckEntries, employees, isManager, buakSollHoursToday]);
+
+  const dailyCheckSummary = useMemo(() => {
+    const count = (status) => dailyCheckRows.filter((row) => row.status === status).length;
+    return {
+      ok: count("ok"),
+      missing: count("missing"),
+      urlaub: count("urlaub"),
+      krank: count("krank"),
+      notRequired: count("not_required"),
+      total: dailyCheckRows.length,
+    };
+  }, [dailyCheckRows]);
 
   async function handleSave() {
     setError("");
@@ -681,6 +824,7 @@ export default function DaySlider() {
       setTravelMin(0);
       setWeatherManual("");
       await loadEntries();
+      await loadDailyCheckEntries();
     } catch (err) {
       logSbError("save error:", err);
       alert("Speichern fehlgeschlagen. Siehe Konsole.");
@@ -742,6 +886,7 @@ export default function DaySlider() {
         .eq("id", editId);
       if (error) throw error;
       await loadEntries();
+      await loadDailyCheckEntries();
       cancelEdit();
     } catch (e) {
       logSbError("saveEdit error:", e);
@@ -760,6 +905,7 @@ export default function DaySlider() {
         .eq("id", id);
       if (error) throw error;
       await loadEntries();
+      await loadDailyCheckEntries();
     } catch (e) {
       logSbError("deleteEntry error:", e);
       alert("Löschen fehlgeschlagen.");
@@ -809,6 +955,56 @@ export default function DaySlider() {
           </div>
         </div>
       </div>
+
+      {isManager && (
+        <div className="hbz-card month-main-card daily-check-card">
+          <div className="month-main-header">
+            <div>
+              <div className="month-card-title">📊 Tageskontrolle</div>
+              <div className="month-main-subtitle">
+                {dailyCheckLoading
+                  ? "Prüfe Einträge…"
+                  : buakSollHoursToday > 0
+                  ? `BUAK Soll heute: ${buakSollHoursToday} h`
+                  : "Laut BUAK heute kein Pflicht-Eintrag"}
+              </div>
+            </div>
+
+            <div className="daily-check-summary">
+              <span className="badge-soft">✅ {dailyCheckSummary.ok}</span>
+              <span className="badge-soft">❌ {dailyCheckSummary.missing}</span>
+              <span className="badge-soft">🟡 {dailyCheckSummary.urlaub}</span>
+              <span className="badge-soft">🔵 {dailyCheckSummary.krank}</span>
+            </div>
+          </div>
+
+          {dailyCheckRows.length === 0 ? (
+            <div className="month-empty-state">
+              Keine Mitarbeiter für die Tageskontrolle gefunden.
+            </div>
+          ) : (
+            <div className="daily-check-grid">
+              {dailyCheckRows.map((emp) => (
+                <div
+                  key={emp.id || emp.code}
+                  className={`daily-check-pill daily-check-${emp.status}`}
+                  title={emp.entryCount > 1 ? `${emp.entryCount} Einträge vorhanden` : ""}
+                >
+                  <span className="daily-check-name">{emp.name || emp.code}</span>
+                  <span className="daily-check-state">
+                    {emp.statusIcon} {emp.statusLabel}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="help" style={{ marginTop: 10 }}>
+            Geprüft werden nur aktive Mitarbeiter mit „In Tageskontrolle anzeigen“.
+            Freie BUAK-Tage werden nicht als fehlend gewertet.
+          </div>
+        </div>
+      )}
 
       <div className="hbz-card month-main-card">
         <div className="month-card-title">Zeiten erfassen</div>

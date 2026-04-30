@@ -2667,3 +2667,90 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     justify-content: space-between;
   }
 }
+
+/* ===== Tageskontrolle Zeiterfassung ===== */
+.daily-check-card {
+  border-color: rgba(123, 74, 45, 0.22);
+}
+
+.daily-check-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.daily-check-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.daily-check-pill {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-radius: 16px;
+  padding: 10px 12px;
+  border: 1px solid rgba(203, 182, 156, 0.55);
+  background: linear-gradient(180deg, #fffdfa, #f8f1e7);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.035);
+}
+
+.daily-check-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: #3f2c1b;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.daily-check-state {
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(203, 182, 156, 0.45);
+  white-space: nowrap;
+}
+
+.daily-check-ok {
+  border-color: rgba(69, 142, 82, 0.35);
+  background: linear-gradient(180deg, #ffffff, #f1fbf2);
+}
+
+.daily-check-missing {
+  border-color: rgba(202, 72, 72, 0.38);
+  background: linear-gradient(180deg, #ffffff, #fff2f0);
+}
+
+.daily-check-urlaub {
+  border-color: rgba(202, 165, 69, 0.42);
+  background: linear-gradient(180deg, #ffffff, #fff8df);
+}
+
+.daily-check-krank {
+  border-color: rgba(73, 126, 189, 0.36);
+  background: linear-gradient(180deg, #ffffff, #eef5ff);
+}
+
+.daily-check-not_required {
+  opacity: 0.78;
+  background: linear-gradient(180deg, #ffffff, #f4f0ea);
+}
+
+@media (max-width: 768px) {
+  .daily-check-summary {
+    justify-content: flex-start;
+  }
+
+  .daily-check-grid {
+    grid-template-columns: 1fr;
+  }
+}
