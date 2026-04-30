@@ -2754,3 +2754,59 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     grid-template-columns: 1fr;
   }
 }
+
+/* ===== Tageskontrolle Filter ===== */
+.daily-check-controls {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.daily-check-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.daily-check-filter-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: #6a452c;
+  margin-bottom: 6px;
+}
+
+.daily-check-filter-btn {
+  border-radius: 999px;
+  border: 1px solid rgba(171, 141, 109, 0.65);
+  background: #fffaf3;
+  color: #5a3a23;
+  padding: 7px 11px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.daily-check-filter-btn:hover {
+  background: #f9efdf;
+  transform: translateY(-1px);
+}
+
+.daily-check-filter-btn.active {
+  background: linear-gradient(145deg, #7b4a2d, #b98457);
+  color: #fff8ef;
+  border-color: #7b4a2d;
+  box-shadow: 0 8px 16px rgba(123, 74, 45, 0.18);
+}
+
+.daily-check-employee-filter {
+  border-top: 1px solid rgba(203, 182, 156, 0.55);
+  padding-top: 10px;
+}
+
+@media (max-width: 768px) {
+  .daily-check-filter-btn {
+    flex: 1 1 auto;
+  }
+}

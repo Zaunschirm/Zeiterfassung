@@ -247,6 +247,8 @@ export default function DaySlider() {
   const [entries, setEntries] = useState([]);
   const [dailyCheckEntries, setDailyCheckEntries] = useState([]);
   const [dailyCheckLoading, setDailyCheckLoading] = useState(false);
+  const [dailyCheckStatusFilter, setDailyCheckStatusFilter] = useState("all");
+  const [dailyCheckEmployeeCodes, setDailyCheckEmployeeCodes] = useState([]);
   const [editId, setEditId] = useState(null);
   const [editState, setEditState] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -733,6 +735,35 @@ export default function DaySlider() {
     };
   }, [dailyCheckRows]);
 
+  const filteredDailyCheckRows = useMemo(() => {
+    let rows = dailyCheckRows;
+
+    if (dailyCheckStatusFilter === "missing") {
+      rows = rows.filter((row) => row.status === "missing");
+    } else if (dailyCheckStatusFilter === "ok") {
+      rows = rows.filter((row) => row.status === "ok");
+    } else if (dailyCheckStatusFilter === "absence") {
+      rows = rows.filter((row) => row.status === "urlaub" || row.status === "krank");
+    } else if (dailyCheckStatusFilter === "not_required") {
+      rows = rows.filter((row) => row.status === "not_required");
+    }
+
+    if (dailyCheckEmployeeCodes.length > 0) {
+      const selected = new Set(dailyCheckEmployeeCodes.map(String));
+      rows = rows.filter((row) => selected.has(String(row.code || row.id || "")));
+    }
+
+    return rows;
+  }, [dailyCheckEmployeeCodes, dailyCheckRows, dailyCheckStatusFilter]);
+
+  const toggleDailyCheckEmployee = (code) => {
+    const key = String(code || "");
+    if (!key) return;
+    setDailyCheckEmployeeCodes((old) =>
+      old.includes(key) ? old.filter((x) => x !== key) : [...old, key]
+    );
+  };
+
   async function handleSave() {
     setError("");
 
@@ -975,13 +1006,57 @@ export default function DaySlider() {
             </div>
           </div>
 
+
+          <div className="daily-check-controls">
+            <div className="daily-check-filter-row">
+              <button type="button" className={`daily-check-filter-btn ${dailyCheckStatusFilter === "all" ? "active" : ""}`} onClick={() => setDailyCheckStatusFilter("all")}>
+                Alle ({dailyCheckSummary.total})
+              </button>
+              <button type="button" className={`daily-check-filter-btn ${dailyCheckStatusFilter === "missing" ? "active" : ""}`} onClick={() => setDailyCheckStatusFilter("missing")}>
+                ❌ Fehlt ({dailyCheckSummary.missing})
+              </button>
+              <button type="button" className={`daily-check-filter-btn ${dailyCheckStatusFilter === "ok" ? "active" : ""}`} onClick={() => setDailyCheckStatusFilter("ok")}>
+                ✅ Eingetragen ({dailyCheckSummary.ok})
+              </button>
+              <button type="button" className={`daily-check-filter-btn ${dailyCheckStatusFilter === "absence" ? "active" : ""}`} onClick={() => setDailyCheckStatusFilter("absence")}>
+                🟡/🔵 Urlaub/Krank ({dailyCheckSummary.urlaub + dailyCheckSummary.krank})
+              </button>
+              {dailyCheckSummary.notRequired > 0 && (
+                <button type="button" className={`daily-check-filter-btn ${dailyCheckStatusFilter === "not_required" ? "active" : ""}`} onClick={() => setDailyCheckStatusFilter("not_required")}>
+                  ⚪ frei ({dailyCheckSummary.notRequired})
+                </button>
+              )}
+            </div>
+
+            <div className="daily-check-employee-filter">
+              <div className="daily-check-filter-label">Mitarbeiter oben anzeigen:</div>
+              <div className="daily-check-filter-row">
+                <button type="button" className={`daily-check-filter-btn ${dailyCheckEmployeeCodes.length === 0 ? "active" : ""}`} onClick={() => setDailyCheckEmployeeCodes([])}>
+                  Alle MA
+                </button>
+                {dailyCheckRows.map((emp) => {
+                  const key = String(emp.code || emp.id || "");
+                  const active = dailyCheckEmployeeCodes.includes(key);
+                  return (
+                    <button key={emp.id || emp.code} type="button" className={`daily-check-filter-btn ${active ? "active" : ""}`} onClick={() => toggleDailyCheckEmployee(key)}>
+                      {emp.name || emp.code}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
           {dailyCheckRows.length === 0 ? (
             <div className="month-empty-state">
               Keine Mitarbeiter für die Tageskontrolle gefunden.
             </div>
+          ) : filteredDailyCheckRows.length === 0 ? (
+            <div className="month-empty-state">
+              Für diese Auswahl gibt es keine Mitarbeiter.
+            </div>
           ) : (
             <div className="daily-check-grid">
-              {dailyCheckRows.map((emp) => (
+              {filteredDailyCheckRows.map((emp) => (
                 <div
                   key={emp.id || emp.code}
                   className={`daily-check-pill daily-check-${emp.status}`}
