@@ -205,9 +205,12 @@ export default function DaySlider() {
   const canEditAllTime = !!permissions.editAllTime;
   const canDeleteOwnTime = !!permissions.deleteOwnTime;
   const canDeleteAllTime = !!permissions.deleteAllTime;
-  const canSelectEmployees = canWriteAllTime || canEditAllTime || canDeleteAllTime;
+  // Mitarbeiter sollen in der Zeiterfassung immer nur sich selbst sehen.
+  // Rechte wie writeAllTime/editAllTime dürfen die Mitarbeiter-Auswahl nur für Admin/Teamleiter öffnen.
+  const isStaff = role === "mitarbeiter";
+  const canSelectEmployees =
+    !isStaff && (canWriteAllTime || canEditAllTime || canDeleteAllTime);
   const canSeeAllEntries = canSelectEmployees;
-  const isStaff = !canSelectEmployees;
   const isManager = canSelectEmployees;
 
   const [date, setDate] = useState(() =>
