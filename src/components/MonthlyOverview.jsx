@@ -390,6 +390,17 @@ export default function MonthlyOverview() {
     setMonthFilter(currentMonthStr);
   }
 
+  function handleLastMonth() {
+    const d = new Date(currentYear, currentMonth - 1, 1);
+    d.setMonth(d.getMonth() - 1);
+    const lastMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+
+    setYear(d.getFullYear());
+    setRangeFromMonth("");
+    setRangeToMonth("");
+    setMonthFilter(lastMonth);
+  }
+
   function handleLast3Months() {
     const end = currentMonthStr;
     const d = new Date(currentYear, currentMonth - 1, 1);
@@ -672,7 +683,7 @@ export default function MonthlyOverview() {
         58
       );
       doc.text(
-        "Hinweis: Gesamtstunden inkl. Fahrzeit. Feiertage, die auf einen BUAK-Arbeitstag fallen, werden mit den jeweiligen BUAK-Sollstunden bezahlt. Die Feiertagsstunden sind in der Spalte 'Lohnstunden gesamt' bereits enthalten. Wenn am Feiertag ein Zeiteintrag vorhanden ist, sind die Stunden bereits in den Gesamtstunden enthalten; ohne Zeiteintrag werden sie als eigene Feiertagsstunden ergänzt.",
+        "Hinweis: Gesamtstunden inkl. Fahrzeit. Feiertage sind mit den jeweiligen BUAK-Sollstunden auszuweisen. Wenn am Feiertag bereits ein Zeiteintrag vorhanden ist, sind diese Stunden bereits in den Gesamtstunden enthalten; ohne Zeiteintrag werden sie als eigene Feiertagsstunden für die Lohnverrechnung ergänzt.",
         40,
         74,
         { maxWidth: 760 }
@@ -772,7 +783,7 @@ export default function MonthlyOverview() {
         doc.text("Feiertage im Zeitraum", 40, y);
         doc.setFontSize(9.5);
         doc.text(
-          "Die Feiertagsstunden sind in den Lohnstunden gesamt bereits enthalten. Spalte 'In Arbeitszeit enthalten?' zeigt, ob am Feiertag bereits ein Zeiteintrag vorhanden ist. 'Nein' bedeutet: Die Sollstunden wurden als Feiertagsstunden zusätzlich ergänzt.",
+          "Spalte 'In Arbeitszeit enthalten?' zeigt, ob am Feiertag bereits ein Zeiteintrag vorhanden ist. 'Nein' bedeutet: Die Sollstunden sind für die Lohnverrechnung zusätzlich als Feiertagsstunden zu berücksichtigen.",
           40,
           y + 14,
           { maxWidth: 760 }
@@ -1014,6 +1025,9 @@ export default function MonthlyOverview() {
           <div className="month-chip-actions">
             <button type="button" className="hbz-btn btn-small" onClick={handleCurrentMonth}>
               Aktueller Monat
+            </button>
+            <button type="button" className="hbz-btn btn-small" onClick={handleLastMonth}>
+              Letztes Monat
             </button>
             <button type="button" className="hbz-btn btn-small" onClick={handleLast3Months}>
               Letzte 3 Monate
