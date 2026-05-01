@@ -728,6 +728,54 @@ export default function DaySlider() {
     });
   }, [date, dailyCheckEntries, employees, isManager, buakSollHoursToday]);
 
+
+
+  const staffDailyCheckRow = useMemo(() => {
+    if (!isStaff || !employeeRow) return null;
+
+    const empEntries = (entries || []).filter((row) => {
+      const sameDay = String(row?.work_date || row?.date || "").slice(0, 10) === date;
+      const sameEmployee =
+        String(row?.employee_id || "") === String(employeeRow.id || "") ||
+        String(row?.employee_code || row?.code || "") === String(employeeRow.code || "");
+      return sameDay && sameEmployee;
+    });
+
+    const hasUrlaub = empEntries.some((row) => isAbsenceEntry(row, "urlaub"));
+    const hasKrank = empEntries.some((row) => isAbsenceEntry(row, "krank"));
+    const hasEntry = empEntries.length > 0;
+
+    let status = "missing";
+    let label = "Fehlt";
+    let icon = "❌";
+
+    if (buakSollHoursToday <= 0) {
+      status = "not_required";
+      label = "frei laut BUAK";
+      icon = "⚪";
+    } else if (hasUrlaub) {
+      status = "urlaub";
+      label = "Urlaub";
+      icon = "🟡";
+    } else if (hasKrank) {
+      status = "krank";
+      label = "Krank";
+      icon = "🔵";
+    } else if (hasEntry) {
+      status = "ok";
+      label = "Eingetragen";
+      icon = "✅";
+    }
+
+    return {
+      ...employeeRow,
+      status,
+      statusLabel: label,
+      statusIcon: icon,
+      entryCount: empEntries.length,
+    };
+  }, [date, employeeRow, entries, isStaff, buakSollHoursToday]);
+
   const dailyCheckSummary = useMemo(() => {
     const count = (status) => dailyCheckRows.filter((row) => row.status === status).length;
     return {
@@ -988,6 +1036,46 @@ export default function DaySlider() {
           </div>
         </div>
       </div>
+
+
+
+      {isStaff && staffDailyCheckRow && (
+        <div className="hbz-card month-main-card daily-check-card">
+          <div className="month-main-header">
+            <div>
+              <div className="month-card-title">📊 Tageskontrolle</div>
+              <div className="month-main-subtitle">
+                {loading
+                  ? "Prüfe Eintrag…"
+                  : buakSollHoursToday > 0
+                  ? `BUAK Soll heute: ${buakSollHoursToday} h`
+                  : "Laut BUAK heute kein Pflicht-Eintrag"}
+              </div>
+            </div>
+            <div className="daily-check-summary">
+              <span className="badge-soft">{staffDailyCheckRow.statusIcon} {staffDailyCheckRow.statusLabel}</span>
+            </div>
+          </div>
+
+          <div className="daily-check-grid">
+            <div
+              className={`daily-check-pill daily-check-${staffDailyCheckRow.status}`}
+              title={staffDailyCheckRow.entryCount > 1 ? `${staffDailyCheckRow.entryCount} Einträge vorhanden` : ""}
+            >
+              <span className="daily-check-name">
+                {staffDailyCheckRow.name || staffDailyCheckRow.code}
+              </span>
+              <span className="daily-check-state">
+                {staffDailyCheckRow.statusIcon} {staffDailyCheckRow.statusLabel}
+              </span>
+            </div>
+          </div>
+
+          <div className="help" style={{ marginTop: 10 }}>
+            Hier siehst du sofort, ob für deinen Tag bereits eine Zeit erfasst wurde.
+          </div>
+        </div>
+      )}
 
       {isManager && (
         <div className="hbz-card month-main-card daily-check-card">
