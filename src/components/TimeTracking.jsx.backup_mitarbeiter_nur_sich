@@ -113,13 +113,6 @@ export default function TimeTracking() {
   // Daten laden
   // --------------------------------------------------
   useEffect(() => {
-    // MITARBEITER_ONLY_SELF_SELECTION
-    if (isStaff && session?.code) {
-      setSelectedCodes([session.code]);
-    }
-  }, [isStaff, session?.code]);
-
-  useEffect(() => {
     (async () => {
       try {
         const { data: proj } = await supabase
@@ -735,9 +728,7 @@ export default function TimeTracking() {
         <div className="hbz-section-title">Mitarbeiter</div>
 
         <div className="hbz-row" style={{ marginBottom: 6, gap: 8 }}>
-          {!isStaff && (
-    <>
-      <button
+          <button
             type="button"
             className="hbz-btn btn-small"
             onClick={selectAllEmps}
@@ -751,15 +742,13 @@ export default function TimeTracking() {
           >
             Keine
           </button>
-    </>
-  )}
           <div className="help">
             {selectedEmployees.length} / {employees.length} gewählt
           </div>
         </div>
 
         <div className="hbz-chipbar">
-          {visibleTrackingEmployees.map((emp) => {
+          {employees.map((emp) => {
             const key = emp.id ?? emp.code ?? emp.name;
             const active = selectedEmployees.some(
               (e) => (e.id ?? e.code ?? e.name) === key
