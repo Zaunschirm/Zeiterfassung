@@ -153,6 +153,67 @@ function getBuakSollHoursForDay(dateStr) {
   }
 }
 
+
+function easterSundayHoliday(year) {
+  const a = year % 19;
+  const b = Math.floor(year / 100);
+  const c = year % 100;
+  const d = Math.floor(b / 4);
+  const e = b % 4;
+  const f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4);
+  const k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const month = Math.floor((h + l - 7 * m + 114) / 31);
+  const day = ((h + l - 7 * m + 114) % 31) + 1;
+  return new Date(year, month - 1, day, 12, 0, 0);
+}
+
+function addDaysHoliday(date, days) {
+  const d = new Date(date);
+  d.setDate(d.getDate() + days);
+  return d;
+}
+
+function pad2Holiday(n) {
+  return String(n).padStart(2, "0");
+}
+
+function formatHolidayISO(date) {
+  return `${date.getFullYear()}-${pad2Holiday(date.getMonth() + 1)}-${pad2Holiday(date.getDate())}`;
+}
+
+function getAustrianHolidays(year) {
+  const y = Number(year);
+  if (!y) return {};
+  const easter = easterSundayHoliday(y);
+  return {
+    [`${y}-01-01`]: "Neujahr",
+    [`${y}-01-06`]: "Heilige Drei Könige",
+    [formatHolidayISO(addDaysHoliday(easter, 1))]: "Ostermontag",
+    [`${y}-05-01`]: "Staatsfeiertag",
+    [formatHolidayISO(addDaysHoliday(easter, 39))]: "Christi Himmelfahrt",
+    [formatHolidayISO(addDaysHoliday(easter, 50))]: "Pfingstmontag",
+    [formatHolidayISO(addDaysHoliday(easter, 60))]: "Fronleichnam",
+    [`${y}-08-15`]: "Mariä Himmelfahrt",
+    [`${y}-10-26`]: "Nationalfeiertag",
+    [`${y}-11-01`]: "Allerheiligen",
+    [`${y}-12-08`]: "Mariä Empfängnis",
+    [`${y}-12-25`]: "Christtag",
+    [`${y}-12-26`]: "Stefanitag",
+  };
+}
+
+function getHolidayName(dateStr) {
+  if (!dateStr) return null;
+  const iso = String(dateStr).slice(0, 10);
+  const year = Number(iso.slice(0, 4));
+  return getAustrianHolidays(year)[iso] || null;
+}
+
 function isAbsenceEntry(row, type) {
   const note = String(row?.note || "").toLowerCase();
   const absenceType = String(row?.absence_type || row?.absenceType || "").toLowerCase();
@@ -205,12 +266,9 @@ export default function DaySlider() {
   const canEditAllTime = !!permissions.editAllTime;
   const canDeleteOwnTime = !!permissions.deleteOwnTime;
   const canDeleteAllTime = !!permissions.deleteAllTime;
-  // Mitarbeiter sollen in der Zeiterfassung immer nur sich selbst sehen.
-  // Rechte wie writeAllTime/editAllTime dürfen die Mitarbeiter-Auswahl nur für Admin/Teamleiter öffnen.
-  const isStaff = role === "mitarbeiter";
-  const canSelectEmployees =
-    !isStaff && (canWriteAllTime || canEditAllTime || canDeleteAllTime);
+  const canSelectEmployees = canWriteAllTime || canEditAllTime || canDeleteAllTime;
   const canSeeAllEntries = canSelectEmployees;
+  const isStaff = !canSelectEmployees;
   const isManager = canSelectEmployees;
 
   const [date, setDate] = useState(() =>
@@ -672,6 +730,7 @@ export default function DaySlider() {
   const canDeleteEntry = (row) => !!row && (canDeleteAllTime || (canDeleteOwnTime && isOwnEntry(row)));
 
   const buakSollHoursToday = useMemo(() => getBuakSollHoursForDay(date), [date]);
+  const holidayNameToday = useMemo(() => getHolidayName(date), [date]);
 
   const dailyCheckRows = useMemo(() => {
     if (!isManager) return [];
@@ -727,54 +786,6 @@ export default function DaySlider() {
       };
     });
   }, [date, dailyCheckEntries, employees, isManager, buakSollHoursToday]);
-
-
-
-  const staffDailyCheckRow = useMemo(() => {
-    if (!isStaff || !employeeRow) return null;
-
-    const empEntries = (entries || []).filter((row) => {
-      const sameDay = String(row?.work_date || row?.date || "").slice(0, 10) === date;
-      const sameEmployee =
-        String(row?.employee_id || "") === String(employeeRow.id || "") ||
-        String(row?.employee_code || row?.code || "") === String(employeeRow.code || "");
-      return sameDay && sameEmployee;
-    });
-
-    const hasUrlaub = empEntries.some((row) => isAbsenceEntry(row, "urlaub"));
-    const hasKrank = empEntries.some((row) => isAbsenceEntry(row, "krank"));
-    const hasEntry = empEntries.length > 0;
-
-    let status = "missing";
-    let label = "Fehlt";
-    let icon = "❌";
-
-    if (buakSollHoursToday <= 0) {
-      status = "not_required";
-      label = "frei laut BUAK";
-      icon = "⚪";
-    } else if (hasUrlaub) {
-      status = "urlaub";
-      label = "Urlaub";
-      icon = "🟡";
-    } else if (hasKrank) {
-      status = "krank";
-      label = "Krank";
-      icon = "🔵";
-    } else if (hasEntry) {
-      status = "ok";
-      label = "Eingetragen";
-      icon = "✅";
-    }
-
-    return {
-      ...employeeRow,
-      status,
-      statusLabel: label,
-      statusIcon: icon,
-      entryCount: empEntries.length,
-    };
-  }, [date, employeeRow, entries, isStaff, buakSollHoursToday]);
 
   const dailyCheckSummary = useMemo(() => {
     const count = (status) => dailyCheckRows.filter((row) => row.status === status).length;
@@ -1016,6 +1027,11 @@ export default function DaySlider() {
                 <b>{buakWeekLabel}</b>
               </div>
             )}
+            {holidayNameToday && (
+              <div className="month-overview-subtitle">
+                Feiertag: <b>{holidayNameToday}</b> · Soll bleibt <b>{buakSollHoursToday} h</b>
+              </div>
+            )}
           </div>
 
           <div className="month-overview-actions">
@@ -1037,46 +1053,6 @@ export default function DaySlider() {
         </div>
       </div>
 
-
-
-      {isStaff && staffDailyCheckRow && (
-        <div className="hbz-card month-main-card daily-check-card">
-          <div className="month-main-header">
-            <div>
-              <div className="month-card-title">📊 Tageskontrolle</div>
-              <div className="month-main-subtitle">
-                {loading
-                  ? "Prüfe Eintrag…"
-                  : buakSollHoursToday > 0
-                  ? `BUAK Soll heute: ${buakSollHoursToday} h`
-                  : "Laut BUAK heute kein Pflicht-Eintrag"}
-              </div>
-            </div>
-            <div className="daily-check-summary">
-              <span className="badge-soft">{staffDailyCheckRow.statusIcon} {staffDailyCheckRow.statusLabel}</span>
-            </div>
-          </div>
-
-          <div className="daily-check-grid">
-            <div
-              className={`daily-check-pill daily-check-${staffDailyCheckRow.status}`}
-              title={staffDailyCheckRow.entryCount > 1 ? `${staffDailyCheckRow.entryCount} Einträge vorhanden` : ""}
-            >
-              <span className="daily-check-name">
-                {staffDailyCheckRow.name || staffDailyCheckRow.code}
-              </span>
-              <span className="daily-check-state">
-                {staffDailyCheckRow.statusIcon} {staffDailyCheckRow.statusLabel}
-              </span>
-            </div>
-          </div>
-
-          <div className="help" style={{ marginTop: 10 }}>
-            Hier siehst du sofort, ob für deinen Tag bereits eine Zeit erfasst wurde.
-          </div>
-        </div>
-      )}
-
       {isManager && (
         <div className="hbz-card month-main-card daily-check-card">
           <div className="month-main-header">
@@ -1085,6 +1061,8 @@ export default function DaySlider() {
               <div className="month-main-subtitle">
                 {dailyCheckLoading
                   ? "Prüfe Einträge…"
+                  : holidayNameToday
+                  ? `Feiertag: ${holidayNameToday} · BUAK Soll heute: ${buakSollHoursToday} h`
                   : buakSollHoursToday > 0
                   ? `BUAK Soll heute: ${buakSollHoursToday} h`
                   : "Laut BUAK heute kein Pflicht-Eintrag"}

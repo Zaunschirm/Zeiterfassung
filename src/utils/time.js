@@ -21,6 +21,73 @@ export function todayISO() {
   return new Date().toISOString().slice(0, 10);
 }
 
+
+// ---------------- Österreichische Feiertage ----------------
+// Wichtig für BUAK:
+// Ein Feiertag an einem Arbeitstag reduziert die Sollstunden NICHT auf 0.
+// Er wird nur erkannt/angezeigt. Die Sollstunden bleiben laut BUAK-Kalender:
+// Mo-Do 9h, Freitag Langwoche 6h, Freitag Kurzwoche 0h.
+function easterSunday(year) {
+  const a = year % 19;
+  const b = Math.floor(year / 100);
+  const c = year % 100;
+  const d = Math.floor(b / 4);
+  const e = b % 4;
+  const f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4);
+  const k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const month = Math.floor((h + l - 7 * m + 114) / 31);
+  const day = ((h + l - 7 * m + 114) % 31) + 1;
+  return new Date(year, month - 1, day, 12, 0, 0);
+}
+
+function addDays(date, days) {
+  const d = new Date(date);
+  d.setDate(d.getDate() + days);
+  return d;
+}
+
+function formatISODate(date) {
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+}
+
+export function getAustrianHolidays(year) {
+  const y = Number(year);
+  if (!y) return {};
+  const easter = easterSunday(y);
+  return {
+    [`${y}-01-01`]: "Neujahr",
+    [`${y}-01-06`]: "Heilige Drei Könige",
+    [formatISODate(addDays(easter, 1))]: "Ostermontag",
+    [`${y}-05-01`]: "Staatsfeiertag",
+    [formatISODate(addDays(easter, 39))]: "Christi Himmelfahrt",
+    [formatISODate(addDays(easter, 50))]: "Pfingstmontag",
+    [formatISODate(addDays(easter, 60))]: "Fronleichnam",
+    [`${y}-08-15`]: "Mariä Himmelfahrt",
+    [`${y}-10-26`]: "Nationalfeiertag",
+    [`${y}-11-01`]: "Allerheiligen",
+    [`${y}-12-08`]: "Mariä Empfängnis",
+    [`${y}-12-25`]: "Christtag",
+    [`${y}-12-26`]: "Stefanitag",
+  };
+}
+
+export function getHolidayName(dateStr) {
+  const iso = normalizeDateStr(dateStr);
+  if (!iso) return null;
+  const year = Number(iso.slice(0, 4));
+  return getAustrianHolidays(year)[iso] || null;
+}
+
+export function isHoliday(dateStr) {
+  return !!getHolidayName(dateStr);
+}
+
+
 // ---------------- BUAK Kalender 2026 (Kurz/Lang) ----------------
 // Wochen-Soll: Kurze Woche = 36h, Lange Woche = 42h
 // Monats-Soll: wird aus den ARBEITSTAGEN im Monat berechnet
@@ -149,6 +216,8 @@ export function getBuakSollHoursForWeek(dateStr) {
 }
 
 // Sollstunden pro Tag
+// Feiertage werden bewusst NICHT auf 0 gesetzt.
+// Fällt ein Feiertag auf einen BUAK-Arbeitstag, gelten die normalen Sollstunden.
 export function getBuakSollHoursForDay(dateStr) {
   const iso = normalizeDateStr(dateStr);
   if (!iso) return 0;
