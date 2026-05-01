@@ -55,7 +55,10 @@ export default function LoginPanel({ onLogin }) {
         return;
       }
 
-      if (data.disabled === true || data.active === false) {
+      const userRole = normalizeRole(data.role);
+      const isAdmin = userRole === "admin";
+
+      if (!isAdmin && (data.disabled === true || data.active === false)) {
         setError("Dieser Mitarbeiter ist deaktiviert.");
         return;
       }
@@ -76,7 +79,7 @@ export default function LoginPanel({ onLogin }) {
           id: data.id,
           code: data.code,
           name: getDisplayName(data),
-          role: normalizeRole(data.role),
+          role: userRole,
         },
         rememberMe
       );
