@@ -7,8 +7,6 @@ import {
   getBuakWeekType,
   getBuakSollHoursForWeek,
   calcBuakSollHoursForMonth,
-  getHolidayName,
-  getBuakSollHoursForDay,
 } from "../utils/time";
 
 // ---------- Utils ----------
@@ -674,7 +672,7 @@ export default function MonthlyOverview() {
         58
       );
       doc.text(
-        "Hinweis: Gesamtstunden inkl. Fahrzeit. Feiertage, die auf einen BUAK-Arbeitstag fallen, werden bezahlt. In der Spalte „Lohnstunden gesamt“ sind diese Feiertagsstunden bereits inbegriffen: Wenn am Feiertag ein Zeiteintrag vorhanden ist, sind die Stunden bereits in der Arbeitszeit enthalten; wenn kein Zeiteintrag vorhanden ist, werden die BUAK-Sollstunden als bezahlte Feiertagsstunden ergänzt.",
+        "Hinweis: Gesamtstunden inkl. Fahrzeit. Feiertage, die auf einen BUAK-Arbeitstag fallen, werden mit den jeweiligen BUAK-Sollstunden bezahlt. Die Feiertagsstunden sind in der Spalte 'Lohnstunden gesamt' bereits enthalten. Wenn am Feiertag ein Zeiteintrag vorhanden ist, sind die Stunden bereits in den Gesamtstunden enthalten; ohne Zeiteintrag werden sie als eigene Feiertagsstunden ergänzt.",
         40,
         74,
         { maxWidth: 760 }
@@ -713,10 +711,9 @@ export default function MonthlyOverview() {
             holidayName,
             sollHours.toFixed(2),
             alreadyInWorkTime ? "Ja" : "Nein",
-            "Ja",
             alreadyInWorkTime
-              ? "Bereits durch vorhandenen Zeiteintrag in den Lohnstunden gesamt enthalten."
-              : "Wurde automatisch als bezahlte Feiertagsstunden ergänzt und ist in den Lohnstunden gesamt bereits inbegriffen.",
+              ? "Bereits durch vorhandenen Zeiteintrag in den Gesamtstunden enthalten."
+              : "Noch nicht in den Gesamtstunden enthalten – als Feiertagsstunden für Lohnverrechnung berücksichtigen.",
           ]);
         });
       });
@@ -757,7 +754,7 @@ export default function MonthlyOverview() {
       });
 
       autoTable(doc, {
-        head: [["Mitarbeiter", "Erfasste Gesamtstunden", "Feiertagsstunden ergänzt", "Lohnstunden gesamt (Feiertage inbegriffen)", "Arbeitstage", "Urlaub (Datum)", "Krankenstand (Datum)"]],
+        head: [["Mitarbeiter", "Gesamtstunden bisher", "Feiertagsstunden zusätzlich", "Lohnstunden gesamt", "Arbeitstage", "Urlaub (Datum)", "Krankenstand (Datum)"]],
         body,
         startY: 100,
         styles: { fontSize: 9.5, cellPadding: 4, overflow: "linebreak" },
@@ -775,14 +772,14 @@ export default function MonthlyOverview() {
         doc.text("Feiertage im Zeitraum", 40, y);
         doc.setFontSize(9.5);
         doc.text(
-          "Wichtig: Die Feiertagsstunden sind in „Lohnstunden gesamt“ bereits inbegriffen. Die Spalte „In Arbeitszeit enthalten?“ zeigt nur, ob am Feiertag bereits ein Zeiteintrag vorhanden war. Bei „Nein“ wurden die BUAK-Sollstunden automatisch als bezahlte Feiertagsstunden ergänzt.",
+          "Die Feiertagsstunden sind in den Lohnstunden gesamt bereits enthalten. Spalte 'In Arbeitszeit enthalten?' zeigt, ob am Feiertag bereits ein Zeiteintrag vorhanden ist. 'Nein' bedeutet: Die Sollstunden wurden als Feiertagsstunden zusätzlich ergänzt.",
           40,
           y + 14,
           { maxWidth: 760 }
         );
 
         autoTable(doc, {
-          head: [["Mitarbeiter", "Datum", "Feiertag", "Sollstunden", "In Arbeitszeit enthalten?", "In Lohnstunden gesamt inbegriffen", "Hinweis"]],
+          head: [["Mitarbeiter", "Datum", "Feiertag", "Sollstunden", "In Arbeitszeit enthalten?", "Hinweis"]],
           body: holidayRows,
           startY: y + 34,
           styles: { fontSize: 8.5, cellPadding: 3, overflow: "linebreak" },
