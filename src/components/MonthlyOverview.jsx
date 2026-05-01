@@ -7,6 +7,8 @@ import {
   getBuakWeekType,
   getBuakSollHoursForWeek,
   calcBuakSollHoursForMonth,
+  getBuakSollHoursForDay,
+  getHolidayName,
 } from "../utils/time";
 
 // ---------- Utils ----------
@@ -155,26 +157,34 @@ const getPureWorkMinutes = (r) => {
   return Math.max(total - travel, 0);
 };
 
-function eachDateBetween(from, to) {
-  const out = [];
-  if (!from || !to) return out;
-  const start = new Date(`${from}T12:00:00`);
-  const end = new Date(`${to}T12:00:00`);
-  if (isNaN(start.getTime()) || isNaN(end.getTime())) return out;
+function addDaysISO(dateStr, days) {
+  const d = parseYMD(dateStr);
+  d.setDate(d.getDate() + days);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+    d.getDate()
+  ).padStart(2, "0")}`;
+}
 
-  const d = new Date(start);
-  while (d <= end) {
-    out.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`);
-    d.setDate(d.getDate() + 1);
+function datesBetweenISO(from, to) {
+  if (!from || !to) return [];
+  const out = [];
+  let cur = from;
+  while (cur <= to) {
+    out.push(cur);
+    cur = addDaysISO(cur, 1);
   }
   return out;
 }
 
-function formatDateAT(value) {
-  if (!value) return "";
-  const parts = String(value).split("-");
-  if (parts.length !== 3) return String(value);
-  return `${parts[2]}.${parts[1]}.${parts[0]}`;
+function collectPaidHolidays(from, to) {
+  return datesBetweenISO(from, to)
+    .map((date) => {
+      const name = getHolidayName(date);
+      const hours = getBuakSollHoursForDay(date);
+      if (!name || !hours) return null;
+      return { date, name, hours };
+    })
+    .filter(Boolean);
 }
 
 
@@ -390,15 +400,15 @@ export default function MonthlyOverview() {
     setMonthFilter(currentMonthStr);
   }
 
+
   function handleLastMonth() {
     const d = new Date(currentYear, currentMonth - 1, 1);
     d.setMonth(d.getMonth() - 1);
-    const lastMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-
+    const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
     setYear(d.getFullYear());
     setRangeFromMonth("");
     setRangeToMonth("");
-    setMonthFilter(lastMonth);
+    setMonthFilter(ym);
   }
 
   function handleLast3Months() {
@@ -664,7 +674,20 @@ export default function MonthlyOverview() {
 
   function exportLohnverrechnungPDF() {
     try {
-      if (!grouped.length) {
+      const exportEmployees =
+        selectedEmployees.length > 0
+          ? selectedEmployees
+          : employees.filter((e) => selectedCodes.includes(e.code));
+
+      if (!exportEmployees.length) {
+        alert("Bitte mindestens einen Mitarbeiter auswählen.");
+        return;
+      }
+
+      const paidHolidays = collectPaidHolidays(activeRange.from, activeRange.to);
+      const hasAnyData = grouped.length > 0 || paidHolidays.length > 0;
+
+      if (!hasAnyData) {
         alert("Keine Daten für den Export vorhanden.");
         return;
       }
@@ -674,126 +697,121 @@ export default function MonthlyOverview() {
       doc.text(`Lohnverrechnung ${rangeLabel}`, 40, 40);
       doc.setFontSize(10);
       doc.text(
-        `Mitarbeiter: ${
-          selectedEmployees.length
-            ? selectedEmployees.map((e) => e.name || e.code).join(", ")
-            : employees.map((e) => e.name || e.code).join(", ")
-        }`,
+        `Mitarbeiter: ${exportEmployees.map((e) => e.name || e.code).join(", ")}`,
         40,
         58
       );
+
       doc.text(
-        "Hinweis: Gesamtstunden inkl. Fahrzeit. Feiertage sind mit den jeweiligen BUAK-Sollstunden auszuweisen. Wenn am Feiertag bereits ein Zeiteintrag vorhanden ist, sind diese Stunden bereits in den Gesamtstunden enthalten; ohne Zeiteintrag werden sie als eigene Feiertagsstunden für die Lohnverrechnung ergänzt.",
+        "Hinweis: Feiertagsstunden an BUAK-Arbeitstagen sind in den Lohnstunden gesamt bereits enthalten.",
         40,
-        74,
-        { maxWidth: 760 }
+        74
       );
 
-      const selectedEmployeeList = selectedEmployees.length ? selectedEmployees : employees;
-      const groupedByEmployee = new Map();
+      const entryDateByEmployee = new Map();
       grouped.forEach((r) => {
-        const name = r.employee_name || r.employee_id || "—";
-        if (!groupedByEmployee.has(name)) groupedByEmployee.set(name, []);
-        groupedByEmployee.get(name).push(r);
+        const empName = r.employee_name || r.employee_id;
+        if (!entryDateByEmployee.has(empName)) entryDateByEmployee.set(empName, new Set());
+        if (r.work_date) entryDateByEmployee.get(empName).add(r.work_date);
       });
 
-      const holidayRows = [];
-      const holidayExtraByEmployee = new Map();
-      const datesInRange = eachDateBetween(activeRange.from, activeRange.to);
+      const employeeHolidayMap = new Map();
 
-      selectedEmployeeList.forEach((employee) => {
-        const name = employee.name || employee.code || "—";
-        const employeeRows = groupedByEmployee.get(name) || [];
-        const employeeDatesWithEntries = new Set(employeeRows.map((r) => r.work_date).filter(Boolean));
-
-        datesInRange.forEach((date) => {
-          const holidayName = getHolidayName(date);
-          if (!holidayName) return;
-          const sollHours = getBuakSollHoursForDay(date) || 0;
-          if (sollHours <= 0) return;
-
-          const alreadyInWorkTime = employeeDatesWithEntries.has(date);
-          const extraHours = alreadyInWorkTime ? 0 : sollHours;
-          holidayExtraByEmployee.set(name, (holidayExtraByEmployee.get(name) || 0) + extraHours);
-
-          holidayRows.push([
-            name,
-            formatDateAT(date),
-            holidayName,
-            sollHours.toFixed(2),
-            alreadyInWorkTime ? "Ja" : "Nein",
-            alreadyInWorkTime
-              ? "Bereits durch vorhandenen Zeiteintrag in den Gesamtstunden enthalten."
-              : "Noch nicht in den Gesamtstunden enthalten – als Feiertagsstunden für Lohnverrechnung berücksichtigen.",
-          ]);
-        });
+      exportEmployees.forEach((emp) => {
+        const empName = emp.name || emp.code;
+        const existingDates = entryDateByEmployee.get(empName) || new Set();
+        const holidaysForEmployee = paidHolidays
+          .filter((h) => !existingDates.has(h.date))
+          .map((h) => ({ ...h, employee: empName }));
+        employeeHolidayMap.set(empName, holidaysForEmployee);
       });
 
-      const employeeNames = Array.from(new Set([
-        ...Object.keys(totalsByEmployee),
-        ...selectedEmployeeList.map((e) => e.name || e.code || "—"),
-      ])).sort((a, b) => a.localeCompare(b));
-
-      const body = employeeNames.map((name) => {
+      const body = exportEmployees.map((emp) => {
+        const name = emp.name || emp.code;
         const t = totalsByEmployee[name] || { hrs: 0, days: 0 };
-        const holidayExtra = holidayExtraByEmployee.get(name) || 0;
-        const payrollHours = (t.hrs || 0) + holidayExtra;
+        const holidaysForEmployee = employeeHolidayMap.get(name) || [];
+        const holidayHours = holidaysForEmployee.reduce((sum, h) => sum + (h.hours || 0), 0);
+        const paidHoursTotal = (t.hrs || 0) + holidayHours;
 
         const urlaubDates = grouped
           .filter((r) => (r.employee_name || r.employee_id) === name && isVacationRow(r))
           .map((r) => r.work_date)
           .filter(Boolean)
-          .sort()
-          .map(formatDateAT);
+          .sort();
 
         const krankDates = grouped
           .filter((r) => (r.employee_name || r.employee_id) === name && isSickRow(r))
           .map((r) => r.work_date)
           .filter(Boolean)
-          .sort()
-          .map(formatDateAT);
+          .sort();
+
+        const holidayText = holidaysForEmployee.length
+          ? holidaysForEmployee
+              .map((h) => `${h.date} ${h.name} (${h.hours.toFixed(2)} h)`)
+              .join(", ")
+          : "-";
 
         return [
           name,
-          t.hrs.toFixed(2),
-          holidayExtra.toFixed(2),
-          payrollHours.toFixed(2),
+          paidHoursTotal.toFixed(2),
+          (t.hrs || 0).toFixed(2),
+          holidayHours.toFixed(2),
           String(t.days ?? 0),
           urlaubDates.length ? urlaubDates.join(", ") : "-",
           krankDates.length ? krankDates.join(", ") : "-",
+          holidayText,
         ];
       });
 
       autoTable(doc, {
-        head: [["Mitarbeiter", "Gesamtstunden bisher", "Feiertagsstunden zusätzlich", "Lohnstunden gesamt", "Arbeitstage", "Urlaub (Datum)", "Krankenstand (Datum)"]],
+        head: [[
+          "Mitarbeiter",
+          "Lohnstunden gesamt",
+          "Erfasste Stunden",
+          "Feiertag bezahlt",
+          "Arbeitstage",
+          "Urlaub (Datum)",
+          "Krankenstand (Datum)",
+          "Feiertage (bereits in Lohnstunden enthalten)",
+        ]],
         body,
-        startY: 100,
-        styles: { fontSize: 9.5, cellPadding: 4, overflow: "linebreak" },
+        startY: 92,
+        styles: { fontSize: 8.5, cellPadding: 4, overflow: "linebreak" },
         headStyles: { fillColor: [123, 74, 45] },
+        columnStyles: {
+          0: { cellWidth: 95 },
+          1: { cellWidth: 72, halign: "right" },
+          2: { cellWidth: 72, halign: "right" },
+          3: { cellWidth: 72, halign: "right" },
+          4: { cellWidth: 55, halign: "right" },
+          5: { cellWidth: 95 },
+          6: { cellWidth: 95 },
+          7: { cellWidth: 205 },
+        },
         margin: { left: 40, right: 40 },
       });
 
-      if (holidayRows.length) {
-        let y = (doc.lastAutoTable?.finalY || 100) + 22;
-        if (y > doc.internal.pageSize.getHeight() - 120) {
-          doc.addPage();
-          y = 40;
-        }
-        doc.setFontSize(13);
-        doc.text("Feiertage im Zeitraum", 40, y);
-        doc.setFontSize(9.5);
-        doc.text(
-          "Spalte 'In Arbeitszeit enthalten?' zeigt, ob am Feiertag bereits ein Zeiteintrag vorhanden ist. 'Nein' bedeutet: Die Sollstunden sind für die Lohnverrechnung zusätzlich als Feiertagsstunden zu berücksichtigen.",
-          40,
-          y + 14,
-          { maxWidth: 760 }
-        );
+      const holidayRows = [];
+      exportEmployees.forEach((emp) => {
+        const empName = emp.name || emp.code;
+        const holidaysForEmployee = employeeHolidayMap.get(empName) || [];
+        holidaysForEmployee.forEach((h) => {
+          holidayRows.push([
+            empName,
+            h.date,
+            h.name,
+            h.hours.toFixed(2),
+            "Ja – in Lohnstunden gesamt enthalten",
+          ]);
+        });
+      });
 
+      if (holidayRows.length) {
         autoTable(doc, {
-          head: [["Mitarbeiter", "Datum", "Feiertag", "Sollstunden", "In Arbeitszeit enthalten?", "Hinweis"]],
+          head: [["Mitarbeiter", "Datum", "Feiertag", "Stunden", "Hinweis"]],
           body: holidayRows,
-          startY: y + 34,
-          styles: { fontSize: 8.5, cellPadding: 3, overflow: "linebreak" },
+          startY: (doc.lastAutoTable?.finalY || 100) + 22,
+          styles: { fontSize: 9, cellPadding: 4, overflow: "linebreak" },
           headStyles: { fillColor: [200, 200, 200] },
           margin: { left: 40, right: 40 },
         });
@@ -802,7 +820,7 @@ export default function MonthlyOverview() {
       doc.save(`Lohnverrechnung_${rangeLabel.replace(/\s+/g, "_")}.pdf`);
     } catch (err) {
       console.error("Lohnverrechnung PDF Fehler:", err);
-      alert("Lohnverrechnung PDF Fehler – bitte Konsole prüfen.");
+      alert("Lohnverrechnung PDF Fehler – bitte Konsole prüfen.\n" + (err?.message || err));
     }
   }
 
