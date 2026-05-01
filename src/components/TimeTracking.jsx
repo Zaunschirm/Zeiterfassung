@@ -352,7 +352,24 @@ export default function TimeTracking() {
   // --------------------------------------------------
   // Render
   // --------------------------------------------------
+  
+  const hasEntryToday = entries?.some(
+    (e) => e.work_date === new Date().toISOString().slice(0, 10)
+  );
+
   return (
+    <>
+      {isStaff && !hasEntryToday && (
+        <div style={{
+          background: "#fff3cd",
+          padding: "10px",
+          borderRadius: "6px",
+          marginBottom: "10px"
+        }}>
+          ⚠️ Noch kein Eintrag für heute vorhanden
+        </div>
+      )}
+    
     <div className="hbz-container">
 
       {/* Tageskontrolle: Admin/Teamleiter sehen sofort, wer am gewählten BUAK-Arbeitstag fehlt */}

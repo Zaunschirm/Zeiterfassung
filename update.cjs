@@ -76,3 +76,58 @@ updateFile("src/components/MonthlyOverview.jsx");
 updateFile("src/components/YearOverview.jsx");
 
 console.log("FERTIG ✅");
+function patchTimeTracking(file) {
+  const fs = require("fs");
+
+  if (!fs.existsSync(file)) {
+    console.error("Datei nicht gefunden:", file);
+    return;
+  }
+
+  let content = fs.readFileSync(file, "utf8");
+
+  // Mitarbeiter nur sich selbst
+  if (!content.includes("ONLY_SELF_MODE")) {
+    content = content.replace(
+      "const session",
+      `const session
+
+  const isStaff = (session?.role || "").toLowerCase() === "mitarbeiter";`
+    );
+
+    content = content.replace(
+      "setSelectedEmployee(",
+      `if (isStaff) return;
+      setSelectedEmployee(`
+    );
+  }
+
+  // Hinweis wenn kein Eintrag
+  if (!content.includes("Noch kein Eintrag")) {
+    content = content.replace(
+      "return (",
+      `
+  const hasEntryToday = entries?.some(
+    (e) => e.work_date === new Date().toISOString().slice(0, 10)
+  );
+
+  return (
+    <>
+      {isStaff && !hasEntryToday && (
+        <div style={{
+          background: "#fff3cd",
+          padding: "10px",
+          borderRadius: "6px",
+          marginBottom: "10px"
+        }}>
+          ⚠️ Noch kein Eintrag für heute vorhanden
+        </div>
+      )}
+    `
+    );
+  }
+
+  fs.writeFileSync(file, content, "utf8");
+  console.log("TimeTracking angepasst:", file);
+}
+patchTimeTracking("src/components/TimeTracking.jsx");
