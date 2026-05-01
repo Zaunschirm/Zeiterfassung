@@ -6,6 +6,8 @@ import autoTable from "jspdf-autotable";
 import {
   calcBuakSollHoursForYear,
   calcBuakSollHoursForMonth,
+  getHolidayName,
+  getBuakSollHoursForDay,
 } from "../utils/time";
 
 // ---- Helpers ----
@@ -1125,7 +1127,7 @@ export default function YearOverview() {
 
         doc.setFontSize(10);
         doc.text(
-          "Hinweis: Gesamtstunden inkl. Fahrzeit. Urlaubstage sind mit 0,00 Stunden berücksichtigt. Krankenstandstage werden gemäß hinterlegter Sollzeit automatisch berücksichtigt.",
+          "Hinweis: Gesamtstunden inkl. Fahrzeit. Feiertage, die auf einen BUAK-Arbeitstag fallen, werden bezahlt. In der Spalte „Lohnstunden gesamt“ sind Feiertagsstunden bereits inbegriffen. Urlaubstage sind mit 0,00 Stunden berücksichtigt. Krankenstandstage werden gemäß hinterlegter Sollzeit automatisch berücksichtigt.",
           40,
           54,
           { maxWidth: 760 }
@@ -1135,7 +1137,9 @@ export default function YearOverview() {
           head: [[
             "Monat",
             "Mitarbeiter",
-            "Gesamtstunden inkl. Fahrzeit",
+            "Erfasste Gesamtstunden inkl. Fahrzeit",
+            "Feiertagsstunden ergänzt",
+            "Lohnstunden gesamt (Feiertage inbegriffen)",
             "Arbeitstage",
             "Sollstunden",
             "Überstunden",
@@ -1146,6 +1150,8 @@ export default function YearOverview() {
             row.month,
             row.employee,
             row.totalHours.toFixed(2),
+            (row.holidayExtraHours || 0).toFixed(2),
+            (row.payrollHours || row.totalHours).toFixed(2),
             row.workDays,
             row.sollHours.toFixed(2),
             row.overtime.toFixed(2),
@@ -1157,6 +1163,48 @@ export default function YearOverview() {
           headStyles: { fillColor: [123, 74, 45] },
           margin: { left: 40, right: 40 },
         });
+
+        y = (doc.lastAutoTable?.finalY || y) + 16;
+        const payrollHolidayRows = payrollSummary.flatMap((row) =>
+          (row.holidayRows || []).map((h) => [
+            row.month,
+            row.employee,
+            formatDateAT(h.date),
+            h.name,
+            Number(h.sollHours || 0).toFixed(2),
+            h.alreadyInWorkTime ? "Ja" : "Nein",
+            "Ja",
+            h.alreadyInWorkTime
+              ? "Bereits durch vorhandenen Zeiteintrag in den Lohnstunden gesamt enthalten."
+              : "Automatisch als bezahlte Feiertagsstunden ergänzt; in Lohnstunden gesamt bereits inbegriffen.",
+          ])
+        );
+
+        if (payrollHolidayRows.length) {
+          if (y > doc.internal.pageSize.getHeight() - 120) {
+            doc.addPage();
+            y = 40;
+          }
+
+          doc.setFontSize(13);
+          doc.text("Feiertage im Zeitraum", 40, y);
+          doc.setFontSize(9.5);
+          doc.text(
+            "Wichtig: Die Feiertagsstunden sind in „Lohnstunden gesamt“ bereits inbegriffen. Die Spalte „In Arbeitszeit enthalten?“ zeigt nur, ob am Feiertag bereits ein Zeiteintrag vorhanden war.",
+            40,
+            y + 14,
+            { maxWidth: 760 }
+          );
+
+          autoTable(doc, {
+            head: [["Monat", "Mitarbeiter", "Datum", "Feiertag", "Sollstunden", "In Arbeitszeit enthalten?", "In Lohnstunden gesamt inbegriffen", "Hinweis"]],
+            body: payrollHolidayRows,
+            startY: y + 34,
+            styles: { fontSize: 8.3, cellPadding: 3, overflow: "linebreak" },
+            headStyles: { fillColor: [200, 200, 200] },
+            margin: { left: 40, right: 40 },
+          });
+        }
 
         y = (doc.lastAutoTable?.finalY || y) + 12;
         drewSomething = true;
