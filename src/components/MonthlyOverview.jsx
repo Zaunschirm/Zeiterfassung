@@ -155,6 +155,29 @@ const getPureWorkMinutes = (r) => {
   return Math.max(total - travel, 0);
 };
 
+function eachDateBetween(from, to) {
+  const out = [];
+  if (!from || !to) return out;
+  const start = new Date(`${from}T12:00:00`);
+  const end = new Date(`${to}T12:00:00`);
+  if (isNaN(start.getTime()) || isNaN(end.getTime())) return out;
+
+  const d = new Date(start);
+  while (d <= end) {
+    out.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`);
+    d.setDate(d.getDate() + 1);
+  }
+  return out;
+}
+
+function formatDateAT(value) {
+  if (!value) return "";
+  const parts = String(value).split("-");
+  if (parts.length !== 3) return String(value);
+  return `${parts[2]}.${parts[1]}.${parts[0]}`;
+}
+
+
 // ---------- Component ----------
 export default function MonthlyOverview() {
   const session = getSession()?.user || null;
@@ -179,8 +202,6 @@ export default function MonthlyOverview() {
   );
   const [selectedProjectId, setSelectedProjectId] = useState("");
 
-  const [showInactiveEmployees, setShowInactiveEmployees] = useState(false);
-
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState([]);
   const [editId, setEditId] = useState(null);
@@ -195,24 +216,6 @@ export default function MonthlyOverview() {
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, []);
-
-  
-  const employeesWithData = useMemo(() => {
-    const ids = new Set(rows.map((r) => r.employee_id));
-    return employees.filter((e) => ids.has(e.id));
-  }, [rows, employees]);
-
-  const visibleEmployees = useMemo(() => {
-    if (showInactiveEmployees) return employees;
-    return employees.filter((e) => e.active !== false && e.disabled !== true);
-  }, [employees, showInactiveEmployees]);
-
-  const finalEmployees = useMemo(() => {
-    const map = new Map();
-    visibleEmployees.forEach((e) => map.set(e.id, e));
-    employeesWithData.forEach((e) => map.set(e.id, e));
-    return Array.from(map.values());
-  }, [visibleEmployees, employeesWithData]);
 
   const selectedEmployees = useMemo(
     () => employees.filter((e) => selectedCodes.includes(e.code)),
@@ -308,7 +311,7 @@ export default function MonthlyOverview() {
 
       let ids = [];
       if (isManager) {
-        ids = finalEmployees
+        ids = employees
           .filter((e) => selectedCodes.includes(e.code))
           .map((e) => e.id);
 
@@ -663,31 +666,87 @@ export default function MonthlyOverview() {
         `Mitarbeiter: ${
           selectedEmployees.length
             ? selectedEmployees.map((e) => e.name || e.code).join(", ")
-            : finalEmployees.map((e) => e.name || e.code).join(", ")
+            : employees.map((e) => e.name || e.code).join(", ")
         }`,
         40,
         58
       );
+      doc.text(
+        "Hinweis: Gesamtstunden inkl. Fahrzeit. Feiertage sind mit den jeweiligen BUAK-Sollstunden auszuweisen. Wenn am Feiertag bereits ein Zeiteintrag vorhanden ist, sind diese Stunden bereits in den Gesamtstunden enthalten; ohne Zeiteintrag werden sie als eigene Feiertagsstunden für die Lohnverrechnung ergänzt.",
+        40,
+        74,
+        { maxWidth: 760 }
+      );
 
-      const employeeNames = Object.keys(totalsByEmployee).sort((a, b) => a.localeCompare(b));
+      const selectedEmployeeList = selectedEmployees.length ? selectedEmployees : employees;
+      const groupedByEmployee = new Map();
+      grouped.forEach((r) => {
+        const name = r.employee_name || r.employee_id || "—";
+        if (!groupedByEmployee.has(name)) groupedByEmployee.set(name, []);
+        groupedByEmployee.get(name).push(r);
+      });
+
+      const holidayRows = [];
+      const holidayExtraByEmployee = new Map();
+      const datesInRange = eachDateBetween(activeRange.from, activeRange.to);
+
+      selectedEmployeeList.forEach((employee) => {
+        const name = employee.name || employee.code || "—";
+        const employeeRows = groupedByEmployee.get(name) || [];
+        const employeeDatesWithEntries = new Set(employeeRows.map((r) => r.work_date).filter(Boolean));
+
+        datesInRange.forEach((date) => {
+          const holidayName = getHolidayName(date);
+          if (!holidayName) return;
+          const sollHours = getBuakSollHoursForDay(date) || 0;
+          if (sollHours <= 0) return;
+
+          const alreadyInWorkTime = employeeDatesWithEntries.has(date);
+          const extraHours = alreadyInWorkTime ? 0 : sollHours;
+          holidayExtraByEmployee.set(name, (holidayExtraByEmployee.get(name) || 0) + extraHours);
+
+          holidayRows.push([
+            name,
+            formatDateAT(date),
+            holidayName,
+            sollHours.toFixed(2),
+            alreadyInWorkTime ? "Ja" : "Nein",
+            alreadyInWorkTime
+              ? "Bereits durch vorhandenen Zeiteintrag in den Gesamtstunden enthalten."
+              : "Noch nicht in den Gesamtstunden enthalten – als Feiertagsstunden für Lohnverrechnung berücksichtigen.",
+          ]);
+        });
+      });
+
+      const employeeNames = Array.from(new Set([
+        ...Object.keys(totalsByEmployee),
+        ...selectedEmployeeList.map((e) => e.name || e.code || "—"),
+      ])).sort((a, b) => a.localeCompare(b));
+
       const body = employeeNames.map((name) => {
         const t = totalsByEmployee[name] || { hrs: 0, days: 0 };
+        const holidayExtra = holidayExtraByEmployee.get(name) || 0;
+        const payrollHours = (t.hrs || 0) + holidayExtra;
 
         const urlaubDates = grouped
           .filter((r) => (r.employee_name || r.employee_id) === name && isVacationRow(r))
           .map((r) => r.work_date)
           .filter(Boolean)
-          .sort();
+          .sort()
+          .map(formatDateAT);
 
         const krankDates = grouped
           .filter((r) => (r.employee_name || r.employee_id) === name && isSickRow(r))
           .map((r) => r.work_date)
           .filter(Boolean)
-          .sort();
+          .sort()
+          .map(formatDateAT);
 
         return [
           name,
           t.hrs.toFixed(2),
+          holidayExtra.toFixed(2),
+          payrollHours.toFixed(2),
           String(t.days ?? 0),
           urlaubDates.length ? urlaubDates.join(", ") : "-",
           krankDates.length ? krankDates.join(", ") : "-",
@@ -695,13 +754,39 @@ export default function MonthlyOverview() {
       });
 
       autoTable(doc, {
-        head: [["Mitarbeiter", "Gesamtstunden", "Arbeitstage", "Urlaub (Datum)", "Krankenstand (Datum)"]],
+        head: [["Mitarbeiter", "Gesamtstunden bisher", "Feiertagsstunden zusätzlich", "Lohnstunden gesamt", "Arbeitstage", "Urlaub (Datum)", "Krankenstand (Datum)"]],
         body,
-        startY: 80,
-        styles: { fontSize: 10, cellPadding: 4, overflow: "linebreak" },
+        startY: 100,
+        styles: { fontSize: 9.5, cellPadding: 4, overflow: "linebreak" },
         headStyles: { fillColor: [123, 74, 45] },
         margin: { left: 40, right: 40 },
       });
+
+      if (holidayRows.length) {
+        let y = (doc.lastAutoTable?.finalY || 100) + 22;
+        if (y > doc.internal.pageSize.getHeight() - 120) {
+          doc.addPage();
+          y = 40;
+        }
+        doc.setFontSize(13);
+        doc.text("Feiertage im Zeitraum", 40, y);
+        doc.setFontSize(9.5);
+        doc.text(
+          "Spalte 'In Arbeitszeit enthalten?' zeigt, ob am Feiertag bereits ein Zeiteintrag vorhanden ist. 'Nein' bedeutet: Die Sollstunden sind für die Lohnverrechnung zusätzlich als Feiertagsstunden zu berücksichtigen.",
+          40,
+          y + 14,
+          { maxWidth: 760 }
+        );
+
+        autoTable(doc, {
+          head: [["Mitarbeiter", "Datum", "Feiertag", "Sollstunden", "In Arbeitszeit enthalten?", "Hinweis"]],
+          body: holidayRows,
+          startY: y + 34,
+          styles: { fontSize: 8.5, cellPadding: 3, overflow: "linebreak" },
+          headStyles: { fillColor: [200, 200, 200] },
+          margin: { left: 40, right: 40 },
+        });
+      }
 
       doc.save(`Lohnverrechnung_${rangeLabel.replace(/\s+/g, "_")}.pdf`);
     } catch (err) {
@@ -1022,15 +1107,6 @@ export default function MonthlyOverview() {
 
           {isManager && (
             <div className="month-employee-block">
-              <label className="month-check-row" style={{ marginBottom: 10 }}>
-                <input
-                  type="checkbox"
-                  checked={showInactiveEmployees}
-                  onChange={(e) => setShowInactiveEmployees(e.target.checked)}
-                />
-                <span>Deaktivierte Mitarbeiter anzeigen</span>
-              </label>
-
               <div className="month-employee-head">
                 <label className="hbz-label">Mitarbeiter</label>
                 <span className="badge-soft">
@@ -1042,7 +1118,7 @@ export default function MonthlyOverview() {
                 <button
                   type="button"
                   className="hbz-btn btn-small"
-                  onClick={() => setSelectedCodes(finalEmployees.map((e) => e.code))}
+                  onClick={() => setSelectedCodes(employees.map((e) => e.code))}
                 >
                   Alle
                 </button>
@@ -1056,7 +1132,7 @@ export default function MonthlyOverview() {
               </div>
 
               <div className="month-chip-list">
-                {finalEmployees.map((e) => {
+                {employees.map((e) => {
                   const active = selectedCodes.includes(e.code);
                   return (
                     <button

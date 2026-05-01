@@ -99,69 +99,87 @@ function formatDateAT(value) {
   return `${parts[2]}.${parts[1]}.${parts[0]}`;
 }
 
-function buildPayrollMonthlySummary(sourceRows, monthList) {
+function eachDateBetween(from, to) {
+  const out = [];
+  if (!from || !to) return out;
+  const start = new Date(`${from}T12:00:00`);
+  const end = new Date(`${to}T12:00:00`);
+  if (isNaN(start.getTime()) || isNaN(end.getTime())) return out;
+  const d = new Date(start);
+  while (d <= end) {
+    out.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`);
+    d.setDate(d.getDate() + 1);
+  }
+  return out;
+}
+
+function buildPayrollMonthlySummary(sourceRows, monthList, selectedEmployees = []) {
   const employeeMonthMap = new Map();
 
   for (const ym of monthList || []) {
+    for (const employeeInfo of selectedEmployees || []) {
+      const employee = employeeInfo.name || employeeInfo.code || "—";
+      const key = `${employee}||${ym}`;
+      if (!employeeMonthMap.has(key)) {
+        employeeMonthMap.set(key, { key, employee, month: ym, totalMinutes: 0, workDays: new Set(), entryDates: new Set(), vacationDates: [], sickDates: [], holidayRows: [], holidayExtraHours: 0 });
+      }
+    }
+
     for (const r of sourceRows || []) {
       const employee = r.employee_name || r.employee_id || "—";
       const date = r.work_date || "";
       if (!date || !String(date).startsWith(`${ym}-`)) continue;
 
       const key = `${employee}||${ym}`;
-      const current =
-        employeeMonthMap.get(key) || {
-          key,
-          employee,
-          month: ym,
-          totalMinutes: 0,
-          workDays: new Set(),
-          vacationDates: [],
-          sickDates: [],
-        };
+      const current = employeeMonthMap.get(key) || { key, employee, month: ym, totalMinutes: 0, workDays: new Set(), entryDates: new Set(), vacationDates: [], sickDates: [], holidayRows: [], holidayExtraHours: 0 };
 
       const { total } = splitMinutes(r);
       current.totalMinutes += total || 0;
+      current.entryDates.add(date);
 
-      if (isVacationRow(r)) {
-        current.vacationDates.push(date);
-      } else if (isSickRow(r)) {
-        current.sickDates.push(date);
-      } else if ((total || 0) > 0) {
-        current.workDays.add(date);
-      }
+      if (isVacationRow(r)) current.vacationDates.push(date);
+      else if (isSickRow(r)) current.sickDates.push(date);
+      else if ((total || 0) > 0) current.workDays.add(date);
 
       employeeMonthMap.set(key, current);
     }
   }
 
-  return Array.from(employeeMonthMap.values())
-    .map((item) => {
-      const totalHours = h2(item.totalMinutes);
-      const sollHours = calcBuakSollHoursForMonth(item.month) || 0;
-      const overtime = totalHours - sollHours;
-
-      return {
-        key: item.key,
-        employee: item.employee,
-        month: item.month,
-        totalHours,
-        workDays: item.workDays.size,
-        sollHours,
-        overtime,
-        vacationDates: item.vacationDates
-          .sort((a, b) => a.localeCompare(b))
-          .map(formatDateAT),
-        sickDates: item.sickDates
-          .sort((a, b) => a.localeCompare(b))
-          .map(formatDateAT),
-      };
-    })
-    .sort((a, b) => {
-      return (
-        a.employee.localeCompare(b.employee) || a.month.localeCompare(b.month)
-      );
+  for (const item of employeeMonthMap.values()) {
+    const range = getMonthRange(item.month);
+    if (!range) continue;
+    eachDateBetween(range.from, range.to).forEach((date) => {
+      const holidayName = getHolidayName(date);
+      if (!holidayName) return;
+      const sollHours = getBuakSollHoursForDay(date) || 0;
+      if (sollHours <= 0) return;
+      const alreadyInWorkTime = item.entryDates.has(date);
+      const extraHours = alreadyInWorkTime ? 0 : sollHours;
+      item.holidayExtraHours += extraHours;
+      item.holidayRows.push({ date, name: holidayName, sollHours, alreadyInWorkTime, extraHours });
     });
+  }
+
+  return Array.from(employeeMonthMap.values()).map((item) => {
+    const totalHours = h2(item.totalMinutes);
+    const sollHours = calcBuakSollHoursForMonth(item.month) || 0;
+    const payrollHours = totalHours + (item.holidayExtraHours || 0);
+    const overtime = payrollHours - sollHours;
+    return {
+      key: item.key,
+      employee: item.employee,
+      month: item.month,
+      totalHours,
+      holidayExtraHours: item.holidayExtraHours || 0,
+      payrollHours,
+      workDays: item.workDays.size,
+      sollHours,
+      overtime,
+      holidayRows: item.holidayRows || [],
+      vacationDates: item.vacationDates.sort((a, b) => a.localeCompare(b)).map(formatDateAT),
+      sickDates: item.sickDates.sort((a, b) => a.localeCompare(b)).map(formatDateAT),
+    };
+  }).sort((a, b) => a.employee.localeCompare(b.employee) || a.month.localeCompare(b.month));
 }
 
 function getRangeFromFilters(year, monthFilter, rangeFromMonth, rangeToMonth) {
@@ -232,8 +250,6 @@ export default function YearOverview() {
   const [projects, setProjects] = useState([]);
   const [selectedCodes, setSelectedCodes] = useState([]);
   const [selectedProjectId, setSelectedProjectId] = useState("");
-
-  const [showInactiveEmployees, setShowInactiveEmployees] = useState(false);
 
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -309,9 +325,9 @@ export default function YearOverview() {
         rangeToMonth
       );
 
-      const ids = finalEmployees
-          .filter((e) => selectedCodes.includes(e.code))
-          .map((e) => e.id);
+      const ids = employees
+        .filter((e) => selectedCodes.includes(e.code))
+        .map((e) => e.id);
 
       if (!ids.length) {
         setRows([]);
@@ -605,7 +621,7 @@ export default function YearOverview() {
       ...prev,
       selectedEmployeeCodes: selectedCodes.length
         ? [...selectedCodes]
-        : finalEmployees.map((e) => e.code),
+        : employees.map((e) => e.code),
     }));
     setShowPdfDialog(true);
   }
@@ -1309,7 +1325,7 @@ export default function YearOverview() {
               <button
                 type="button"
                 className="hbz-btn btn-small"
-                onClick={() => setSelectedCodes(finalEmployees.map((e) => e.code))}
+                onClick={() => setSelectedCodes(employees.map((e) => e.code))}
               >
                 Alle
               </button>
@@ -1323,7 +1339,7 @@ export default function YearOverview() {
             </div>
 
             <div className="year-chip-list">
-              {finalEmployees.map((e) => {
+              {employees.map((e) => {
                 const active = selectedCodes.includes(e.code);
                 return (
                   <button
@@ -1631,7 +1647,7 @@ export default function YearOverview() {
                     onClick={() =>
                       setPdfOptions((prev) => ({
                         ...prev,
-                        selectedEmployeeCodes: finalEmployees.map((e) => e.code),
+                        selectedEmployeeCodes: employees.map((e) => e.code),
                       }))
                     }
                   >
@@ -1664,7 +1680,7 @@ export default function YearOverview() {
                 </div>
 
                 <div className="year-modal-checklist">
-                  {finalEmployees.map((e) => (
+                  {employees.map((e) => (
                     <label key={e.id} className="export-option">
                       <input
                         type="checkbox"
