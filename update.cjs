@@ -131,3 +131,55 @@ function patchTimeTracking(file) {
   console.log("TimeTracking angepasst:", file);
 }
 patchTimeTracking("src/components/TimeTracking.jsx");
+
+function patchTimeTrackingOnlySelf(file) {
+  const fs = require("fs");
+
+  if (!fs.existsSync(file)) {
+    console.error("Datei nicht gefunden:", file);
+    return;
+  }
+
+  let content = fs.readFileSync(file, "utf8");
+
+  // Backup erstellen
+  const backup = file + ".backup_only_self";
+  if (!fs.existsSync(backup)) {
+    fs.writeFileSync(backup, content, "utf8");
+  }
+
+  // Mitarbeiterliste im Picker auf angemeldeten Mitarbeiter begrenzen
+  content = content.replace(
+    /<EmployeePicker\s+([^>]*?)employees=\{employees\}([^>]*?)\/>/gs,
+    `<EmployeePicker
+        $1
+        employees={
+          role === "mitarbeiter"
+            ? employees.filter((e) => e.code === session?.code)
+            : employees
+        }
+        $2
+      />`
+  );
+
+  // Falls direkt employees.map verwendet wird: nur eigene Person anzeigen
+  content = content.replace(
+    /employees\.map\(\(e\) =>/g,
+    `(role === "mitarbeiter" ? employees.filter((e) => e.code === session?.code) : employees).map((e) =>`
+  );
+
+  // Alle/Keine Buttons für Mitarbeiter ausblenden
+  content = content.replace(
+    /(\{\/\*\s*Mitarbeiter\s*\*\/\}[\s\S]*?)(<button[\s\S]*?>Alle<\/button>[\s\S]*?<button[\s\S]*?>Keine<\/button>)/g,
+    `$1{role !== "mitarbeiter" && (
+        <>
+          $2
+        </>
+      )}`
+  );
+
+  fs.writeFileSync(file, content, "utf8");
+  console.log("Zeiterfassung angepasst:", file);
+}
+
+patchTimeTrackingOnlySelf("src/components/TimeTracking.jsx");
