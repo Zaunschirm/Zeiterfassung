@@ -182,4 +182,92 @@ function patchTimeTrackingOnlySelf(file) {
   console.log("Zeiterfassung angepasst:", file);
 }
 
-patchTimeTrackingOnlySelf("src/components/TimeTracking.jsx");
+patchTimeTrackingOnlySelf("src/components/TimeTracking.jsx");// ===============================
+// 🔥 TIMETRACKING FIX (nur 1 Datei!)
+// ===============================
+function patchTimeTracking(file) {
+  const fs = require("fs");
+
+  if (!fs.existsSync(file)) {
+    console.error("Datei nicht gefunden:", file);
+    return;
+  }
+
+  let content = fs.readFileSync(file, "utf8");
+
+  // Backup
+  const backup = file + ".backup";
+  if (!fs.existsSync(backup)) {
+    fs.writeFileSync(backup, content, "utf8");
+  }
+
+  // isStaff sicherstellen
+  if (!content.includes("const isStaff")) {
+    content = content.replace(
+      /const\s+role\s*=\s*[^;]+;/,
+      (m) => `${m}\nconst isStaff = role === "mitarbeiter";`
+    );
+  }
+
+  // Sichtbare Mitarbeiter definieren
+  if (!content.includes("visibleTrackingEmployees")) {
+    content = content.replace(
+      /const\s+\[employees[^\]]+\]\s*=\s*useState\([^\)]*\);/,
+      (m) => `${m}
+
+const visibleTrackingEmployees = useMemo(() => {
+  if (!isStaff) return employees;
+  return employees.filter((e) => e.code === session?.code);
+}, [employees, isStaff, session?.code]);`
+    );
+  }
+
+  // Alle Mitarbeiter-Renderings ersetzen
+  content = content.replace(/employees\.map\(/g, "visibleTrackingEmployees.map(");
+
+  // Tageskontrolle oben fixen
+  content = content.replace(/activeEmployees\.map\(/g, "visibleTrackingEmployees.map(");
+
+  // EmployeePicker fixen
+  content = content.replace(/employees=\{employees\}/g, "employees={visibleTrackingEmployees}");
+
+  // Automatisch sich selbst setzen
+  if (!content.includes("AUTO_SELF_SELECT")) {
+    content = content.replace(
+      /useEffect\(\(\)\s*=>\s*\{/,
+      `useEffect(() => {
+  // AUTO_SELF_SELECT
+  if (isStaff && session?.code) {
+    setSelectedCodes([session.code]);
+  }
+}, [isStaff, session?.code]);
+
+useEffect(() => {`
+    );
+  }
+
+  // Alle/Keine ausblenden
+  content = content.replace(
+    /<button[^>]*>\s*Alle\s*<\/button>\s*<button[^>]*>\s*Keine\s*<\/button>/g,
+    `{!isStaff && (
+      <>
+        <button>Alle</button>
+        <button>Keine</button>
+      </>
+    )}`
+  );
+
+  // Klicks blockieren
+  content = content.replace(
+    /onClick=\{\(\)\s*=>\s*\{/g,
+    `onClick={() => {
+      if (isStaff) return;`
+  );
+
+  fs.writeFileSync(file, content, "utf8");
+
+  console.log("✅ TimeTracking angepasst:", file);
+}
+
+// 🔥 AUSFÜHREN
+patchTimeTracking("src/components/TimeTracking.jsx");

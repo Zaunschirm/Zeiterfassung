@@ -113,13 +113,6 @@ export default function TimeTracking() {
   // Daten laden
   // --------------------------------------------------
   useEffect(() => {
-  // AUTO_SELF_SELECT
-  if (isStaff && session?.code) {
-    setSelectedCodes([session.code]);
-  }
-}, [isStaff, session?.code]);
-
-useEffect(() => {
     // MITARBEITER_ONLY_SELF_SELECTION
     if (isStaff && session?.code) {
       setSelectedCodes([session.code]);
@@ -744,16 +737,20 @@ useEffect(() => {
         <div className="hbz-row" style={{ marginBottom: 6, gap: 8 }}>
           {!isStaff && (
     <>
-      {!isStaff && (
-      <>
-        {!isStaff && (
-      <>
-        <button>Alle</button>
-        <button>Keine</button>
-      </>
-    )}
-      </>
-    )}
+      <button
+            type="button"
+            className="hbz-btn btn-small"
+            onClick={selectAllEmps}
+          >
+            Alle
+          </button>
+          <button
+            type="button"
+            className="hbz-btn btn-small"
+            onClick={selectNoneEmps}
+          >
+            Keine
+          </button>
     </>
   )}
           <div className="help">
