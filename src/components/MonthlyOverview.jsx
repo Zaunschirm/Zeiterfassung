@@ -179,6 +179,8 @@ export default function MonthlyOverview() {
   );
   const [selectedProjectId, setSelectedProjectId] = useState("");
 
+  const [showInactiveEmployees, setShowInactiveEmployees] = useState(false);
+
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState([]);
   const [editId, setEditId] = useState(null);
@@ -193,6 +195,24 @@ export default function MonthlyOverview() {
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, []);
+
+  
+  const employeesWithData = useMemo(() => {
+    const ids = new Set(rows.map((r) => r.employee_id));
+    return employees.filter((e) => ids.has(e.id));
+  }, [rows, employees]);
+
+  const visibleEmployees = useMemo(() => {
+    if (showInactiveEmployees) return employees;
+    return employees.filter((e) => e.active !== false && e.disabled !== true);
+  }, [employees, showInactiveEmployees]);
+
+  const finalEmployees = useMemo(() => {
+    const map = new Map();
+    visibleEmployees.forEach((e) => map.set(e.id, e));
+    employeesWithData.forEach((e) => map.set(e.id, e));
+    return Array.from(map.values());
+  }, [visibleEmployees, employeesWithData]);
 
   const selectedEmployees = useMemo(
     () => employees.filter((e) => selectedCodes.includes(e.code)),
@@ -288,7 +308,7 @@ export default function MonthlyOverview() {
 
       let ids = [];
       if (isManager) {
-        ids = employees
+        ids = finalEmployees
           .filter((e) => selectedCodes.includes(e.code))
           .map((e) => e.id);
 
@@ -643,7 +663,7 @@ export default function MonthlyOverview() {
         `Mitarbeiter: ${
           selectedEmployees.length
             ? selectedEmployees.map((e) => e.name || e.code).join(", ")
-            : employees.map((e) => e.name || e.code).join(", ")
+            : finalEmployees.map((e) => e.name || e.code).join(", ")
         }`,
         40,
         58
@@ -1002,6 +1022,15 @@ export default function MonthlyOverview() {
 
           {isManager && (
             <div className="month-employee-block">
+              <label className="month-check-row" style={{ marginBottom: 10 }}>
+                <input
+                  type="checkbox"
+                  checked={showInactiveEmployees}
+                  onChange={(e) => setShowInactiveEmployees(e.target.checked)}
+                />
+                <span>Deaktivierte Mitarbeiter anzeigen</span>
+              </label>
+
               <div className="month-employee-head">
                 <label className="hbz-label">Mitarbeiter</label>
                 <span className="badge-soft">
@@ -1013,7 +1042,7 @@ export default function MonthlyOverview() {
                 <button
                   type="button"
                   className="hbz-btn btn-small"
-                  onClick={() => setSelectedCodes(employees.map((e) => e.code))}
+                  onClick={() => setSelectedCodes(finalEmployees.map((e) => e.code))}
                 >
                   Alle
                 </button>
@@ -1027,7 +1056,7 @@ export default function MonthlyOverview() {
               </div>
 
               <div className="month-chip-list">
-                {employees.map((e) => {
+                {finalEmployees.map((e) => {
                   const active = selectedCodes.includes(e.code);
                   return (
                     <button

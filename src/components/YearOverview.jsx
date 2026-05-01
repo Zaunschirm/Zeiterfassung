@@ -233,6 +233,8 @@ export default function YearOverview() {
   const [selectedCodes, setSelectedCodes] = useState([]);
   const [selectedProjectId, setSelectedProjectId] = useState("");
 
+  const [showInactiveEmployees, setShowInactiveEmployees] = useState(false);
+
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -307,9 +309,9 @@ export default function YearOverview() {
         rangeToMonth
       );
 
-      const ids = employees
-        .filter((e) => selectedCodes.includes(e.code))
-        .map((e) => e.id);
+      const ids = finalEmployees
+          .filter((e) => selectedCodes.includes(e.code))
+          .map((e) => e.id);
 
       if (!ids.length) {
         setRows([]);
@@ -603,7 +605,7 @@ export default function YearOverview() {
       ...prev,
       selectedEmployeeCodes: selectedCodes.length
         ? [...selectedCodes]
-        : employees.map((e) => e.code),
+        : finalEmployees.map((e) => e.code),
     }));
     setShowPdfDialog(true);
   }
@@ -1307,7 +1309,7 @@ export default function YearOverview() {
               <button
                 type="button"
                 className="hbz-btn btn-small"
-                onClick={() => setSelectedCodes(employees.map((e) => e.code))}
+                onClick={() => setSelectedCodes(finalEmployees.map((e) => e.code))}
               >
                 Alle
               </button>
@@ -1321,7 +1323,7 @@ export default function YearOverview() {
             </div>
 
             <div className="year-chip-list">
-              {employees.map((e) => {
+              {finalEmployees.map((e) => {
                 const active = selectedCodes.includes(e.code);
                 return (
                   <button
@@ -1629,7 +1631,7 @@ export default function YearOverview() {
                     onClick={() =>
                       setPdfOptions((prev) => ({
                         ...prev,
-                        selectedEmployeeCodes: employees.map((e) => e.code),
+                        selectedEmployeeCodes: finalEmployees.map((e) => e.code),
                       }))
                     }
                   >
@@ -1662,7 +1664,7 @@ export default function YearOverview() {
                 </div>
 
                 <div className="year-modal-checklist">
-                  {employees.map((e) => (
+                  {finalEmployees.map((e) => (
                     <label key={e.id} className="export-option">
                       <input
                         type="checkbox"
