@@ -6,7 +6,9 @@ import autoTable from "jspdf-autotable";
 import {
   getBuakWeekType,
   getBuakSollHoursForWeek,
+  getBuakSollHoursForDay,
   calcBuakSollHoursForMonth,
+  getHolidayName,
 } from "../utils/time";
 
 // ---------- Utils ----------

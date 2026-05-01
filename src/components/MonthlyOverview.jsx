@@ -6,8 +6,8 @@ import autoTable from "jspdf-autotable";
 import {
   getBuakWeekType,
   getBuakSollHoursForWeek,
-  calcBuakSollHoursForMonth,
   getBuakSollHoursForDay,
+  calcBuakSollHoursForMonth,
   getHolidayName,
 } from "../utils/time";
 
@@ -156,37 +156,6 @@ const getPureWorkMinutes = (r) => {
   const travel = r?._travel ?? getTravel(r);
   return Math.max(total - travel, 0);
 };
-
-function addDaysISO(dateStr, days) {
-  const d = parseYMD(dateStr);
-  d.setDate(d.getDate() + days);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
-    d.getDate()
-  ).padStart(2, "0")}`;
-}
-
-function datesBetweenISO(from, to) {
-  if (!from || !to) return [];
-  const out = [];
-  let cur = from;
-  while (cur <= to) {
-    out.push(cur);
-    cur = addDaysISO(cur, 1);
-  }
-  return out;
-}
-
-function collectPaidHolidays(from, to) {
-  return datesBetweenISO(from, to)
-    .map((date) => {
-      const name = getHolidayName(date);
-      const hours = getBuakSollHoursForDay(date);
-      if (!name || !hours) return null;
-      return { date, name, hours };
-    })
-    .filter(Boolean);
-}
-
 
 // ---------- Component ----------
 export default function MonthlyOverview() {
@@ -399,7 +368,6 @@ export default function MonthlyOverview() {
     setRangeToMonth("");
     setMonthFilter(currentMonthStr);
   }
-
 
   function handleLastMonth() {
     const d = new Date(currentYear, currentMonth - 1, 1);
@@ -674,153 +642,190 @@ export default function MonthlyOverview() {
 
   function exportLohnverrechnungPDF() {
     try {
-      const exportEmployees =
-        selectedEmployees.length > 0
-          ? selectedEmployees
-          : employees.filter((e) => selectedCodes.includes(e.code));
+      const selectedEmployeeObjects = (selectedEmployees.length
+        ? selectedEmployees
+        : employees.filter((e) => selectedCodes.includes(e.code))
+      ).filter(Boolean);
 
-      if (!exportEmployees.length) {
-        alert("Bitte mindestens einen Mitarbeiter auswählen.");
+      const employeesForPayroll = selectedEmployeeObjects.length
+        ? selectedEmployeeObjects
+        : employees;
+
+      if (!employeesForPayroll.length) {
+        alert("Keine Mitarbeiter für den Export ausgewählt.");
         return;
       }
 
-      const paidHolidays = collectPaidHolidays(activeRange.from, activeRange.to);
-      const hasAnyData = grouped.length > 0 || paidHolidays.length > 0;
+      const fromDate = activeRange?.from;
+      const toDate = activeRange?.to;
 
-      if (!hasAnyData) {
-        alert("Keine Daten für den Export vorhanden.");
-        return;
+      const holidayDates = [];
+      if (fromDate && toDate) {
+        const d = new Date(`${fromDate}T12:00:00`);
+        const end = new Date(`${toDate}T12:00:00`);
+
+        while (!isNaN(d.getTime()) && !isNaN(end.getTime()) && d <= end) {
+          const ds = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+          const name = getHolidayName(ds);
+          const soll = getBuakSollHoursForDay(ds);
+
+          if (name && soll > 0) {
+            holidayDates.push({ date: ds, name, hours: soll });
+          }
+
+          d.setDate(d.getDate() + 1);
+        }
       }
 
-      const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
-      doc.setFontSize(16);
-      doc.text(`Lohnverrechnung ${rangeLabel}`, 40, 40);
-      doc.setFontSize(10);
-      doc.text(
-        `Mitarbeiter: ${exportEmployees.map((e) => e.name || e.code).join(", ")}`,
-        40,
-        58
-      );
+      const hasEntryForEmployeeDate = (emp, date) =>
+        grouped.some((r) => {
+          const sameEmployee =
+            (emp.id && r.employee_id === emp.id) ||
+            (emp.name && (r.employee_name || "") === emp.name) ||
+            (emp.code && employeesById[r.employee_id]?.code === emp.code);
 
-      doc.text(
-        "Hinweis: Feiertagsstunden an BUAK-Arbeitstagen sind in den Lohnstunden gesamt bereits enthalten.",
-        40,
-        74
-      );
+          return sameEmployee && r.work_date === date;
+        });
 
-      const entryDateByEmployee = new Map();
-      grouped.forEach((r) => {
-        const empName = r.employee_name || r.employee_id;
-        if (!entryDateByEmployee.has(empName)) entryDateByEmployee.set(empName, new Set());
-        if (r.work_date) entryDateByEmployee.get(empName).add(r.work_date);
-      });
+      const getEmployeeTotalName = (emp) => emp.name || emp.code || String(emp.id || "");
 
-      const employeeHolidayMap = new Map();
+      const body = employeesForPayroll.map((emp) => {
+        const employeeName = getEmployeeTotalName(emp);
+        const existingTotal = totalsByEmployee[employeeName] || { hrs: 0, days: 0 };
 
-      exportEmployees.forEach((emp) => {
-        const empName = emp.name || emp.code;
-        const existingDates = entryDateByEmployee.get(empName) || new Set();
-        const holidaysForEmployee = paidHolidays
-          .filter((h) => !existingDates.has(h.date))
-          .map((h) => ({ ...h, employee: empName }));
-        employeeHolidayMap.set(empName, holidaysForEmployee);
-      });
+        const holidayRows = holidayDates.map((h) => {
+          const alreadyHasEntry = hasEntryForEmployeeDate(emp, h.date);
+          return {
+            ...h,
+            alreadyHasEntry,
+            paidHours: alreadyHasEntry ? 0 : h.hours,
+          };
+        });
 
-      const body = exportEmployees.map((emp) => {
-        const name = emp.name || emp.code;
-        const t = totalsByEmployee[name] || { hrs: 0, days: 0 };
-        const holidaysForEmployee = employeeHolidayMap.get(name) || [];
-        const holidayHours = holidaysForEmployee.reduce((sum, h) => sum + (h.hours || 0), 0);
-        const paidHoursTotal = (t.hrs || 0) + holidayHours;
+        const additionalHolidayHours = holidayRows.reduce(
+          (sum, h) => sum + h.paidHours,
+          0
+        );
+        const payrollHours = (existingTotal.hrs || 0) + additionalHolidayHours;
 
         const urlaubDates = grouped
-          .filter((r) => (r.employee_name || r.employee_id) === name && isVacationRow(r))
+          .filter((r) => (r.employee_name || r.employee_id) === employeeName && isVacationRow(r))
           .map((r) => r.work_date)
           .filter(Boolean)
           .sort();
 
         const krankDates = grouped
-          .filter((r) => (r.employee_name || r.employee_id) === name && isSickRow(r))
+          .filter((r) => (r.employee_name || r.employee_id) === employeeName && isSickRow(r))
           .map((r) => r.work_date)
           .filter(Boolean)
           .sort();
 
-        const holidayText = holidaysForEmployee.length
-          ? holidaysForEmployee
-              .map((h) => `${h.date} ${h.name} (${h.hours.toFixed(2)} h)`)
-              .join(", ")
+        const holidayText = holidayRows.length
+          ? holidayRows
+              .map((h) =>
+                `${h.date} ${h.name} (${h.hours.toFixed(2)} h${
+                  h.alreadyHasEntry ? ", durch Eintrag bereits enthalten" : ", bezahlt eingerechnet"
+                })`
+              )
+              .join("\\n")
           : "-";
 
         return [
-          name,
-          paidHoursTotal.toFixed(2),
-          (t.hrs || 0).toFixed(2),
-          holidayHours.toFixed(2),
-          String(t.days ?? 0),
+          employeeName,
+          payrollHours.toFixed(2),
+          (existingTotal.hrs || 0).toFixed(2),
+          additionalHolidayHours.toFixed(2),
+          String(existingTotal.days ?? 0),
           urlaubDates.length ? urlaubDates.join(", ") : "-",
           krankDates.length ? krankDates.join(", ") : "-",
           holidayText,
         ];
       });
 
+      const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
+
+      doc.setFontSize(16);
+      doc.text(`Lohnverrechnung ${rangeLabel}`, 40, 40);
+
+      doc.setFontSize(9);
+      doc.text(
+        "Hinweis: Feiertage, die auf einen BUAK-Arbeitstag fallen, sind in den Lohnstunden gesamt bereits enthalten.",
+        40,
+        58
+      );
+      doc.text(
+        "Wenn am Feiertag bereits ein Zeiteintrag vorhanden ist, wird dieser nicht nochmals als Feiertagsentgelt addiert.",
+        40,
+        72
+      );
+
       autoTable(doc, {
         head: [[
           "Mitarbeiter",
           "Lohnstunden gesamt",
-          "Erfasste Stunden",
-          "Feiertag bezahlt",
+          "Arbeitszeit laut Einträgen",
+          "Feiertagsstunden enthalten",
           "Arbeitstage",
           "Urlaub (Datum)",
           "Krankenstand (Datum)",
-          "Feiertage (bereits in Lohnstunden enthalten)",
+          "Feiertage im Zeitraum",
         ]],
         body,
         startY: 92,
-        styles: { fontSize: 8.5, cellPadding: 4, overflow: "linebreak" },
+        styles: { fontSize: 8, cellPadding: 3, overflow: "linebreak" },
         headStyles: { fillColor: [123, 74, 45] },
         columnStyles: {
-          0: { cellWidth: 95 },
-          1: { cellWidth: 72, halign: "right" },
-          2: { cellWidth: 72, halign: "right" },
-          3: { cellWidth: 72, halign: "right" },
+          0: { cellWidth: 90 },
+          1: { cellWidth: 70, halign: "right" },
+          2: { cellWidth: 80, halign: "right" },
+          3: { cellWidth: 80, halign: "right" },
           4: { cellWidth: 55, halign: "right" },
-          5: { cellWidth: 95 },
-          6: { cellWidth: 95 },
-          7: { cellWidth: 205 },
+          5: { cellWidth: 90 },
+          6: { cellWidth: 90 },
+          7: { cellWidth: 245 },
         },
         margin: { left: 40, right: 40 },
+        didDrawPage: () => {
+          doc.setFontSize(8);
+          const pageWidth = doc.internal.pageSize.getWidth();
+          doc.text(
+            `Erstellt am ${new Date().toLocaleDateString("de-AT")}`,
+            pageWidth - 40,
+            30,
+            { align: "right" }
+          );
+        },
       });
 
-      const holidayRows = [];
-      exportEmployees.forEach((emp) => {
-        const empName = emp.name || emp.code;
-        const holidaysForEmployee = employeeHolidayMap.get(empName) || [];
-        holidaysForEmployee.forEach((h) => {
-          holidayRows.push([
-            empName,
-            h.date,
-            h.name,
-            h.hours.toFixed(2),
-            "Ja – in Lohnstunden gesamt enthalten",
-          ]);
-        });
-      });
+      const totalPayrollHours = body.reduce(
+        (sum, row) => sum + (parseFloat(row[1]) || 0),
+        0
+      );
+      const totalHolidayHours = body.reduce(
+        (sum, row) => sum + (parseFloat(row[3]) || 0),
+        0
+      );
 
-      if (holidayRows.length) {
-        autoTable(doc, {
-          head: [["Mitarbeiter", "Datum", "Feiertag", "Stunden", "Hinweis"]],
-          body: holidayRows,
-          startY: (doc.lastAutoTable?.finalY || 100) + 22,
-          styles: { fontSize: 9, cellPadding: 4, overflow: "linebreak" },
-          headStyles: { fillColor: [200, 200, 200] },
-          margin: { left: 40, right: 40 },
-        });
+      let currentY = (doc.lastAutoTable?.finalY || 92) + 18;
+      if (currentY > doc.internal.pageSize.getHeight() - 70) {
+        doc.addPage();
+        currentY = 50;
       }
+
+      doc.setFontSize(11);
+      doc.text(
+        `Summe Lohnstunden: ${totalPayrollHours.toFixed(2)} h | darin enthaltene Feiertagsstunden: ${totalHolidayHours.toFixed(2)} h`,
+        40,
+        currentY
+      );
 
       doc.save(`Lohnverrechnung_${rangeLabel.replace(/\s+/g, "_")}.pdf`);
     } catch (err) {
       console.error("Lohnverrechnung PDF Fehler:", err);
-      alert("Lohnverrechnung PDF Fehler – bitte Konsole prüfen.\n" + (err?.message || err));
+      alert(
+        "Lohnverrechnung PDF Fehler – bitte Konsole prüfen.\\n" +
+          (err?.message || err)
+      );
     }
   }
 
