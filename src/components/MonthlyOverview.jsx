@@ -192,6 +192,8 @@ const getPureWorkMinutes = (r) => {
   return Math.max(total - travel, 0);
 };
 
+const isActiveEmployee = (e) => e?.disabled !== true && e?.active !== false;
+
 // ---------- Component ----------
 export default function MonthlyOverview() {
   const session = getSession()?.user || null;
@@ -220,6 +222,9 @@ export default function MonthlyOverview() {
   const [rows, setRows] = useState([]);
   const [editId, setEditId] = useState(null);
   const [editState, setEditState] = useState(null);
+  const [showMissingDialog, setShowMissingDialog] = useState(false);
+  const [missingEntries, setMissingEntries] = useState(null);
+  const [missingLoading, setMissingLoading] = useState(false);
 
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
@@ -675,17 +680,100 @@ export default function MonthlyOverview() {
     URL.revokeObjectURL(url);
   }
 
+  async function checkMissingEntriesLastMonth() {
+    try {
+      setMissingLoading(true);
+      setShowMissingDialog(true);
+
+      const now = new Date();
+      const lastMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const y = lastMonthDate.getFullYear();
+      const m = String(lastMonthDate.getMonth() + 1).padStart(2, "0");
+      const ym = `${y}-${m}`;
+      const range = getMonthRange(ym);
+
+      if (!range) {
+        setMissingEntries({
+          label: "Letztes Monat",
+          missing: [],
+          complete: false,
+          error: "Zeitraum konnte nicht ermittelt werden.",
+        });
+        return;
+      }
+
+      const activeEmployees = employees
+        .filter(isActiveEmployee)
+        .sort((a, b) => (a.name || a.code || "").localeCompare(b.name || b.code || ""));
+
+      if (!activeEmployees.length) {
+        setMissingEntries({
+          label: `Monat ${ym}`,
+          missing: [],
+          complete: true,
+          error: "Keine aktiven Mitarbeiter gefunden.",
+        });
+        return;
+      }
+
+      const activeIds = activeEmployees.map((e) => e.id).filter(Boolean);
+
+      let { data, error } = await supabase
+        .from("v_time_entries_expanded")
+        .select("employee_id, employee_name, work_date, note")
+        .gte("work_date", range.from)
+        .lte("work_date", range.to)
+        .in("employee_id", activeIds);
+
+      if (error) throw error;
+
+      const existing = new Set(
+        (data || [])
+          .filter((r) => r?.employee_id && r?.work_date)
+          .map((r) => `${r.employee_id}||${r.work_date}`)
+      );
+
+      const requiredDates = getDatesBetweenInclusive(range.from, range.to).filter(
+        (date) => Number(getBuakSollHoursForDay(date)) > 0
+      );
+
+      const missing = [];
+
+      activeEmployees.forEach((emp) => {
+        const dates = requiredDates.filter((date) => !existing.has(`${emp.id}||${date}`));
+
+        if (dates.length) {
+          missing.push({
+            employee: emp.name || emp.code || "—",
+            dates,
+          });
+        }
+      });
+
+      setMissingEntries({
+        label: `Monat ${ym}`,
+        missing,
+        complete: missing.length === 0,
+        error: null,
+      });
+    } catch (err) {
+      console.error("Fehlende Einträge prüfen Fehler:", err);
+      setMissingEntries({
+        label: "Letztes Monat",
+        missing: [],
+        complete: false,
+        error: err?.message || String(err),
+      });
+    } finally {
+      setMissingLoading(false);
+    }
+  }
+
   function exportLohnverrechnungPDF() {
     try {
-      const selectedForExport =
-        selectedEmployees.length > 0
-          ? selectedEmployees
-          : employees.filter((e) => selectedCodes.includes(e.code));
-
-      const employeesForExport =
-        selectedForExport.length > 0
-          ? selectedForExport
-          : employees.filter((e) => Object.keys(totalsByEmployee).includes(e.name));
+      const employeesForExport = employees
+        .filter(isActiveEmployee)
+        .sort((a, b) => (a.name || a.code || "").localeCompare(b.name || b.code || ""));
 
       if (!employeesForExport.length && !grouped.length) {
         alert("Keine Mitarbeiter oder Daten für den Export vorhanden.");
@@ -1121,6 +1209,9 @@ export default function MonthlyOverview() {
           </div>
 
           <div className="month-overview-actions">
+            <button onClick={checkMissingEntriesLastMonth} className="hbz-btn">
+              Fehlende Einträge letzter Monat
+            </button>
             <button onClick={exportLohnverrechnungPDF} className="hbz-btn hbz-btn-primary">
               Lohnverrechnung
             </button>
@@ -1765,6 +1856,72 @@ export default function MonthlyOverview() {
           )}
         </div>
       </div>
+
+      {showMissingDialog && (
+        <div className="month-modal-backdrop">
+          <div className="month-modal">
+            <div className="month-modal-head">
+              <div>
+                <div className="month-card-title">Fehlende Einträge</div>
+                <div className="month-modal-subtitle">
+                  Prüfung für <b>{missingEntries?.label || "letztes Monat"}</b>
+                </div>
+              </div>
+              <button
+                className="hbz-btn"
+                onClick={() => setShowMissingDialog(false)}
+              >
+                Schließen
+              </button>
+            </div>
+
+            <div className="month-modal-box">
+              {missingLoading ? (
+                <div className="month-empty-state">Prüfe fehlende Einträge…</div>
+              ) : missingEntries?.error ? (
+                <div className="month-empty-state">
+                  Fehler: {missingEntries.error}
+                </div>
+              ) : missingEntries?.complete ? (
+                <div className="month-empty-state">
+                  Alles vollständig. Für alle aktiven Mitarbeiter sind die BUAK-Arbeitstage im letzten Monat erfasst.
+                </div>
+              ) : (
+                <>
+                  <div className="month-modal-box-title">
+                    Fehlende Einträge für aktive Mitarbeiter
+                  </div>
+                  <div className="month-modal-subtitle">
+                    Geprüft werden nur BUAK-Arbeitstage. Urlaub/Krankenstand zählen als Eintrag, wenn sie erfasst sind.
+                  </div>
+
+                  <div className="month-table-wrap" style={{ marginTop: 12 }}>
+                    <table className="month-table">
+                      <thead>
+                        <tr>
+                          <th>Mitarbeiter</th>
+                          <th>Fehlende Tage</th>
+                          <th className="num">Anzahl</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(missingEntries?.missing || []).map((item) => (
+                          <tr key={item.employee}>
+                            <td>{item.employee}</td>
+                            <td>{item.dates.map(formatDateAT).join(", ")}</td>
+                            <td className="num">{item.dates.length}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
