@@ -169,6 +169,15 @@ function safePdfText(value) {
     .trim();
 }
 
+function formatDateAT(ymd) {
+  if (!ymd) return "";
+  const parts = String(ymd).split("-");
+  if (parts.length !== 3) return String(ymd);
+  const [y, m, d] = parts;
+  if (!y || !m || !d) return String(ymd);
+  return `${d}.${m}.${y}`;
+}
+
 const isAbsenceRow = (r) => {
   const note = (r?.note || "").toString();
   return note.includes("[Urlaub]") || note.includes("[Krank]");
@@ -688,12 +697,17 @@ export default function MonthlyOverview() {
         .map((date) => {
           const name = getHolidayName(date);
           const soll = getBuakSollHoursForDay(date);
-          return name && soll > 0 ? { date, name, soll } : null;
+          return name && Number(soll) > 0 ? { date, name, soll: Number(soll) } : null;
         })
         .filter(Boolean);
 
       const holidayHoursPerEmployee = holidaysInRange.reduce(
         (sum, h) => sum + (Number(h.soll) || 0),
+        0
+      );
+
+      const sollHoursInRange = rangeDates.reduce(
+        (sum, date) => sum + (Number(getBuakSollHoursForDay(date)) || 0),
         0
       );
 
@@ -708,7 +722,7 @@ export default function MonthlyOverview() {
 
       doc.setFontSize(9);
       doc.text(
-        `Hinweis: Feiertagsstunden sind in den Lohnstunden gesamt bereits enthalten.`,
+        "Hinweis: Feiertagsstunden sind in den Lohnstunden gesamt bereits enthalten.",
         40,
         58
       );
@@ -720,12 +734,7 @@ export default function MonthlyOverview() {
 
       doc.text(`Mitarbeiter: ${employeeNamesLine || "—"}`, 40, 74);
 
-      const sollHoursInRange = rangeDates.reduce(
-        (sum, date) => sum + (Number(getBuakSollHoursForDay(date)) || 0),
-        0
-      );
-
-      const payrollDetailsByEmployee = {};
+      const detailRows = [];
 
       const employeeBody = employeesForExport.map((emp) => {
         const name = emp.name || emp.code;
@@ -746,11 +755,27 @@ export default function MonthlyOverview() {
           .filter(Boolean)
           .sort();
 
-        payrollDetailsByEmployee[name] = {
-          urlaubDates,
-          krankDates,
-          holidays: holidaysInRange,
-        };
+        const detailParts = [];
+
+        if (urlaubDates.length) {
+          detailParts.push(`Urlaub: ${urlaubDates.map(formatDateAT).join(", ")}`);
+        }
+
+        if (krankDates.length) {
+          detailParts.push(`Krankenstand: ${krankDates.map(formatDateAT).join(", ")}`);
+        }
+
+        if (holidaysInRange.length) {
+          detailParts.push(
+            `Feiertage: ${holidaysInRange
+              .map((h) => `${formatDateAT(h.date)} ${h.name} (${Number(h.soll || 0).toFixed(2)} h)`)
+              .join(", ")}`
+          );
+        }
+
+        if (detailParts.length) {
+          detailRows.push([safePdfText(name), detailParts.join("\n")]);
+        }
 
         return [
           safePdfText(name),
@@ -789,30 +814,6 @@ export default function MonthlyOverview() {
       });
 
       let currentY = (doc.lastAutoTable?.finalY || 92) + 18;
-
-      const detailRows = Object.entries(payrollDetailsByEmployee)
-        .map(([name, details]) => {
-          const parts = [];
-
-          if (details.urlaubDates.length) {
-            parts.push(`Urlaub: ${details.urlaubDates.map(formatDateAT).join(", ")}`);
-          }
-
-          if (details.krankDates.length) {
-            parts.push(`Krankenstand: ${details.krankDates.map(formatDateAT).join(", ")}`);
-          }
-
-          if (details.holidays.length) {
-            parts.push(
-              `Feiertage: ${details.holidays
-                .map((h) => `${formatDateAT(h.date)} ${h.name} (${Number(h.soll || 0).toFixed(2)} h)`)
-                .join(", ")}`
-            );
-          }
-
-          return parts.length ? [safePdfText(name), parts.join("\n")] : null;
-        })
-        .filter(Boolean);
 
       if (detailRows.length > 0) {
         if (currentY > doc.internal.pageSize.getHeight() - 120) {
