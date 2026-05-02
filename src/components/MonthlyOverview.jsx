@@ -143,6 +143,32 @@ function getRangeFromFilters(year, monthFilter, rangeFromMonth, rangeToMonth) {
   };
 }
 
+
+function getDatesBetweenInclusive(from, to) {
+  const out = [];
+  const start = parseYMD(from);
+  const end = parseYMD(to);
+  if (isNaN(start.getTime()) || isNaN(end.getTime())) return out;
+
+  const d = new Date(start);
+  while (d <= end) {
+    out.push(
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+        d.getDate()
+      ).padStart(2, "0")}`
+    );
+    d.setDate(d.getDate() + 1);
+  }
+  return out;
+}
+
+function safePdfText(value) {
+  return String(value ?? "")
+    .replace(/\r?\n/g, " ")
+    .replace(/[^\S\r\n]+/g, " ")
+    .trim();
+}
+
 const isAbsenceRow = (r) => {
   const note = (r?.note || "").toString();
   return note.includes("[Urlaub]") || note.includes("[Krank]");
@@ -156,35 +182,6 @@ const getPureWorkMinutes = (r) => {
   const travel = r?._travel ?? getTravel(r);
   return Math.max(total - travel, 0);
 };
-
-function eachDateBetween(from, to) {
-  const out = [];
-  if (!from || !to) return out;
-
-  const start = new Date(`${from}T12:00:00`);
-  const end = new Date(`${to}T12:00:00`);
-  if (isNaN(start.getTime()) || isNaN(end.getTime())) return out;
-
-  const d = new Date(start);
-  while (d <= end) {
-    out.push(
-      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
-        d.getDate()
-      ).padStart(2, "0")}`
-    );
-    d.setDate(d.getDate() + 1);
-  }
-
-  return out;
-}
-
-function formatDateAT(value) {
-  if (!value) return "";
-  const parts = String(value).split("-");
-  if (parts.length !== 3) return String(value);
-  return `${parts[2]}.${parts[1]}.${parts[0]}`;
-}
-
 
 // ---------- Component ----------
 export default function MonthlyOverview() {
@@ -401,11 +398,11 @@ export default function MonthlyOverview() {
   function handleLastMonth() {
     const d = new Date(currentYear, currentMonth - 1, 1);
     d.setMonth(d.getMonth() - 1);
-    const lastMonthStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
     setYear(d.getFullYear());
     setRangeFromMonth("");
     setRangeToMonth("");
-    setMonthFilter(lastMonthStr);
+    setMonthFilter(ym);
   }
 
   function handleLast3Months() {
@@ -671,167 +668,160 @@ export default function MonthlyOverview() {
 
   function exportLohnverrechnungPDF() {
     try {
-      const employeesForExport =
+      const selectedForExport =
         selectedEmployees.length > 0
           ? selectedEmployees
           : employees.filter((e) => selectedCodes.includes(e.code));
 
-      if (!employeesForExport.length) {
-        alert("Bitte mindestens einen Mitarbeiter auswählen.");
+      const employeesForExport =
+        selectedForExport.length > 0
+          ? selectedForExport
+          : employees.filter((e) => Object.keys(totalsByEmployee).includes(e.name));
+
+      if (!employeesForExport.length && !grouped.length) {
+        alert("Keine Mitarbeiter oder Daten für den Export vorhanden.");
         return;
       }
 
-      const datesInRange = eachDateBetween(activeRange.from, activeRange.to);
-      const entryDatesByEmployeeId = new Map();
-      grouped.forEach((r) => {
-        const key = r.employee_id;
-        if (!key || !r.work_date) return;
-        if (!entryDatesByEmployeeId.has(key)) entryDatesByEmployeeId.set(key, new Set());
-        entryDatesByEmployeeId.get(key).add(r.work_date);
+      const rangeDates = getDatesBetweenInclusive(activeRange.from, activeRange.to);
+      const holidaysInRange = rangeDates
+        .map((date) => {
+          const name = getHolidayName(date);
+          const soll = getBuakSollHoursForDay(date);
+          return name && soll > 0 ? { date, name, soll } : null;
+        })
+        .filter(Boolean);
+
+      const holidayHoursPerEmployee = holidaysInRange.reduce(
+        (sum, h) => sum + (Number(h.soll) || 0),
+        0
+      );
+
+      const doc = new jsPDF({
+        orientation: "landscape",
+        unit: "pt",
+        format: "a4",
       });
 
-      const holidayInfoByEmployeeName = new Map();
-      const holidayRows = [];
+      doc.setFontSize(16);
+      doc.text(`Lohnverrechnung ${safePdfText(rangeLabel)}`, 40, 40);
 
-      employeesForExport.forEach((emp) => {
-        const employeeName = emp.name || emp.code || "Mitarbeiter";
-        const existingDates = entryDatesByEmployeeId.get(emp.id) || new Set();
-        let extraHours = 0;
+      doc.setFontSize(9);
+      doc.text(
+        `Hinweis: Feiertagsstunden sind in den Lohnstunden gesamt bereits enthalten.`,
+        40,
+        58
+      );
 
-        datesInRange.forEach((dateStr) => {
-          const holidayName = getHolidayName(dateStr);
-          if (!holidayName) return;
+      const employeeNamesLine = employeesForExport
+        .map((e) => safePdfText(e.name || e.code))
+        .filter(Boolean)
+        .join(", ");
 
-          const sollHours = Number(getBuakSollHoursForDay(dateStr) || 0);
-          if (sollHours <= 0) return;
+      doc.text(`Mitarbeiter: ${employeeNamesLine || "—"}`, 40, 74);
 
-          const hasTimeEntry = existingDates.has(dateStr);
-          if (!hasTimeEntry) extraHours += sollHours;
-
-          holidayRows.push([
-            employeeName,
-            formatDateAT(dateStr),
-            holidayName,
-            sollHours.toFixed(2),
-            "Ja",
-            hasTimeEntry
-              ? "bereits über Zeiteintrag in den Lohnstunden enthalten"
-              : "als bezahlte Feiertagsstunden in den Lohnstunden gesamt enthalten",
-          ]);
-        });
-
-        holidayInfoByEmployeeName.set(employeeName, extraHours);
-      });
-
-      const employeeNames = Array.from(
-        new Set([
-          ...employeesForExport.map((e) => e.name || e.code),
-          ...Object.keys(totalsByEmployee || {}),
-        ])
-      ).sort((a, b) => String(a).localeCompare(String(b)));
-
-      if (!employeeNames.length) {
-        alert("Keine Daten für den Export vorhanden.");
-        return;
-      }
-
-      const body = employeeNames.map((name) => {
-        const t = totalsByEmployee[name] || { hrs: 0, days: 0 };
-        const holidayExtra = Number(holidayInfoByEmployeeName.get(name) || 0);
-        const payrollHours = Number(t.hrs || 0) + holidayExtra;
+      const employeeBody = employeesForExport.map((emp) => {
+        const name = emp.name || emp.code;
+        const t = totalsByEmployee[name] || { hrs: 0, days: 0, travel: 0, ot: 0 };
+        const recordedHours = Number(t.hrs || 0);
+        const paidHours = recordedHours + holidayHoursPerEmployee;
 
         const urlaubDates = grouped
           .filter((r) => (r.employee_name || r.employee_id) === name && isVacationRow(r))
           .map((r) => r.work_date)
           .filter(Boolean)
-          .sort()
-          .map(formatDateAT);
+          .sort();
 
         const krankDates = grouped
           .filter((r) => (r.employee_name || r.employee_id) === name && isSickRow(r))
           .map((r) => r.work_date)
           .filter(Boolean)
-          .sort()
-          .map(formatDateAT);
+          .sort();
 
         return [
-          name,
-          Number(t.hrs || 0).toFixed(2),
-          holidayExtra.toFixed(2),
-          payrollHours.toFixed(2),
+          safePdfText(name),
+          paidHours.toFixed(2),
+          recordedHours.toFixed(2),
+          holidayHoursPerEmployee.toFixed(2),
           String(t.days ?? 0),
           urlaubDates.length ? urlaubDates.join(", ") : "-",
           krankDates.length ? krankDates.join(", ") : "-",
         ];
       });
 
-      const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
-      doc.setFontSize(16);
-      doc.text(`Lohnverrechnung ${rangeLabel}`, 40, 40);
-      doc.setFontSize(10);
-      doc.text(
-        `Mitarbeiter: ${employeesForExport.map((e) => e.name || e.code).join(", ")}`,
-        40,
-        58,
-        { maxWidth: 760 }
-      );
-      doc.text(
-        "Hinweis: Feiertagsstunden sind in den Lohnstunden gesamt bereits enthalten.",
-        40,
-        74,
-        { maxWidth: 760 }
-      );
-
       autoTable(doc, {
         head: [[
           "Mitarbeiter",
-          "Arbeitszeit aus Einträgen",
-          "Feiertagsstunden",
           "Lohnstunden gesamt",
+          "Arbeitszeit laut Einträgen",
+          "Feiertag bezahlt",
           "Arbeitstage",
           "Urlaub (Datum)",
           "Krankenstand (Datum)",
         ]],
-        body,
+        body: employeeBody,
         startY: 92,
-        styles: { fontSize: 9, cellPadding: 4, overflow: "linebreak" },
+        styles: { fontSize: 8, cellPadding: 4, overflow: "linebreak" },
         headStyles: { fillColor: [123, 74, 45] },
         margin: { left: 40, right: 40 },
       });
 
-      if (holidayRows.length) {
-        let y = (doc.lastAutoTable?.finalY || 92) + 22;
-        if (y > doc.internal.pageSize.getHeight() - 130) {
+      let currentY = (doc.lastAutoTable?.finalY || 92) + 18;
+
+      if (holidaysInRange.length > 0) {
+        if (currentY > doc.internal.pageSize.getHeight() - 120) {
           doc.addPage();
-          y = 40;
+          currentY = 40;
         }
 
         doc.setFontSize(13);
-        doc.text("Feiertage im Zeitraum", 40, y);
-        doc.setFontSize(9);
-        doc.text(
-          "Alle hier angeführten Feiertagsstunden sind in den Lohnstunden gesamt bereits enthalten. Feiertage ohne Zeiteintrag werden als bezahlte Feiertagsstunden dazugerechnet.",
-          40,
-          y + 14,
-          { maxWidth: 760 }
-        );
+        doc.text("Feiertage im Zeitraum", 40, currentY);
+        currentY += 8;
 
         autoTable(doc, {
-          head: [["Mitarbeiter", "Datum", "Feiertag", "Sollstunden", "In Lohnstunden enthalten?", "Hinweis"]],
-          body: holidayRows,
-          startY: y + 34,
-          styles: { fontSize: 8.5, cellPadding: 3, overflow: "linebreak" },
+          head: [[
+            "Datum",
+            "Feiertag",
+            "Stunden je Mitarbeiter",
+            "In Lohnstunden enthalten?",
+          ]],
+          body: holidaysInRange.map((h) => [
+            h.date,
+            h.name,
+            `${Number(h.soll || 0).toFixed(2)} h`,
+            "Ja – bereits in den Lohnstunden gesamt enthalten",
+          ]),
+          startY: currentY + 8,
+          styles: { fontSize: 9, cellPadding: 4, overflow: "linebreak" },
           headStyles: { fillColor: [200, 200, 200] },
           margin: { left: 40, right: 40 },
         });
+
+        currentY = (doc.lastAutoTable?.finalY || currentY) + 14;
+      } else {
+        doc.setFontSize(10);
+        doc.text("Feiertage im Zeitraum: keine bezahlten Feiertage an BUAK-Arbeitstagen.", 40, currentY);
+        currentY += 16;
       }
 
-      doc.save(`Lohnverrechnung_${rangeLabel.replace(/\s+/g, "_")}.pdf`);
+      if (currentY > doc.internal.pageSize.getHeight() - 70) {
+        doc.addPage();
+        currentY = 40;
+      }
+
+      doc.setFontSize(9);
+      doc.text(
+        "Berechnung: Lohnstunden gesamt = Arbeitszeit laut Einträgen + bezahlte Feiertagsstunden. Feiertage werden nur berücksichtigt, wenn sie auf einen BUAK-Arbeitstag fallen.",
+        40,
+        currentY
+      );
+
+      const fileLabel = safePdfText(rangeLabel).replace(/[^\wäöüÄÖÜß-]+/g, "_");
+      doc.save(`Lohnverrechnung_${fileLabel || "Export"}.pdf`);
     } catch (err) {
       console.error("Lohnverrechnung PDF Fehler:", err);
       alert(
-        "Lohnverrechnung PDF Fehler – " +
-          (err?.message || "bitte Konsole prüfen.")
+        `Lohnverrechnung PDF Fehler:\n${err?.message || err}\n\nBitte Screenshot der Konsole schicken.`
       );
     }
   }
