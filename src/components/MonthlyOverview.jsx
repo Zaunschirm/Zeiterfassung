@@ -728,11 +728,20 @@ export default function MonthlyOverview() {
       doc.text(`Lohnverrechnung ${safePdfText(rangeLabel)}`, marginX, 38);
 
       doc.setFontSize(9);
-      doc.text(
-        "Hinweis: Feiertagsstunden sind in den Lohnstunden gesamt bereits enthalten.",
-        marginX,
-        56
-      );
+      const hintLines = [
+        "Hinweis zur Berechnung:",
+        "Lohnstunden gesamt enthalten Arbeitszeit laut Einträgen inklusive Fahrzeit sowie bezahlte Feiertage und Krankenstandstage gemäß hinterlegter BUAK-/Sollzeit.",
+        "Urlaubstage werden in dieser Auswertung mit 0,00 Stunden berücksichtigt.",
+        "Überstunden werden als Differenz aus Lohnstunden gesamt minus Sollstunden berechnet.",
+      ];
+
+      let hintY = 56;
+      hintLines.forEach((line, idx) => {
+        const wrapped = doc.splitTextToSize(line, pageWidth - marginX * 2);
+        doc.setFontSize(idx === 0 ? 9.5 : 8.8);
+        doc.text(wrapped, marginX, hintY);
+        hintY += wrapped.length * 10;
+      });
 
       const employeeNamesLine = employeesForExport
         .map((e) => safePdfText(e.name || e.code))
@@ -743,9 +752,10 @@ export default function MonthlyOverview() {
         `Mitarbeiter: ${employeeNamesLine || "—"}`,
         pageWidth - marginX * 2
       );
-      doc.text(wrappedEmployees, marginX, 72);
+      doc.setFontSize(9);
+      doc.text(wrappedEmployees, marginX, hintY + 5);
 
-      let startY = 72 + wrappedEmployees.length * 11 + 12;
+      let startY = hintY + 5 + wrappedEmployees.length * 11 + 12;
 
       const detailRows = [];
 
@@ -782,7 +792,7 @@ export default function MonthlyOverview() {
             safePdfText(name),
             "Krankenstand",
             krankDates.map(formatDateAT).join(", "),
-            "lt. Sollzeit",
+            "in Lohnstunden enthalten lt. Sollzeit",
           ]);
         }
 
@@ -793,7 +803,7 @@ export default function MonthlyOverview() {
             holidaysInRange
               .map((h) => `${formatDateAT(h.date)} ${h.name}`)
               .join(", "),
-            `${holidayHoursPerEmployee.toFixed(2)} h`,
+            `${holidayHoursPerEmployee.toFixed(2)} h enthalten`,
           ]);
         }
 
@@ -857,11 +867,11 @@ export default function MonthlyOverview() {
         }
 
         doc.setFontSize(13);
-        doc.text("Details Abwesenheiten & Feiertage", marginX, currentY);
+        doc.text("Details Abwesenheiten & bezahlte Feiertage", marginX, currentY);
         currentY += 10;
 
         autoTable(doc, {
-          head: [["Mitarbeiter", "Art", "Datum / Zeitraum", "Stunden"]],
+          head: [["Mitarbeiter", "Art", "Datum / Zeitraum", "Berechnung"]],
           body: detailRows,
           startY: currentY + 6,
           theme: "striped",
@@ -882,8 +892,8 @@ export default function MonthlyOverview() {
           columnStyles: {
             0: { cellWidth: 145 },
             1: { cellWidth: 105 },
-            2: { cellWidth: 405 },
-            3: { cellWidth: 75, halign: "right" },
+            2: { cellWidth: 390 },
+            3: { cellWidth: 90, halign: "right" },
           },
           margin: { left: marginX, right: marginX },
         });
@@ -891,62 +901,7 @@ export default function MonthlyOverview() {
         currentY = (doc.lastAutoTable?.finalY || currentY) + 16;
       } else {
         doc.setFontSize(10);
-        doc.text("Details Abwesenheiten & Feiertage: keine Einträge im Zeitraum.", marginX, currentY);
-        currentY += 18;
-      }
-
-      if (holidaysInRange.length > 0) {
-        if (currentY > pageHeight - 125) {
-          doc.addPage();
-          currentY = 38;
-        }
-
-        doc.setFontSize(13);
-        doc.text("Feiertage im Zeitraum", marginX, currentY);
-        currentY += 10;
-
-        autoTable(doc, {
-          head: [[
-            "Datum",
-            "Feiertag",
-            "Stunden je Mitarbeiter",
-            "In Lohnstunden enthalten?",
-          ]],
-          body: holidaysInRange.map((h) => [
-            formatDateAT(h.date),
-            h.name,
-            `${Number(h.soll || 0).toFixed(2)} h`,
-            "Ja – bereits in den Lohnstunden gesamt enthalten",
-          ]),
-          startY: currentY + 6,
-          theme: "striped",
-          styles: {
-            fontSize: 8.8,
-            cellPadding: { top: 5, right: 5, bottom: 5, left: 5 },
-            overflow: "linebreak",
-            valign: "middle",
-            lineColor: [230, 230, 230],
-            lineWidth: 0.2,
-          },
-          headStyles: {
-            fillColor: midGray,
-            textColor: 255,
-            fontStyle: "bold",
-          },
-          alternateRowStyles: { fillColor: lightGray },
-          columnStyles: {
-            0: { cellWidth: 95 },
-            1: { cellWidth: 170 },
-            2: { cellWidth: 140, halign: "right" },
-            3: { cellWidth: 325 },
-          },
-          margin: { left: marginX, right: marginX },
-        });
-
-        currentY = (doc.lastAutoTable?.finalY || currentY) + 14;
-      } else {
-        doc.setFontSize(10);
-        doc.text("Feiertage im Zeitraum: keine bezahlten Feiertage an BUAK-Arbeitstagen.", marginX, currentY);
+        doc.text("Details Abwesenheiten & bezahlte Feiertage: keine Einträge im Zeitraum.", marginX, currentY);
         currentY += 18;
       }
 
@@ -957,7 +912,7 @@ export default function MonthlyOverview() {
 
       doc.setFontSize(8.5);
       const calcText =
-        "Berechnung: Lohnstunden gesamt = Arbeitszeit laut Einträgen + bezahlte Feiertagsstunden. Überstunden = Lohnstunden gesamt - Sollstunden.";
+        "Berechnung: Lohnstunden gesamt = Arbeitszeit laut Einträgen inkl. Fahrzeit + bezahlte Feiertage + bezahlte Krankenstandstage laut Sollzeit. Urlaub = 0,00 h. Überstunden = Lohnstunden gesamt - Sollstunden.";
       doc.text(doc.splitTextToSize(calcText, pageWidth - marginX * 2), marginX, currentY);
 
       const fileLabel = safePdfText(rangeLabel).replace(/[^\wäöüÄÖÜß-]+/g, "_");
