@@ -1089,11 +1089,24 @@ export default function MonthlyOverview() {
             "Arbeitstage",
             "Sollstunden",
             "Überstunden",
+            "Urlaub (Datum)",
+            "Krankenstand (Datum)",
+            "Feiertag (Datum / Stunden)",
           ]];
 
           const payrollBody = payrollRows.map((r) => {
             const soll = calcBuakSollHoursForMonth(month);
             const over = r.total - soll;
+            const holidayText = r.holidays.length
+              ? r.holidays
+                  .map(
+                    (h) =>
+                      `${formatDateAT(h.date)} ${h.name} (${h.hours.toFixed(
+                        2
+                      )} h)`
+                  )
+                  .join(", ")
+              : "—";
 
             return [
               month,
@@ -1102,6 +1115,9 @@ export default function MonthlyOverview() {
               r.days.size,
               soll.toFixed(2),
               over.toFixed(2),
+              r.vacation.map(formatDateAT).join(", ") || "—",
+              r.sick.map(formatDateAT).join(", ") || "—",
+              holidayText,
             ];
           });
 
@@ -1110,20 +1126,23 @@ export default function MonthlyOverview() {
             body: payrollBody,
             startY: 105,
             styles: {
-              fontSize: 9.5,
-              cellPadding: 5,
+              fontSize: 8.5,
+              cellPadding: 4,
               overflow: "linebreak",
               valign: "top",
             },
             headStyles: { fillColor: [123, 74, 45], textColor: 255 },
             alternateRowStyles: { fillColor: [245, 245, 245] },
             columnStyles: {
-              0: { cellWidth: 70 },
-              1: { cellWidth: 170 },
-              2: { cellWidth: 130, halign: "right" },
-              3: { cellWidth: 80, halign: "right" },
-              4: { cellWidth: 90, halign: "right" },
-              5: { cellWidth: 90, halign: "right" },
+              0: { cellWidth: 48 },
+              1: { cellWidth: 90 },
+              2: { cellWidth: 82, halign: "right" },
+              3: { cellWidth: 52, halign: "right" },
+              4: { cellWidth: 60, halign: "right" },
+              5: { cellWidth: 62, halign: "right" },
+              6: { cellWidth: 120 },
+              7: { cellWidth: 140 },
+              8: { cellWidth: 170 },
             },
             margin: { left: 40, right: 40 },
             didDrawPage: () => {
@@ -1137,77 +1156,6 @@ export default function MonthlyOverview() {
               );
             },
           });
-
-          let detailY = (doc.lastAutoTable?.finalY || 105) + 24;
-
-          const hasAnyDetails = payrollRows.some(
-            (r) =>
-              r.vacation.length > 0 ||
-              r.sick.length > 0 ||
-              r.holidays.length > 0
-          );
-
-          if (hasAnyDetails) {
-            if (detailY > doc.internal.pageSize.getHeight() - 90) {
-              doc.addPage();
-              detailY = 40;
-            }
-
-            doc.setFontSize(13);
-            doc.text("Details Abwesenheiten & Feiertage", 40, detailY);
-            detailY += 14;
-
-            payrollRows.forEach((r) => {
-              const lines = [];
-
-              if (r.vacation.length) {
-                lines.push(`Urlaub: ${r.vacation.map(formatDateAT).join(", ")}`);
-              }
-
-              if (r.sick.length) {
-                lines.push(`Krankenstand: ${r.sick.map(formatDateAT).join(", ")}`);
-              }
-
-              if (r.holidays.length) {
-                lines.push(
-                  `Feiertage: ${r.holidays
-                    .map(
-                      (h) =>
-                        `${formatDateAT(h.date)} ${h.name} (${h.hours.toFixed(
-                          2
-                        )} h)`
-                    )
-                    .join(", ")}`
-                );
-              }
-
-              if (!lines.length) return;
-
-              if (detailY > doc.internal.pageSize.getHeight() - 80) {
-                doc.addPage();
-                detailY = 40;
-              }
-
-              doc.setFontSize(11);
-              doc.text(r.name, 40, detailY);
-              detailY += 12;
-
-              doc.setFontSize(9);
-              lines.forEach((line) => {
-                const wrapped = doc.splitTextToSize(line, 760);
-                wrapped.forEach((wrappedLine) => {
-                  if (detailY > doc.internal.pageSize.getHeight() - 40) {
-                    doc.addPage();
-                    detailY = 40;
-                  }
-                  doc.text(wrappedLine, 52, detailY);
-                  detailY += 10;
-                });
-              });
-
-              detailY += 8;
-            });
-          }
         }
       }
 
