@@ -61,6 +61,155 @@ const isAbsenceRow = (r) => {
   return note.includes("[Urlaub]") || note.includes("[Krank]");
 };
 
+
+const formatDateAT = (ymd) => {
+  if (!ymd) return "";
+  const [y, m, d] = String(ymd).split("-");
+  if (!y || !m || !d) return ymd;
+  return `${d}.${m}.${y}`;
+};
+
+function addDays(date, days) {
+  const d = new Date(date.getTime());
+  d.setDate(d.getDate() + days);
+  return d;
+}
+
+function toYMD(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(
+    2,
+    "0"
+  )}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function getEasterSunday(year) {
+  const a = year % 19;
+  const b = Math.floor(year / 100);
+  const c = year % 100;
+  const d = Math.floor(b / 4);
+  const e = b % 4;
+  const f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4);
+  const k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const month = Math.floor((h + l - 7 * m + 114) / 31);
+  const day = ((h + l - 7 * m + 114) % 31) + 1;
+  return new Date(year, month - 1, day);
+}
+
+function getAustrianHolidays(year) {
+  const easter = getEasterSunday(year);
+  const list = [
+    { date: `${year}-01-01`, name: "Neujahr" },
+    { date: `${year}-01-06`, name: "Hl. Drei Könige" },
+    { date: toYMD(addDays(easter, 1)), name: "Ostermontag" },
+    { date: `${year}-05-01`, name: "Staatsfeiertag" },
+    { date: toYMD(addDays(easter, 39)), name: "Christi Himmelfahrt" },
+    { date: toYMD(addDays(easter, 50)), name: "Pfingstmontag" },
+    { date: toYMD(addDays(easter, 60)), name: "Fronleichnam" },
+    { date: `${year}-08-15`, name: "Maria Himmelfahrt" },
+    { date: `${year}-10-26`, name: "Nationalfeiertag" },
+    { date: `${year}-11-01`, name: "Allerheiligen" },
+    { date: `${year}-12-08`, name: "Maria Empfängnis" },
+    { date: `${year}-12-25`, name: "Christtag" },
+    { date: `${year}-12-26`, name: "Stefanitag" },
+  ];
+
+  return list.sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function getDailySollHours(ymd) {
+  const d = parseYMD(ymd);
+  const day = d.getDay();
+  if (day === 0 || day === 6) return 0;
+
+  const weekType = getBuakWeekType(ymd);
+  if (weekType === "kurz") {
+    return day >= 1 && day <= 4 ? 9 : 0;
+  }
+
+  return day >= 1 && day <= 4 ? 9 : 6;
+}
+
+function uniqueSortedDates(dates) {
+  return [...new Set((dates || []).filter(Boolean))].sort();
+}
+
+function buildPayrollData(groupedRows, month, employeeRecords) {
+  const [yearStr, monthStr] = month.split("-");
+  const year = parseInt(yearStr, 10);
+  const monthNo = parseInt(monthStr, 10);
+  const holidays = getAustrianHolidays(year).filter((h) => {
+    const [, m] = h.date.split("-").map((n) => parseInt(n, 10));
+    return m === monthNo && getDailySollHours(h.date) > 0;
+  });
+
+  const data = {};
+
+  const ensure = (employeeId, fallbackName) => {
+    const emp = employeeRecords.find((e) => String(e.id) === String(employeeId));
+    const key = emp?.id || employeeId || fallbackName;
+    const name = emp?.name || fallbackName || emp?.code || "—";
+
+    if (!data[key]) {
+      data[key] = {
+        name,
+        total: 0,
+        travel: 0,
+        days: new Set(),
+        vacation: [],
+        sick: [],
+        holidays: [],
+      };
+    }
+
+    return data[key];
+  };
+
+  employeeRecords.forEach((emp) => ensure(emp.id, emp.name || emp.code));
+
+  groupedRows.forEach((r) => {
+    const d = ensure(r.employee_id, r.employee_name || r.employee_id);
+    const note = (r.note || "").toString();
+    const hrs = h2(r._mins);
+    const travelHrs = h2(r._travel);
+
+    d.total += hrs;
+    d.travel += travelHrs;
+
+    if (!isAbsenceRow(r) && hrs > 0) {
+      d.days.add(r.work_date);
+    }
+
+    if (note.includes("[Urlaub]")) {
+      d.vacation.push(r.work_date);
+    }
+
+    if (note.includes("[Krank]")) {
+      d.sick.push(r.work_date);
+    }
+  });
+
+  Object.values(data).forEach((d) => {
+    d.vacation = uniqueSortedDates(d.vacation);
+    d.sick = uniqueSortedDates(d.sick);
+
+    holidays.forEach((h) => {
+      const hours = getDailySollHours(h.date);
+      if (hours <= 0) return;
+      if (d.vacation.includes(h.date) || d.sick.includes(h.date)) return;
+
+      d.holidays.push({ ...h, hours });
+      d.total += hours;
+    });
+  });
+
+  return Object.values(data).sort((a, b) => a.name.localeCompare(b.name));
+}
+
 // ---------- Component ----------
 export default function MonthlyOverview() {
   const session = getSession()?.user || null;
@@ -94,6 +243,7 @@ export default function MonthlyOverview() {
     includeTravel: true,
     includeOvertime: true,
     includeAbsence: true,
+    includePayroll: true,
     includeWorkdays: true,
     includeBuak: true,
   });
@@ -659,6 +809,7 @@ export default function MonthlyOverview() {
             pdfOptions.includeTravel ? "Fahrzeit" : null,
             pdfOptions.includeOvertime ? "Überstunden" : null,
             pdfOptions.includeAbsence ? "Abwesenheiten" : null,
+            pdfOptions.includePayroll ? "Lohnverrechnung" : null,
             pdfOptions.includeWorkdays ? "Arbeitstage" : null,
             pdfOptions.includeBuak ? "BUAK/Soll" : null,
           ]
@@ -900,6 +1051,112 @@ export default function MonthlyOverview() {
             currentY = 40;
           }
         });
+      }
+
+
+
+      if (pdfOptions.includePayroll) {
+        const payrollEmployees = employees.filter((e) =>
+          selectedPdfCodes.includes(e.code)
+        );
+        const payrollRows = buildPayrollData(
+          exportGroupedBase,
+          month,
+          payrollEmployees
+        );
+
+        if (payrollRows.length > 0) {
+          doc.addPage();
+
+          doc.setFontSize(16);
+          doc.text("Lohnverrechnung", 40, 40);
+
+          doc.setFontSize(10);
+          const hint1 =
+            "Hinweis: Gesamtstunden inkl. Fahrzeit. Urlaubstage sind mit 0,00 Stunden berücksichtigt.";
+          const hint2 =
+            "Krankenstandstage und Feiertage an Arbeitstagen werden gemäß hinterlegter Sollzeit automatisch berücksichtigt.";
+          const hint3 =
+            "Feiertagsstunden sind in den Gesamtstunden bereits enthalten.";
+          doc.text(hint1, 40, 58);
+          doc.text(hint2, 40, 72);
+          doc.text(hint3, 40, 86);
+
+          const payrollHead = [[
+            "Monat",
+            "Mitarbeiter",
+            "Gesamtstunden inkl. Fahrzeit",
+            "Arbeitstage",
+            "Sollstunden",
+            "Überstunden",
+            "Urlaub (Datum)",
+            "Krankenstand (Datum)",
+            "Feiertag (Datum / Stunden)",
+          ]];
+
+          const payrollBody = payrollRows.map((r) => {
+            const soll = calcBuakSollHoursForMonth(month);
+            const over = r.total - soll;
+            const holidayText = r.holidays.length
+              ? r.holidays
+                  .map(
+                    (h) =>
+                      `${formatDateAT(h.date)} ${h.name} (${h.hours.toFixed(
+                        2
+                      )} h)`
+                  )
+                  .join(", ")
+              : "—";
+
+            return [
+              month,
+              r.name,
+              r.total.toFixed(2),
+              r.days.size,
+              soll.toFixed(2),
+              over.toFixed(2),
+              r.vacation.map(formatDateAT).join(", ") || "—",
+              r.sick.map(formatDateAT).join(", ") || "—",
+              holidayText,
+            ];
+          });
+
+          autoTable(doc, {
+            head: payrollHead,
+            body: payrollBody,
+            startY: 105,
+            styles: {
+              fontSize: 8.5,
+              cellPadding: 4,
+              overflow: "linebreak",
+              valign: "top",
+            },
+            headStyles: { fillColor: [123, 74, 45], textColor: 255 },
+            alternateRowStyles: { fillColor: [245, 245, 245] },
+            columnStyles: {
+              0: { cellWidth: 48 },
+              1: { cellWidth: 90 },
+              2: { cellWidth: 82, halign: "right" },
+              3: { cellWidth: 52, halign: "right" },
+              4: { cellWidth: 60, halign: "right" },
+              5: { cellWidth: 62, halign: "right" },
+              6: { cellWidth: 120 },
+              7: { cellWidth: 140 },
+              8: { cellWidth: 170 },
+            },
+            margin: { left: 40, right: 40 },
+            didDrawPage: () => {
+              doc.setFontSize(9);
+              const pageWidth = doc.internal.pageSize.getWidth();
+              doc.text(
+                `Erstellt am ${new Date().toLocaleDateString("de-AT")}`,
+                pageWidth - 40,
+                30,
+                { align: "right" }
+              );
+            },
+          });
+        }
       }
 
       doc.save(`Monatsübersicht_${month}.pdf`);
@@ -1697,6 +1954,20 @@ export default function MonthlyOverview() {
                       }
                     />
                     <span>Krank / Urlaub anzeigen</span>
+                  </label>
+
+                  <label className="month-check-row">
+                    <input
+                      type="checkbox"
+                      checked={pdfOptions.includePayroll}
+                      onChange={(e) =>
+                        setPdfOptions((prev) => ({
+                          ...prev,
+                          includePayroll: e.target.checked,
+                        }))
+                      }
+                    />
+                    <span>Lohnverrechnung inkl. Feiertage</span>
                   </label>
 
                   <label className="month-check-row">
