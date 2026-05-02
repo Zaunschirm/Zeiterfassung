@@ -717,14 +717,21 @@ export default function MonthlyOverview() {
         format: "a4",
       });
 
-      doc.setFontSize(16);
-      doc.text(`Lohnverrechnung ${safePdfText(rangeLabel)}`, 40, 40);
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const marginX = 38;
+      const brown = [123, 74, 45];
+      const lightGray = [245, 245, 245];
+      const midGray = [210, 210, 210];
+
+      doc.setFontSize(17);
+      doc.text(`Lohnverrechnung ${safePdfText(rangeLabel)}`, marginX, 38);
 
       doc.setFontSize(9);
       doc.text(
         "Hinweis: Feiertagsstunden sind in den Lohnstunden gesamt bereits enthalten.",
-        40,
-        58
+        marginX,
+        56
       );
 
       const employeeNamesLine = employeesForExport
@@ -732,7 +739,13 @@ export default function MonthlyOverview() {
         .filter(Boolean)
         .join(", ");
 
-      doc.text(`Mitarbeiter: ${employeeNamesLine || "—"}`, 40, 74);
+      const wrappedEmployees = doc.splitTextToSize(
+        `Mitarbeiter: ${employeeNamesLine || "—"}`,
+        pageWidth - marginX * 2
+      );
+      doc.text(wrappedEmployees, marginX, 72);
+
+      let startY = 72 + wrappedEmployees.length * 11 + 12;
 
       const detailRows = [];
 
@@ -755,26 +768,33 @@ export default function MonthlyOverview() {
           .filter(Boolean)
           .sort();
 
-        const detailParts = [];
-
         if (urlaubDates.length) {
-          detailParts.push(`Urlaub: ${urlaubDates.map(formatDateAT).join(", ")}`);
+          detailRows.push([
+            safePdfText(name),
+            "Urlaub",
+            urlaubDates.map(formatDateAT).join(", "),
+            "0,00 h",
+          ]);
         }
 
         if (krankDates.length) {
-          detailParts.push(`Krankenstand: ${krankDates.map(formatDateAT).join(", ")}`);
+          detailRows.push([
+            safePdfText(name),
+            "Krankenstand",
+            krankDates.map(formatDateAT).join(", "),
+            "lt. Sollzeit",
+          ]);
         }
 
         if (holidaysInRange.length) {
-          detailParts.push(
-            `Feiertage: ${holidaysInRange
-              .map((h) => `${formatDateAT(h.date)} ${h.name} (${Number(h.soll || 0).toFixed(2)} h)`)
-              .join(", ")}`
-          );
-        }
-
-        if (detailParts.length) {
-          detailRows.push([safePdfText(name), detailParts.join("\n")]);
+          detailRows.push([
+            safePdfText(name),
+            "Feiertag",
+            holidaysInRange
+              .map((h) => `${formatDateAT(h.date)} ${h.name}`)
+              .join(", "),
+            `${holidayHoursPerEmployee.toFixed(2)} h`,
+          ]);
         }
 
         return [
@@ -799,61 +819,91 @@ export default function MonthlyOverview() {
           "Überstunden",
         ]],
         body: employeeBody,
-        startY: 92,
-        styles: { fontSize: 8.5, cellPadding: 4, overflow: "linebreak" },
-        headStyles: { fillColor: [123, 74, 45] },
-        columnStyles: {
-          1: { halign: "right" },
-          2: { halign: "right" },
-          3: { halign: "right" },
-          4: { halign: "right" },
-          5: { halign: "right" },
-          6: { halign: "right" },
+        startY,
+        theme: "striped",
+        styles: {
+          fontSize: 8.7,
+          cellPadding: { top: 5, right: 5, bottom: 5, left: 5 },
+          overflow: "linebreak",
+          valign: "middle",
+          lineColor: [230, 230, 230],
+          lineWidth: 0.2,
         },
-        margin: { left: 40, right: 40 },
+        headStyles: {
+          fillColor: brown,
+          textColor: 255,
+          fontStyle: "bold",
+          halign: "center",
+        },
+        alternateRowStyles: { fillColor: lightGray },
+        columnStyles: {
+          0: { cellWidth: 160, halign: "left" },
+          1: { cellWidth: 105, halign: "right" },
+          2: { cellWidth: 125, halign: "right" },
+          3: { cellWidth: 95, halign: "right" },
+          4: { cellWidth: 75, halign: "right" },
+          5: { cellWidth: 85, halign: "right" },
+          6: { cellWidth: 85, halign: "right" },
+        },
+        margin: { left: marginX, right: marginX },
       });
 
-      let currentY = (doc.lastAutoTable?.finalY || 92) + 18;
+      let currentY = (doc.lastAutoTable?.finalY || startY) + 18;
 
       if (detailRows.length > 0) {
-        if (currentY > doc.internal.pageSize.getHeight() - 120) {
+        if (currentY > pageHeight - 130) {
           doc.addPage();
-          currentY = 40;
+          currentY = 38;
         }
 
         doc.setFontSize(13);
-        doc.text("Details Abwesenheiten & Feiertage", 40, currentY);
-        currentY += 8;
+        doc.text("Details Abwesenheiten & Feiertage", marginX, currentY);
+        currentY += 10;
 
         autoTable(doc, {
-          head: [["Mitarbeiter", "Details"]],
+          head: [["Mitarbeiter", "Art", "Datum / Zeitraum", "Stunden"]],
           body: detailRows,
-          startY: currentY + 8,
-          styles: { fontSize: 9, cellPadding: 4, overflow: "linebreak", valign: "top" },
-          headStyles: { fillColor: [200, 200, 200] },
-          columnStyles: {
-            0: { cellWidth: 150 },
-            1: { cellWidth: 610 },
+          startY: currentY + 6,
+          theme: "striped",
+          styles: {
+            fontSize: 8.6,
+            cellPadding: { top: 5, right: 5, bottom: 5, left: 5 },
+            overflow: "linebreak",
+            valign: "top",
+            lineColor: [230, 230, 230],
+            lineWidth: 0.2,
           },
-          margin: { left: 40, right: 40 },
+          headStyles: {
+            fillColor: midGray,
+            textColor: 255,
+            fontStyle: "bold",
+          },
+          alternateRowStyles: { fillColor: lightGray },
+          columnStyles: {
+            0: { cellWidth: 145 },
+            1: { cellWidth: 105 },
+            2: { cellWidth: 405 },
+            3: { cellWidth: 75, halign: "right" },
+          },
+          margin: { left: marginX, right: marginX },
         });
 
-        currentY = (doc.lastAutoTable?.finalY || currentY) + 14;
+        currentY = (doc.lastAutoTable?.finalY || currentY) + 16;
       } else {
         doc.setFontSize(10);
-        doc.text("Details Abwesenheiten & Feiertage: keine Einträge im Zeitraum.", 40, currentY);
-        currentY += 16;
+        doc.text("Details Abwesenheiten & Feiertage: keine Einträge im Zeitraum.", marginX, currentY);
+        currentY += 18;
       }
 
       if (holidaysInRange.length > 0) {
-        if (currentY > doc.internal.pageSize.getHeight() - 120) {
+        if (currentY > pageHeight - 125) {
           doc.addPage();
-          currentY = 40;
+          currentY = 38;
         }
 
         doc.setFontSize(13);
-        doc.text("Feiertage im Zeitraum", 40, currentY);
-        currentY += 8;
+        doc.text("Feiertage im Zeitraum", marginX, currentY);
+        currentY += 10;
 
         autoTable(doc, {
           head: [[
@@ -868,30 +918,47 @@ export default function MonthlyOverview() {
             `${Number(h.soll || 0).toFixed(2)} h`,
             "Ja – bereits in den Lohnstunden gesamt enthalten",
           ]),
-          startY: currentY + 8,
-          styles: { fontSize: 9, cellPadding: 4, overflow: "linebreak" },
-          headStyles: { fillColor: [200, 200, 200] },
-          margin: { left: 40, right: 40 },
+          startY: currentY + 6,
+          theme: "striped",
+          styles: {
+            fontSize: 8.8,
+            cellPadding: { top: 5, right: 5, bottom: 5, left: 5 },
+            overflow: "linebreak",
+            valign: "middle",
+            lineColor: [230, 230, 230],
+            lineWidth: 0.2,
+          },
+          headStyles: {
+            fillColor: midGray,
+            textColor: 255,
+            fontStyle: "bold",
+          },
+          alternateRowStyles: { fillColor: lightGray },
+          columnStyles: {
+            0: { cellWidth: 95 },
+            1: { cellWidth: 170 },
+            2: { cellWidth: 140, halign: "right" },
+            3: { cellWidth: 325 },
+          },
+          margin: { left: marginX, right: marginX },
         });
 
         currentY = (doc.lastAutoTable?.finalY || currentY) + 14;
       } else {
         doc.setFontSize(10);
-        doc.text("Feiertage im Zeitraum: keine bezahlten Feiertage an BUAK-Arbeitstagen.", 40, currentY);
-        currentY += 16;
+        doc.text("Feiertage im Zeitraum: keine bezahlten Feiertage an BUAK-Arbeitstagen.", marginX, currentY);
+        currentY += 18;
       }
 
-      if (currentY > doc.internal.pageSize.getHeight() - 70) {
+      if (currentY > pageHeight - 52) {
         doc.addPage();
-        currentY = 40;
+        currentY = 38;
       }
 
-      doc.setFontSize(9);
-      doc.text(
-        "Berechnung: Lohnstunden gesamt = Arbeitszeit laut Einträgen + bezahlte Feiertagsstunden. Überstunden = Lohnstunden gesamt - Sollstunden.",
-        40,
-        currentY
-      );
+      doc.setFontSize(8.5);
+      const calcText =
+        "Berechnung: Lohnstunden gesamt = Arbeitszeit laut Einträgen + bezahlte Feiertagsstunden. Überstunden = Lohnstunden gesamt - Sollstunden.";
+      doc.text(doc.splitTextToSize(calcText, pageWidth - marginX * 2), marginX, currentY);
 
       const fileLabel = safePdfText(rangeLabel).replace(/[^\wäöüÄÖÜß-]+/g, "_");
       doc.save(`Lohnverrechnung_${fileLabel || "Export"}.pdf`);
