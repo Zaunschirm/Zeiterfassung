@@ -742,6 +742,62 @@ export default function MonthlyOverview() {
     };
   }
 
+  function exportMissingEntriesPDF(result) {
+    try {
+      if (!result) {
+        alert("Keine Prüfdaten für fehlende Einträge vorhanden.");
+        return;
+      }
+
+      const doc = new jsPDF({
+        orientation: "landscape",
+        unit: "pt",
+        format: "a4",
+      });
+
+      doc.setFontSize(16);
+      doc.text(`Fehlende Einträge ${safePdfText(result.label || "Zeitraum")}`, 40, 40);
+
+      doc.setFontSize(10);
+      doc.text(
+        "Geprüft werden aktive Mitarbeiter und BUAK-Arbeitstage. Urlaub/Krankenstand zählen als erfasst, wenn ein Eintrag vorhanden ist.",
+        40,
+        60
+      );
+
+      const body =
+        result.complete || !(result.missing || []).length
+          ? [["Alle aktiven Mitarbeiter", "vollständig", "—"]]
+          : result.missing.map((item) => [
+              item.employee,
+              `${item.dates?.length || 0} fehlend`,
+              (item.dates || []).map(formatDateAT).join(", "),
+            ]);
+
+      autoTable(doc, {
+        head: [["Mitarbeiter", "Status", "Fehlende Tage"]],
+        body,
+        startY: 82,
+        theme: "striped",
+        styles: { fontSize: 9, cellPadding: 5, overflow: "linebreak" },
+        headStyles: { fillColor: [123, 74, 45], textColor: 255 },
+        alternateRowStyles: { fillColor: [245, 245, 245] },
+        columnStyles: {
+          0: { cellWidth: 180 },
+          1: { cellWidth: 100 },
+          2: { cellWidth: 500 },
+        },
+        margin: { left: 40, right: 40 },
+      });
+
+      const fileLabel = safePdfText(result.label || "Zeitraum").replace(/[^\wäöüÄÖÜß-]+/g, "_");
+      doc.save(`Fehlende_Eintraege_${fileLabel || "Export"}.pdf`);
+    } catch (err) {
+      console.error("Fehlende Einträge PDF Fehler:", err);
+      alert(`Fehlende Einträge PDF Fehler:\n${err?.message || err}`);
+    }
+  }
+
   async function exportPayrollCheckPDF() {
     try {
       const now = new Date();
@@ -761,47 +817,10 @@ export default function MonthlyOverview() {
         label: `Monat ${ym}`,
       });
 
-      const doc = new jsPDF({
-        orientation: "landscape",
-        unit: "pt",
-        format: "a4",
+      exportMissingEntriesPDF({
+        ...result,
+        label: `Lohnverrechnung ${result.label}`,
       });
-
-      doc.setFontSize(16);
-      doc.text(`Prüfliste Lohnverrechnung ${result.label}`, 40, 40);
-
-      doc.setFontSize(10);
-      doc.text(
-        "Geprüft werden aktive Mitarbeiter und BUAK-Arbeitstage. Urlaub/Krankenstand zählen als erfasst, wenn ein Eintrag vorhanden ist.",
-        40,
-        60
-      );
-
-      const body = result.complete
-        ? [["Alle aktiven Mitarbeiter", "vollständig", "—"]]
-        : result.missing.map((item) => [
-            item.employee,
-            `${item.dates.length} fehlend`,
-            item.dates.map(formatDateAT).join(", "),
-          ]);
-
-      autoTable(doc, {
-        head: [["Mitarbeiter", "Status", "Fehlende Tage"]],
-        body,
-        startY: 82,
-        theme: "striped",
-        styles: { fontSize: 9, cellPadding: 5, overflow: "linebreak" },
-        headStyles: { fillColor: [123, 74, 45], textColor: 255 },
-        alternateRowStyles: { fillColor: [245, 245, 245] },
-        columnStyles: {
-          0: { cellWidth: 180 },
-          1: { cellWidth: 100 },
-          2: { cellWidth: 500 },
-        },
-        margin: { left: 40, right: 40 },
-      });
-
-      doc.save(`Pruefliste_Lohnverrechnung_${ym}.pdf`);
     } catch (err) {
       console.error("Prüfliste PDF Fehler:", err);
       alert(`Prüfliste PDF Fehler:\n${err?.message || err}`);
@@ -872,8 +891,16 @@ export default function MonthlyOverview() {
           0
         );
 
+        const exportList = confirm(
+          `Achtung: Für die Lohnverrechnung fehlen noch ${missingDays} Einträge bei ${missingResult.missing.length} aktiven Mitarbeiter(n).\n\nSoll eine Liste mit den fehlenden Einträgen als PDF exportiert werden?`
+        );
+
+        if (exportList) {
+          exportMissingEntriesPDF(missingResult);
+        }
+
         const proceed = confirm(
-          `Achtung: Für die Lohnverrechnung fehlen noch ${missingDays} Einträge bei ${missingResult.missing.length} aktiven Mitarbeiter(n).\n\nTrotzdem Lohnverrechnung exportieren?`
+          "Trotz fehlender Einträge die Lohnverrechnung trotzdem exportieren?"
         );
 
         if (!proceed) {
@@ -2116,8 +2143,8 @@ export default function MonthlyOverview() {
                 </div>
               </div>
               <div className="month-chip-actions">
-                <button className="hbz-btn" onClick={exportPayrollCheckPDF}>
-                  Prüfliste PDF
+                <button className="hbz-btn" onClick={() => exportMissingEntriesPDF(missingEntries)}>
+                  Fehlende Liste PDF
                 </button>
                 <button
                   className="hbz-btn"
