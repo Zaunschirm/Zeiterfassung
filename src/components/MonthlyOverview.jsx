@@ -718,7 +718,14 @@ export default function MonthlyOverview() {
     );
 
     const requiredDates = getDatesBetweenInclusive(range.from, range.to).filter(
-      (date) => Number(getBuakSollHoursForDay(date)) > 0
+      (date) => {
+        const soll = Number(getBuakSollHoursForDay(date)) || 0;
+        const isHoliday = !!getHolidayName(date);
+
+        // Feiertage sind keine fehlenden Einträge.
+        // Sie werden in der Lohnverrechnung separat als bezahlt berücksichtigt.
+        return soll > 0 && !isHoliday;
+      }
     );
 
     const missing = [];
