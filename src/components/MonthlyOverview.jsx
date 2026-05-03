@@ -169,15 +169,6 @@ function safePdfText(value) {
     .trim();
 }
 
-function formatDateAT(ymd) {
-  if (!ymd) return "";
-  const parts = String(ymd).split("-");
-  if (parts.length !== 3) return String(ymd);
-  const [y, m, d] = parts;
-  if (!y || !m || !d) return String(ymd);
-  return `${d}.${m}.${y}`;
-}
-
 const isAbsenceRow = (r) => {
   const note = (r?.note || "").toString();
   return note.includes("[Urlaub]") || note.includes("[Krank]");
@@ -191,8 +182,6 @@ const getPureWorkMinutes = (r) => {
   const travel = r?._travel ?? getTravel(r);
   return Math.max(total - travel, 0);
 };
-
-const isActiveEmployee = (e) => e?.disabled !== true && e?.active !== false;
 
 // ---------- Component ----------
 export default function MonthlyOverview() {
@@ -222,9 +211,6 @@ export default function MonthlyOverview() {
   const [rows, setRows] = useState([]);
   const [editId, setEditId] = useState(null);
   const [editState, setEditState] = useState(null);
-  const [showMissingDialog, setShowMissingDialog] = useState(false);
-  const [missingEntries, setMissingEntries] = useState(null);
-  const [missingLoading, setMissingLoading] = useState(false);
 
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
@@ -680,100 +666,17 @@ export default function MonthlyOverview() {
     URL.revokeObjectURL(url);
   }
 
-  async function checkMissingEntriesLastMonth() {
-    try {
-      setMissingLoading(true);
-      setShowMissingDialog(true);
-
-      const now = new Date();
-      const lastMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      const y = lastMonthDate.getFullYear();
-      const m = String(lastMonthDate.getMonth() + 1).padStart(2, "0");
-      const ym = `${y}-${m}`;
-      const range = getMonthRange(ym);
-
-      if (!range) {
-        setMissingEntries({
-          label: "Letztes Monat",
-          missing: [],
-          complete: false,
-          error: "Zeitraum konnte nicht ermittelt werden.",
-        });
-        return;
-      }
-
-      const activeEmployees = employees
-        .filter(isActiveEmployee)
-        .sort((a, b) => (a.name || a.code || "").localeCompare(b.name || b.code || ""));
-
-      if (!activeEmployees.length) {
-        setMissingEntries({
-          label: `Monat ${ym}`,
-          missing: [],
-          complete: true,
-          error: "Keine aktiven Mitarbeiter gefunden.",
-        });
-        return;
-      }
-
-      const activeIds = activeEmployees.map((e) => e.id).filter(Boolean);
-
-      let { data, error } = await supabase
-        .from("v_time_entries_expanded")
-        .select("employee_id, employee_name, work_date, note")
-        .gte("work_date", range.from)
-        .lte("work_date", range.to)
-        .in("employee_id", activeIds);
-
-      if (error) throw error;
-
-      const existing = new Set(
-        (data || [])
-          .filter((r) => r?.employee_id && r?.work_date)
-          .map((r) => `${r.employee_id}||${r.work_date}`)
-      );
-
-      const requiredDates = getDatesBetweenInclusive(range.from, range.to).filter(
-        (date) => Number(getBuakSollHoursForDay(date)) > 0
-      );
-
-      const missing = [];
-
-      activeEmployees.forEach((emp) => {
-        const dates = requiredDates.filter((date) => !existing.has(`${emp.id}||${date}`));
-
-        if (dates.length) {
-          missing.push({
-            employee: emp.name || emp.code || "—",
-            dates,
-          });
-        }
-      });
-
-      setMissingEntries({
-        label: `Monat ${ym}`,
-        missing,
-        complete: missing.length === 0,
-        error: null,
-      });
-    } catch (err) {
-      console.error("Fehlende Einträge prüfen Fehler:", err);
-      setMissingEntries({
-        label: "Letztes Monat",
-        missing: [],
-        complete: false,
-        error: err?.message || String(err),
-      });
-    } finally {
-      setMissingLoading(false);
-    }
-  }
-
   function exportLohnverrechnungPDF() {
     try {
-      const employeesForExport = employees
-        .filter(isActiveEmployee)
-        .sort((a, b) => (a.name || a.code || "").localeCompare(b.name || b.code || ""));
+      const selectedForExport =
+        selectedEmployees.length > 0
+          ? selectedEmployees
+          : employees.filter((e) => selectedCodes.includes(e.code));
+
+      const employeesForExport =
+        selectedForExport.length > 0
+          ? selectedForExport
+          : employees.filter((e) => Object.keys(totalsByEmployee).includes(e.name));
 
       if (!employeesForExport.length && !grouped.length) {
         alert("Keine Mitarbeiter oder Daten für den Export vorhanden.");
@@ -785,17 +688,12 @@ export default function MonthlyOverview() {
         .map((date) => {
           const name = getHolidayName(date);
           const soll = getBuakSollHoursForDay(date);
-          return name && Number(soll) > 0 ? { date, name, soll: Number(soll) } : null;
+          return name && soll > 0 ? { date, name, soll } : null;
         })
         .filter(Boolean);
 
       const holidayHoursPerEmployee = holidaysInRange.reduce(
         (sum, h) => sum + (Number(h.soll) || 0),
-        0
-      );
-
-      const sollHoursInRange = rangeDates.reduce(
-        (sum, date) => sum + (Number(getBuakSollHoursForDay(date)) || 0),
         0
       );
 
@@ -805,54 +703,28 @@ export default function MonthlyOverview() {
         format: "a4",
       });
 
-      const pageWidth = doc.internal.pageSize.getWidth();
-      const pageHeight = doc.internal.pageSize.getHeight();
-      const marginX = 38;
-      const brown = [123, 74, 45];
-      const lightGray = [245, 245, 245];
-      const midGray = [210, 210, 210];
-
-      doc.setFontSize(17);
-      doc.text(`Lohnverrechnung ${safePdfText(rangeLabel)}`, marginX, 38);
+      doc.setFontSize(16);
+      doc.text(`Lohnverrechnung ${safePdfText(rangeLabel)}`, 40, 40);
 
       doc.setFontSize(9);
-      const hintLines = [
-        "Hinweis zur Berechnung:",
-        "Lohnstunden gesamt enthalten Arbeitszeit laut Einträgen inklusive Fahrzeit sowie bezahlte Feiertage und Krankenstandstage gemäß hinterlegter BUAK-/Sollzeit.",
-        "Urlaubstage werden in dieser Auswertung mit 0,00 Stunden berücksichtigt.",
-        "Überstunden werden als Differenz aus Lohnstunden gesamt minus Sollstunden berechnet.",
-      ];
-
-      let hintY = 56;
-      hintLines.forEach((line, idx) => {
-        const wrapped = doc.splitTextToSize(line, pageWidth - marginX * 2);
-        doc.setFontSize(idx === 0 ? 9.5 : 8.8);
-        doc.text(wrapped, marginX, hintY);
-        hintY += wrapped.length * 10;
-      });
+      doc.text(
+        `Hinweis: Feiertagsstunden sind in den Lohnstunden gesamt bereits enthalten.`,
+        40,
+        58
+      );
 
       const employeeNamesLine = employeesForExport
         .map((e) => safePdfText(e.name || e.code))
         .filter(Boolean)
         .join(", ");
 
-      const wrappedEmployees = doc.splitTextToSize(
-        `Mitarbeiter: ${employeeNamesLine || "—"}`,
-        pageWidth - marginX * 2
-      );
-      doc.setFontSize(9);
-      doc.text(wrappedEmployees, marginX, hintY + 5);
-
-      let startY = hintY + 5 + wrappedEmployees.length * 11 + 12;
-
-      const detailRows = [];
+      doc.text(`Mitarbeiter: ${employeeNamesLine || "—"}`, 40, 74);
 
       const employeeBody = employeesForExport.map((emp) => {
         const name = emp.name || emp.code;
         const t = totalsByEmployee[name] || { hrs: 0, days: 0, travel: 0, ot: 0 };
         const recordedHours = Number(t.hrs || 0);
         const paidHours = recordedHours + holidayHoursPerEmployee;
-        const overtime = paidHours - sollHoursInRange;
 
         const urlaubDates = grouped
           .filter((r) => (r.employee_name || r.employee_id) === name && isVacationRow(r))
@@ -866,43 +738,14 @@ export default function MonthlyOverview() {
           .filter(Boolean)
           .sort();
 
-        if (urlaubDates.length) {
-          detailRows.push([
-            safePdfText(name),
-            "Urlaub",
-            urlaubDates.map(formatDateAT).join(", "),
-            "0,00 h",
-          ]);
-        }
-
-        if (krankDates.length) {
-          detailRows.push([
-            safePdfText(name),
-            "Krankenstand",
-            krankDates.map(formatDateAT).join(", "),
-            "in Lohnstunden enthalten lt. Sollzeit",
-          ]);
-        }
-
-        if (holidaysInRange.length) {
-          detailRows.push([
-            safePdfText(name),
-            "Feiertag",
-            holidaysInRange
-              .map((h) => `${formatDateAT(h.date)} ${h.name}`)
-              .join(", "),
-            `${holidayHoursPerEmployee.toFixed(2)} h enthalten`,
-          ]);
-        }
-
         return [
           safePdfText(name),
           paidHours.toFixed(2),
           recordedHours.toFixed(2),
           holidayHoursPerEmployee.toFixed(2),
           String(t.days ?? 0),
-          sollHoursInRange.toFixed(2),
-          overtime.toFixed(2),
+          urlaubDates.length ? urlaubDates.join(", ") : "-",
+          krankDates.length ? krankDates.join(", ") : "-",
         ];
       });
 
@@ -913,95 +756,65 @@ export default function MonthlyOverview() {
           "Arbeitszeit laut Einträgen",
           "Feiertag bezahlt",
           "Arbeitstage",
-          "Sollstunden",
-          "Überstunden",
+          "Urlaub (Datum)",
+          "Krankenstand (Datum)",
         ]],
         body: employeeBody,
-        startY,
-        theme: "striped",
-        styles: {
-          fontSize: 8.7,
-          cellPadding: { top: 5, right: 5, bottom: 5, left: 5 },
-          overflow: "linebreak",
-          valign: "middle",
-          lineColor: [230, 230, 230],
-          lineWidth: 0.2,
-        },
-        headStyles: {
-          fillColor: brown,
-          textColor: 255,
-          fontStyle: "bold",
-          halign: "center",
-        },
-        alternateRowStyles: { fillColor: lightGray },
-        columnStyles: {
-          0: { cellWidth: 160, halign: "left" },
-          1: { cellWidth: 105, halign: "right" },
-          2: { cellWidth: 125, halign: "right" },
-          3: { cellWidth: 95, halign: "right" },
-          4: { cellWidth: 75, halign: "right" },
-          5: { cellWidth: 85, halign: "right" },
-          6: { cellWidth: 85, halign: "right" },
-        },
-        margin: { left: marginX, right: marginX },
+        startY: 92,
+        styles: { fontSize: 8, cellPadding: 4, overflow: "linebreak" },
+        headStyles: { fillColor: [123, 74, 45] },
+        margin: { left: 40, right: 40 },
       });
 
-      let currentY = (doc.lastAutoTable?.finalY || startY) + 18;
+      let currentY = (doc.lastAutoTable?.finalY || 92) + 18;
 
-      if (detailRows.length > 0) {
-        if (currentY > pageHeight - 130) {
+      if (holidaysInRange.length > 0) {
+        if (currentY > doc.internal.pageSize.getHeight() - 120) {
           doc.addPage();
-          currentY = 38;
+          currentY = 40;
         }
 
         doc.setFontSize(13);
-        doc.text("Details Abwesenheiten & bezahlte Feiertage", marginX, currentY);
-        currentY += 10;
+        doc.text("Feiertage im Zeitraum", 40, currentY);
+        currentY += 8;
 
         autoTable(doc, {
-          head: [["Mitarbeiter", "Art", "Datum / Zeitraum", "Berechnung"]],
-          body: detailRows,
-          startY: currentY + 6,
-          theme: "striped",
-          styles: {
-            fontSize: 8.6,
-            cellPadding: { top: 5, right: 5, bottom: 5, left: 5 },
-            overflow: "linebreak",
-            valign: "top",
-            lineColor: [230, 230, 230],
-            lineWidth: 0.2,
-          },
-          headStyles: {
-            fillColor: midGray,
-            textColor: 255,
-            fontStyle: "bold",
-          },
-          alternateRowStyles: { fillColor: lightGray },
-          columnStyles: {
-            0: { cellWidth: 145 },
-            1: { cellWidth: 105 },
-            2: { cellWidth: 390 },
-            3: { cellWidth: 90, halign: "right" },
-          },
-          margin: { left: marginX, right: marginX },
+          head: [[
+            "Datum",
+            "Feiertag",
+            "Stunden je Mitarbeiter",
+            "In Lohnstunden enthalten?",
+          ]],
+          body: holidaysInRange.map((h) => [
+            h.date,
+            h.name,
+            `${Number(h.soll || 0).toFixed(2)} h`,
+            "Ja – bereits in den Lohnstunden gesamt enthalten",
+          ]),
+          startY: currentY + 8,
+          styles: { fontSize: 9, cellPadding: 4, overflow: "linebreak" },
+          headStyles: { fillColor: [200, 200, 200] },
+          margin: { left: 40, right: 40 },
         });
 
-        currentY = (doc.lastAutoTable?.finalY || currentY) + 16;
+        currentY = (doc.lastAutoTable?.finalY || currentY) + 14;
       } else {
         doc.setFontSize(10);
-        doc.text("Details Abwesenheiten & bezahlte Feiertage: keine Einträge im Zeitraum.", marginX, currentY);
-        currentY += 18;
+        doc.text("Feiertage im Zeitraum: keine bezahlten Feiertage an BUAK-Arbeitstagen.", 40, currentY);
+        currentY += 16;
       }
 
-      if (currentY > pageHeight - 52) {
+      if (currentY > doc.internal.pageSize.getHeight() - 70) {
         doc.addPage();
-        currentY = 38;
+        currentY = 40;
       }
 
-      doc.setFontSize(8.5);
-      const calcText =
-        "Berechnung: Lohnstunden gesamt = Arbeitszeit laut Einträgen inkl. Fahrzeit + bezahlte Feiertage + bezahlte Krankenstandstage laut Sollzeit. Urlaub = 0,00 h. Überstunden = Lohnstunden gesamt - Sollstunden.";
-      doc.text(doc.splitTextToSize(calcText, pageWidth - marginX * 2), marginX, currentY);
+      doc.setFontSize(9);
+      doc.text(
+        "Berechnung: Lohnstunden gesamt = Arbeitszeit laut Einträgen + bezahlte Feiertagsstunden. Feiertage werden nur berücksichtigt, wenn sie auf einen BUAK-Arbeitstag fallen.",
+        40,
+        currentY
+      );
 
       const fileLabel = safePdfText(rangeLabel).replace(/[^\wäöüÄÖÜß-]+/g, "_");
       doc.save(`Lohnverrechnung_${fileLabel || "Export"}.pdf`);
@@ -1209,9 +1022,6 @@ export default function MonthlyOverview() {
           </div>
 
           <div className="month-overview-actions">
-            <button onClick={checkMissingEntriesLastMonth} className="hbz-btn">
-              Fehlende Einträge letzter Monat
-            </button>
             <button onClick={exportLohnverrechnungPDF} className="hbz-btn hbz-btn-primary">
               Lohnverrechnung
             </button>
@@ -1856,72 +1666,6 @@ export default function MonthlyOverview() {
           )}
         </div>
       </div>
-
-      {showMissingDialog && (
-        <div className="month-modal-backdrop">
-          <div className="month-modal">
-            <div className="month-modal-head">
-              <div>
-                <div className="month-card-title">Fehlende Einträge</div>
-                <div className="month-modal-subtitle">
-                  Prüfung für <b>{missingEntries?.label || "letztes Monat"}</b>
-                </div>
-              </div>
-              <button
-                className="hbz-btn"
-                onClick={() => setShowMissingDialog(false)}
-              >
-                Schließen
-              </button>
-            </div>
-
-            <div className="month-modal-box">
-              {missingLoading ? (
-                <div className="month-empty-state">Prüfe fehlende Einträge…</div>
-              ) : missingEntries?.error ? (
-                <div className="month-empty-state">
-                  Fehler: {missingEntries.error}
-                </div>
-              ) : missingEntries?.complete ? (
-                <div className="month-empty-state">
-                  Alles vollständig. Für alle aktiven Mitarbeiter sind die BUAK-Arbeitstage im letzten Monat erfasst.
-                </div>
-              ) : (
-                <>
-                  <div className="month-modal-box-title">
-                    Fehlende Einträge für aktive Mitarbeiter
-                  </div>
-                  <div className="month-modal-subtitle">
-                    Geprüft werden nur BUAK-Arbeitstage. Urlaub/Krankenstand zählen als Eintrag, wenn sie erfasst sind.
-                  </div>
-
-                  <div className="month-table-wrap" style={{ marginTop: 12 }}>
-                    <table className="month-table">
-                      <thead>
-                        <tr>
-                          <th>Mitarbeiter</th>
-                          <th>Fehlende Tage</th>
-                          <th className="num">Anzahl</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(missingEntries?.missing || []).map((item) => (
-                          <tr key={item.employee}>
-                            <td>{item.employee}</td>
-                            <td>{item.dates.map(formatDateAT).join(", ")}</td>
-                            <td className="num">{item.dates.length}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
     </div>
   );
 }
