@@ -178,6 +178,12 @@ function formatDateAT(ymd) {
   return `${d}.${m}.${y}`;
 }
 
+function uniqueSortedDates(arr) {
+  return Array.from(new Set(arr || []))
+    .filter(Boolean)
+    .sort();
+}
+
 const isAbsenceRow = (r) => {
   const note = (r?.note || "").toString();
   return note.includes("[Urlaub]") || note.includes("[Krank]");
