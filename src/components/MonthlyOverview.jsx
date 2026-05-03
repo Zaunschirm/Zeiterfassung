@@ -849,8 +849,8 @@ export default function MonthlyOverview() {
         .filter(isActiveEmployee)
         .sort((a, b) => (a.name || a.code || "").localeCompare(b.name || b.code || ""));
 
-      if (!employeesForExport.length && !grouped.length) {
-        alert("Keine aktiven Mitarbeiter oder Daten für den Export vorhanden.");
+      if (!employeesForExport.length) {
+        alert("Keine aktiven Mitarbeiter für den Export vorhanden.");
         return;
       }
 
@@ -877,6 +877,19 @@ export default function MonthlyOverview() {
         }
       }
 
+      const employeeIds = employeesForExport.map((e) => e.id).filter(Boolean);
+
+      let { data: payrollRawRows, error: payrollError } = await supabase
+        .from("v_time_entries_expanded")
+        .select("*")
+        .gte("work_date", activeRange.from)
+        .lte("work_date", activeRange.to)
+        .in("employee_id", employeeIds);
+
+      if (payrollError) throw payrollError;
+
+      payrollRawRows = payrollRawRows || [];
+
       const rangeDates = getDatesBetweenInclusive(activeRange.from, activeRange.to);
       const holidaysInRange = rangeDates
         .map((date) => {
@@ -886,15 +899,84 @@ export default function MonthlyOverview() {
         })
         .filter(Boolean);
 
-      const holidayHoursPerEmployee = holidaysInRange.reduce(
-        (sum, h) => sum + (Number(h.soll) || 0),
-        0
-      );
-
       const sollHoursInRange = rangeDates.reduce(
         (sum, date) => sum + (Number(getBuakSollHoursForDay(date)) || 0),
         0
       );
+
+      const payrollByEmployee = {};
+      employeesForExport.forEach((emp) => {
+        payrollByEmployee[emp.id] = {
+          emp,
+          name: emp.name || emp.code || "—",
+          recordedMinutes: 0,
+          travelMinutes: 0,
+          workDays: new Set(),
+          vacationDates: [],
+          sickDates: [],
+          sickHours: 0,
+          holidayRows: [],
+          holidayHours: 0,
+          datesWithAnyEntry: new Set(),
+          datesWithWorkEntry: new Set(),
+        };
+      });
+
+      payrollRawRows.forEach((r) => {
+        const d = payrollByEmployee[r.employee_id];
+        if (!d) return;
+
+        const note = (r.note || "").toString();
+        const isVacation = isVacationRow(r);
+        const isSick = isSickRow(r);
+        const mins = entryMinutes(r);
+        const travel = getTravel(r) || 0;
+
+        d.datesWithAnyEntry.add(r.work_date);
+
+        if (isVacation) {
+          d.vacationDates.push(r.work_date);
+          return;
+        }
+
+        if (isSick) {
+          if (!d.sickDates.includes(r.work_date)) {
+            d.sickDates.push(r.work_date);
+          }
+          return;
+        }
+
+        d.recordedMinutes += mins;
+        d.travelMinutes += travel;
+        d.datesWithWorkEntry.add(r.work_date);
+
+        if (mins > 0) {
+          d.workDays.add(r.work_date);
+        }
+      });
+
+      Object.values(payrollByEmployee).forEach((d) => {
+        d.vacationDates = uniqueSortedDates(d.vacationDates);
+        d.sickDates = uniqueSortedDates(d.sickDates);
+
+        d.sickHours = d.sickDates.reduce(
+          (sum, date) => sum + (Number(getBuakSollHoursForDay(date)) || 0),
+          0
+        );
+
+        holidaysInRange.forEach((h) => {
+          const hasWorkEntry = d.datesWithWorkEntry.has(h.date);
+          const isVacation = d.vacationDates.includes(h.date);
+          const isSick = d.sickDates.includes(h.date);
+
+          // Feiertag wird bezahlt, wenn er auf einen BUAK-Arbeitstag fällt
+          // und für diesen Tag keine echte Arbeitsbuchung, kein Urlaub und kein Krankenstand eingetragen ist.
+          if (!hasWorkEntry && !isVacation && !isSick) {
+            d.holidayRows.push(h);
+            d.holidayHours += Number(h.soll || 0);
+          }
+        });
+      });
 
       const doc = new jsPDF({
         orientation: "landscape",
@@ -962,74 +1044,55 @@ export default function MonthlyOverview() {
       const summaryRows = [];
 
       const employeeBody = employeesForExport.map((emp) => {
-        const name = emp.name || emp.code;
-        const t = totalsByEmployee[name] || { hrs: 0, days: 0, travel: 0, ot: 0 };
-        const recordedHours = Number(t.hrs || 0);
-        const paidHours = recordedHours + holidayHoursPerEmployee;
+        const d = payrollByEmployee[emp.id];
+        const recordedHours = h2(d.recordedMinutes);
+        const paidHours = recordedHours + d.holidayHours + d.sickHours;
         const overtime = paidHours - sollHoursInRange;
 
-        const urlaubDates = grouped
-          .filter((r) => (r.employee_name || r.employee_id) === name && isVacationRow(r))
-          .map((r) => r.work_date)
-          .filter(Boolean)
-          .sort();
-
-        const krankDates = grouped
-          .filter((r) => (r.employee_name || r.employee_id) === name && isSickRow(r))
-          .map((r) => r.work_date)
-          .filter(Boolean)
-          .sort();
-
-        const sickHours = krankDates.reduce(
-          (sum, date) => sum + (Number(getBuakSollHoursForDay(date)) || 0),
-          0
-        );
-        const vacationHours = 0;
-
         summaryRows.push([
-          safePdfText(name),
-          holidayHoursPerEmployee.toFixed(2),
-          sickHours.toFixed(2),
-          vacationHours.toFixed(2),
-          `${urlaubDates.length}`,
-          `${krankDates.length}`,
+          safePdfText(d.name),
+          d.holidayHours.toFixed(2),
+          d.sickHours.toFixed(2),
+          "0.00",
+          `${d.vacationDates.length}`,
+          `${d.sickDates.length}`,
         ]);
 
-        if (urlaubDates.length) {
+        if (d.vacationDates.length) {
           detailRows.push([
-            safePdfText(name),
+            safePdfText(d.name),
             "Urlaub",
-            urlaubDates.map(formatDateAT).join(", "),
+            d.vacationDates.map(formatDateAT).join(", "),
             "0,00 h",
           ]);
         }
 
-        if (krankDates.length) {
+        if (d.sickDates.length) {
           detailRows.push([
-            safePdfText(name),
+            safePdfText(d.name),
             "Krankenstand",
-            krankDates.map(formatDateAT).join(", "),
-            `${sickHours.toFixed(2)} h enthalten`,
+            d.sickDates.map(formatDateAT).join(", "),
+            `${d.sickHours.toFixed(2)} h enthalten`,
           ]);
         }
 
-        if (holidaysInRange.length) {
+        if (d.holidayRows.length) {
           detailRows.push([
-            safePdfText(name),
+            safePdfText(d.name),
             "Feiertag",
-            holidaysInRange
+            d.holidayRows
               .map((h) => `${formatDateAT(h.date)} ${h.name}`)
               .join(", "),
-            `${holidayHoursPerEmployee.toFixed(2)} h enthalten`,
+            `${d.holidayHours.toFixed(2)} h enthalten`,
           ]);
         }
 
         return [
-          safePdfText(name),
+          safePdfText(d.name),
           paidHours.toFixed(2),
           recordedHours.toFixed(2),
-          holidayHoursPerEmployee.toFixed(2),
-          String(t.days ?? 0),
+          d.holidayHours.toFixed(2),
+          String(d.workDays.size),
           sollHoursInRange.toFixed(2),
           overtime.toFixed(2),
         ];
