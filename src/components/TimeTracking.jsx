@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
+import { getSession } from "../lib/session";
 import DaySlider from "./DaySlider";
 import EntryTable from "./EntryTable";
 import {
@@ -41,10 +42,18 @@ export default function TimeTracking() {
       return {};
     }
   })();
-
-  const currentRole = String(employeeFromLS?.role || "").trim().toLowerCase();
-  const isStaff = currentRole === "mitarbeiter";
-  const canSeeAllEmployees = !isStaff;
+  const sessionUser = (() => {
+    try {
+      return getSession()?.user || {};
+    } catch {
+      return {};
+    }
+  })();
+  const currentUser = { ...(employeeFromLS || {}), ...(sessionUser || {}) };
+  const currentRole = String(currentUser?.role || "").trim().toLowerCase();
+  const isAdminOrTeamleiter = currentRole === "admin" || currentRole === "teamleiter";
+  const isStaff = !isAdminOrTeamleiter;
+  const canSeeAllEmployees = isAdminOrTeamleiter;
 
 
   // Stammdaten
@@ -70,12 +79,12 @@ export default function TimeTracking() {
 
   // Mehrfachauswahl Mitarbeiter
   const [selectedEmployees, setSelectedEmployees] = useState(
-    employeeFromLS?.code
+    currentUser?.code
       ? [
           {
-            id: employeeFromLS.id,
-            code: employeeFromLS.code,
-            name: employeeFromLS.name,
+            id: currentUser.id,
+            code: currentUser.code,
+            name: currentUser.name,
           },
         ]
       : []
@@ -118,9 +127,9 @@ export default function TimeTracking() {
   const isCurrentEmployee = (emp) => {
     if (!emp) return false;
     return (
-      (employeeFromLS?.id != null && String(emp.id) === String(employeeFromLS.id)) ||
-      (employeeFromLS?.code && String(emp.code) === String(employeeFromLS.code)) ||
-      (employeeFromLS?.name && String(emp.name) === String(employeeFromLS.name))
+      (currentUser?.id != null && String(emp.id) === String(currentUser.id)) ||
+      (currentUser?.code && String(emp.code) === String(currentUser.code)) ||
+      (currentUser?.name && String(emp.name) === String(currentUser.name))
     );
   };
   const entryBelongsToEmployee = (entry, emp) => {
@@ -140,10 +149,10 @@ export default function TimeTracking() {
     if (!isStaff) return employees;
     const own = employees.filter(isCurrentEmployee);
     if (own.length) return own;
-    return employeeFromLS?.code || employeeFromLS?.id || employeeFromLS?.name
-      ? [{ id: employeeFromLS.id, code: employeeFromLS.code, name: employeeFromLS.name || employeeFromLS.code || "Du", role: employeeFromLS.role }]
+    return currentUser?.code || currentUser?.id || currentUser?.name
+      ? [{ id: currentUser.id, code: currentUser.code, name: currentUser.name || currentUser.code || "Du", role: currentUser.role }]
       : [];
-  }, [employees, isStaff, employeeFromLS?.id, employeeFromLS?.code, employeeFromLS?.name, employeeFromLS?.role]);
+  }, [employees, isStaff, currentUser?.id, currentUser?.code, currentUser?.name, currentUser?.role]);
 
   // --------------------------------------------------
   // Daten laden
@@ -167,8 +176,8 @@ export default function TimeTracking() {
         setEmployees(emp || []);
 
         // Falls noch niemand gewählt ist: eingeloggte Person vorauswählen
-        if ((emp || []).length && selectedEmployees.length === 0 && employeeFromLS?.code) {
-          const me = (emp || []).find((e) => e.code === employeeFromLS.code);
+        if ((emp || []).length && selectedEmployees.length === 0 && currentUser?.code) {
+          const me = (emp || []).find((e) => e.code === currentUser.code);
           if (me) setSelectedEmployees([me]);
         }
       } catch (e) {
