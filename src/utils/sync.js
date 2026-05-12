@@ -19,12 +19,17 @@ export async function pushEntries(currentUserId) {
     id: e.supa_id || undefined,
     owner: currentUserId,
     employee_id: e.employeeId,
-    date: e.date,
-    start_min: e.startMin,
-    end_min: e.endMin,
-    break_min: e.breakMin,
+    work_date: e.work_date || e.date,
+    start_min: e.start_min ?? e.startMin,
+    end_min: e.end_min ?? e.endMin,
+    break_min: e.break_min ?? e.breakMin,
     note: e.note,
-    project: e.project
+    project: e.project,
+    project_id: e.project_id || null,
+    travel_minutes: e.travel_minutes ?? e.travelMinutes ?? 0,
+    travel_cost_center: e.travel_cost_center || 'FAHRZEIT',
+    voice_note: e.voice_note || e.voiceNote || null,
+    crane_hours: e.crane_hours ?? e.craneHours ?? 0
   }));
 
   const { data, error } = await supa.from('time_entries').insert(payload).select('id');

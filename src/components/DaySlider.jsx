@@ -258,21 +258,18 @@ function getWeekDays(dateStr, count = 5) {
 export default function DaySlider() {
   const session = getSession()?.user || null;
   const [currentUser, setCurrentUser] = useState(session);
-  const role = String(currentUser?.role || session?.role || "mitarbeiter").trim().toLowerCase();
-  const isAdminRole = role === "admin";
-  const isTeamleiterRole = role === "teamleiter";
-  const isManager = isAdminRole || isTeamleiterRole;
-  const isStaff = !isManager;
-
+  const role = (currentUser?.role || session?.role || "mitarbeiter").toLowerCase();
   const permissions = getUserPermissions(currentUser || session);
-  const canWriteOwnTime = !!permissions.writeOwnTime || isStaff;
-  const canWriteAllTime = isManager && !!permissions.writeAllTime;
-  const canEditOwnTime = !!permissions.editOwnTime || isStaff;
-  const canEditAllTime = isManager && !!permissions.editAllTime;
+  const canWriteOwnTime = !!permissions.writeOwnTime;
+  const canWriteAllTime = !!permissions.writeAllTime;
+  const canEditOwnTime = !!permissions.editOwnTime;
+  const canEditAllTime = !!permissions.editAllTime;
   const canDeleteOwnTime = !!permissions.deleteOwnTime;
-  const canDeleteAllTime = isManager && !!permissions.deleteAllTime;
-  const canSelectEmployees = isManager;
-  const canSeeAllEntries = isManager;
+  const canDeleteAllTime = !!permissions.deleteAllTime;
+  const canSelectEmployees = canWriteAllTime || canEditAllTime || canDeleteAllTime;
+  const canSeeAllEntries = canSelectEmployees;
+  const isStaff = !canSelectEmployees;
+  const isManager = canSelectEmployees;
 
   const [date, setDate] = useState(() =>
     new Date().toISOString().slice(0, 10)
@@ -645,14 +642,6 @@ export default function DaySlider() {
   async function loadEntries() {
     try {
       setLoading(true);
-
-      // Mitarbeiter dürfen in der Tagesübersicht niemals fremde Einträge sehen.
-      // Solange der eingeloggte Mitarbeiter noch nicht geladen ist, wird daher nichts angezeigt.
-      if (isStaff && !employeeRow?.id) {
-        setEntries([]);
-        return;
-      }
-
       let query = supabase
         .from("v_time_entries_expanded")
         .select("*")
@@ -838,36 +827,6 @@ export default function DaySlider() {
       old.includes(key) ? old.filter((x) => x !== key) : [...old, key]
     );
   };
-
-  const ownDayStatus = useMemo(() => {
-    if (!isStaff) return null;
-
-    const ownEntries = (entries || []).filter((row) => {
-      const rowDate = String(row?.work_date || row?.date || "").slice(0, 10);
-      if (rowDate !== date) return false;
-      if (employeeRow?.id) return String(row?.employee_id || "") === String(employeeRow.id);
-      if (session?.code) return String(row?.employee_code || row?.code || "") === String(session.code);
-      return false;
-    });
-
-    const hasUrlaub = ownEntries.some((row) => isAbsenceEntry(row, "urlaub"));
-    const hasKrank = ownEntries.some((row) => isAbsenceEntry(row, "krank"));
-    const hasEntry = ownEntries.length > 0;
-
-    if (buakSollHoursToday <= 0) {
-      return { status: "not_required", icon: "⚪", label: "Heute ist laut BUAK kein Pflicht-Eintrag nötig." };
-    }
-    if (hasUrlaub) {
-      return { status: "urlaub", icon: "🟡", label: "Dein Urlaub ist für heute eingetragen." };
-    }
-    if (hasKrank) {
-      return { status: "krank", icon: "🔵", label: "Dein Krankenstand ist für heute eingetragen." };
-    }
-    if (hasEntry) {
-      return { status: "ok", icon: "✅", label: "Dein Eintrag für heute ist vorhanden." };
-    }
-    return { status: "missing", icon: "❌", label: "Dein Eintrag für heute fehlt noch." };
-  }, [buakSollHoursToday, date, employeeRow?.id, entries, isStaff, session?.code]);
 
   async function handleSave() {
     setError("");
@@ -1093,32 +1052,6 @@ export default function DaySlider() {
           </div>
         </div>
       </div>
-
-      {isStaff && ownDayStatus && (
-        <div className="hbz-card month-main-card daily-check-card">
-          <div className="month-main-header">
-            <div>
-              <div className="month-card-title">Dein Tagesstatus</div>
-              <div className="month-main-subtitle">
-                {holidayNameToday
-                  ? `Feiertag: ${holidayNameToday} · BUAK Soll heute: ${buakSollHoursToday} h`
-                  : buakSollHoursToday > 0
-                  ? `BUAK Soll heute: ${buakSollHoursToday} h`
-                  : "Laut BUAK heute kein Pflicht-Eintrag"}
-              </div>
-            </div>
-          </div>
-
-          <div className="daily-check-grid">
-            <div className={`daily-check-pill daily-check-${ownDayStatus.status}`}>
-              <span className="daily-check-name">{currentUser?.name || session?.name || "Du"}</span>
-              <span className="daily-check-state">
-                {ownDayStatus.icon} {ownDayStatus.label}
-              </span>
-            </div>
-          </div>
-        </div>
-      )}
 
       {isManager && (
         <div className="hbz-card month-main-card daily-check-card">
