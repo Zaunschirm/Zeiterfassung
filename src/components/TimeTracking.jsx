@@ -42,6 +42,11 @@ export default function TimeTracking() {
     }
   })();
 
+  const currentRole = String(employeeFromLS?.role || "").trim().toLowerCase();
+  const isStaff = currentRole === "mitarbeiter";
+  const canSeeAllEmployees = !isStaff;
+
+
   // Stammdaten
   const [projects, setProjects] = useState([]);
   const [employees, setEmployees] = useState([]);
@@ -109,23 +114,40 @@ export default function TimeTracking() {
   const projectAddress = selectedProject?.address || "";
   const finalWeather = weatherManual || weatherAuto || "";
 
+  const getEmployeeKey = (emp) => String(emp?.id ?? emp?.code ?? emp?.name ?? "");
+  const isCurrentEmployee = (emp) => {
+    if (!emp) return false;
+    return (
+      (employeeFromLS?.id != null && String(emp.id) === String(employeeFromLS.id)) ||
+      (employeeFromLS?.code && String(emp.code) === String(employeeFromLS.code)) ||
+      (employeeFromLS?.name && String(emp.name) === String(employeeFromLS.name))
+    );
+  };
+  const entryBelongsToEmployee = (entry, emp) => {
+    if (!entry || !emp) return false;
+    const empValues = [emp.id, emp.code, emp.name].filter((v) => v != null && v !== "").map(String);
+    const entryValues = [
+      entry.employee_id,
+      entry.employee_code,
+      entry.employee_name,
+      entry.name,
+      entry.code,
+    ].filter((v) => v != null && v !== "").map(String);
+    return entryValues.some((v) => empValues.includes(v));
+  };
+
+  const visibleTrackingEmployees = useMemo(() => {
+    if (!isStaff) return employees;
+    const own = employees.filter(isCurrentEmployee);
+    if (own.length) return own;
+    return employeeFromLS?.code || employeeFromLS?.id || employeeFromLS?.name
+      ? [{ id: employeeFromLS.id, code: employeeFromLS.code, name: employeeFromLS.name || employeeFromLS.code || "Du", role: employeeFromLS.role }]
+      : [];
+  }, [employees, isStaff, employeeFromLS?.id, employeeFromLS?.code, employeeFromLS?.name, employeeFromLS?.role]);
+
   // --------------------------------------------------
   // Daten laden
   // --------------------------------------------------
-  useEffect(() => {
-  // AUTO_SELF_SELECT
-  if (isStaff && session?.code) {
-    setSelectedCodes([session.code]);
-  }
-}, [isStaff, session?.code]);
-
-useEffect(() => {
-    // MITARBEITER_ONLY_SELF_SELECTION
-    if (isStaff && session?.code) {
-      setSelectedCodes([session.code]);
-    }
-  }, [isStaff, session?.code]);
-
   useEffect(() => {
     (async () => {
       try {
@@ -175,6 +197,12 @@ useEffect(() => {
   useEffect(() => {
     loadEntriesForDay();
   }, [date]);
+
+  useEffect(() => {
+    if (!isStaff) return;
+    const own = visibleTrackingEmployees[0];
+    if (own) setSelectedEmployees([own]);
+  }, [isStaff, visibleTrackingEmployees]);
 
 
   const loadWeatherForCurrentBooking = async () => {
@@ -273,6 +301,7 @@ useEffect(() => {
   const clearAbsence = () => setAbsenceType(null);
 
   const toggleEmp = (emp) => {
+    if (isStaff) return;
     const key = emp.id ?? emp.code ?? emp.name;
     setSelectedEmployees((prev) =>
       prev.some((e) => (e.id ?? e.code ?? e.name) === key)
@@ -281,8 +310,14 @@ useEffect(() => {
     );
   };
 
-  const selectAllEmps = () => setSelectedEmployees(employees);
-  const selectNoneEmps = () => setSelectedEmployees([]);
+  const selectAllEmps = () => {
+    if (isStaff) return;
+    setSelectedEmployees(employees);
+  };
+  const selectNoneEmps = () => {
+    if (isStaff) return;
+    setSelectedEmployees([]);
+  };
 
   // --------------------------------------------------
   // SPEICHERN
@@ -366,27 +401,54 @@ useEffect(() => {
   // --------------------------------------------------
   // Render
   // --------------------------------------------------
-  
-  const hasEntryToday = entries?.some(
-    (e) => e.work_date === new Date().toISOString().slice(0, 10)
-  );
+
+  const selectedDay = new Date(`${date}T12:00:00`);
+  const selectedWeekDay = selectedDay.getDay();
+  const buakSollForSelectedDay = selectedWeekDay >= 1 && selectedWeekDay <= 4 ? 9 : selectedWeekDay === 5 ? 6 : 0;
+  const buakWeekTypeForSelectedDay = buakSollForSelectedDay > 0 ? "kurz" : "";
+  const formatDateAT = (iso) => new Date(`${iso}T12:00:00`).toLocaleDateString("de-AT");
+
+  const dailyControlEmployees = canSeeAllEmployees ? employees : visibleTrackingEmployees;
+  const dailyControlRows = dailyControlEmployees.map((employee) => {
+    const employeeEntries = entriesToday.filter((entry) => entryBelongsToEmployee(entry, employee));
+    const absenceEntries = employeeEntries.filter((entry) => entry.absence_type === "urlaub" || entry.absence_type === "krank");
+    const hasEntries = employeeEntries.length > 0;
+    const hasAbsence = absenceEntries.length > 0;
+    const status = hasAbsence ? "absence" : hasEntries ? "ok" : "missing";
+    return {
+      employee,
+      status,
+      icon: hasAbsence ? "🟡" : hasEntries ? "✅" : "❌",
+      label: hasAbsence ? "Urlaub/Krank" : hasEntries ? "Eingetragen" : "Fehlt",
+      entryCount: employeeEntries.length,
+    };
+  });
+  const okDailyCount = dailyControlRows.filter((row) => row.status === "ok").length;
+  const missingDailyCount = dailyControlRows.filter((row) => row.status === "missing").length;
+  const absenceDailyCount = dailyControlRows.filter((row) => row.status === "absence").length;
+  const ownDailyStatus = dailyControlRows[0] || null;
+  const ownEntriesToday = isStaff && visibleTrackingEmployees[0]
+    ? entriesToday.filter((entry) => entryBelongsToEmployee(entry, visibleTrackingEmployees[0]))
+    : [];
+  const missingPreviousMonthDays = [];
+  const missingReminderLoading = false;
 
   return (
-    <>
-      {isStaff && !hasEntryToday && (
-        <div style={{
-          background: "#fff3cd",
-          padding: "10px",
-          borderRadius: "6px",
-          marginBottom: "10px"
-        }}>
-          ⚠️ Noch kein Eintrag für heute vorhanden
-        </div>
-      )}
-    
     <div className="hbz-container">
 
-      {/* Tageskontrolle: Admin/Teamleiter sehen sofort, wer am gewählten BUAK-Arbeitstag fehlt */}
+      {isStaff && ownDailyStatus && (
+        <div className={`hbz-card tight staff-own-status staff-own-status-${ownDailyStatus.status}`}>
+          <div className="daily-control-chip" style={{ display: "inline-flex" }}>
+            <span className="daily-control-name">Dein Status für {formatDateAT(date)}</span>
+            <span className="daily-control-state">
+              <span aria-hidden="true">{ownDailyStatus.icon}</span> {ownDailyStatus.label}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Tageskontrolle: nur Admin/Teamleiter sehen alle Mitarbeiter */}
+      {!isStaff && (
       <div className="hbz-card tight daily-control-card">
         <div className="daily-control-head">
           <div>
@@ -431,8 +493,9 @@ useEffect(() => {
           </div>
         )}
       </div>
+      )}
 
-      {missingPreviousMonthDays.length > 0 && (
+      {!isStaff && missingPreviousMonthDays.length > 0 && (
         <div className="hbz-card tight missing-reminder-card">
           <div className="hbz-section-title" style={{ marginBottom: 4 }}>Fehlende Zeiteinträge vom Vormonat</div>
           <div className="help" style={{ marginBottom: 8 }}>
@@ -449,7 +512,7 @@ useEffect(() => {
         </div>
       )}
 
-      {missingReminderLoading && (
+      {!isStaff && missingReminderLoading && (
         <div className="hbz-card tight missing-reminder-card">
           <div className="help">Prüfe fehlende Einträge vom Vormonat…</div>
         </div>
@@ -741,23 +804,15 @@ useEffect(() => {
 
         <div className="hbz-section-title">Mitarbeiter</div>
 
-        <div className="hbz-row" style={{ marginBottom: 6, gap: 8 }}>
+        <div className="hbz-row" style={{ marginBottom: 6, gap: 8, alignItems: "center" }}>
           {!isStaff && (
-    <>
-      {!isStaff && (
-      <>
-        {!isStaff && (
-      <>
-        <button>Alle</button>
-        <button>Keine</button>
-      </>
-    )}
-      </>
-    )}
-    </>
-  )}
+            <>
+              <button type="button" className="hbz-btn btn-small" onClick={selectAllEmps}>Alle</button>
+              <button type="button" className="hbz-btn btn-small" onClick={selectNoneEmps}>Keine</button>
+            </>
+          )}
           <div className="help">
-            {selectedEmployees.length} / {employees.length} gewählt
+            {isStaff ? "Nur du selbst bist auswählbar." : `${selectedEmployees.length} / ${employees.length} gewählt`}
           </div>
         </div>
 
@@ -773,6 +828,7 @@ useEffect(() => {
                 type="button"
                 className={`hbz-chip ${active ? "active" : ""}`}
                 onClick={() => toggleEmp(emp)}
+                disabled={isStaff}
               >
                 {emp.name ?? key}
               </button>
@@ -814,7 +870,26 @@ useEffect(() => {
           </div>
         </div>
         <div style={{ marginTop: 8 }}>
-          <EntryTable date={date} />
+          {isStaff ? (
+            ownEntriesToday.length === 0 ? (
+              <div className="help">Für dich ist an diesem Tag noch kein Eintrag gespeichert.</div>
+            ) : (
+              <div className="staff-entry-list">
+                {ownEntriesToday.map((entry) => (
+                  <div key={entry.id || `${entry.work_date}-${entry.project_id}-${entry.start_min}`} className="daily-control-chip daily-control-ok" style={{ marginBottom: 6 }}>
+                    <span className="daily-control-name">
+                      {entry.project_name || entry.project_code || entry.project_id || "Projekt"}
+                    </span>
+                    <span className="daily-control-state">
+                      {toHM(entry.start_min)}–{toHM(entry.end_min)} · Pause {entry.break_min || 0} min · Fahrzeit {entry.travel_minutes || 0} min
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )
+          ) : (
+            <EntryTable date={date} />
+          )}
         </div>
       </div>
     </div>
