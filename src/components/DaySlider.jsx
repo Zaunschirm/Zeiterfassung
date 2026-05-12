@@ -38,6 +38,7 @@ const formatPrecip = (value) =>
 
 const PAUSE_OPTIONS = [0, 15, 30, 45, 60, 75, 90];
 const TRAVEL_OPTIONS = [0, 15, 30, 45, 60, 75, 90, 105, 120, 135, 150];
+const CRANE_HOUR_OPTIONS = Array.from({ length: 15 }, (_, i) => i + 1);
 
 const BUAK_WEEK_TYPES_2026 = {
   1: "K",
@@ -281,6 +282,13 @@ export default function DaySlider() {
   const [breakMin, setBreakMin] = useState(30);
   const [travelMin, setTravelMin] = useState(0);
   const [note, setNote] = useState("");
+  const [craneUsed, setCraneUsed] = useState(false);
+  const [craneHours, setCraneHours] = useState(1);
+  const [voiceListening, setVoiceListening] = useState(false);
+  const [voiceSupported, setVoiceSupported] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+  });
   const [weatherAuto, setWeatherAuto] = useState("");
   const [weatherManual, setWeatherManual] = useState("");
   const [weatherCode, setWeatherCode] = useState(null);
@@ -828,6 +836,51 @@ export default function DaySlider() {
     );
   };
 
+
+  function startVoiceNote() {
+    if (typeof window === "undefined") return;
+
+    const SpeechRecognition =
+      window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      setVoiceSupported(false);
+      alert("Spracherkennung wird von diesem Browser leider nicht unterstützt. Am iPhone bitte Safari bzw. die Tastatur-Diktierfunktion verwenden.");
+      return;
+    }
+
+    try {
+      const recognition = new SpeechRecognition();
+      recognition.lang = "de-AT";
+      recognition.interimResults = false;
+      recognition.maxAlternatives = 1;
+
+      recognition.onstart = () => setVoiceListening(true);
+      recognition.onerror = () => setVoiceListening(false);
+      recognition.onend = () => setVoiceListening(false);
+
+      recognition.onresult = (event) => {
+        const spokenText = Array.from(event.results || [])
+          .map((result) => result?.[0]?.transcript || "")
+          .join(" ")
+          .trim();
+
+        if (spokenText) {
+          setNote((prev) => {
+            const base = (prev || "").trim();
+            return base ? `${base}\n${spokenText}` : spokenText;
+          });
+        }
+      };
+
+      recognition.start();
+    } catch (e) {
+      console.error("[DaySlider] voice note error:", e);
+      setVoiceListening(false);
+      alert("Sprachnotiz konnte nicht gestartet werden.");
+    }
+  }
+
   async function handleSave() {
     setError("");
 
@@ -868,6 +921,8 @@ export default function DaySlider() {
       precipitation,
       weather_source: weatherSource || null,
       weather_fetched_at: weatherFetchedAt || null,
+      crane_hours: craneUsed ? Number(craneHours || 0) : 0,
+      voice_note: (note || "").trim() || null,
       note: `${
         absenceType === "krank"
           ? "[Krank] "
@@ -914,6 +969,8 @@ export default function DaySlider() {
       setAbsenceType(null);
       setBreakMin(30);
       setTravelMin(0);
+      setCraneUsed(false);
+      setCraneHours(1);
       setWeatherManual("");
       await loadEntries();
       await loadDailyCheckEntries();
@@ -934,6 +991,7 @@ export default function DaySlider() {
       to_hm: toHM(row.end_min ?? row.to_min ?? 0),
       break_min: row.break_min ?? 0,
       travel_minutes: row.travel_minutes ?? row.travel_min ?? 0,
+      crane_hours: row.crane_hours ?? 0,
       weather_manual: row.weather_manual || "",
       weather_auto: row.weather_auto || "",
       weather_final: getWeatherFinalLabel(row),
@@ -965,6 +1023,8 @@ export default function DaySlider() {
       end_min: to_m,
       break_min: parseInt(editState.break_min || "0", 10) || 0,
       travel_minutes: parseInt(editState.travel_minutes || "0", 10) || 0,
+      crane_hours: parseInt(editState.crane_hours || "0", 10) || 0,
+      voice_note: editState.note?.trim() || null,
       weather_manual: editState.weather_manual?.trim() || null,
       weather_final:
         (editState.weather_manual || "").trim() || editState.weather_auto || null,
@@ -1009,6 +1069,7 @@ export default function DaySlider() {
     { label: "Ende", value: toHM(toMin) },
     { label: "Pause", value: `${breakMin} min` },
     { label: "Fahrzeit", value: formatTravelLabel(travelMin) },
+    { label: "Kran", value: craneUsed ? `${craneHours} h` : "—" },
     { label: "Wetter", value: finalWeather || "—" },
   ];
 
@@ -1444,6 +1505,42 @@ export default function DaySlider() {
           </div>
 
           <div className="year-section">
+            <div className="month-card-title">Kranzeit</div>
+            <div className="hbz-chipbar" style={{ alignItems: "center" }}>
+              <button
+                type="button"
+                className={`hbz-chip ${craneUsed ? "active" : ""}`}
+                onClick={() => setCraneUsed((v) => !v)}
+                disabled={!!absenceType}
+                title="Kranzeit zu diesem Zeiteintrag speichern"
+              >
+                🏗 Kran verwendet
+              </button>
+
+              {craneUsed && (
+                <div className="month-card-field" style={{ minWidth: 180, margin: 0 }}>
+                  <label className="hbz-label">Kranstunden</label>
+                  <select
+                    className="hbz-input"
+                    value={craneHours}
+                    onChange={(e) => setCraneHours(Number(e.target.value))}
+                    disabled={!!absenceType}
+                  >
+                    {CRANE_HOUR_OPTIONS.map((h) => (
+                      <option key={h} value={h}>
+                        {h} h
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+            <div className="help" style={{ marginTop: 8 }}>
+              Wird als <b>Kranzeit</b> zum Eintrag gespeichert und kann später in der Nachkalkulation ausgewertet werden.
+            </div>
+          </div>
+
+          <div className="year-section">
             <div className="month-card-title">Wetter</div>
             <div className="month-card-field">
               <label className="hbz-label">Automatisch von Baustelle + Buchung</label>
@@ -1503,7 +1600,18 @@ export default function DaySlider() {
         </div>
 
         <div className="month-card-field" style={{ marginTop: 16 }}>
-          <label className="hbz-label">Notiz</label>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 6 }}>
+            <label className="hbz-label" style={{ margin: 0 }}>Notiz / Tätigkeit</label>
+            <button
+              type="button"
+              className={`hbz-btn btn-small ${voiceListening ? "hbz-btn-primary" : ""}`}
+              onClick={startVoiceNote}
+              disabled={!voiceSupported || voiceListening}
+              title={voiceSupported ? "Notiz per Sprache aufnehmen" : "Spracherkennung wird nicht unterstützt"}
+            >
+              {voiceListening ? "🎤 Höre zu…" : "🎤 Notiz sprechen"}
+            </button>
+          </div>
           <textarea
             className="hbz-textarea"
             rows={3}
@@ -1511,6 +1619,11 @@ export default function DaySlider() {
             onChange={(e) => setNote(e.target.value)}
             placeholder="z. B. Tätigkeit, Besonderheiten…"
           />
+          {!voiceSupported && (
+            <div className="help" style={{ marginTop: 6 }}>
+              Spracherkennung ist in diesem Browser nicht verfügbar. Am iPhone kannst du alternativ die Diktierfunktion der Tastatur verwenden.
+            </div>
+          )}
         </div>
 
         {error && (
@@ -1556,6 +1669,7 @@ export default function DaySlider() {
                       <th className="num">Ende</th>
                       <th className="num">Pause</th>
                       <th className="num">Fahrzeit</th>
+                      <th className="num">Kran</th>
                       <th className="num">Stunden</th>
                       <th className="num">Überstunden</th>
                       <th>Wetter</th>
@@ -1585,6 +1699,7 @@ export default function DaySlider() {
                             <td className="num">{toHM(end)}</td>
                             <td className="num">{breakM} min</td>
                             <td className="num">{travelM} min</td>
+                            <td className="num">{r.crane_hours ? `${r.crane_hours} h` : "—"}</td>
                             <td className="num">{hrs.toFixed(2)}</td>
                             <td className="num">{ot.toFixed(2)}</td>
                             <td>{getWeatherFinalLabel(r) || "—"}</td>
@@ -1696,6 +1811,25 @@ export default function DaySlider() {
                                 }))
                               }
                             />
+                          </td>
+                          <td className="num">
+                            <select
+                              className="hbz-input"
+                              value={editState.crane_hours ?? 0}
+                              onChange={(e) =>
+                                setEditState((s) => ({
+                                  ...s,
+                                  crane_hours: e.target.value,
+                                }))
+                              }
+                            >
+                              <option value={0}>—</option>
+                              {CRANE_HOUR_OPTIONS.map((h) => (
+                                <option key={h} value={h}>
+                                  {h} h
+                                </option>
+                              ))}
+                            </select>
                           </td>
                           <td className="num">
                             {(() => {
@@ -1827,6 +1961,7 @@ export default function DaySlider() {
                           <span>Ende: {toHM(end)}</span>
                           <span>Pause: {breakM} min</span>
                           <span>Fahrzeit: {travelM} min</span>
+                          {r.crane_hours ? <span>Kran: {r.crane_hours} h</span> : null}
                         </div>
 
                         <div className="month-card-row">

@@ -13,7 +13,7 @@ export async function pullEmployees() {
 
 export async function pushEntries(currentUserId) {
   const unsynced = await db.entries.where({ synced: 0 }).toArray();
-  if (!supa || !unsynced.length === 0) return unsynced.length;
+  if (!supa || unsynced.length === 0) return unsynced.length;
 
   const payload = unsynced.map(e => ({
     id: e.supa_id || undefined,
