@@ -52,9 +52,29 @@ export default function TimeTracking() {
   const initialCurrentUser = { ...(employeeFromLS || {}), ...(sessionUser || {}) };
   const [currentUser, setCurrentUser] = useState(initialCurrentUser);
 
-  const currentRole = String(currentUser?.role || currentUser?.rolle || "")
-    .trim()
-    .toLowerCase();
+  const getRoleValue = (user) =>
+    String(user?.role || user?.rolle || user?.user_role || user?.type || "")
+      .trim()
+      .toLowerCase();
+
+  // Wichtig:
+  // Bei manchen Browsern bleibt im localStorage noch ein alter Benutzer hängen.
+  // Für die Tageskontrolle nehmen wir daher die niedrigste Berechtigung aus allen bekannten Quellen.
+  // Wenn irgendwo "mitarbeiter" steht, darf die große Kontrolle NICHT angezeigt werden.
+  const knownRoles = [employeeFromLS, sessionUser, currentUser]
+    .map(getRoleValue)
+    .filter(Boolean);
+  const hasStaffRole = knownRoles.some((role) =>
+    ["mitarbeiter", "employee", "arbeiter", "ma"].includes(role)
+  );
+  const hasAdminOrTeamleiterRole = knownRoles.some((role) =>
+    role === "admin" || role === "teamleiter"
+  );
+  const currentRole = hasStaffRole
+    ? "mitarbeiter"
+    : hasAdminOrTeamleiterRole
+      ? knownRoles.find((role) => role === "admin" || role === "teamleiter")
+      : getRoleValue(currentUser);
   const isAdminOrTeamleiter = currentRole === "admin" || currentRole === "teamleiter";
   const isStaff = !isAdminOrTeamleiter;
   const canSeeAllEmployees = isAdminOrTeamleiter;
