@@ -551,21 +551,122 @@ export default function WorkAssignments() {
   return (
     <div className="workassign-dispo-page">
       <style>{`
-        .workassign-project-palette-card { overflow: hidden; }
-        .workassign-project-palette-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; margin-bottom: 12px; }
-        .workassign-project-palette { display: flex; flex-wrap: wrap; gap: 10px; align-items: stretch; }
-        .workassign-project-card { display: inline-flex; align-items: center; gap: 9px; min-height: 44px; max-width: 260px; border: 1px solid rgba(0,0,0,.12); border-radius: 14px; padding: 9px 12px; background: #fff; cursor: grab; text-align: left; box-shadow: 0 2px 8px rgba(0,0,0,.06); transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease; }
-        .workassign-project-card:active { cursor: grabbing; transform: scale(.98); }
-        .workassign-project-card:hover { box-shadow: 0 6px 16px rgba(0,0,0,.10); border-color: rgba(0,0,0,.22); }
-        .workassign-project-card-active { outline: 2px solid currentColor; outline-offset: 2px; }
-        .workassign-project-drag-dot { font-size: 16px; opacity: .65; line-height: 1; }
-        .workassign-project-card-text { display: flex; flex-direction: column; min-width: 0; }
-        .workassign-project-costcenter { font-size: 11px; font-weight: 700; opacity: .72; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .workassign-project-name { font-size: 13px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .workassign-drop-cell-hover { outline: 2px dashed currentColor; outline-offset: -4px; background: rgba(0,0,0,.035); }
+        /* Drag & Drop Projektpalette – optisch überarbeitet 2026-05-12 */
+        .workassign-project-palette-card {
+          overflow: hidden;
+          border: 1px solid rgba(121, 74, 34, .14);
+          background: linear-gradient(180deg, #fffdf9 0%, #fff8ef 100%);
+        }
+        .workassign-project-palette-head {
+          display: flex;
+          justify-content: space-between;
+          gap: 16px;
+          align-items: flex-start;
+          margin-bottom: 14px;
+          padding-bottom: 12px;
+          border-bottom: 1px solid rgba(121, 74, 34, .12);
+        }
+        .workassign-project-palette-title-row {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+        .workassign-project-count-pill {
+          display: inline-flex;
+          align-items: center;
+          border-radius: 999px;
+          padding: 4px 9px;
+          font-size: 11px;
+          font-weight: 800;
+          color: #7a4a22;
+          background: rgba(183, 128, 75, .14);
+          border: 1px solid rgba(183, 128, 75, .26);
+        }
+        .workassign-project-palette {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+          gap: 12px;
+          align-items: stretch;
+        }
+        .workassign-project-card {
+          display: grid;
+          grid-template-columns: 30px 1fr;
+          align-items: center;
+          gap: 10px;
+          min-height: 58px;
+          width: 100%;
+          border: 1px solid rgba(121, 74, 34, .18);
+          border-radius: 18px;
+          padding: 10px 12px;
+          background: #ffffff;
+          cursor: grab;
+          text-align: left;
+          box-shadow: 0 8px 18px rgba(60, 35, 16, .08);
+          transition: transform .14s ease, box-shadow .14s ease, border-color .14s ease, background .14s ease;
+        }
+        .workassign-project-card:active {
+          cursor: grabbing;
+          transform: scale(.985);
+        }
+        .workassign-project-card:hover {
+          transform: translateY(-1px);
+          box-shadow: 0 12px 24px rgba(60, 35, 16, .13);
+          border-color: rgba(121, 74, 34, .38);
+          background: #fffaf3;
+        }
+        .workassign-project-card-active {
+          border-color: #8f5628;
+          background: #fff3e2;
+          box-shadow: 0 0 0 3px rgba(183, 128, 75, .18), 0 10px 20px rgba(60, 35, 16, .10);
+        }
+        .workassign-project-drag-dot {
+          width: 30px;
+          height: 30px;
+          border-radius: 12px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 18px;
+          font-weight: 900;
+          color: #8f5628;
+          background: rgba(183, 128, 75, .14);
+          line-height: 1;
+          flex: 0 0 auto;
+        }
+        .workassign-project-card-text {
+          display: flex;
+          flex-direction: column;
+          min-width: 0;
+          gap: 2px;
+        }
+        .workassign-project-costcenter {
+          font-size: 11px;
+          font-weight: 900;
+          letter-spacing: .02em;
+          color: #8f5628;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .workassign-project-name {
+          font-size: 13px;
+          font-weight: 800;
+          color: #22160d;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .workassign-drop-cell-hover {
+          outline: 2px dashed #8f5628;
+          outline-offset: -5px;
+          background: #fff3e2 !important;
+        }
         @media (max-width: 760px) {
           .workassign-project-palette-head { flex-direction: column; }
-          .workassign-project-card { max-width: 100%; flex: 1 1 150px; }
+          .workassign-project-palette { grid-template-columns: repeat(auto-fill, minmax(145px, 1fr)); gap: 9px; }
+          .workassign-project-card { min-height: 54px; border-radius: 15px; padding: 9px 10px; }
+          .workassign-project-name { font-size: 12px; }
         }
       `}</style>
       <div className="workassign-dispo-head hbz-card">
@@ -617,7 +718,10 @@ export default function WorkAssignments() {
       <div className="hbz-card workassign-project-palette-card">
         <div className="workassign-project-palette-head">
           <div>
-            <div className="month-card-title">Aktive Projekte</div>
+            <div className="workassign-project-palette-title-row">
+              <div className="month-card-title">Aktive Projekte</div>
+              <span className="workassign-project-count-pill">{projects.length} aktiv</span>
+            </div>
             <div className="help">
               {canEditAssignments
                 ? "Projektkarte ziehen oder antippen und danach unten auf Mitarbeiter + Tag legen. Maximal 2 Projekte pro Tag."
@@ -670,7 +774,7 @@ export default function WorkAssignments() {
                   onDragEnd={onProjectDragEnd}
                   title={canEditAssignments ? "Projekt ziehen oder antippen" : projectLabel(project)}
                 >
-                  <span className="workassign-project-drag-dot">☰</span>
+                  <span className="workassign-project-drag-dot">↕</span>
                   <span className="workassign-project-card-text">
                     {project.cost_center ? (
                       <span className="workassign-project-costcenter">{project.cost_center}</span>
