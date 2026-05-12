@@ -49,8 +49,12 @@ export default function TimeTracking() {
       return {};
     }
   })();
-  const currentUser = { ...(employeeFromLS || {}), ...(sessionUser || {}) };
-  const currentRole = String(currentUser?.role || "").trim().toLowerCase();
+  const initialCurrentUser = { ...(employeeFromLS || {}), ...(sessionUser || {}) };
+  const [currentUser, setCurrentUser] = useState(initialCurrentUser);
+
+  const currentRole = String(currentUser?.role || currentUser?.rolle || "")
+    .trim()
+    .toLowerCase();
   const isAdminOrTeamleiter = currentRole === "admin" || currentRole === "teamleiter";
   const isStaff = !isAdminOrTeamleiter;
   const canSeeAllEmployees = isAdminOrTeamleiter;
@@ -106,6 +110,44 @@ export default function TimeTracking() {
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
+  // Eingeloggten Benutzer sauber aus Supabase nachladen.
+  // Wichtig: damit Mitarbeiter nicht wegen alten localStorage-Werten als Admin/Teamleiter erkannt werden.
+  useEffect(() => {
+    let cancelled = false;
+
+    async function hydrateCurrentUser() {
+      const lookupCode = sessionUser?.code || initialCurrentUser?.code;
+      const lookupId = sessionUser?.id || initialCurrentUser?.id;
+      if (!lookupCode && !lookupId) return;
+
+      try {
+        let query = supabase
+          .from("employees")
+          .select("id, code, name, role, active, disabled")
+          .limit(1);
+
+        if (lookupCode) query = query.eq("code", lookupCode);
+        else query = query.eq("id", lookupId);
+
+        const { data, error } = await query.maybeSingle();
+        if (error) throw error;
+
+        if (!cancelled && data) {
+          setCurrentUser((prev) => ({ ...(prev || {}), ...data }));
+        }
+      } catch (e) {
+        console.warn("[TimeTracking] current user fallback:", e);
+      }
+    }
+
+    hydrateCurrentUser();
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Berechnungen
   const workMinutes = useMemo(

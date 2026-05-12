@@ -551,21 +551,26 @@ export default function WorkAssignments() {
   return (
     <div className="workassign-dispo-page">
       <style>{`
-        .workassign-project-palette-card { overflow: hidden; }
-        .workassign-project-palette-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; margin-bottom: 12px; }
-        .workassign-project-palette { display: flex; flex-wrap: wrap; gap: 10px; align-items: stretch; }
-        .workassign-project-card { display: inline-flex; align-items: center; gap: 9px; min-height: 44px; max-width: 260px; border: 1px solid rgba(0,0,0,.12); border-radius: 14px; padding: 9px 12px; background: #fff; cursor: grab; text-align: left; box-shadow: 0 2px 8px rgba(0,0,0,.06); transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease; }
-        .workassign-project-card:active { cursor: grabbing; transform: scale(.98); }
-        .workassign-project-card:hover { box-shadow: 0 6px 16px rgba(0,0,0,.10); border-color: rgba(0,0,0,.22); }
-        .workassign-project-card-active { outline: 2px solid currentColor; outline-offset: 2px; }
-        .workassign-project-drag-dot { font-size: 16px; opacity: .65; line-height: 1; }
-        .workassign-project-card-text { display: flex; flex-direction: column; min-width: 0; }
-        .workassign-project-costcenter { font-size: 11px; font-weight: 700; opacity: .72; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .workassign-project-name { font-size: 13px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .workassign-project-palette-card { padding: 12px 14px !important; overflow: hidden; }
+        .workassign-project-palette-head { display: flex; justify-content: space-between; gap: 10px; align-items: center; margin-bottom: 8px; }
+        .workassign-project-palette-title { display:flex; align-items:center; gap:8px; font-weight:800; font-size:14px; }
+        .workassign-project-count { font-size:11px; font-weight:800; padding:2px 8px; border-radius:999px; background:#f4eadf; border:1px solid rgba(132,78,45,.22); color:#7b482a; }
+        .workassign-project-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(185px, 1fr)); gap: 6px; }
+        .workassign-project-card { display: flex; align-items: center; gap: 8px; min-height: 34px; border: 1px solid rgba(132,78,45,.22); border-radius: 10px; padding: 6px 9px; background: #fffaf5; cursor: grab; text-align: left; box-shadow: none; transition: background .12s ease, border-color .12s ease, transform .12s ease; }
+        .workassign-project-card:active { cursor: grabbing; transform: scale(.99); }
+        .workassign-project-card:hover { background:#fff3e6; border-color: rgba(132,78,45,.42); }
+        .workassign-project-card-active { background:#8a5231; color:#fff; border-color:#8a5231; }
+        .workassign-project-drag-dot { width:20px; height:20px; border-radius:999px; display:inline-flex; align-items:center; justify-content:center; flex:0 0 auto; background:rgba(132,78,45,.10); font-size:12px; opacity:.9; line-height:1; }
+        .workassign-project-card-active .workassign-project-drag-dot { background:rgba(255,255,255,.18); }
+        .workassign-project-card-text { display: flex; align-items: baseline; gap: 6px; min-width: 0; width:100%; }
+        .workassign-project-costcenter { font-size: 11px; font-weight: 900; opacity: .86; white-space: nowrap; flex:0 0 auto; }
+        .workassign-project-name { font-size: 12px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .workassign-project-actions { display:flex; align-items:center; gap:8px; flex:0 0 auto; }
         .workassign-drop-cell-hover { outline: 2px dashed currentColor; outline-offset: -4px; background: rgba(0,0,0,.035); }
         @media (max-width: 760px) {
-          .workassign-project-palette-head { flex-direction: column; }
-          .workassign-project-card { max-width: 100%; flex: 1 1 150px; }
+          .workassign-project-palette-head { align-items:flex-start; flex-direction: column; }
+          .workassign-project-list { grid-template-columns: repeat(auto-fill, minmax(145px, 1fr)); }
+          .workassign-project-card-text { flex-direction:column; gap:0; align-items:flex-start; }
         }
       `}</style>
       <div className="workassign-dispo-head hbz-card">
@@ -618,19 +623,21 @@ export default function WorkAssignments() {
       <div className="hbz-card workassign-project-palette-card">
         <div className="workassign-project-palette-head">
           <div>
-            <div className="month-card-title">Aktive Projekte</div>
-            <div className="help">
-              {canEditAssignments
-                ? "Projektkarte ziehen oder antippen und danach unten auf Mitarbeiter + Tag legen. Maximal 2 Projekte pro Tag."
-                : "Nur Anzeige – Änderungen sind deaktiviert."}
+            <div className="workassign-project-palette-title">
+              Projektliste ziehen
+              <span className="workassign-project-count">{projects.length} aktiv</span>
             </div>
+            <div className="help">Projekt ziehen oder antippen, danach unten auf Mitarbeiter + Tag legen.</div>
           </div>
 
-          {canEditAssignments ? (
+          <div className="workassign-project-actions">
+            {selectedProjectId ? (
+              <span className="workassign-project-count">ausgewählt</span>
+            ) : null}
             <button type="button" className="hbz-btn" onClick={clearSelectedProject}>
               Auswahl löschen
             </button>
-          ) : null}
+          </div>
         </div>
 
         <select
@@ -652,7 +659,7 @@ export default function WorkAssignments() {
         {projects.length === 0 ? (
           <div className="month-empty-state">Keine aktiven Projekte vorhanden.</div>
         ) : (
-          <div className="workassign-project-palette">
+          <div className="workassign-project-list">
             {projects.map((project) => {
               const projectId = String(project.id);
               const selected = selectedProjectId === projectId;
@@ -663,15 +670,12 @@ export default function WorkAssignments() {
                   type="button"
                   className={`workassign-project-card ${selected ? "workassign-project-card-active" : ""}`}
                   draggable={canEditAssignments}
-                  onClick={() => {
-                    if (!canEditAssignments) return;
-                    selectProject(projectId);
-                  }}
+                  onClick={() => selectProject(projectId)}
                   onDragStart={(e) => onProjectDragStart(e, projectId)}
                   onDragEnd={onProjectDragEnd}
-                  title={canEditAssignments ? "Projekt ziehen oder antippen" : projectLabel(project)}
+                  title="Projekt ziehen oder antippen"
                 >
-                  <span className="workassign-project-drag-dot">☰</span>
+                  <span className="workassign-project-drag-dot">↕</span>
                   <span className="workassign-project-card-text">
                     {project.cost_center ? (
                       <span className="workassign-project-costcenter">{project.cost_center}</span>
