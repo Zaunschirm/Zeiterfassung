@@ -189,6 +189,13 @@ const isAbsenceRow = (r) => {
   return note.includes("[Urlaub]") || note.includes("[Krank]");
 };
 
+const isBadWeatherRow = (r) => r?.bad_weather === true || r?.bad_weather === "true";
+const rowWorkMinutes = (r) => Math.max((r.start_min ?? r.from_min ?? 0) - 0, 0) && Math.max((r.end_min ?? r.to_min ?? 0) - (r.start_min ?? r.from_min ?? 0) - (r.break_min || 0), 0);
+const getProjectAddress = (r, projects = []) => {
+  const prj = projects.find((p) => String(p.id) === String(r.project_id));
+  return r.project_address || r.address || r.project_address_text || prj?.address || prj?.adresse || prj?.site_address || "—";
+};
+
 const isVacationRow = (r) => (r?.note || "").toString().includes("[Urlaub]");
 const isSickRow = (r) => (r?.note || "").toString().includes("[Krank]");
 
@@ -547,6 +554,24 @@ export default function MonthlyOverview() {
     };
   }, [grouped]);
 
+  const badWeatherRows = useMemo(() => {
+    return (rows || [])
+      .filter(isBadWeatherRow)
+      .map((r) => {
+        const start = r.start_min ?? r.from_min ?? 0;
+        const end = r.end_min ?? r.to_min ?? 0;
+        const mins = r.bad_weather_minutes || rowWorkMinutes(r);
+        return {
+          ...r,
+          _badWeatherStart: start,
+          _badWeatherEnd: end,
+          _badWeatherHours: h2(mins),
+          _projectAddress: getProjectAddress(r, projects),
+        };
+      })
+      .sort((a, b) => String(a.work_date).localeCompare(String(b.work_date)) || String(a.employee_name || "").localeCompare(String(b.employee_name || "")));
+  }, [rows, projects]);
+
   function startEdit(row) {
     if (!isManager) return;
 
@@ -630,6 +655,7 @@ export default function MonthlyOverview() {
       "Ende",
       "Pause (min)",
       "Fahrzeit (min)",
+      "Schlechtwetter",
       "Stunden (inkl. Fahrzeit)",
       "Überstunden",
       "Notiz",
@@ -652,6 +678,7 @@ export default function MonthlyOverview() {
           toHM(end),
           r.break_min ?? 0,
           r._travel ?? 0,
+          isBadWeatherRow(r) ? "Ja" : "",
           hrs.toFixed(2),
           ot.toFixed(2),
           (r.note || "").replace(/[\r\n;]/g, " "),
@@ -1698,6 +1725,7 @@ export default function MonthlyOverview() {
                         <th className="num">Ende</th>
                         <th className="num">Pause</th>
                         <th className="num">Fahrzeit</th>
+                        <th className="num">Schlechtwetter</th>
                         <th className="num">Stunden</th>
                         <th className="num">Überstunden</th>
                         <th>Notiz</th>
@@ -1722,6 +1750,7 @@ export default function MonthlyOverview() {
                               <td className="num">{toHM(end)}</td>
                               <td className="num">{r.break_min ?? 0} min</td>
                               <td className="num">{r._travel ?? 0} min</td>
+                              <td className="num">{isBadWeatherRow(r) ? "Ja" : "—"}</td>
                               <td className="num">{hrs.toFixed(2)}</td>
                               <td className="num">{ot.toFixed(2)}</td>
                               <td>{r.note || ""}</td>

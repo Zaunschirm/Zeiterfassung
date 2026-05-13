@@ -38,7 +38,6 @@ const formatPrecip = (value) =>
 
 const PAUSE_OPTIONS = [0, 15, 30, 45, 60, 75, 90];
 const TRAVEL_OPTIONS = [0, 15, 30, 45, 60, 75, 90, 105, 120, 135, 150];
-const CRANE_HOUR_OPTIONS = Array.from({ length: 15 }, (_, i) => i + 1);
 
 const BUAK_WEEK_TYPES_2026 = {
   1: "K",
@@ -259,18 +258,21 @@ function getWeekDays(dateStr, count = 5) {
 export default function DaySlider() {
   const session = getSession()?.user || null;
   const [currentUser, setCurrentUser] = useState(session);
-  const role = (currentUser?.role || session?.role || "mitarbeiter").toLowerCase();
+  const role = String(currentUser?.role || session?.role || "mitarbeiter").trim().toLowerCase();
+  const isAdminRole = role === "admin";
+  const isTeamleiterRole = role === "teamleiter";
+  const isManager = isAdminRole || isTeamleiterRole;
+  const isStaff = !isManager;
+
   const permissions = getUserPermissions(currentUser || session);
-  const canWriteOwnTime = !!permissions.writeOwnTime;
-  const canWriteAllTime = !!permissions.writeAllTime;
-  const canEditOwnTime = !!permissions.editOwnTime;
-  const canEditAllTime = !!permissions.editAllTime;
+  const canWriteOwnTime = !!permissions.writeOwnTime || isStaff;
+  const canWriteAllTime = isManager && !!permissions.writeAllTime;
+  const canEditOwnTime = !!permissions.editOwnTime || isStaff;
+  const canEditAllTime = isManager && !!permissions.editAllTime;
   const canDeleteOwnTime = !!permissions.deleteOwnTime;
-  const canDeleteAllTime = !!permissions.deleteAllTime;
-  const canSelectEmployees = canWriteAllTime || canEditAllTime || canDeleteAllTime;
-  const canSeeAllEntries = canSelectEmployees;
-  const isStaff = !canSelectEmployees;
-  const isManager = canSelectEmployees;
+  const canDeleteAllTime = isManager && !!permissions.deleteAllTime;
+  const canSelectEmployees = isManager;
+  const canSeeAllEntries = isManager;
 
   const [date, setDate] = useState(() =>
     new Date().toISOString().slice(0, 10)
@@ -282,13 +284,6 @@ export default function DaySlider() {
   const [breakMin, setBreakMin] = useState(30);
   const [travelMin, setTravelMin] = useState(0);
   const [note, setNote] = useState("");
-  const [craneUsed, setCraneUsed] = useState(false);
-  const [craneHours, setCraneHours] = useState(1);
-  const [voiceListening, setVoiceListening] = useState(false);
-  const [voiceSupported, setVoiceSupported] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return !!(window.SpeechRecognition || window.webkitSpeechRecognition);
-  });
   const [weatherAuto, setWeatherAuto] = useState("");
   const [weatherManual, setWeatherManual] = useState("");
   const [weatherCode, setWeatherCode] = useState(null);
@@ -650,6 +645,14 @@ export default function DaySlider() {
   async function loadEntries() {
     try {
       setLoading(true);
+
+      // Mitarbeiter dürfen in der Tagesübersicht niemals fremde Einträge sehen.
+      // Solange der eingeloggte Mitarbeiter noch nicht geladen ist, wird daher nichts angezeigt.
+      if (isStaff && !employeeRow?.id) {
+        setEntries([]);
+        return;
+      }
+
       let query = supabase
         .from("v_time_entries_expanded")
         .select("*")
@@ -836,50 +839,35 @@ export default function DaySlider() {
     );
   };
 
+  const ownDayStatus = useMemo(() => {
+    if (!isStaff) return null;
 
-  function startVoiceNote() {
-    if (typeof window === "undefined") return;
+    const ownEntries = (entries || []).filter((row) => {
+      const rowDate = String(row?.work_date || row?.date || "").slice(0, 10);
+      if (rowDate !== date) return false;
+      if (employeeRow?.id) return String(row?.employee_id || "") === String(employeeRow.id);
+      if (session?.code) return String(row?.employee_code || row?.code || "") === String(session.code);
+      return false;
+    });
 
-    const SpeechRecognition =
-      window.SpeechRecognition || window.webkitSpeechRecognition;
+    const hasUrlaub = ownEntries.some((row) => isAbsenceEntry(row, "urlaub"));
+    const hasKrank = ownEntries.some((row) => isAbsenceEntry(row, "krank"));
+    const hasEntry = ownEntries.length > 0;
 
-    if (!SpeechRecognition) {
-      setVoiceSupported(false);
-      alert("Spracherkennung wird von diesem Browser leider nicht unterstützt. Am iPhone bitte Safari bzw. die Tastatur-Diktierfunktion verwenden.");
-      return;
+    if (buakSollHoursToday <= 0) {
+      return { status: "not_required", icon: "⚪", label: "Heute ist laut BUAK kein Pflicht-Eintrag nötig." };
     }
-
-    try {
-      const recognition = new SpeechRecognition();
-      recognition.lang = "de-AT";
-      recognition.interimResults = false;
-      recognition.maxAlternatives = 1;
-
-      recognition.onstart = () => setVoiceListening(true);
-      recognition.onerror = () => setVoiceListening(false);
-      recognition.onend = () => setVoiceListening(false);
-
-      recognition.onresult = (event) => {
-        const spokenText = Array.from(event.results || [])
-          .map((result) => result?.[0]?.transcript || "")
-          .join(" ")
-          .trim();
-
-        if (spokenText) {
-          setNote((prev) => {
-            const base = (prev || "").trim();
-            return base ? `${base}\n${spokenText}` : spokenText;
-          });
-        }
-      };
-
-      recognition.start();
-    } catch (e) {
-      console.error("[DaySlider] voice note error:", e);
-      setVoiceListening(false);
-      alert("Sprachnotiz konnte nicht gestartet werden.");
+    if (hasUrlaub) {
+      return { status: "urlaub", icon: "🟡", label: "Dein Urlaub ist für heute eingetragen." };
     }
-  }
+    if (hasKrank) {
+      return { status: "krank", icon: "🔵", label: "Dein Krankenstand ist für heute eingetragen." };
+    }
+    if (hasEntry) {
+      return { status: "ok", icon: "✅", label: "Dein Eintrag für heute ist vorhanden." };
+    }
+    return { status: "missing", icon: "❌", label: "Dein Eintrag für heute fehlt noch." };
+  }, [buakSollHoursToday, date, employeeRow?.id, entries, isStaff, session?.code]);
 
   async function handleSave() {
     setError("");
@@ -921,8 +909,6 @@ export default function DaySlider() {
       precipitation,
       weather_source: weatherSource || null,
       weather_fetched_at: weatherFetchedAt || null,
-      crane_hours: craneUsed ? Number(craneHours || 0) : 0,
-      voice_note: (note || "").trim() || null,
       note: `${
         absenceType === "krank"
           ? "[Krank] "
@@ -969,8 +955,6 @@ export default function DaySlider() {
       setAbsenceType(null);
       setBreakMin(30);
       setTravelMin(0);
-      setCraneUsed(false);
-      setCraneHours(1);
       setWeatherManual("");
       await loadEntries();
       await loadDailyCheckEntries();
@@ -991,7 +975,6 @@ export default function DaySlider() {
       to_hm: toHM(row.end_min ?? row.to_min ?? 0),
       break_min: row.break_min ?? 0,
       travel_minutes: row.travel_minutes ?? row.travel_min ?? 0,
-      crane_hours: row.crane_hours ?? 0,
       weather_manual: row.weather_manual || "",
       weather_auto: row.weather_auto || "",
       weather_final: getWeatherFinalLabel(row),
@@ -1023,8 +1006,6 @@ export default function DaySlider() {
       end_min: to_m,
       break_min: parseInt(editState.break_min || "0", 10) || 0,
       travel_minutes: parseInt(editState.travel_minutes || "0", 10) || 0,
-      crane_hours: parseInt(editState.crane_hours || "0", 10) || 0,
-      voice_note: editState.note?.trim() || null,
       weather_manual: editState.weather_manual?.trim() || null,
       weather_final:
         (editState.weather_manual || "").trim() || editState.weather_auto || null,
@@ -1069,7 +1050,6 @@ export default function DaySlider() {
     { label: "Ende", value: toHM(toMin) },
     { label: "Pause", value: `${breakMin} min` },
     { label: "Fahrzeit", value: formatTravelLabel(travelMin) },
-    { label: "Kran", value: craneUsed ? `${craneHours} h` : "—" },
     { label: "Wetter", value: finalWeather || "—" },
   ];
 
@@ -1113,6 +1093,32 @@ export default function DaySlider() {
           </div>
         </div>
       </div>
+
+      {isStaff && ownDayStatus && (
+        <div className="hbz-card month-main-card daily-check-card">
+          <div className="month-main-header">
+            <div>
+              <div className="month-card-title">Dein Tagesstatus</div>
+              <div className="month-main-subtitle">
+                {holidayNameToday
+                  ? `Feiertag: ${holidayNameToday} · BUAK Soll heute: ${buakSollHoursToday} h`
+                  : buakSollHoursToday > 0
+                  ? `BUAK Soll heute: ${buakSollHoursToday} h`
+                  : "Laut BUAK heute kein Pflicht-Eintrag"}
+              </div>
+            </div>
+          </div>
+
+          <div className="daily-check-grid">
+            <div className={`daily-check-pill daily-check-${ownDayStatus.status}`}>
+              <span className="daily-check-name">{currentUser?.name || session?.name || "Du"}</span>
+              <span className="daily-check-state">
+                {ownDayStatus.icon} {ownDayStatus.label}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {isManager && (
         <div className="hbz-card month-main-card daily-check-card">
@@ -1505,42 +1511,6 @@ export default function DaySlider() {
           </div>
 
           <div className="year-section">
-            <div className="month-card-title">Kranzeit</div>
-            <div className="hbz-chipbar" style={{ alignItems: "center" }}>
-              <button
-                type="button"
-                className={`hbz-chip ${craneUsed ? "active" : ""}`}
-                onClick={() => setCraneUsed((v) => !v)}
-                disabled={!!absenceType}
-                title="Kranzeit zu diesem Zeiteintrag speichern"
-              >
-                🏗 Kran verwendet
-              </button>
-
-              {craneUsed && (
-                <div className="month-card-field" style={{ minWidth: 180, margin: 0 }}>
-                  <label className="hbz-label">Kranstunden</label>
-                  <select
-                    className="hbz-input"
-                    value={craneHours}
-                    onChange={(e) => setCraneHours(Number(e.target.value))}
-                    disabled={!!absenceType}
-                  >
-                    {CRANE_HOUR_OPTIONS.map((h) => (
-                      <option key={h} value={h}>
-                        {h} h
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-            </div>
-            <div className="help" style={{ marginTop: 8 }}>
-              Wird als <b>Kranzeit</b> zum Eintrag gespeichert und kann später in der Nachkalkulation ausgewertet werden.
-            </div>
-          </div>
-
-          <div className="year-section">
             <div className="month-card-title">Wetter</div>
             <div className="month-card-field">
               <label className="hbz-label">Automatisch von Baustelle + Buchung</label>
@@ -1600,18 +1570,7 @@ export default function DaySlider() {
         </div>
 
         <div className="month-card-field" style={{ marginTop: 16 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 6 }}>
-            <label className="hbz-label" style={{ margin: 0 }}>Notiz / Tätigkeit</label>
-            <button
-              type="button"
-              className={`hbz-btn btn-small ${voiceListening ? "hbz-btn-primary" : ""}`}
-              onClick={startVoiceNote}
-              disabled={!voiceSupported || voiceListening}
-              title={voiceSupported ? "Notiz per Sprache aufnehmen" : "Spracherkennung wird nicht unterstützt"}
-            >
-              {voiceListening ? "🎤 Höre zu…" : "🎤 Notiz sprechen"}
-            </button>
-          </div>
+          <label className="hbz-label">Notiz</label>
           <textarea
             className="hbz-textarea"
             rows={3}
@@ -1619,11 +1578,6 @@ export default function DaySlider() {
             onChange={(e) => setNote(e.target.value)}
             placeholder="z. B. Tätigkeit, Besonderheiten…"
           />
-          {!voiceSupported && (
-            <div className="help" style={{ marginTop: 6 }}>
-              Spracherkennung ist in diesem Browser nicht verfügbar. Am iPhone kannst du alternativ die Diktierfunktion der Tastatur verwenden.
-            </div>
-          )}
         </div>
 
         {error && (
@@ -1669,7 +1623,6 @@ export default function DaySlider() {
                       <th className="num">Ende</th>
                       <th className="num">Pause</th>
                       <th className="num">Fahrzeit</th>
-                      <th className="num">Kran</th>
                       <th className="num">Stunden</th>
                       <th className="num">Überstunden</th>
                       <th>Wetter</th>
@@ -1699,7 +1652,6 @@ export default function DaySlider() {
                             <td className="num">{toHM(end)}</td>
                             <td className="num">{breakM} min</td>
                             <td className="num">{travelM} min</td>
-                            <td className="num">{r.crane_hours ? `${r.crane_hours} h` : "—"}</td>
                             <td className="num">{hrs.toFixed(2)}</td>
                             <td className="num">{ot.toFixed(2)}</td>
                             <td>{getWeatherFinalLabel(r) || "—"}</td>
@@ -1811,25 +1763,6 @@ export default function DaySlider() {
                                 }))
                               }
                             />
-                          </td>
-                          <td className="num">
-                            <select
-                              className="hbz-input"
-                              value={editState.crane_hours ?? 0}
-                              onChange={(e) =>
-                                setEditState((s) => ({
-                                  ...s,
-                                  crane_hours: e.target.value,
-                                }))
-                              }
-                            >
-                              <option value={0}>—</option>
-                              {CRANE_HOUR_OPTIONS.map((h) => (
-                                <option key={h} value={h}>
-                                  {h} h
-                                </option>
-                              ))}
-                            </select>
                           </td>
                           <td className="num">
                             {(() => {
@@ -1961,7 +1894,6 @@ export default function DaySlider() {
                           <span>Ende: {toHM(end)}</span>
                           <span>Pause: {breakM} min</span>
                           <span>Fahrzeit: {travelM} min</span>
-                          {r.crane_hours ? <span>Kran: {r.crane_hours} h</span> : null}
                         </div>
 
                         <div className="month-card-row">

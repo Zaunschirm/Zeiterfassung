@@ -30,6 +30,22 @@ function splitMinutes(r) {
   return { work, travel, total };
 }
 
+function isBadWeatherRow(r) {
+  return r?.bad_weather === true || r?.bad_weather === "true";
+}
+
+function rowWorkMinutes(r) {
+  const start = r.start_min ?? r.from_min ?? 0;
+  const end = r.end_min ?? r.to_min ?? 0;
+  const pause = r.break_min ?? 0;
+  return Math.max(end - start - pause, 0);
+}
+
+function getProjectAddress(r, projects = []) {
+  const prj = projects.find((p) => String(p.id) === String(r.project_id));
+  return r.project_address || r.address || r.project_address_text || prj?.address || prj?.adresse || prj?.site_address || "—";
+}
+
 function getMonthRange(ym) {
   if (!ym || !/^\d{4}-\d{2}$/.test(ym)) return null;
   const [y, m] = ym.split("-").map((x) => parseInt(x, 10));
@@ -1211,6 +1227,41 @@ export default function YearOverview() {
       }
     }
 
+    const exportBadWeatherRows = selectedRows
+      .filter(isBadWeatherRow)
+      .map((r) => {
+        const start = r.start_min ?? r.from_min ?? 0;
+        const end = r.end_min ?? r.to_min ?? 0;
+        const mins = r.bad_weather_minutes || rowWorkMinutes(r);
+        return [
+          formatDateAT(r.work_date),
+          `${toHM(start)}–${toHM(end)}`,
+          r.employee_name || "",
+          r.project_name || "—",
+          getProjectAddress(r, projects),
+          h2(mins).toFixed(2),
+        ];
+      });
+
+    if (exportBadWeatherRows.length > 0) {
+      if (y > pageH - 130) {
+        doc.addPage();
+        y = 40;
+      }
+      doc.setFontSize(14);
+      doc.text("Schlechtwetter", 40, y);
+      autoTable(doc, {
+        head: [["Datum", "Uhrzeit", "Mitarbeiter", "Projekt", "Adresse", "Stunden"]],
+        body: exportBadWeatherRows,
+        startY: y + 14,
+        styles: { fontSize: 8.5, cellPadding: 3, overflow: "linebreak", valign: "top" },
+        headStyles: { fillColor: [123, 74, 45], textColor: 255 },
+        margin: { left: 40, right: 40 },
+      });
+      y = (doc.lastAutoTable?.finalY || y) + 14;
+      drewSomething = true;
+    }
+
     if (!drewSomething) {
       doc.setFontSize(11);
       doc.text("Keine Inhalte für den PDF Export ausgewählt.", 40, y);
@@ -1252,6 +1303,24 @@ export default function YearOverview() {
   const handleMonthRange = () => {
     setMonthFilter("");
   };
+
+  const badWeatherRows = useMemo(() => {
+    return (rows || [])
+      .filter(isBadWeatherRow)
+      .map((r) => {
+        const start = r.start_min ?? r.from_min ?? 0;
+        const end = r.end_min ?? r.to_min ?? 0;
+        const mins = r.bad_weather_minutes || rowWorkMinutes(r);
+        return {
+          ...r,
+          _badWeatherStart: start,
+          _badWeatherEnd: end,
+          _badWeatherHours: h2(mins),
+          _projectAddress: getProjectAddress(r, projects),
+        };
+      })
+      .sort((a, b) => String(a.work_date).localeCompare(String(b.work_date)) || String(a.employee_name || "").localeCompare(String(b.employee_name || "")));
+  }, [rows, projects]);
 
   if (!isAdmin) {
     return (
@@ -1526,6 +1595,43 @@ export default function YearOverview() {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {badWeatherRows.length > 0 && (
+        <div className="hbz-card year-main-card" style={{ marginBottom: 16 }}>
+          <div className="year-main-header">
+            <div>
+              <div className="year-card-title">Schlechtwetter</div>
+              <div className="year-main-subtitle">Nur Buchungen mit Schlechtwetter im gewählten Zeitraum</div>
+            </div>
+          </div>
+          <div className="year-table-wrap">
+            <table className="year-table">
+              <thead>
+                <tr>
+                  <th>Datum</th>
+                  <th>Uhrzeit</th>
+                  <th>Mitarbeiter</th>
+                  <th>Projekt</th>
+                  <th>Adresse</th>
+                  <th className="num">Stunden</th>
+                </tr>
+              </thead>
+              <tbody>
+                {badWeatherRows.map((r) => (
+                  <tr key={`year-bad-weather-${r.id}`}>
+                    <td>{formatDateAT(r.work_date)}</td>
+                    <td>{toHM(r._badWeatherStart)}–{toHM(r._badWeatherEnd)}</td>
+                    <td>{r.employee_name || ""}</td>
+                    <td>{r.project_name || "—"}</td>
+                    <td>{r._projectAddress}</td>
+                    <td className="num">{r._badWeatherHours.toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
