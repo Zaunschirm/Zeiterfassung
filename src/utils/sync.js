@@ -24,7 +24,9 @@ export async function pushEntries(currentUserId) {
     end_min: e.endMin,
     break_min: e.breakMin,
     note: e.note,
-    project: e.project
+    project: e.project,
+    bad_weather: !!e.bad_weather,
+    bad_weather_minutes: e.bad_weather_minutes || 0
   }));
 
   const { data, error } = await supa.from('time_entries').insert(payload).select('id');

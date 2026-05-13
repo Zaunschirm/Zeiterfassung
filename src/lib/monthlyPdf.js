@@ -7,6 +7,8 @@ import {
   getBuakWeekType,
   getBuakSollHoursForWeek,
   calcBuakSollHoursForMonth,
+  getBuakSollHoursForDay,
+  getHolidayName,
 } from "../utils/time";
 
 // ---------- Utils ----------
@@ -56,159 +58,155 @@ const weekKey = (ymd) => {
   return `${id.year}-W${String(id.week).padStart(2, "0")}`;
 };
 
+function getMonthRange(ym) {
+  if (!ym || !/^\d{4}-\d{2}$/.test(ym)) return null;
+  const [y, m] = ym.split("-").map((x) => parseInt(x, 10));
+  const lastDay = new Date(y, m, 0).getDate();
+  return {
+    year: y,
+    month: m,
+    from: `${y}-${ym.slice(5)}-01`,
+    to: `${y}-${ym.slice(5)}-${String(lastDay).padStart(2, "0")}`,
+  };
+}
+
+function compareMonthStrings(a, b) {
+  if (!a || !b) return 0;
+  return a.localeCompare(b);
+}
+
+function getMonthListBetween(fromYm, toYm) {
+  if (!fromYm || !toYm) return [];
+
+  const [fromY, fromM] = fromYm.split("-").map(Number);
+  const [toY, toM] = toYm.split("-").map(Number);
+
+  const out = [];
+  let y = fromY;
+  let m = fromM;
+
+  while (y < toY || (y === toY && m <= toM)) {
+    out.push(`${y}-${String(m).padStart(2, "0")}`);
+    m += 1;
+    if (m > 12) {
+      m = 1;
+      y += 1;
+    }
+  }
+
+  return out;
+}
+
+function getRangeFromFilters(year, monthFilter, rangeFromMonth, rangeToMonth) {
+  const fromRange = getMonthRange(rangeFromMonth);
+  const toRange = getMonthRange(rangeToMonth);
+  const singleMonth = getMonthRange(monthFilter);
+
+  if (fromRange && toRange) {
+    const isNormalOrder = compareMonthStrings(rangeFromMonth, rangeToMonth) <= 0;
+    const useFrom = isNormalOrder ? fromRange : toRange;
+    const useTo = isNormalOrder ? toRange : fromRange;
+    const fromYm = isNormalOrder ? rangeFromMonth : rangeToMonth;
+    const toYm = isNormalOrder ? rangeToMonth : rangeFromMonth;
+
+    return {
+      mode: "range",
+      from: useFrom.from,
+      to: useTo.to,
+      label: `${fromYm} bis ${toYm}`,
+      yearForBuak: null,
+      monthList: getMonthListBetween(fromYm, toYm),
+    };
+  }
+
+  if (singleMonth) {
+    return {
+      mode: "month",
+      from: singleMonth.from,
+      to: singleMonth.to,
+      label: `Monat ${monthFilter}`,
+      yearForBuak: singleMonth.year,
+      monthList: [monthFilter],
+    };
+  }
+
+  return {
+    mode: "year",
+    from: `${year}-01-01`,
+    to: `${year}-12-31`,
+    label: `Jahr ${year}`,
+    yearForBuak: year,
+    monthList: Array.from(
+      { length: 12 },
+      (_, i) => `${year}-${String(i + 1).padStart(2, "0")}`
+    ),
+  };
+}
+
+
+function getDatesBetweenInclusive(from, to) {
+  const out = [];
+  const start = parseYMD(from);
+  const end = parseYMD(to);
+  if (isNaN(start.getTime()) || isNaN(end.getTime())) return out;
+
+  const d = new Date(start);
+  while (d <= end) {
+    out.push(
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+        d.getDate()
+      ).padStart(2, "0")}`
+    );
+    d.setDate(d.getDate() + 1);
+  }
+  return out;
+}
+
+function safePdfText(value) {
+  return String(value ?? "")
+    .replace(/\r?\n/g, " ")
+    .replace(/[^\S\r\n]+/g, " ")
+    .trim();
+}
+
+function formatDateAT(ymd) {
+  if (!ymd) return "";
+  const parts = String(ymd).split("-");
+  if (parts.length !== 3) return String(ymd);
+  const [y, m, d] = parts;
+  if (!y || !m || !d) return String(ymd);
+  return `${d}.${m}.${y}`;
+}
+
+function uniqueSortedDates(arr) {
+  return Array.from(new Set(arr || []))
+    .filter(Boolean)
+    .sort();
+}
+
 const isAbsenceRow = (r) => {
   const note = (r?.note || "").toString();
   return note.includes("[Urlaub]") || note.includes("[Krank]");
 };
 
-
-const formatDateAT = (ymd) => {
-  if (!ymd) return "";
-  const [y, m, d] = String(ymd).split("-");
-  if (!y || !m || !d) return ymd;
-  return `${d}.${m}.${y}`;
+const isBadWeatherRow = (r) => r?.bad_weather === true || r?.bad_weather === 1 || r?.bad_weather === "true";
+const projectAddressOf = (r, projects = []) => {
+  const direct = r?.project_address || r?.address || r?.project_adresse || r?.baustellenadresse;
+  if (direct) return direct;
+  const p = projects.find((x) => String(x.id) === String(r?.project_id));
+  return p?.address || p?.adresse || p?.baustellenadresse || p?.location || "—";
 };
 
-function addDays(date, days) {
-  const d = new Date(date.getTime());
-  d.setDate(d.getDate() + days);
-  return d;
-}
+const isVacationRow = (r) => (r?.note || "").toString().includes("[Urlaub]");
+const isSickRow = (r) => (r?.note || "").toString().includes("[Krank]");
 
-function toYMD(date) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(
-    2,
-    "0"
-  )}-${String(date.getDate()).padStart(2, "0")}`;
-}
+const getPureWorkMinutes = (r) => {
+  const total = r?._mins ?? entryMinutes(r);
+  const travel = r?._travel ?? getTravel(r);
+  return Math.max(total - travel, 0);
+};
 
-function getEasterSunday(year) {
-  const a = year % 19;
-  const b = Math.floor(year / 100);
-  const c = year % 100;
-  const d = Math.floor(b / 4);
-  const e = b % 4;
-  const f = Math.floor((b + 8) / 25);
-  const g = Math.floor((b - f + 1) / 3);
-  const h = (19 * a + b - d - g + 15) % 30;
-  const i = Math.floor(c / 4);
-  const k = c % 4;
-  const l = (32 + 2 * e + 2 * i - h - k) % 7;
-  const m = Math.floor((a + 11 * h + 22 * l) / 451);
-  const month = Math.floor((h + l - 7 * m + 114) / 31);
-  const day = ((h + l - 7 * m + 114) % 31) + 1;
-  return new Date(year, month - 1, day);
-}
-
-function getAustrianHolidays(year) {
-  const easter = getEasterSunday(year);
-  const list = [
-    { date: `${year}-01-01`, name: "Neujahr" },
-    { date: `${year}-01-06`, name: "Hl. Drei Könige" },
-    { date: toYMD(addDays(easter, 1)), name: "Ostermontag" },
-    { date: `${year}-05-01`, name: "Staatsfeiertag" },
-    { date: toYMD(addDays(easter, 39)), name: "Christi Himmelfahrt" },
-    { date: toYMD(addDays(easter, 50)), name: "Pfingstmontag" },
-    { date: toYMD(addDays(easter, 60)), name: "Fronleichnam" },
-    { date: `${year}-08-15`, name: "Maria Himmelfahrt" },
-    { date: `${year}-10-26`, name: "Nationalfeiertag" },
-    { date: `${year}-11-01`, name: "Allerheiligen" },
-    { date: `${year}-12-08`, name: "Maria Empfängnis" },
-    { date: `${year}-12-25`, name: "Christtag" },
-    { date: `${year}-12-26`, name: "Stefanitag" },
-  ];
-
-  return list.sort((a, b) => a.date.localeCompare(b.date));
-}
-
-function getDailySollHours(ymd) {
-  const d = parseYMD(ymd);
-  const day = d.getDay();
-  if (day === 0 || day === 6) return 0;
-
-  const weekType = getBuakWeekType(ymd);
-  if (weekType === "kurz") {
-    return day >= 1 && day <= 4 ? 9 : 0;
-  }
-
-  return day >= 1 && day <= 4 ? 9 : 6;
-}
-
-function uniqueSortedDates(dates) {
-  return [...new Set((dates || []).filter(Boolean))].sort();
-}
-
-function buildPayrollData(groupedRows, month, employeeRecords) {
-  const [yearStr, monthStr] = month.split("-");
-  const year = parseInt(yearStr, 10);
-  const monthNo = parseInt(monthStr, 10);
-  const holidays = getAustrianHolidays(year).filter((h) => {
-    const [, m] = h.date.split("-").map((n) => parseInt(n, 10));
-    return m === monthNo && getDailySollHours(h.date) > 0;
-  });
-
-  const data = {};
-
-  const ensure = (employeeId, fallbackName) => {
-    const emp = employeeRecords.find((e) => String(e.id) === String(employeeId));
-    const key = emp?.id || employeeId || fallbackName;
-    const name = emp?.name || fallbackName || emp?.code || "—";
-
-    if (!data[key]) {
-      data[key] = {
-        name,
-        total: 0,
-        travel: 0,
-        days: new Set(),
-        vacation: [],
-        sick: [],
-        holidays: [],
-      };
-    }
-
-    return data[key];
-  };
-
-  employeeRecords.forEach((emp) => ensure(emp.id, emp.name || emp.code));
-
-  groupedRows.forEach((r) => {
-    const d = ensure(r.employee_id, r.employee_name || r.employee_id);
-    const note = (r.note || "").toString();
-    const hrs = h2(r._mins);
-    const travelHrs = h2(r._travel);
-
-    d.total += hrs;
-    d.travel += travelHrs;
-
-    if (!isAbsenceRow(r) && hrs > 0) {
-      d.days.add(r.work_date);
-    }
-
-    if (note.includes("[Urlaub]")) {
-      d.vacation.push(r.work_date);
-    }
-
-    if (note.includes("[Krank]")) {
-      d.sick.push(r.work_date);
-    }
-  });
-
-  Object.values(data).forEach((d) => {
-    d.vacation = uniqueSortedDates(d.vacation);
-    d.sick = uniqueSortedDates(d.sick);
-
-    holidays.forEach((h) => {
-      const hours = getDailySollHours(h.date);
-      if (hours <= 0) return;
-      if (d.vacation.includes(h.date) || d.sick.includes(h.date)) return;
-
-      d.holidays.push({ ...h, hours });
-      d.total += hours;
-    });
-  });
-
-  return Object.values(data).sort((a, b) => a.name.localeCompare(b.name));
-}
+const isActiveEmployee = (e) => e?.disabled !== true && e?.active !== false;
 
 // ---------- Component ----------
 export default function MonthlyOverview() {
@@ -217,10 +215,15 @@ export default function MonthlyOverview() {
   const isStaff = role === "mitarbeiter";
   const isManager = !isStaff;
 
-  const [month, setMonth] = useState(() => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-  });
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1;
+  const currentMonthStr = `${currentYear}-${String(currentMonth).padStart(2, "0")}`;
+
+  const [year, setYear] = useState(currentYear);
+  const [monthFilter, setMonthFilter] = useState(currentMonthStr);
+  const [rangeFromMonth, setRangeFromMonth] = useState("");
+  const [rangeToMonth, setRangeToMonth] = useState("");
 
   const [employees, setEmployees] = useState([]);
   const [projects, setProjects] = useState([]);
@@ -233,20 +236,9 @@ export default function MonthlyOverview() {
   const [rows, setRows] = useState([]);
   const [editId, setEditId] = useState(null);
   const [editState, setEditState] = useState(null);
-
-  const [showPdfDialog, setShowPdfDialog] = useState(false);
-  const [pdfOptions, setPdfOptions] = useState({
-    selectedEmployeeCodes: [],
-    includeDetails: true,
-    includeWeekly: true,
-    includeTotals: true,
-    includeTravel: true,
-    includeOvertime: true,
-    includeAbsence: true,
-    includePayroll: true,
-    includeWorkdays: true,
-    includeBuak: true,
-  });
+  const [showMissingDialog, setShowMissingDialog] = useState(false);
+  const [missingEntries, setMissingEntries] = useState(null);
+  const [missingLoading, setMissingLoading] = useState(false);
 
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
@@ -270,18 +262,6 @@ export default function MonthlyOverview() {
     });
     return map;
   }, [employees]);
-
-  useEffect(() => {
-    setPdfOptions((prev) => ({
-      ...prev,
-      selectedEmployeeCodes:
-        selectedCodes.length > 0
-          ? [...selectedCodes]
-          : isStaff && session?.code
-          ? [session.code]
-          : [],
-    }));
-  }, [selectedCodes, isStaff, session?.code]);
 
   useEffect(() => {
     (async () => {
@@ -347,16 +327,20 @@ export default function MonthlyOverview() {
   useEffect(() => {
     loadMonth();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [month, selectedCodes, selectedProjectId, isManager, employees.length]);
+  }, [year, monthFilter, rangeFromMonth, rangeToMonth, selectedCodes, selectedProjectId, isManager, employees.length]);
 
   async function loadMonth() {
     try {
       setLoading(true);
 
-      const [y, m] = month.split("-");
-      const from = `${y}-${m}-01`;
-      const lastDay = new Date(parseInt(y, 10), parseInt(m, 10), 0).getDate();
-      const to = `${y}-${m}-${String(lastDay).padStart(2, "0")}`;
+      const range = getRangeFromFilters(
+        year,
+        monthFilter,
+        rangeFromMonth,
+        rangeToMonth
+      );
+      const from = range.from;
+      const to = range.to;
 
       let ids = [];
       if (isManager) {
@@ -425,6 +409,48 @@ export default function MonthlyOverview() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const activeRange = useMemo(
+    () => getRangeFromFilters(year, monthFilter, rangeFromMonth, rangeToMonth),
+    [year, monthFilter, rangeFromMonth, rangeToMonth]
+  );
+
+  const rangeLabel = useMemo(() => activeRange.label, [activeRange]);
+
+  function handleCurrentMonth() {
+    setYear(currentYear);
+    setRangeFromMonth("");
+    setRangeToMonth("");
+    setMonthFilter(currentMonthStr);
+  }
+
+  function handleLastMonth() {
+    const d = new Date(currentYear, currentMonth - 1, 1);
+    d.setMonth(d.getMonth() - 1);
+    const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    setYear(d.getFullYear());
+    setRangeFromMonth("");
+    setRangeToMonth("");
+    setMonthFilter(ym);
+  }
+
+  function handleLast3Months() {
+    const end = currentMonthStr;
+    const d = new Date(currentYear, currentMonth - 1, 1);
+    d.setMonth(d.getMonth() - 2);
+    const start = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    setYear(d.getFullYear());
+    setMonthFilter("");
+    setRangeFromMonth(start);
+    setRangeToMonth(end);
+  }
+
+  function handleCurrentYear() {
+    setYear(currentYear);
+    setMonthFilter("");
+    setRangeFromMonth("");
+    setRangeToMonth("");
+  }
+
   const grouped = useMemo(() => {
     const g = {};
     for (const r of rows) {
@@ -452,6 +478,20 @@ export default function MonthlyOverview() {
         a.work_date.localeCompare(b.work_date)
     );
   }, [rows]);
+
+  const badWeatherRows = useMemo(() =>
+    rows
+      .filter(isBadWeatherRow)
+      .map((r) => {
+        const start = r.start_min ?? r.from_min ?? 0;
+        const end = r.end_min ?? r.to_min ?? 0;
+        const pause = r.break_min || 0;
+        const minutes = r.bad_weather_minutes || Math.max(end - start - pause, 0);
+        return { ...r, _start: start, _end: end, _badWeatherHours: h2(minutes), _address: projectAddressOf(r, projects) };
+      })
+      .sort((a, b) => (a.work_date || "").localeCompare(b.work_date || "") || String(a.employee_name || "").localeCompare(String(b.employee_name || ""))),
+    [rows, projects]
+  );
 
   const weekly = useMemo(() => {
     const w = {};
@@ -614,6 +654,8 @@ export default function MonthlyOverview() {
       "Fahrzeit (min)",
       "Stunden (inkl. Fahrzeit)",
       "Überstunden",
+      "Schlechtwetter",
+      "Adresse",
       "Notiz",
     ];
 
@@ -663,120 +705,80 @@ export default function MonthlyOverview() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `Monatsübersicht_${month}.csv`;
+    a.download = `Auswertung_${rangeLabel.replace(/\s+/g, "_")}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   }
 
-  function openPdfDialog() {
-    setPdfOptions((prev) => ({
-      ...prev,
-      selectedEmployeeCodes:
-        selectedCodes.length > 0
-          ? [...selectedCodes]
-          : isStaff && session?.code
-          ? [session.code]
-          : employees.map((e) => e.code),
-    }));
-    setShowPdfDialog(true);
+  async function getMissingEntriesForRange(range) {
+    const activeEmployees = employees
+      .filter(isActiveEmployee)
+      .sort((a, b) => (a.name || a.code || "").localeCompare(b.name || b.code || ""));
+
+    if (!activeEmployees.length) {
+      return {
+        label: range?.label || "Zeitraum",
+        missing: [],
+        complete: true,
+        error: "Keine aktiven Mitarbeiter gefunden.",
+      };
+    }
+
+    const activeIds = activeEmployees.map((e) => e.id).filter(Boolean);
+
+    let { data, error } = await supabase
+      .from("v_time_entries_expanded")
+      .select("employee_id, employee_name, work_date, note")
+      .gte("work_date", range.from)
+      .lte("work_date", range.to)
+      .in("employee_id", activeIds);
+
+    if (error) throw error;
+
+    const existing = new Set(
+      (data || [])
+        .filter((r) => r?.employee_id && r?.work_date)
+        .map((r) => `${r.employee_id}||${r.work_date}`)
+    );
+
+    const requiredDates = getDatesBetweenInclusive(range.from, range.to).filter(
+      (date) => {
+        const soll = Number(getBuakSollHoursForDay(date)) || 0;
+        const isHoliday = !!getHolidayName(date);
+
+        // Feiertage sind keine fehlenden Einträge.
+        // Sie werden in der Lohnverrechnung separat als bezahlt berücksichtigt.
+        return soll > 0 && !isHoliday;
+      }
+    );
+
+    const missing = [];
+
+    activeEmployees.forEach((emp) => {
+      const dates = requiredDates.filter((date) => !existing.has(`${emp.id}||${date}`));
+
+      if (dates.length) {
+        missing.push({
+          employee: emp.name || emp.code || "—",
+          dates,
+        });
+      }
+    });
+
+    return {
+      label: range.label,
+      missing,
+      complete: missing.length === 0,
+      error: null,
+    };
   }
 
-  function exportPDF() {
+  function exportMissingEntriesPDF(result) {
     try {
-      const selectedPdfCodes =
-        pdfOptions.selectedEmployeeCodes?.length > 0
-          ? pdfOptions.selectedEmployeeCodes
-          : selectedCodes;
-
-      const exportGroupedBase = grouped.filter((r) => {
-        const code = employeesById[r.employee_id]?.code;
-        return selectedPdfCodes.includes(code);
-      });
-
-      const exportGrouped = pdfOptions.includeAbsence
-        ? exportGroupedBase
-        : exportGroupedBase.filter((r) => !isAbsenceRow(r));
-
-      if (!exportGrouped.length) {
-        alert("Keine Daten für den PDF Export ausgewählt.");
+      if (!result) {
+        alert("Keine Prüfdaten für fehlende Einträge vorhanden.");
         return;
       }
-
-      const exportWeekly = (() => {
-        const w = {};
-        for (const r of exportGrouped) {
-          const wk = weekKey(r.work_date);
-          const emp = r.employee_name || r.employee_id;
-          const key = `${emp}||${wk}`;
-
-          if (!w[key]) {
-            w[key] = {
-              employee: emp,
-              weekKey: wk,
-              firstDate: r.work_date,
-              days: [],
-              _mins: 0,
-              _travel: 0,
-            };
-          }
-
-          w[key].days.push(r);
-          w[key]._mins += r._mins;
-          w[key]._travel += r._travel;
-
-          if (!w[key].firstDate || r.work_date < w[key].firstDate) {
-            w[key].firstDate = r.work_date;
-          }
-        }
-
-        return Object.values(w).sort(
-          (a, b) =>
-            a.employee.localeCompare(b.employee) ||
-            a.weekKey.localeCompare(b.weekKey)
-        );
-      })();
-
-      const exportTotalsByEmployee = (() => {
-        const t = {};
-        for (const r of exportGrouped) {
-          const name = r.employee_name || r.employee_id;
-          const hrs = h2(r._mins);
-          const travelHrs = h2(r._travel);
-          const ot = Math.max(hrs - 9, 0);
-
-          if (!t[name]) t[name] = { hrs: 0, travel: 0, ot: 0, _days: new Set() };
-
-          t[name].hrs += hrs;
-          t[name].travel += travelHrs;
-          t[name].ot += ot;
-
-          if (!isAbsenceRow(r) && hrs > 0) {
-            t[name]._days.add(r.work_date);
-          }
-        }
-
-        Object.values(t).forEach((v) => {
-          v.days = v._days ? v._days.size : 0;
-          delete v._days;
-        });
-
-        return t;
-      })();
-
-      const exportMonthTotals = (() => {
-        let workPlusTravel = 0;
-        let travel = 0;
-
-        for (const r of exportGrouped) {
-          workPlusTravel += r._mins;
-          travel += r._travel;
-        }
-
-        return {
-          totalHrs: h2(workPlusTravel),
-          travelHrs: h2(travel),
-        };
-      })();
 
       const doc = new jsPDF({
         orientation: "landscape",
@@ -785,387 +787,699 @@ export default function MonthlyOverview() {
       });
 
       doc.setFontSize(16);
-      doc.text(`Monatsübersicht ${month}`, 40, 40);
-
-      const selectedEmployeeNames = employees
-        .filter((e) => selectedPdfCodes.includes(e.code))
-        .map((e) => e.name || e.code);
+      doc.text(`Fehlende Einträge ${safePdfText(result.label || "Zeitraum")}`, 40, 40);
 
       doc.setFontSize(10);
       doc.text(
-        `Mitarbeiter: ${
-          selectedEmployeeNames.length ? selectedEmployeeNames.join(", ") : "—"
-        }`,
+        "Geprüft werden aktive Mitarbeiter und BUAK-Arbeitstage. Urlaub/Krankenstand zählen als erfasst, wenn ein Eintrag vorhanden ist.",
         40,
-        58
+        60
       );
 
-      doc.text(
-        `Inhalt: ${
-          [
-            pdfOptions.includeDetails ? "Tagesdetails" : null,
-            pdfOptions.includeWeekly ? "Wochenübersicht" : null,
-            pdfOptions.includeTotals ? "Summen" : null,
-            pdfOptions.includeTravel ? "Fahrzeit" : null,
-            pdfOptions.includeOvertime ? "Überstunden" : null,
-            pdfOptions.includeAbsence ? "Abwesenheiten" : null,
-            pdfOptions.includePayroll ? "Lohnverrechnung" : null,
-            pdfOptions.includeWorkdays ? "Arbeitstage" : null,
-            pdfOptions.includeBuak ? "BUAK/Soll" : null,
-          ]
-            .filter(Boolean)
-            .join(", ") || "—"
-        }`,
-        40,
-        74
-      );
+      const body =
+        result.complete || !(result.missing || []).length
+          ? [["Alle aktiven Mitarbeiter", "vollständig", "—"]]
+          : result.missing.map((item) => [
+              item.employee,
+              `${item.dates?.length || 0} fehlend`,
+              (item.dates || []).map(formatDateAT).join(", "),
+            ]);
 
-      let currentY = 90;
+      autoTable(doc, {
+        head: [["Mitarbeiter", "Status", "Fehlende Tage"]],
+        body,
+        startY: 82,
+        theme: "striped",
+        styles: { fontSize: 9, cellPadding: 5, overflow: "linebreak" },
+        headStyles: { fillColor: [123, 74, 45], textColor: 255 },
+        alternateRowStyles: { fillColor: [245, 245, 245] },
+        columnStyles: {
+          0: { cellWidth: 180 },
+          1: { cellWidth: 100 },
+          2: { cellWidth: 500 },
+        },
+        margin: { left: 40, right: 40 },
+      });
 
-      if (pdfOptions.includeDetails) {
-        const detailHead = [[
-          "Datum",
-          "Mitarbeiter",
-          "Projekt",
-          "Start",
-          "Ende",
-          "Pause (min)",
-          ...(pdfOptions.includeTravel ? ["Fahrzeit (min)"] : []),
-          "Stunden (inkl. Fahrzeit)",
-          ...(pdfOptions.includeOvertime ? ["Überstunden"] : []),
-          "Notiz",
-        ]];
+      const fileLabel = safePdfText(result.label || "Zeitraum").replace(/[^\wäöüÄÖÜß-]+/g, "_");
+      doc.save(`Fehlende_Eintraege_${fileLabel || "Export"}.pdf`);
+    } catch (err) {
+      console.error("Fehlende Einträge PDF Fehler:", err);
+      alert(`Fehlende Einträge PDF Fehler:\n${err?.message || err}`);
+    }
+  }
 
-        const detailBody = exportGrouped.map((r) => {
-          const start = r.start_min ?? r.from_min ?? 0;
-          const end = r.end_min ?? r.to_min ?? 0;
-          const hrs = h2(r._mins);
-          const ot = Math.max(hrs - 9, 0);
+  async function exportPayrollCheckPDF() {
+    try {
+      const now = new Date();
+      const lastMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const y = lastMonthDate.getFullYear();
+      const m = String(lastMonthDate.getMonth() + 1).padStart(2, "0");
+      const ym = `${y}-${m}`;
+      const range = getMonthRange(ym);
 
-          return [
-            r.work_date,
-            r.employee_name || "",
-            r.project_name || "",
-            toHM(start),
-            toHM(end),
-            r.break_min ?? 0,
-            ...(pdfOptions.includeTravel ? [r._travel ?? 0] : []),
-            hrs.toFixed(2),
-            ...(pdfOptions.includeOvertime ? [ot.toFixed(2)] : []),
-            (r.note || "").replace(/\r?\n/g, " "),
-          ];
-        });
-
-        autoTable(doc, {
-          head: detailHead,
-          body: detailBody,
-          startY: currentY,
-          styles: { fontSize: 9, cellPadding: 3, overflow: "linebreak" },
-          headStyles: { fillColor: [123, 74, 45] },
-          didDrawPage: () => {
-            doc.setFontSize(9);
-            const pageWidth = doc.internal.pageSize.getWidth();
-            doc.text(
-              `Erstellt am ${new Date().toLocaleDateString("de-AT")}`,
-              pageWidth - 40,
-              30,
-              { align: "right" }
-            );
-          },
-          margin: { left: 40, right: 40 },
-        });
-
-        currentY = (doc.lastAutoTable?.finalY || currentY) + 20;
+      if (!range) {
+        alert("Prüfzeitraum konnte nicht ermittelt werden.");
+        return;
       }
 
-      if (pdfOptions.includeTotals) {
-        const sumHead = [[
-          "Mitarbeiter",
-          ...(pdfOptions.includeWorkdays ? ["Tage"] : []),
-          "Stunden gesamt (inkl. Fahrzeit)",
-          ...(pdfOptions.includeTravel ? ["Fahrzeit gesamt (h)"] : []),
-          ...(pdfOptions.includeOvertime
-            ? ["Überstunden (Summe Tages-Ü>9h)"]
-            : []),
-        ]];
+      const result = await getMissingEntriesForRange({
+        ...range,
+        label: `Monat ${ym}`,
+      });
 
-        const sumBody = Object.entries(exportTotalsByEmployee).map(
-          ([name, t]) => [
-            name,
-            ...(pdfOptions.includeWorkdays ? [t.days ?? 0] : []),
-            t.hrs.toFixed(2),
-            ...(pdfOptions.includeTravel ? [t.travel.toFixed(2)] : []),
-            ...(pdfOptions.includeOvertime ? [t.ot.toFixed(2)] : []),
-          ]
+      exportMissingEntriesPDF({
+        ...result,
+        label: `Lohnverrechnung ${result.label}`,
+      });
+    } catch (err) {
+      console.error("Prüfliste PDF Fehler:", err);
+      alert(`Prüfliste PDF Fehler:\n${err?.message || err}`);
+    }
+  }
+
+  async function checkMissingEntriesLastMonth() {
+    try {
+      setMissingLoading(true);
+      setShowMissingDialog(true);
+
+      const now = new Date();
+      const lastMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const y = lastMonthDate.getFullYear();
+      const m = String(lastMonthDate.getMonth() + 1).padStart(2, "0");
+      const ym = `${y}-${m}`;
+      const range = getMonthRange(ym);
+
+      if (!range) {
+        setMissingEntries({
+          label: "Letztes Monat",
+          missing: [],
+          complete: false,
+          error: "Zeitraum konnte nicht ermittelt werden.",
+        });
+        return;
+      }
+
+      const result = await getMissingEntriesForRange({
+        ...range,
+        label: `Monat ${ym}`,
+      });
+
+      setMissingEntries(result);
+    } catch (err) {
+      console.error("Fehlende Einträge prüfen Fehler:", err);
+      setMissingEntries({
+        label: "Letztes Monat",
+        missing: [],
+        complete: false,
+        error: err?.message || String(err),
+      });
+    } finally {
+      setMissingLoading(false);
+    }
+  }
+
+  async function exportLohnverrechnungPDF() {
+    try {
+      const employeesForExport = employees
+        .filter(isActiveEmployee)
+        .sort((a, b) => (a.name || a.code || "").localeCompare(b.name || b.code || ""));
+
+      if (!employeesForExport.length) {
+        alert("Keine aktiven Mitarbeiter für den Export vorhanden.");
+        return;
+      }
+
+      const missingResult = await getMissingEntriesForRange({
+        from: activeRange.from,
+        to: activeRange.to,
+        label: rangeLabel,
+      });
+
+      if (missingResult?.missing?.length > 0) {
+        const missingDays = missingResult.missing.reduce(
+          (sum, item) => sum + (item.dates?.length || 0),
+          0
         );
 
-        autoTable(doc, {
-          head: sumHead,
-          body: sumBody,
-          startY: currentY,
-          styles: { fontSize: 10, cellPadding: 4 },
-          headStyles: { fillColor: [200, 200, 200] },
-          margin: { left: 40, right: 40 },
-        });
+        const exportList = confirm(
+          `Achtung: Für die Lohnverrechnung fehlen noch ${missingDays} Einträge bei ${missingResult.missing.length} aktiven Mitarbeiter(n).\n\nSoll eine Liste mit den fehlenden Einträgen als PDF exportiert werden?`
+        );
 
-        currentY = (doc.lastAutoTable?.finalY || currentY) + 22;
+        if (exportList) {
+          exportMissingEntriesPDF(missingResult);
+        }
+
+        const proceed = confirm(
+          "Trotz fehlender Einträge die Lohnverrechnung trotzdem exportieren?"
+        );
+
+        if (!proceed) {
+          setMissingEntries(missingResult);
+          setShowMissingDialog(true);
+          return;
+        }
       }
 
-      if (
-        pdfOptions.includeTotals ||
-        pdfOptions.includeBuak ||
-        pdfOptions.includeTravel
-      ) {
-        if (currentY > doc.internal.pageSize.getHeight() - 80) {
-          doc.addPage();
-          currentY = 40;
+      const employeeIds = employeesForExport.map((e) => e.id).filter(Boolean);
+
+      let { data: payrollRawRows, error: payrollError } = await supabase
+        .from("v_time_entries_expanded")
+        .select("*")
+        .gte("work_date", activeRange.from)
+        .lte("work_date", activeRange.to)
+        .in("employee_id", employeeIds);
+
+      if (payrollError) throw payrollError;
+
+      payrollRawRows = payrollRawRows || [];
+
+      const rangeDates = getDatesBetweenInclusive(activeRange.from, activeRange.to);
+      const holidaysInRange = rangeDates
+        .map((date) => {
+          const name = getHolidayName(date);
+          const soll = getBuakSollHoursForDay(date);
+          return name && Number(soll) > 0 ? { date, name, soll: Number(soll) } : null;
+        })
+        .filter(Boolean);
+
+      const sollHoursInRange = rangeDates.reduce(
+        (sum, date) => sum + (Number(getBuakSollHoursForDay(date)) || 0),
+        0
+      );
+
+      const payrollByEmployee = {};
+      employeesForExport.forEach((emp) => {
+        payrollByEmployee[emp.id] = {
+          emp,
+          name: emp.name || emp.code || "—",
+          recordedMinutes: 0,
+          travelMinutes: 0,
+          workDays: new Set(),
+          vacationDates: [],
+          sickDates: [],
+          sickHours: 0,
+          holidayRows: [],
+          holidayHours: 0,
+          datesWithAnyEntry: new Set(),
+          datesWithWorkEntry: new Set(),
+        };
+      });
+
+      payrollRawRows.forEach((r) => {
+        const d = payrollByEmployee[r.employee_id];
+        if (!d) return;
+
+        const note = (r.note || "").toString();
+        const isVacation = isVacationRow(r);
+        const isSick = isSickRow(r);
+        const mins = entryMinutes(r);
+        const travel = getTravel(r) || 0;
+
+        d.datesWithAnyEntry.add(r.work_date);
+
+        if (isVacation) {
+          d.vacationDates.push(r.work_date);
+          return;
         }
 
-        doc.setFontSize(12);
-
-        const monthSollPerEmployee = calcBuakSollHoursForMonth(month);
-        const employeeCountForSoll = Object.keys(exportTotalsByEmployee || {}).length;
-        const monthSollTotal = monthSollPerEmployee * employeeCountForSoll;
-        const monthAbw = exportMonthTotals.totalHrs - monthSollTotal;
-
-        const summaryParts = [];
-        if (pdfOptions.includeBuak) {
-          summaryParts.push(`Soll (BUAK): ${monthSollTotal.toFixed(2)} h`);
+        if (isSick) {
+          if (!d.sickDates.includes(r.work_date)) {
+            d.sickDates.push(r.work_date);
+          }
+          return;
         }
-        summaryParts.push(`Ist: ${exportMonthTotals.totalHrs.toFixed(2)} h`);
-        if (pdfOptions.includeBuak) {
-          summaryParts.push(`Abw.: ${monthAbw.toFixed(2)} h`);
+
+        d.recordedMinutes += mins;
+        d.travelMinutes += travel;
+        d.datesWithWorkEntry.add(r.work_date);
+
+        if (mins > 0) {
+          d.workDays.add(r.work_date);
         }
-        if (pdfOptions.includeTravel) {
-          summaryParts.push(
-            `Fahrzeit: ${exportMonthTotals.travelHrs.toFixed(2)} h`
+      });
+
+      Object.values(payrollByEmployee).forEach((d) => {
+        d.vacationDates = uniqueSortedDates(d.vacationDates);
+        d.sickDates = uniqueSortedDates(d.sickDates);
+
+        d.sickHours = d.sickDates.reduce(
+          (sum, date) => sum + (Number(getBuakSollHoursForDay(date)) || 0),
+          0
+        );
+
+        holidaysInRange.forEach((h) => {
+          const hasWorkEntry = d.datesWithWorkEntry.has(h.date);
+          const isVacation = d.vacationDates.includes(h.date);
+          const isSick = d.sickDates.includes(h.date);
+
+          // Feiertag wird bezahlt, wenn er auf einen BUAK-Arbeitstag fällt
+          // und für diesen Tag keine echte Arbeitsbuchung, kein Urlaub und kein Krankenstand eingetragen ist.
+          if (!hasWorkEntry && !isVacation && !isSick) {
+            d.holidayRows.push(h);
+            d.holidayHours += Number(h.soll || 0);
+          }
+        });
+      });
+
+      const doc = new jsPDF({
+        orientation: "landscape",
+        unit: "pt",
+        format: "a4",
+      });
+
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const marginX = 38;
+      const brown = [123, 74, 45];
+      const lightGray = [245, 245, 245];
+      const midGray = [210, 210, 210];
+
+      const addFooter = () => {
+        const pageCount = doc.internal.getNumberOfPages();
+        for (let i = 1; i <= pageCount; i += 1) {
+          doc.setPage(i);
+          doc.setFontSize(7.5);
+          doc.text(
+            "Berechnung: Lohnstunden = Einträge inkl. Fahrzeit + Feiertag + Krankenstand lt. Sollzeit; Urlaub = 0,00 h.",
+            marginX,
+            pageHeight - 18
           );
+          doc.text(`Seite ${i}/${pageCount}`, pageWidth - marginX, pageHeight - 18, {
+            align: "right",
+          });
+        }
+      };
+
+      doc.setFontSize(17);
+      doc.text(`Lohnverrechnung ${safePdfText(rangeLabel)}`, marginX, 38);
+
+      doc.setFontSize(9);
+      const hintLines = [
+        "Hinweis zur Berechnung:",
+        "Lohnstunden gesamt enthalten Arbeitszeit laut Einträgen inklusive Fahrzeit sowie bezahlte Feiertage und Krankenstandstage gemäß hinterlegter BUAK-/Sollzeit.",
+        "Urlaubstage werden in dieser Auswertung mit 0,00 Stunden berücksichtigt.",
+        "Überstunden werden als Differenz aus Lohnstunden gesamt minus Sollstunden berechnet.",
+      ];
+
+      let hintY = 56;
+      hintLines.forEach((line, idx) => {
+        const wrapped = doc.splitTextToSize(line, pageWidth - marginX * 2);
+        doc.setFontSize(idx === 0 ? 9.5 : 8.8);
+        doc.text(wrapped, marginX, hintY);
+        hintY += wrapped.length * 10;
+      });
+
+      const employeeNamesLine = employeesForExport
+        .map((e) => safePdfText(e.name || e.code))
+        .filter(Boolean)
+        .join(", ");
+
+      const wrappedEmployees = doc.splitTextToSize(
+        `Aktive Mitarbeiter: ${employeeNamesLine || "—"}`,
+        pageWidth - marginX * 2
+      );
+      doc.setFontSize(9);
+      doc.text(wrappedEmployees, marginX, hintY + 5);
+
+      let startY = hintY + 5 + wrappedEmployees.length * 11 + 12;
+
+      const detailRows = [];
+      const summaryRows = [];
+
+      const employeeBody = employeesForExport.map((emp) => {
+        const d = payrollByEmployee[emp.id];
+        const recordedHours = h2(d.recordedMinutes);
+        const paidHours = recordedHours + d.holidayHours + d.sickHours;
+        const overtime = paidHours - sollHoursInRange;
+
+        summaryRows.push([
+          safePdfText(d.name),
+          d.holidayHours.toFixed(2),
+          d.sickHours.toFixed(2),
+          "0.00",
+          `${d.vacationDates.length}`,
+          `${d.sickDates.length}`,
+        ]);
+
+        if (d.vacationDates.length) {
+          detailRows.push([
+            safePdfText(d.name),
+            "Urlaub",
+            d.vacationDates.map(formatDateAT).join(", "),
+            "0,00 h",
+          ]);
         }
 
-        doc.text(`Monatssummen – ${summaryParts.join(" | ")}`, 40, currentY);
+        if (d.sickDates.length) {
+          detailRows.push([
+            safePdfText(d.name),
+            "Krankenstand",
+            d.sickDates.map(formatDateAT).join(", "),
+            `${d.sickHours.toFixed(2)} h enthalten`,
+          ]);
+        }
+
+        if (d.holidayRows.length) {
+          detailRows.push([
+            safePdfText(d.name),
+            "Feiertag",
+            d.holidayRows
+              .map((h) => `${formatDateAT(h.date)} ${h.name}`)
+              .join(", "),
+            `${d.holidayHours.toFixed(2)} h enthalten`,
+          ]);
+        }
+
+        return [
+          safePdfText(d.name),
+          paidHours.toFixed(2),
+          recordedHours.toFixed(2),
+          d.holidayHours.toFixed(2),
+          String(d.workDays.size),
+          sollHoursInRange.toFixed(2),
+          overtime.toFixed(2),
+        ];
+      });
+
+      autoTable(doc, {
+        head: [[
+          "Mitarbeiter",
+          "Lohnstunden gesamt",
+          "Arbeitszeit laut Einträgen",
+          "Feiertag bezahlt",
+          "Arbeitstage",
+          "Sollstunden",
+          "Überstunden",
+        ]],
+        body: employeeBody,
+        startY,
+        theme: "striped",
+        styles: {
+          fontSize: 8.7,
+          cellPadding: { top: 5, right: 5, bottom: 5, left: 5 },
+          overflow: "linebreak",
+          valign: "middle",
+          lineColor: [230, 230, 230],
+          lineWidth: 0.2,
+        },
+        headStyles: {
+          fillColor: brown,
+          textColor: 255,
+          fontStyle: "bold",
+          halign: "center",
+        },
+        alternateRowStyles: { fillColor: lightGray },
+        columnStyles: {
+          0: { cellWidth: 160, halign: "left" },
+          1: { cellWidth: 105, halign: "right" },
+          2: { cellWidth: 125, halign: "right" },
+          3: { cellWidth: 95, halign: "right" },
+          4: { cellWidth: 75, halign: "right" },
+          5: { cellWidth: 85, halign: "right" },
+          6: { cellWidth: 85, halign: "right" },
+        },
+        margin: { left: marginX, right: marginX },
+      });
+
+      let currentY = (doc.lastAutoTable?.finalY || startY) + 18;
+
+      if (currentY > pageHeight - 130) {
+        doc.addPage();
+        currentY = 38;
+      }
+
+      doc.setFontSize(13);
+      doc.text("Summen Abwesenheiten", marginX, currentY);
+      currentY += 10;
+
+      autoTable(doc, {
+        head: [[
+          "Mitarbeiter",
+          "Feiertag bezahlt",
+          "Krankenstand bezahlt",
+          "Urlaub Stunden",
+          "Urlaub Tage",
+          "Krankenstand Tage",
+        ]],
+        body: summaryRows,
+        startY: currentY + 6,
+        theme: "striped",
+        styles: {
+          fontSize: 8.6,
+          cellPadding: { top: 5, right: 5, bottom: 5, left: 5 },
+          overflow: "linebreak",
+          valign: "middle",
+          lineColor: [230, 230, 230],
+          lineWidth: 0.2,
+        },
+        headStyles: {
+          fillColor: midGray,
+          textColor: 255,
+          fontStyle: "bold",
+        },
+        alternateRowStyles: { fillColor: lightGray },
+        columnStyles: {
+          0: { cellWidth: 170 },
+          1: { cellWidth: 110, halign: "right" },
+          2: { cellWidth: 125, halign: "right" },
+          3: { cellWidth: 105, halign: "right" },
+          4: { cellWidth: 90, halign: "right" },
+          5: { cellWidth: 110, halign: "right" },
+        },
+        margin: { left: marginX, right: marginX },
+      });
+
+      currentY = (doc.lastAutoTable?.finalY || currentY) + 18;
+
+      if (detailRows.length > 0) {
+        if (currentY > pageHeight - 130) {
+          doc.addPage();
+          currentY = 38;
+        }
+
+        doc.setFontSize(13);
+        doc.text("Details Abwesenheiten & bezahlte Feiertage", marginX, currentY);
+        currentY += 10;
+
+        autoTable(doc, {
+          head: [["Mitarbeiter", "Art", "Datum / Zeitraum", "Berechnung"]],
+          body: detailRows,
+          startY: currentY + 6,
+          theme: "striped",
+          styles: {
+            fontSize: 8.6,
+            cellPadding: { top: 5, right: 5, bottom: 5, left: 5 },
+            overflow: "linebreak",
+            valign: "top",
+            lineColor: [230, 230, 230],
+            lineWidth: 0.2,
+          },
+          headStyles: {
+            fillColor: midGray,
+            textColor: 255,
+            fontStyle: "bold",
+          },
+          alternateRowStyles: { fillColor: lightGray },
+          columnStyles: {
+            0: { cellWidth: 145 },
+            1: { cellWidth: 105 },
+            2: { cellWidth: 390 },
+            3: { cellWidth: 90, halign: "right" },
+          },
+          margin: { left: marginX, right: marginX },
+        });
+
+        currentY = (doc.lastAutoTable?.finalY || currentY) + 16;
+      } else {
+        doc.setFontSize(10);
+        doc.text("Details Abwesenheiten & bezahlte Feiertage: keine Einträge im Zeitraum.", marginX, currentY);
         currentY += 18;
       }
 
-      if (pdfOptions.includeWeekly && exportWeekly.length > 0) {
-        if (currentY > doc.internal.pageSize.getHeight() - 120) {
-          doc.addPage();
-          currentY = 40;
-        }
+      if (currentY > pageHeight - 52) {
+        doc.addPage();
+        currentY = 38;
+      }
 
-        doc.setFontSize(14);
-        doc.text("Wochenübersicht (ISO, Mo–So)", 40, currentY);
-        currentY += 10;
+      doc.setFontSize(8.5);
+      const calcText =
+        "Berechnung: Lohnstunden gesamt = Arbeitszeit laut Einträgen inkl. Fahrzeit + bezahlte Feiertage + bezahlte Krankenstandstage laut Sollzeit. Urlaub = 0,00 h. Überstunden = Lohnstunden gesamt - Sollstunden.";
+      doc.text(doc.splitTextToSize(calcText, pageWidth - marginX * 2), marginX, currentY);
 
-        exportWeekly.forEach((wk, idx) => {
-          const weekSoll = getBuakSollHoursForWeek(
-            wk.firstDate || wk.days?.[0]?.work_date
-          );
-          const weekType = getBuakWeekType(
-            wk.firstDate || wk.days?.[0]?.work_date
-          );
+      addFooter();
 
-          const weekTypeLabel =
-            weekType === "kurz"
-              ? "Kurze Woche"
-              : weekType === "lang"
-              ? "Lange Woche"
-              : "";
+      const fileLabel = safePdfText(rangeLabel).replace(/[^\wäöüÄÖÜß-]+/g, "_");
+      doc.save(`Lohnverrechnung_${fileLabel || "Export"}.pdf`);
+    } catch (err) {
+      console.error("Lohnverrechnung PDF Fehler:", err);
+      alert(
+        `Lohnverrechnung PDF Fehler:\n${err?.message || err}\n\nBitte Screenshot der Konsole schicken.`
+      );
+    }
+  }
 
-          const weekHead = [[
-            "Woche",
-            "Mitarbeiter",
-            "Datum",
-            "Projekt",
-            "Start",
-            "Ende",
-            "Pause (min)",
-            ...(pdfOptions.includeTravel ? ["Fahrzeit (min)"] : []),
-            "Stunden (inkl. Fahrzeit)",
-            ...(pdfOptions.includeOvertime ? ["Ü (>9h/Tag)"] : []),
-          ]];
+  function exportAbrechnungPDF() {
+    try {
+      if (!grouped.length) {
+        alert("Keine Daten für den Export vorhanden.");
+        return;
+      }
 
-          const weekBody = [];
-          wk.days.forEach((r) => {
-            const start = r.start_min ?? r.from_min ?? 0;
-            const end = r.end_min ?? r.to_min ?? 0;
-            const hrs = h2(r._mins);
-            const ot = Math.max(hrs - 9, 0);
+      const rowsForExport = grouped.filter((r) => !isAbsenceRow(r));
+      if (!rowsForExport.length) {
+        alert("Keine Arbeitsdaten für die Abrechnung vorhanden.");
+        return;
+      }
 
-            weekBody.push([
-              wk.weekKey,
-              wk.employee,
-              r.work_date,
-              r.project_name || "",
-              toHM(start),
-              toHM(end),
-              r.break_min ?? 0,
-              ...(pdfOptions.includeTravel ? [r._travel ?? 0] : []),
-              hrs.toFixed(2),
-              ...(pdfOptions.includeOvertime ? [ot.toFixed(2)] : []),
-            ]);
-          });
+      const perProject = new Map();
+      rowsForExport.forEach((r) => {
+        const key = r.project_id || r.project_name || "ohne";
+        const name = r.project_name || "Ohne Projekt";
+        const current =
+          perProject.get(key) || {
+            name,
+            work: 0,
+            travel: 0,
+            total: 0,
+            days: new Set(),
+          };
 
-          const weekHours = h2(wk._mins);
-          const weekOT = Math.max(weekHours - weekSoll, 0);
+        const workMinutes = getPureWorkMinutes(r);
+        current.work += workMinutes;
+        current.travel += r._travel || 0;
+        current.total += r._mins || 0;
+        if (r.work_date) current.days.add(r.work_date);
 
-          autoTable(doc, {
-            head: weekHead,
-            body: weekBody,
-            startY: currentY + 10,
-            styles: { fontSize: 9, cellPadding: 3, overflow: "linebreak" },
-            headStyles: { fillColor: [235, 235, 235] },
-            margin: { left: 40, right: 40 },
-          });
+        perProject.set(key, current);
+      });
 
-          currentY = (doc.lastAutoTable?.finalY || currentY) + 5;
-          doc.setFontSize(10);
+      const projectBody = Array.from(perProject.values())
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((p) => [
+          p.name,
+          h2(p.work).toFixed(2),
+          h2(p.travel).toFixed(2),
+          h2(p.total).toFixed(2),
+          String(p.days.size),
+        ]);
 
-          const weekInfoParts = [];
-          if (pdfOptions.includeBuak) {
-            weekInfoParts.push(
-              `${weekTypeLabel}${weekTypeLabel ? ", " : ""}Soll ${weekSoll.toFixed(
-                2
-              )} h`
-            );
-          }
-          weekInfoParts.push(`${weekHours.toFixed(2)} h`);
-          if (pdfOptions.includeBuak) {
-            weekInfoParts.push(`Wochen-Ü (>Soll): ${weekOT.toFixed(2)} h`);
-          }
+      const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
+      doc.setFontSize(16);
+      doc.text(`Abrechnung ${rangeLabel}`, 40, 40);
+      doc.setFontSize(10);
+      doc.text("Zuerst Projekt-Gesamtsumme, danach tägliche Auflistung je Mitarbeiter", 40, 58);
 
-          doc.text(
-            `Wochensumme ${wk.weekKey} – ${wk.employee}: ${weekInfoParts.join(
-              " | "
-            )}`,
-            40,
-            currentY
-          );
+      autoTable(doc, {
+        head: [["Projekt", "Arbeitszeit", "Fahrzeit", "Gesamtstunden", "Arbeitstage"]],
+        body: projectBody,
+        startY: 80,
+        styles: { fontSize: 10, cellPadding: 4, overflow: "linebreak" },
+        headStyles: { fillColor: [123, 74, 45] },
+        margin: { left: 40, right: 40 },
+      });
 
-          currentY += 18;
+      let currentY = (doc.lastAutoTable?.finalY || 80) + 18;
+      if (currentY > doc.internal.pageSize.getHeight() - 120) {
+        doc.addPage();
+        currentY = 40;
+      }
 
-          if (
-            currentY > doc.internal.pageSize.getHeight() - 80 &&
-            idx < exportWeekly.length - 1
-          ) {
-            doc.addPage();
-            currentY = 40;
-          }
+      const body = rowsForExport.map((r) => {
+        const totalHours = h2(r._mins);
+        const travelHours = h2(r._travel);
+        const pureWorkHours = h2(getPureWorkMinutes(r));
+
+        return [
+          r.work_date,
+          r.employee_name || "",
+          r.project_name || "—",
+          pureWorkHours.toFixed(2),
+          travelHours.toFixed(2),
+          totalHours.toFixed(2),
+        ];
+      });
+
+      autoTable(doc, {
+        head: [["Datum", "Mitarbeiter", "Projekt", "Arbeitszeit", "Fahrzeit", "Gesamtstunden"]],
+        body,
+        startY: currentY,
+        styles: { fontSize: 9, cellPadding: 3, overflow: "linebreak" },
+        headStyles: { fillColor: [200, 200, 200] },
+        margin: { left: 40, right: 40 },
+      });
+
+      doc.save(`Abrechnung_${rangeLabel.replace(/\s+/g, "_")}.pdf`);
+    } catch (err) {
+      console.error("Abrechnung PDF Fehler:", err);
+      alert("Abrechnung PDF Fehler – bitte Konsole prüfen.");
+    }
+  }
+
+  function exportNachkalkulationPDF() {
+    try {
+      if (!grouped.length) {
+        alert("Keine Daten für den Export vorhanden.");
+        return;
+      }
+
+      const rowsForExport = grouped.filter((r) => !isAbsenceRow(r));
+      const totalTravelMinutes = rowsForExport.reduce((sum, r) => sum + (r._travel || 0), 0);
+      const totalAllMinutes = rowsForExport.reduce((sum, r) => sum + (r._mins || 0), 0);
+      const totalWorkMinutes = Math.max(totalAllMinutes - totalTravelMinutes, 0);
+
+      const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
+      doc.setFontSize(16);
+      doc.text(`Nachkalkulation ${rangeLabel}`, 40, 40);
+      doc.setFontSize(10);
+      doc.text("Gesamtstunden und Fahrzeit getrennt", 40, 58);
+
+      autoTable(doc, {
+        head: [["Auswertung", "Stunden"]],
+        body: [
+          ["Gesamtstunden Arbeit", h2(totalWorkMinutes).toFixed(2)],
+          ["Fahrzeit", h2(totalTravelMinutes).toFixed(2)],
+          ["Gesamtstunden inkl. Fahrzeit", h2(totalAllMinutes).toFixed(2)],
+        ],
+        startY: 80,
+        styles: { fontSize: 11, cellPadding: 5 },
+        headStyles: { fillColor: [123, 74, 45] },
+        margin: { left: 40, right: 40 },
+      });
+
+      const perProject = {};
+      rowsForExport.forEach((r) => {
+        const key = r.project_name || "Ohne Projekt";
+        if (!perProject[key]) perProject[key] = { work: 0, travel: 0, total: 0 };
+        perProject[key].travel += r._travel || 0;
+        perProject[key].total += r._mins || 0;
+        perProject[key].work += getPureWorkMinutes(r);
+      });
+
+      const projectBody = Object.entries(perProject)
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([project, vals]) => [
+          project,
+          h2(vals.work).toFixed(2),
+          h2(vals.travel).toFixed(2),
+          h2(vals.total).toFixed(2),
+        ]);
+
+      if (projectBody.length) {
+        autoTable(doc, {
+          head: [["Projekt", "Arbeitszeit", "Fahrzeit", "Gesamt"]],
+          body: projectBody,
+          startY: (doc.lastAutoTable?.finalY || 100) + 18,
+          styles: { fontSize: 10, cellPadding: 4, overflow: "linebreak" },
+          headStyles: { fillColor: [200, 200, 200] },
+          margin: { left: 40, right: 40 },
         });
       }
 
-
-
-      if (pdfOptions.includePayroll) {
-        const payrollEmployees = employees.filter((e) =>
-          selectedPdfCodes.includes(e.code)
-        );
-        const payrollRows = buildPayrollData(
-          exportGroupedBase,
-          month,
-          payrollEmployees
-        );
-
-        if (payrollRows.length > 0) {
-          doc.addPage();
-
-          doc.setFontSize(16);
-          doc.text("Lohnverrechnung", 40, 40);
-
-          doc.setFontSize(10);
-          const hint1 =
-            "Hinweis: Gesamtstunden inkl. Fahrzeit. Urlaubstage sind mit 0,00 Stunden berücksichtigt.";
-          const hint2 =
-            "Krankenstandstage und Feiertage an Arbeitstagen werden gemäß hinterlegter Sollzeit automatisch berücksichtigt.";
-          const hint3 =
-            "Feiertagsstunden sind in den Gesamtstunden bereits enthalten.";
-          doc.text(hint1, 40, 58);
-          doc.text(hint2, 40, 72);
-          doc.text(hint3, 40, 86);
-
-          const payrollHead = [[
-            "Monat",
-            "Mitarbeiter",
-            "Gesamtstunden inkl. Fahrzeit",
-            "Arbeitstage",
-            "Sollstunden",
-            "Überstunden",
-            "Urlaub (Datum)",
-            "Krankenstand (Datum)",
-            "Feiertag (Datum / Stunden)",
-          ]];
-
-          const payrollBody = payrollRows.map((r) => {
-            const soll = calcBuakSollHoursForMonth(month);
-            const over = r.total - soll;
-            const holidayText = r.holidays.length
-              ? r.holidays
-                  .map(
-                    (h) =>
-                      `${formatDateAT(h.date)} ${h.name} (${h.hours.toFixed(
-                        2
-                      )} h)`
-                  )
-                  .join(", ")
-              : "—";
-
-            return [
-              month,
-              r.name,
-              r.total.toFixed(2),
-              r.days.size,
-              soll.toFixed(2),
-              over.toFixed(2),
-              r.vacation.map(formatDateAT).join(", ") || "—",
-              r.sick.map(formatDateAT).join(", ") || "—",
-              holidayText,
-            ];
-          });
-
-          autoTable(doc, {
-            head: payrollHead,
-            body: payrollBody,
-            startY: 105,
-            styles: {
-              fontSize: 8.5,
-              cellPadding: 4,
-              overflow: "linebreak",
-              valign: "top",
-            },
-            headStyles: { fillColor: [123, 74, 45], textColor: 255 },
-            alternateRowStyles: { fillColor: [245, 245, 245] },
-            columnStyles: {
-              0: { cellWidth: 48 },
-              1: { cellWidth: 90 },
-              2: { cellWidth: 82, halign: "right" },
-              3: { cellWidth: 52, halign: "right" },
-              4: { cellWidth: 60, halign: "right" },
-              5: { cellWidth: 62, halign: "right" },
-              6: { cellWidth: 120 },
-              7: { cellWidth: 140 },
-              8: { cellWidth: 170 },
-            },
-            margin: { left: 40, right: 40 },
-            didDrawPage: () => {
-              doc.setFontSize(9);
-              const pageWidth = doc.internal.pageSize.getWidth();
-              doc.text(
-                `Erstellt am ${new Date().toLocaleDateString("de-AT")}`,
-                pageWidth - 40,
-                30,
-                { align: "right" }
-              );
-            },
-          });
-        }
-      }
-
-      doc.save(`Monatsübersicht_${month}.pdf`);
+      doc.save(`Nachkalkulation_${rangeLabel.replace(/\s+/g, "_")}.pdf`);
     } catch (err) {
-      console.error("PDF Export Fehler:", err);
-      alert(
-        "PDF Export Fehler – bitte F12 Konsole öffnen.\n" +
-          (err?.message || err)
-      );
+      console.error("Nachkalkulation PDF Fehler:", err);
+      alert("Nachkalkulation PDF Fehler – bitte Konsole prüfen.");
     }
   }
 
@@ -1196,13 +1510,22 @@ export default function MonthlyOverview() {
             <div className="month-overview-kicker">Auswertung</div>
             <h2 className="month-overview-title">Monatsübersicht</h2>
             <div className="month-overview-subtitle">
-              Monat: <b>{month}</b>
+              Zeitraum: <b>{rangeLabel}</b>
             </div>
           </div>
 
           <div className="month-overview-actions">
-            <button onClick={openPdfDialog} className="hbz-btn hbz-btn-primary">
-              PDF export
+            <button onClick={checkMissingEntriesLastMonth} className="hbz-btn">
+              Fehlende Einträge letzter Monat
+            </button>
+            <button onClick={exportLohnverrechnungPDF} className="hbz-btn hbz-btn-primary">
+              Lohnverrechnung
+            </button>
+            <button onClick={exportAbrechnungPDF} className="hbz-btn">
+              Abrechnung
+            </button>
+            <button onClick={exportNachkalkulationPDF} className="hbz-btn">
+              Nachkalkulation
             </button>
             <button onClick={exportCSV} className="hbz-btn">
               CSV export
@@ -1215,13 +1538,78 @@ export default function MonthlyOverview() {
         <div className="hbz-card month-filter-card">
           <div className="month-card-title">Filter</div>
 
-          <div className="month-filter-grid">
+          <div className="month-chip-actions">
+            <button type="button" className="hbz-btn btn-small" onClick={handleCurrentMonth}>
+              Aktueller Monat
+            </button>
+            <button type="button" className="hbz-btn btn-small" onClick={handleLastMonth}>
+              Letztes Monat
+            </button>
+            <button type="button" className="hbz-btn btn-small" onClick={handleLast3Months}>
+              Letzte 3 Monate
+            </button>
+            <button type="button" className="hbz-btn btn-small" onClick={handleCurrentYear}>
+              Aktuelles Jahr
+            </button>
+          </div>
+
+          <div className="year-range-grid">
+            <div className="field-inline">
+              <label className="hbz-label">Jahr</label>
+              <select
+                value={year}
+                onChange={(e) => setYear(parseInt(e.target.value, 10))}
+                className="hbz-select"
+              >
+                {Array.from({ length: 8 }, (_, i) => currentYear - i).map((y) => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </select>
+            </div>
+
             <div className="field-inline">
               <label className="hbz-label">Monat</label>
               <input
                 type="month"
-                value={month}
-                onChange={(e) => setMonth(e.target.value)}
+                value={monthFilter}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setRangeFromMonth("");
+                  setRangeToMonth("");
+                  setMonthFilter(v);
+                  const mr = getMonthRange(v);
+                  if (mr) setYear(mr.year);
+                }}
+                className="hbz-input"
+              />
+            </div>
+
+            <div className="field-inline">
+              <label className="hbz-label">Von</label>
+              <input
+                type="month"
+                value={rangeFromMonth}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setMonthFilter("");
+                  setRangeFromMonth(v);
+                  const mr = getMonthRange(v);
+                  if (mr) setYear(mr.year);
+                }}
+                className="hbz-input"
+              />
+            </div>
+
+            <div className="field-inline">
+              <label className="hbz-label">Bis</label>
+              <input
+                type="month"
+                value={rangeToMonth}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setMonthFilter("");
+                  setRangeToMonth(v);
+                }}
                 className="hbz-input"
               />
             </div>
@@ -1241,6 +1629,10 @@ export default function MonthlyOverview() {
                 ))}
               </select>
             </div>
+          </div>
+
+          <div className="year-range-active">
+            Aktuell ausgewählt: <b>{rangeLabel}</b>
           </div>
 
           {isManager && (
@@ -1303,12 +1695,40 @@ export default function MonthlyOverview() {
         </div>
       </div>
 
+      {badWeatherRows.length > 0 && (
+        <div className="hbz-card month-main-card">
+          <div className="month-card-title">Schlechtwetter</div>
+          <div className="help" style={{ marginBottom: 10 }}>Nur Einträge mit Schlechtwetter-Kennzeichnung.</div>
+          <div className="month-table-wrap">
+            <table className="month-table">
+              <thead>
+                <tr>
+                  <th>Datum</th><th>Uhrzeit</th><th>Mitarbeiter</th><th>Projekt</th><th>Adresse</th><th className="num">Stunden</th>
+                </tr>
+              </thead>
+              <tbody>
+                {badWeatherRows.map((r) => (
+                  <tr key={`bad-weather-${r.id}`}>
+                    <td>{formatDateAT(r.work_date)}</td>
+                    <td>{toHM(r._start)}–{toHM(r._end)}</td>
+                    <td>{r.employee_name || r.employee_id}</td>
+                    <td>{r.project_name || "—"}</td>
+                    <td>{r._address}</td>
+                    <td className="num">{r._badWeatherHours.toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       <div className="hbz-card month-main-card">
         <div className="month-main-header">
           <div>
             <div className="month-card-title">Einträge</div>
             <div className="month-main-subtitle">
-              {loading ? "Lade…" : `Einträge für ${month}`}
+              {loading ? "Lade…" : `Einträge für ${rangeLabel}`}
             </div>
           </div>
         </div>
@@ -1332,6 +1752,7 @@ export default function MonthlyOverview() {
                         <th className="num">Fahrzeit</th>
                         <th className="num">Stunden</th>
                         <th className="num">Überstunden</th>
+                        <th>Schlechtwetter</th>
                         <th>Notiz</th>
                         <th className="num">Aktion</th>
                       </tr>
@@ -1356,6 +1777,7 @@ export default function MonthlyOverview() {
                               <td className="num">{r._travel ?? 0} min</td>
                               <td className="num">{hrs.toFixed(2)}</td>
                               <td className="num">{ot.toFixed(2)}</td>
+                              <td>{isBadWeatherRow(r) ? `🌧 ${toHM(start)}–${toHM(end)}` : "—"}</td>
                               <td>{r.note || ""}</td>
                               <td className="num">
                                 {isManager ? (
@@ -1771,256 +2193,91 @@ export default function MonthlyOverview() {
         </div>
       </div>
 
-      {showPdfDialog && (
+      {showMissingDialog && (
         <div className="month-modal-backdrop">
           <div className="month-modal">
             <div className="month-modal-head">
               <div>
-                <div className="month-card-title">PDF Export auswählen</div>
+                <div className="month-card-title">Fehlende Einträge</div>
                 <div className="month-modal-subtitle">
-                  Monat: <b>{month}</b>
+                  Prüfung für <b>{missingEntries?.label || "letztes Monat"}</b>
                 </div>
               </div>
-              <button
-                className="hbz-btn"
-                onClick={() => setShowPdfDialog(false)}
-              >
-                Schließen
-              </button>
-            </div>
-
-            <div className="month-modal-grid">
-              <div className="month-modal-box">
-                <div className="month-modal-box-title">Mitarbeiter</div>
-
-                <div className="month-chip-actions">
-                  <button
-                    type="button"
-                    className="hbz-btn btn-small"
-                    onClick={() =>
-                      setPdfOptions((prev) => ({
-                        ...prev,
-                        selectedEmployeeCodes: employees.map((e) => e.code),
-                      }))
-                    }
-                  >
-                    Alle
-                  </button>
-
-                  <button
-                    type="button"
-                    className="hbz-btn btn-small"
-                    onClick={() =>
-                      setPdfOptions((prev) => ({
-                        ...prev,
-                        selectedEmployeeCodes: session?.code
-                          ? [session.code]
-                          : [],
-                      }))
-                    }
-                  >
-                    Nur mich
-                  </button>
-
-                  <button
-                    type="button"
-                    className="hbz-btn btn-small"
-                    onClick={() =>
-                      setPdfOptions((prev) => ({
-                        ...prev,
-                        selectedEmployeeCodes: [...selectedCodes],
-                      }))
-                    }
-                  >
-                    Aktuelle Auswahl
-                  </button>
-                </div>
-
-                <div className="month-modal-checklist">
-                  {employees.map((e) => {
-                    const checked = pdfOptions.selectedEmployeeCodes.includes(
-                      e.code
-                    );
-                    return (
-                      <label
-                        key={`pdf-emp-${e.id}`}
-                        className="month-check-row"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={(ev) => {
-                            const isChecked = ev.target.checked;
-                            setPdfOptions((prev) => ({
-                              ...prev,
-                              selectedEmployeeCodes: isChecked
-                                ? [...prev.selectedEmployeeCodes, e.code]
-                                : prev.selectedEmployeeCodes.filter(
-                                    (c) => c !== e.code
-                                  ),
-                            }));
-                          }}
-                        />
-                        <span>{e.name || e.code}</span>
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="month-modal-box">
-                <div className="month-modal-box-title">Inhalt</div>
-
-                <div className="month-modal-checklist">
-                  <label className="month-check-row">
-                    <input
-                      type="checkbox"
-                      checked={pdfOptions.includeDetails}
-                      onChange={(e) =>
-                        setPdfOptions((prev) => ({
-                          ...prev,
-                          includeDetails: e.target.checked,
-                        }))
-                      }
-                    />
-                    <span>Tagesdetails</span>
-                  </label>
-
-                  <label className="month-check-row">
-                    <input
-                      type="checkbox"
-                      checked={pdfOptions.includeWeekly}
-                      onChange={(e) =>
-                        setPdfOptions((prev) => ({
-                          ...prev,
-                          includeWeekly: e.target.checked,
-                        }))
-                      }
-                    />
-                    <span>Wochenübersicht</span>
-                  </label>
-
-                  <label className="month-check-row">
-                    <input
-                      type="checkbox"
-                      checked={pdfOptions.includeTotals}
-                      onChange={(e) =>
-                        setPdfOptions((prev) => ({
-                          ...prev,
-                          includeTotals: e.target.checked,
-                        }))
-                      }
-                    />
-                    <span>Summen</span>
-                  </label>
-
-                  <label className="month-check-row">
-                    <input
-                      type="checkbox"
-                      checked={pdfOptions.includeTravel}
-                      onChange={(e) =>
-                        setPdfOptions((prev) => ({
-                          ...prev,
-                          includeTravel: e.target.checked,
-                        }))
-                      }
-                    />
-                    <span>Fahrzeit</span>
-                  </label>
-
-                  <label className="month-check-row">
-                    <input
-                      type="checkbox"
-                      checked={pdfOptions.includeOvertime}
-                      onChange={(e) =>
-                        setPdfOptions((prev) => ({
-                          ...prev,
-                          includeOvertime: e.target.checked,
-                        }))
-                      }
-                    />
-                    <span>Überstunden</span>
-                  </label>
-
-                  <label className="month-check-row">
-                    <input
-                      type="checkbox"
-                      checked={pdfOptions.includeAbsence}
-                      onChange={(e) =>
-                        setPdfOptions((prev) => ({
-                          ...prev,
-                          includeAbsence: e.target.checked,
-                        }))
-                      }
-                    />
-                    <span>Krank / Urlaub anzeigen</span>
-                  </label>
-
-                  <label className="month-check-row">
-                    <input
-                      type="checkbox"
-                      checked={pdfOptions.includePayroll}
-                      onChange={(e) =>
-                        setPdfOptions((prev) => ({
-                          ...prev,
-                          includePayroll: e.target.checked,
-                        }))
-                      }
-                    />
-                    <span>Lohnverrechnung inkl. Feiertage</span>
-                  </label>
-
-                  <label className="month-check-row">
-                    <input
-                      type="checkbox"
-                      checked={pdfOptions.includeWorkdays}
-                      onChange={(e) =>
-                        setPdfOptions((prev) => ({
-                          ...prev,
-                          includeWorkdays: e.target.checked,
-                        }))
-                      }
-                    />
-                    <span>Arbeitstage</span>
-                  </label>
-
-                  <label className="month-check-row">
-                    <input
-                      type="checkbox"
-                      checked={pdfOptions.includeBuak}
-                      onChange={(e) =>
-                        setPdfOptions((prev) => ({
-                          ...prev,
-                          includeBuak: e.target.checked,
-                        }))
-                      }
-                    />
-                    <span>BUAK / Sollstunden / kurze-lange Woche</span>
-                  </label>
-                </div>
+              <div className="month-chip-actions">
+                <button className="hbz-btn" onClick={() => exportMissingEntriesPDF(missingEntries)}>
+                  Fehlende Liste PDF
+                </button>
+                <button
+                  className="hbz-btn"
+                  onClick={() => setShowMissingDialog(false)}
+                >
+                  Schließen
+                </button>
               </div>
             </div>
 
-            <div className="month-modal-actions">
-              <button
-                className="hbz-btn"
-                onClick={() => setShowPdfDialog(false)}
-              >
-                Abbrechen
-              </button>
-              <button
-                className="hbz-btn hbz-btn-primary"
-                onClick={() => {
-                  exportPDF();
-                  setShowPdfDialog(false);
-                }}
-              >
-                PDF exportieren
-              </button>
+            <div className="month-modal-box">
+              {!missingLoading && missingEntries && !missingEntries.error && (
+                <div
+                  className="month-empty-state"
+                  style={{
+                    marginBottom: 12,
+                    border: missingEntries.complete ? "1px solid #4f8f4f" : "1px solid #b54848",
+                    background: missingEntries.complete ? "#eef8ee" : "#fff0f0",
+                  }}
+                >
+                  {missingEntries.complete
+                    ? "Status: vollständig – Lohnverrechnung kann vorbereitet werden."
+                    : `Status: unvollständig – ${missingEntries.missing?.length || 0} Mitarbeiter mit fehlenden Einträgen.`}
+                </div>
+              )}
+
+              {missingLoading ? (
+                <div className="month-empty-state">Prüfe fehlende Einträge…</div>
+              ) : missingEntries?.error ? (
+                <div className="month-empty-state">
+                  Fehler: {missingEntries.error}
+                </div>
+              ) : missingEntries?.complete ? (
+                <div className="month-empty-state">
+                  Alles vollständig. Für alle aktiven Mitarbeiter sind die BUAK-Arbeitstage im letzten Monat erfasst.
+                </div>
+              ) : (
+                <>
+                  <div className="month-modal-box-title">
+                    Fehlende Einträge für aktive Mitarbeiter
+                  </div>
+                  <div className="month-modal-subtitle">
+                    Geprüft werden nur BUAK-Arbeitstage. Urlaub/Krankenstand zählen als Eintrag, wenn sie erfasst sind.
+                  </div>
+
+                  <div className="month-table-wrap" style={{ marginTop: 12 }}>
+                    <table className="month-table">
+                      <thead>
+                        <tr>
+                          <th>Mitarbeiter</th>
+                          <th>Fehlende Tage</th>
+                          <th className="num">Anzahl</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(missingEntries?.missing || []).map((item) => (
+                          <tr key={item.employee}>
+                            <td>{item.employee}</td>
+                            <td>{item.dates.map(formatDateAT).join(", ")}</td>
+                            <td className="num">{item.dates.length}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
       )}
+
     </div>
   );
 }
