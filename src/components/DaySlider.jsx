@@ -38,6 +38,7 @@ const formatPrecip = (value) =>
 
 const PAUSE_OPTIONS = [0, 15, 30, 45, 60, 75, 90];
 const TRAVEL_OPTIONS = [0, 15, 30, 45, 60, 75, 90, 105, 120, 135, 150];
+const CRANE_HOUR_OPTIONS = Array.from({ length: 15 }, (_, i) => i + 1);
 
 const BUAK_WEEK_TYPES_2026 = {
   1: "K",
@@ -280,6 +281,9 @@ export default function DaySlider() {
   const [toMin, setToMin] = useState(16 * 60 + 30);
   const [breakMin, setBreakMin] = useState(30);
   const [travelMin, setTravelMin] = useState(0);
+  const [craneUsed, setCraneUsed] = useState(false);
+  const [craneHours, setCraneHours] = useState(1);
+  const [badWeather, setBadWeather] = useState(false);
   const [note, setNote] = useState("");
   const [weatherAuto, setWeatherAuto] = useState("");
   const [weatherManual, setWeatherManual] = useState("");
@@ -831,9 +835,10 @@ export default function DaySlider() {
   async function handleSave() {
     setError("");
 
-    const isAbsence = absenceType === "krank" || absenceType === "urlaub";
+    const isFullDayAbsence = absenceType === "krank" || absenceType === "urlaub";
+    const badWeatherMinutes = badWeather ? Math.max(toMin - fromMin - breakMin, 0) : 0;
 
-    if (!isAbsence && !projectId) {
+    if (!isFullDayAbsence && !projectId) {
       setError("Bitte Projekt auswählen.");
       return;
     }
@@ -868,6 +873,9 @@ export default function DaySlider() {
       precipitation,
       weather_source: weatherSource || null,
       weather_fetched_at: weatherFetchedAt || null,
+      crane_hours: craneUsed ? Number(craneHours || 0) : 0,
+      bad_weather: !!badWeather,
+      bad_weather_minutes: badWeatherMinutes,
       note: `${
         absenceType === "krank"
           ? "[Krank] "
@@ -912,6 +920,9 @@ export default function DaySlider() {
 
       setNote("");
       setAbsenceType(null);
+      setBadWeather(false);
+      setCraneUsed(false);
+      setCraneHours(1);
       setBreakMin(30);
       setTravelMin(0);
       setWeatherManual("");
@@ -934,6 +945,9 @@ export default function DaySlider() {
       to_hm: toHM(row.end_min ?? row.to_min ?? 0),
       break_min: row.break_min ?? 0,
       travel_minutes: row.travel_minutes ?? row.travel_min ?? 0,
+      crane_hours: row.crane_hours ?? 0,
+      bad_weather: !!row.bad_weather,
+      bad_weather_minutes: row.bad_weather_minutes ?? 0,
       weather_manual: row.weather_manual || "",
       weather_auto: row.weather_auto || "",
       weather_final: getWeatherFinalLabel(row),
@@ -965,6 +979,9 @@ export default function DaySlider() {
       end_min: to_m,
       break_min: parseInt(editState.break_min || "0", 10) || 0,
       travel_minutes: parseInt(editState.travel_minutes || "0", 10) || 0,
+      crane_hours: parseInt(editState.crane_hours || "0", 10) || 0,
+      bad_weather: !!editState.bad_weather,
+      bad_weather_minutes: editState.bad_weather ? Math.max(to_m - from_m - (parseInt(editState.break_min || "0", 10) || 0), 0) : 0,
       weather_manual: editState.weather_manual?.trim() || null,
       weather_final:
         (editState.weather_manual || "").trim() || editState.weather_auto || null,
@@ -1374,6 +1391,7 @@ export default function DaySlider() {
                 }`}
                 onClick={() => {
                   setAbsenceType("krank");
+                  setBadWeather(false);
                   setProjectId(null);
                   const d = new Date(`${date}T00:00:00`);
                   const isFri = d.getDay() === 5;
@@ -1393,6 +1411,7 @@ export default function DaySlider() {
                 }`}
                 onClick={() => {
                   setAbsenceType("urlaub");
+                  setBadWeather(false);
                   setProjectId(null);
                   setFromMin(7 * 60);
                   setToMin(7 * 60 + 15);
@@ -1403,12 +1422,28 @@ export default function DaySlider() {
                 Urlaub
               </button>
 
-              {absenceType && (
+
+              <button
+                type="button"
+                className={`hbz-chip ${badWeather ? "active" : ""}`}
+                onClick={() => {
+                  setBadWeather((v) => !v);
+                  if (absenceType) setAbsenceType(null);
+                }}
+                title="Schlechtwetter für die eingestellte Uhrzeit markieren"
+              >
+                Schlechtwetter
+              </button>
+
+              {(absenceType || badWeather) && (
                 <button
                   type="button"
                   className="hbz-chip"
-                  onClick={() => setAbsenceType(null)}
-                  title="Abwesenheit zurücksetzen"
+                  onClick={() => {
+                    setAbsenceType(null);
+                    setBadWeather(false);
+                  }}
+                  title="Zur normalen Buchung zurücksetzen"
                 >
                   Normal
                 </button>
@@ -1440,6 +1475,37 @@ export default function DaySlider() {
             <div className="help" style={{ marginTop: 8 }}>
               Kostenstelle: <b>FAHRZEIT</b> – wird zur Arbeitszeit dazugerechnet
               und in den Auswertungen separat ausgewiesen.
+            </div>
+          </div>
+
+          <div className="year-section">
+            <div className="month-card-title">Kranzeit</div>
+            <div className="hbz-chipbar">
+              <button
+                type="button"
+                className={`hbz-chip ${craneUsed ? "active" : ""}`}
+                onClick={() => setCraneUsed((v) => !v)}
+              >
+                🏗 Kran verwendet
+              </button>
+
+              {craneUsed && (
+                <select
+                  className="hbz-input"
+                  value={craneHours}
+                  onChange={(e) => setCraneHours(Number(e.target.value))}
+                  style={{ maxWidth: 140 }}
+                >
+                  {CRANE_HOUR_OPTIONS.map((h) => (
+                    <option key={h} value={h}>
+                      {h} h
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+            <div className="help" style={{ marginTop: 8 }}>
+              Wird als Kranzeit zum Eintrag gespeichert und kann später in der Nachkalkulation ausgewertet werden.
             </div>
           </div>
 
@@ -1558,6 +1624,8 @@ export default function DaySlider() {
                       <th className="num">Fahrzeit</th>
                       <th className="num">Stunden</th>
                       <th className="num">Überstunden</th>
+                      <th className="num">Kran</th>
+                      <th>Schlechtwetter</th>
                       <th>Wetter</th>
                       <th>Notiz</th>
                       <th className="num">Aktion</th>
@@ -1587,6 +1655,8 @@ export default function DaySlider() {
                             <td className="num">{travelM} min</td>
                             <td className="num">{hrs.toFixed(2)}</td>
                             <td className="num">{ot.toFixed(2)}</td>
+                            <td className="num">{Number(r.crane_hours || 0) > 0 ? `${Number(r.crane_hours || 0)} h` : "—"}</td>
+                            <td>{r.bad_weather ? `${toHM(start)}–${toHM(end)} (${h2(r.bad_weather_minutes || work).toFixed(2)} h)` : "—"}</td>
                             <td>{getWeatherFinalLabel(r) || "—"}</td>
                             <td>{r.note || ""}</td>
                             <td className="num">
