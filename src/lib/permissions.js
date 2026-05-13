@@ -31,7 +31,6 @@ export function getUserPermissions(user) {
       manageProjects: false,
       manageEmployees: false,
     },
-
     buchhaltung: {
       writeOwnTime: false,
       writeAllTime: false,

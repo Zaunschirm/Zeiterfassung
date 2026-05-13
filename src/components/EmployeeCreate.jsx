@@ -18,6 +18,14 @@ const PERMISSION_OPTIONS = [
 
 const EMPTY_PERMISSIONS = Object.fromEntries(PERMISSION_OPTIONS.map((p) => [p.key, false]));
 
+const ROLE_OPTIONS = [
+  { value: "mitarbeiter", label: "Mitarbeiter" },
+  { value: "teamleiter", label: "Teamleiter" },
+  { value: "admin", label: "Admin" },
+  { value: "buchhaltung", label: "Verwaltung/Buchhaltung" },
+];
+
+
 export default function EmployeeCreate() {
   const [name, setName] = useState("");
   const [role, setRole] = useState("mitarbeiter");
@@ -167,11 +175,11 @@ export default function EmployeeCreate() {
               className="hbz-input"
               value={role}
               onChange={(e) => setRole(e.target.value)}
-            >
-              <option value="mitarbeiter">Mitarbeiter</option>
-              <option value="teamleiter">Teamleiter</option>
-              <option value="admin">Admin</option>
-              <option value="buchhaltung">Buchhaltung</option>
+            >          {ROLE_OPTIONS.map((item) => (
+            <option key={item.value} value={item.value}>
+              {item.label}
+            </option>
+          ))}
             </select>
           </div>
 

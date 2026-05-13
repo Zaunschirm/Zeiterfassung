@@ -418,10 +418,11 @@ export default function DaySlider() {
             .select("id, code, name, role, active, disabled, show_in_daily_check")
             .eq("active", true)
             .eq("disabled", false)
+            .neq("role", "buchhaltung")
             .order("name", { ascending: true });
 
           if (error) throw error;
-          const list = data || [];
+          const list = (data || []).filter((e) => String(e.role || "").toLowerCase() !== "buchhaltung");
           setEmployees(list);
 
           if (session?.code) {

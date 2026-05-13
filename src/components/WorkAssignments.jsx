@@ -95,7 +95,6 @@ export default function WorkAssignments() {
   const [error, setError] = useState("");
   const [dragEmployeeId, setDragEmployeeId] = useState(null);
   const [dragProjectId, setDragProjectId] = useState("");
-  const [selectedProjectId, setSelectedProjectId] = useState("");
   const [hoverRow, setHoverRow] = useState("");
   const [hoverCell, setHoverCell] = useState("");
   const projectRef = useRef(null);
@@ -216,6 +215,7 @@ export default function WorkAssignments() {
             .select("id, name, role, active, disabled")
             .eq("active", true)
             .eq("disabled", false)
+            .neq("role", "buchhaltung")
             .order("name", { ascending: true }),
           supabase
             .from("projects")
@@ -227,7 +227,7 @@ export default function WorkAssignments() {
         if (employeesRes.error) throw employeesRes.error;
         if (projectsRes.error) throw projectsRes.error;
 
-        const employeeData = employeesRes.data || [];
+        const employeeData = (employeesRes.data || []).filter((e) => String(e.role || "").toLowerCase() !== "buchhaltung");
         setEmployees(employeeData);
         setProjects(projectsRes.data || []);
         setEmployeeOrder(
@@ -361,17 +361,11 @@ export default function WorkAssignments() {
       return;
     }
 
-    const cellRows = getCellRows(employeeId, dateStr);
-    const existing = cellRows.some(
+    const existing = getCellRows(employeeId, dateStr).some(
       (row) => String(row.project_id) === projectIdValue
     );
 
     if (existing) return;
-
-    if (cellRows.length >= 2) {
-      alert("Für diesen Mitarbeiter und Tag sind bereits 2 Projekte eingeteilt.");
-      return;
-    }
 
     try {
       setBusyKey(`add-${employeeId}-${dateStr}-${projectIdValue}`);
@@ -437,46 +431,32 @@ export default function WorkAssignments() {
   async function onCellClick(employeeId, dateStr) {
     if (!canEditAssignments) return;
 
-    const projectIdValue =
-      selectedProjectId || projectRef.current?.value?.trim() || "";
+    const projectIdValue = projectRef.current?.value?.trim();
 
     if (!projectIdValue) {
-      alert("Bitte zuerst ein Projekt aus der Projektliste auswählen.");
+      alert("Bitte oben ein Projekt auswählen.");
       return;
     }
 
     await addProjectToCell(employeeId, dateStr, projectIdValue);
   }
 
-  function selectProject(projectId) {
-    const value = String(projectId || "").trim();
-    setSelectedProjectId(value);
-    if (projectRef.current) projectRef.current.value = value;
-  }
-
-  function clearSelectedProject() {
-    setSelectedProjectId("");
-    if (projectRef.current) projectRef.current.value = "";
-  }
-
-  function onProjectDragStart(e, projectId) {
+  function onProjectDragStart(e) {
     if (!canEditAssignments) return;
 
-    const projectIdValue = String(projectId || "").trim();
+    const projectIdValue = projectRef.current?.value?.trim();
 
     if (!projectIdValue) {
       e.preventDefault();
-      alert("Fehler: Projekt-ID fehlt oder ist ungültig.");
+      alert("Bitte zuerst oben im Dropdown ein Projekt auswählen.");
       return;
     }
 
     e.dataTransfer.clearData();
-    e.dataTransfer.setData("hbzType", "project");
     e.dataTransfer.setData("projectId", projectIdValue);
     e.dataTransfer.setData("text/plain", projectIdValue);
     e.dataTransfer.effectAllowed = "copy";
     setDragProjectId(projectIdValue);
-    selectProject(projectIdValue);
   }
 
   function onProjectDragEnd() {
@@ -491,7 +471,6 @@ export default function WorkAssignments() {
       e.dataTransfer.getData("projectId") ||
       e.dataTransfer.getData("text/plain") ||
       dragProjectId ||
-      selectedProjectId ||
       projectRef.current?.value?.trim() ||
       "";
 
@@ -550,29 +529,6 @@ export default function WorkAssignments() {
 
   return (
     <div className="workassign-dispo-page">
-      <style>{`
-        .workassign-project-palette-card { padding: 10px 12px !important; overflow: hidden; }
-        .workassign-project-palette-head { display: flex; justify-content: space-between; gap: 10px; align-items: center; margin-bottom: 6px; }
-        .workassign-project-palette-title { display:flex; align-items:center; gap:8px; font-weight:800; font-size:13px; }
-        .workassign-project-count { font-size:10px; font-weight:800; padding:2px 7px; border-radius:999px; background:#f4eadf; border:1px solid rgba(132,78,45,.22); color:#7b482a; }
-        .workassign-project-list { display:flex; flex-wrap:wrap; gap:5px; max-height:84px; overflow:auto; padding-right:2px; }
-        .workassign-project-card { display:inline-flex; align-items:center; gap:6px; height:28px; max-width:210px; border:1px solid rgba(132,78,45,.24); border-radius:999px; padding:4px 9px 4px 7px; background:#fffaf5; cursor:grab; text-align:left; box-shadow:none; transition:background .12s ease, border-color .12s ease, transform .12s ease; }
-        .workassign-project-card:active { cursor:grabbing; transform:scale(.99); }
-        .workassign-project-card:hover { background:#fff3e6; border-color:rgba(132,78,45,.42); }
-        .workassign-project-card-active { background:#8a5231; color:#fff; border-color:#8a5231; }
-        .workassign-project-drag-dot { width:16px; height:16px; border-radius:999px; display:inline-flex; align-items:center; justify-content:center; flex:0 0 auto; background:rgba(132,78,45,.10); font-size:10px; opacity:.9; line-height:1; }
-        .workassign-project-card-active .workassign-project-drag-dot { background:rgba(255,255,255,.18); }
-        .workassign-project-card-text { display:flex; align-items:center; gap:5px; min-width:0; }
-        .workassign-project-costcenter { font-size:10px; font-weight:900; opacity:.86; white-space:nowrap; flex:0 0 auto; }
-        .workassign-project-name { font-size:11px; font-weight:800; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-        .workassign-project-actions { display:flex; align-items:center; gap:6px; flex:0 0 auto; }
-        .workassign-drop-cell-hover { outline:2px dashed currentColor; outline-offset:-4px; background:rgba(0,0,0,.035); }
-        @media (max-width:760px) {
-          .workassign-project-palette-head { align-items:flex-start; flex-direction:column; }
-          .workassign-project-list { max-height:118px; }
-          .workassign-project-card { max-width:160px; }
-        }
-      `}</style>
       <div className="workassign-dispo-head hbz-card">
         <div className="workassign-dispo-head-top">
           <div>
@@ -601,7 +557,7 @@ export default function WorkAssignments() {
         <div className="workassign-dispo-toolbar">
           <div className="help">
             {canEditAssignments
-              ? "Aktive Projekte als Karte ziehen und direkt auf Mitarbeiter + Tag ablegen. Am Handy: Projekt antippen und danach die gewünschte Zelle antippen. Mitarbeiter können weiter per Ziehen sortiert werden."
+              ? "Projekt oben im Dropdown auswählen und danach unten auf die gewünschte Zelle klicken. Oder rechts den kleinen Drag-Button verwenden. Mitarbeiter können weiter per Ziehen sortiert werden."
               : "Hier siehst du die Arbeitseinteilung der Woche. Änderungen sind mit deinem Benutzer nicht erlaubt."}
           </div>
 
@@ -619,76 +575,54 @@ export default function WorkAssignments() {
         {error ? <div className="year-error-box">{error}</div> : null}
       </div>
 
-      {canEditAssignments && (
       <div className="hbz-card workassign-project-palette-card">
         <div className="workassign-project-palette-head">
-          <div>
-            <div className="workassign-project-palette-title">
-              Projekte
-              <span className="workassign-project-count">{projects.length} aktiv</span>
-            </div>
-            <div className="help">Kompakte Liste: Projekt ziehen oder antippen, danach unten auf Mitarbeiter + Tag klicken.</div>
-          </div>
-
-          <div className="workassign-project-actions">
-            {selectedProjectId ? (
-              <span className="workassign-project-count">ausgewählt</span>
-            ) : null}
-            <button type="button" className="hbz-btn" onClick={clearSelectedProject}>
-              Auswahl löschen
-            </button>
+          <div className="month-card-title">Projekt auswählen</div>
+          <div className="help">
+            {canEditAssignments ? "Danach Zelle klicken oder den Drag-Button benutzen." : "Nur Anzeige – Änderungen sind deaktiviert."}
           </div>
         </div>
 
-        <select
-          ref={projectRef}
-          className="hbz-select"
-          value={selectedProjectId}
-          onChange={(e) => selectProject(e.target.value)}
-          style={{ display: "none" }}
-          aria-hidden="true"
-        >
-          <option value="">Bitte Projekt wählen…</option>
-          {projects.map((project) => (
-            <option key={project.id} value={project.id}>
-              {projectLabel(project)}
-            </option>
-          ))}
-        </select>
-
-        {projects.length === 0 ? (
-          <div className="month-empty-state">Keine aktiven Projekte vorhanden.</div>
-        ) : (
-          <div className="workassign-project-list">
-            {projects.map((project) => {
-              const projectId = String(project.id);
-              const selected = selectedProjectId === projectId;
-
-              return (
-                <button
-                  key={project.id}
-                  type="button"
-                  className={`workassign-project-card ${selected ? "workassign-project-card-active" : ""}`}
-                  draggable={canEditAssignments}
-                  onClick={() => selectProject(projectId)}
-                  onDragStart={(e) => onProjectDragStart(e, projectId)}
-                  onDragEnd={onProjectDragEnd}
-                  title="Projekt ziehen oder antippen"
-                >
-                  <span className="workassign-project-drag-dot">↕</span>
-                  <span className="workassign-project-card-text">
-                    {project.cost_center ? (
-                      <span className="workassign-project-costcenter">{project.cost_center}</span>
-                    ) : null}
-                    <span className="workassign-project-name">{project.name}</span>
-                  </span>
-                </button>
-              );
-            })}
+        <div className="hbz-row">
+          <div className="hbz-col">
+            <label className="hbz-label">Projekt</label>
+            <select ref={projectRef} className="hbz-select" defaultValue="">
+              <option value="">Bitte Projekt wählen…</option>
+              {projects.map((project) => (
+                <option key={project.id} value={project.id}>
+                  {projectLabel(project)}
+                </option>
+              ))}
+            </select>
           </div>
-        )}
+
+          <div
+            className="hbz-col-auto"
+            style={{ display: "flex", alignItems: "end", gap: 8 }}
+          >
+            <button
+              type="button"
+              className="hbz-btn"
+              onClick={() => {
+                if (projectRef.current) projectRef.current.value = "";
+              }}
+            >
+              Auswahl löschen
+            </button>
+
+            <button
+              type="button"
+              className="hbz-btn hbz-btn-primary"
+              draggable={canEditAssignments}
+              onDragStart={onProjectDragStart}
+              onDragEnd={onProjectDragEnd}
+              title="Projekt in eine Zelle ziehen"
+            >
+              Projekt ziehen
+            </button>
+          </div>
+        </div>
       </div>
-      )}
 
       <div className="hbz-card workassign-matrix-card">
         {!canViewAssignments ? (
@@ -762,8 +696,6 @@ export default function WorkAssignments() {
                             onClick={() => onCellClick(employee.id, dateStr)}
                             onDragOver={(e) => {
                               if (!canEditAssignments) return;
-                              const type = e.dataTransfer?.types?.includes("projectId") || dragProjectId;
-                              if (!type) return;
                               e.preventDefault();
                               setHoverCell(cellKey);
                             }}
