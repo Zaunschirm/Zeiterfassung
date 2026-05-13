@@ -171,6 +171,7 @@ export default function EmployeeCreate() {
               <option value="mitarbeiter">Mitarbeiter</option>
               <option value="teamleiter">Teamleiter</option>
               <option value="admin">Admin</option>
+              <option value="buchhaltung">Buchhaltung</option>
             </select>
           </div>
 

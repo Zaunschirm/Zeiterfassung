@@ -31,6 +31,21 @@ export function getUserPermissions(user) {
       manageProjects: false,
       manageEmployees: false,
     },
+
+    buchhaltung: {
+      writeOwnTime: false,
+      writeAllTime: false,
+      editOwnTime: false,
+      editAllTime: false,
+      deleteOwnTime: false,
+      deleteAllTime: false,
+      viewAssignments: true,
+      manageAssignments: false,
+      viewMonthlyOverview: true,
+      viewYearOverview: true,
+      manageProjects: false,
+      manageEmployees: false,
+    },
     mitarbeiter: {
       writeOwnTime: true,
       writeAllTime: false,
