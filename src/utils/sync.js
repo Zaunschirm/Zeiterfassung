@@ -13,23 +13,18 @@ export async function pullEmployees() {
 
 export async function pushEntries(currentUserId) {
   const unsynced = await db.entries.where({ synced: 0 }).toArray();
-  if (!supa || unsynced.length === 0) return unsynced.length;
+  if (!supa || !unsynced.length === 0) return unsynced.length;
 
   const payload = unsynced.map(e => ({
     id: e.supa_id || undefined,
     owner: currentUserId,
     employee_id: e.employeeId,
-    work_date: e.work_date || e.date,
-    start_min: e.start_min ?? e.startMin,
-    end_min: e.end_min ?? e.endMin,
-    break_min: e.break_min ?? e.breakMin,
+    date: e.date,
+    start_min: e.startMin,
+    end_min: e.endMin,
+    break_min: e.breakMin,
     note: e.note,
-    project: e.project,
-    project_id: e.project_id || null,
-    travel_minutes: e.travel_minutes ?? e.travelMinutes ?? 0,
-    travel_cost_center: e.travel_cost_center || 'FAHRZEIT',
-    voice_note: e.voice_note || e.voiceNote || null,
-    crane_hours: e.crane_hours ?? e.craneHours ?? 0
+    project: e.project
   }));
 
   const { data, error } = await supa.from('time_entries').insert(payload).select('id');
