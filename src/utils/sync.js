@@ -25,6 +25,7 @@ export async function pushEntries(currentUserId) {
     break_min: e.breakMin,
     note: e.note,
     project: e.project,
+    crane_hours: e.crane_hours || 0,
     bad_weather: !!e.bad_weather,
     bad_weather_minutes: e.bad_weather_minutes || 0
   }));
