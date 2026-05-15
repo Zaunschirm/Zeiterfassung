@@ -259,34 +259,31 @@ function getWeekDays(dateStr, count = 5) {
 export default function DaySlider() {
   const session = getSession()?.user || null;
   const [currentUser, setCurrentUser] = useState(session);
-  const role = (currentUser?.role || session?.role || "mitarbeiter").toLowerCase();
+
+  const normalizeRole = (value) => {
+    const r = String(value || "mitarbeiter").trim().toLowerCase();
+    if (r === "admin") return "admin";
+    if (r === "teamleiter") return "teamleiter";
+    if (r === "buchhaltung" || r === "verwaltung" || r === "bu/vw" || r === "buvw") return "verwaltung";
+    return "mitarbeiter";
+  };
+
+  const role = normalizeRole(currentUser?.role || session?.role || "mitarbeiter");
   const permissions = getUserPermissions(currentUser || session);
+
+  // Wichtig: Nur Admin und Teamleiter dürfen in der Zeiterfassung/Tageskontrolle andere MA sehen.
+  // Buchhaltung/Verwaltung und normale Mitarbeiter bleiben in der ZA immer auf sich selbst beschränkt.
+  const isPrivilegedRole = role === "admin" || role === "teamleiter";
   const canWriteOwnTime = !!permissions.writeOwnTime;
-  const canWriteAllTime = !!permissions.writeAllTime;
+  const canWriteAllTime = isPrivilegedRole && !!permissions.writeAllTime;
   const canEditOwnTime = !!permissions.editOwnTime;
-  const canEditAllTime = !!permissions.editAllTime;
+  const canEditAllTime = isPrivilegedRole && !!permissions.editAllTime;
   const canDeleteOwnTime = !!permissions.deleteOwnTime;
-  const canDeleteAllTime = !!permissions.deleteAllTime;
-  const canSelectEmployees = canWriteAllTime || canEditAllTime || canDeleteAllTime;
+  const canDeleteAllTime = isPrivilegedRole && !!permissions.deleteAllTime;
+  const canSelectEmployees = isPrivilegedRole && (canWriteAllTime || canEditAllTime || canDeleteAllTime);
   const canSeeAllEntries = canSelectEmployees;
-  const isStaff = !canSelectEmployees;
-  const isManager = canSelectEmployees;
-  const isAdmin = role === "admin";
-  const isBuVwRole = (value) => {
-    const normalized = String(value || "").trim().toLowerCase();
-    return ["buchhaltung", "verwaltung", "bu/vw", "bu_vw", "buvw"].includes(normalized);
-  };
-  const filterEmployeesForCurrentUser = (list = []) => {
-    if (isAdmin) return list;
-    if (isBuVwRole(role)) {
-      return list.filter((emp) =>
-        (currentUser?.id != null && String(emp.id) === String(currentUser.id)) ||
-        (currentUser?.code && String(emp.code) === String(currentUser.code)) ||
-        (session?.code && String(emp.code) === String(session.code))
-      );
-    }
-    return list.filter((emp) => !isBuVwRole(emp?.role));
-  };
+  const isStaff = !isPrivilegedRole;
+  const isManager = isPrivilegedRole;
 
   const [date, setDate] = useState(() =>
     new Date().toISOString().slice(0, 10)
@@ -339,11 +336,16 @@ export default function DaySlider() {
   const [editState, setEditState] = useState(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  // Einheitliche Ansicht: Die kompakte Handy-/Android-Ansicht ist jetzt die Standardansicht für alle Geräte.
-  // Desktop nutzt dadurch dieselbe Bedienung, nur mit mehr Breite.
-  const isMobile = true;
+  const [isMobile, setIsMobile] = useState(false);
 
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth <= 768);
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -437,7 +439,7 @@ export default function DaySlider() {
             .order("name", { ascending: true });
 
           if (error) throw error;
-          const list = filterEmployeesForCurrentUser(data || []);
+          const list = data || [];
           setEmployees(list);
 
           if (session?.code) {
@@ -472,7 +474,7 @@ export default function DaySlider() {
 
     loadEmployees();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isManager, session?.code, role, currentUser?.id, currentUser?.code]);
+  }, [isManager, session?.code]);
 
   useEffect(() => {
     if (!isStaff) return;
@@ -849,6 +851,74 @@ export default function DaySlider() {
   };
 
 
+  const getExistingEmployeeId = (row) => String(row?.employee_id ?? row?.employeeId ?? "");
+
+  const timesOverlap = (aStart, aEnd, bStart, bEnd) => {
+    const as = Number(aStart ?? 0);
+    const ae = Number(aEnd ?? 0);
+    const bs = Number(bStart ?? 0);
+    const be = Number(bEnd ?? 0);
+    return as < be && bs < ae;
+  };
+
+  const isSameBooking = (existing, next) => {
+    return (
+      String(existing?.work_date || existing?.date || "").slice(0, 10) === String(next.work_date || "").slice(0, 10) &&
+      String(getExistingEmployeeId(existing)) === String(next.employee_id) &&
+      String(existing?.project_id ?? "") === String(next.project_id ?? "") &&
+      Number(existing?.start_min ?? existing?.from_min ?? 0) === Number(next.start_min ?? 0) &&
+      Number(existing?.end_min ?? existing?.to_min ?? 0) === Number(next.end_min ?? 0) &&
+      Number(existing?.break_min ?? 0) === Number(next.break_min ?? 0) &&
+      Number(existing?.travel_minutes ?? existing?.travel_min ?? 0) === Number(next.travel_minutes ?? 0) &&
+      String(existing?.absence_type ?? "") === String(next.absence_type ?? "")
+    );
+  };
+
+  const isOverlappingBooking = (existing, next) => {
+    if (String(existing?.work_date || existing?.date || "").slice(0, 10) !== String(next.work_date || "").slice(0, 10)) return false;
+    if (String(getExistingEmployeeId(existing)) !== String(next.employee_id)) return false;
+    return timesOverlap(existing?.start_min ?? existing?.from_min, existing?.end_min ?? existing?.to_min, next.start_min, next.end_min);
+  };
+
+  async function findDuplicateOrOverlap(rows) {
+    const employeeIds = Array.from(new Set(rows.map((row) => String(row.employee_id)).filter(Boolean)));
+    let existing = (entries || []).filter((row) =>
+      String(row?.work_date || row?.date || "").slice(0, 10) === date &&
+      employeeIds.includes(String(getExistingEmployeeId(row)))
+    );
+
+    try {
+      const { data, error } = await supabase
+        .from("time_entries")
+        .select("id, work_date, employee_id, project_id, start_min, end_min, break_min, travel_minutes, absence_type")
+        .eq("work_date", date)
+        .in("employee_id", employeeIds);
+      if (!error && Array.isArray(data)) {
+        const seen = new Set(existing.map((row) => String(row.id || `${getExistingEmployeeId(row)}-${row.start_min}-${row.end_min}-${row.project_id}`)));
+        for (const row of data) {
+          const key = String(row.id || `${getExistingEmployeeId(row)}-${row.start_min}-${row.end_min}-${row.project_id}`);
+          if (!seen.has(key)) existing.push(row);
+        }
+      }
+    } catch (e) {
+      logSbError("[DaySlider] duplicate check fallback", e);
+    }
+
+    for (const row of rows) {
+      const exact = existing.find((entry) => isSameBooking(entry, row));
+      if (exact) return { type: "exact", row, existing: exact };
+    }
+
+    const overlaps = [];
+    for (const row of rows) {
+      const hit = existing.find((entry) => !isSameBooking(entry, row) && isOverlappingBooking(entry, row));
+      if (hit) overlaps.push({ row, existing: hit });
+    }
+
+    if (overlaps.length) return { type: "overlap", overlaps };
+    return null;
+  }
+
   function startVoiceNote() {
     if (typeof window === "undefined") return;
 
@@ -894,6 +964,7 @@ export default function DaySlider() {
   }
 
   async function handleSave() {
+    if (saving) return;
     setError("");
 
     const isAbsence = absenceType === "krank" || absenceType === "urlaub";
@@ -936,6 +1007,7 @@ export default function DaySlider() {
       crane_hours: craneUsed ? Number(craneHours || 0) : 0,
       bad_weather: !!badWeather,
       bad_weather_minutes: badWeather ? Math.max(toMin - fromMin - breakMin, 0) : 0,
+      absence_type: absenceType || null,
       voice_note: (note || "").trim() || null,
       note: `${
         absenceType === "krank"
@@ -958,6 +1030,16 @@ export default function DaySlider() {
           return;
         }
         const rows = chosen.map((e) => ({ ...base, employee_id: e.id }));
+        const conflict = await findDuplicateOrOverlap(rows);
+        if (conflict?.type === "exact") {
+          const emp = chosen.find((e) => String(e.id) === String(conflict.row.employee_id));
+          setError(`Doppeleintrag verhindert: Für ${emp?.name || "diesen Mitarbeiter"} gibt es am ${date} bereits exakt diesen Eintrag.`);
+          return;
+        }
+        if (conflict?.type === "overlap") {
+          const ok = window.confirm("Achtung: Für mindestens einen Mitarbeiter gibt es am ausgewählten Tag bereits einen überschneidenden Zeiteintrag. Trotzdem speichern?");
+          if (!ok) return;
+        }
         const { error } = await supabase.from("time_entries").insert(rows);
         if (error) throw error;
         alert(`Gespeichert für ${rows.length} Mitarbeiter.`);
@@ -974,9 +1056,19 @@ export default function DaySlider() {
           alert("Nicht erlaubt: Mitarbeiter dürfen nur für sich buchen.");
           return;
         }
+        const rows = [{ ...base, employee_id: employeeRow.id }];
+        const conflict = await findDuplicateOrOverlap(rows);
+        if (conflict?.type === "exact") {
+          setError(`Doppeleintrag verhindert: Für dich gibt es am ${date} bereits exakt diesen Eintrag.`);
+          return;
+        }
+        if (conflict?.type === "overlap") {
+          const ok = window.confirm("Achtung: Für dich gibt es am ausgewählten Tag bereits einen überschneidenden Zeiteintrag. Trotzdem speichern?");
+          if (!ok) return;
+        }
         const { error } = await supabase
           .from("time_entries")
-          .insert({ ...base, employee_id: employeeRow.id });
+          .insert(rows[0]);
         if (error) throw error;
         alert("Gespeichert.");
       }
@@ -1097,11 +1189,12 @@ export default function DaySlider() {
   return (
     <div className="month-overview">
       <style>{`
-        .mobile-time-entry { display: block; padding-bottom: 92px; }
-        .month-overview { padding-left: 8px; padding-right: 8px; }
-        .month-main-card { padding: 14px !important; border-radius: 20px; }
-        .mobile-time-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 14px 0; }
+        .mobile-time-entry { display: none; }
         @media (max-width: 768px) {
+          .mobile-time-entry { display: block; padding-bottom: 92px; }
+          .month-overview { padding-left: 8px; padding-right: 8px; }
+          .month-main-card { padding: 14px !important; border-radius: 20px; }
+          .mobile-time-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 14px 0; }
           .mobile-time-card { border: 1px solid #ead7c5; background: #fffdfb; border-radius: 16px; padding: 14px 12px; display: flex; gap: 10px; align-items: center; min-height: 78px; box-shadow: 0 8px 22px rgba(88, 54, 30, .07); }
           .mobile-time-icon { width: 30px; height: 30px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; color: white; font-size: 13px; flex: 0 0 auto; }
           .mobile-time-icon.start { background: #42a66b; } .mobile-time-icon.end { background: #df5b55; } .mobile-time-icon.pause { background: #e89539; } .mobile-time-icon.travel { background: #4b79a8; }
