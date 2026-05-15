@@ -732,8 +732,6 @@ export default function MonthlyOverview() {
   async function getMissingEntriesForRange(range) {
     const activeEmployees = employees
       .filter(isActiveEmployee)
-      // Normale Mitarbeiter prüfen nur sich selbst. Admin/Teamleiter bleiben unverändert.
-      .filter((emp) => !isStaff || String(emp.code || "") === String(session?.code || ""))
       .sort((a, b) => (a.name || a.code || "").localeCompare(b.name || b.code || ""));
 
     if (!activeEmployees.length) {

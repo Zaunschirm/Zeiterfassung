@@ -2810,3 +2810,348 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     flex: 1 1 auto;
   }
 }
+
+/* ===== Einheitliche Handy-/Desktop-Ansicht 2026-05-15 =====
+   Handy/Android ist die Referenz. Desktop verwendet dieselbe Struktur und nur mehr Breite. */
+:root {
+  --hbz-compact-gap: 8px;
+}
+
+.app-shell {
+  max-width: 980px;
+  padding: 8px;
+}
+
+.app-page {
+  margin-top: 8px;
+}
+
+.app-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  border-radius: 16px;
+  padding: 7px 8px;
+  top: 6px;
+  margin-bottom: 8px;
+}
+
+.app-nav-left {
+  flex: 1 1 auto;
+  min-width: 210px;
+}
+
+.app-logo-circle {
+  width: 34px;
+  height: 34px;
+}
+
+.app-logo-circle span {
+  font-size: 15px;
+}
+
+.app-title-main {
+  font-size: 15px;
+  line-height: 1.1;
+}
+
+.app-title-sub {
+  font-size: 9px;
+  line-height: 1.1;
+}
+
+.app-nav-center {
+  display: flex !important;
+  order: 3;
+  flex: 1 1 100%;
+  width: 100%;
+  gap: 6px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 4px;
+  background: #f5ebe0;
+}
+
+.app-nav-center .app-nav-btn {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  justify-content: center;
+  padding: 7px 11px;
+  font-size: 12px;
+}
+
+.app-nav-right {
+  display: flex !important;
+  flex: 0 0 auto;
+  gap: 6px;
+}
+
+.app-user-badge {
+  padding: 3px 7px;
+  font-size: 11px;
+}
+
+.app-user-initial {
+  width: 20px;
+  height: 20px;
+}
+
+.app-nav-mobile-toggle,
+.app-nav-menu-mobile {
+  display: none !important;
+}
+
+.hbz-container,
+.app-footer {
+  max-width: 980px;
+}
+
+.hbz-card,
+.month-summary-card,
+.year-summary-card,
+.month-card,
+.mobile-accordion,
+.mobile-time-card {
+  border-radius: 14px;
+}
+
+.hbz-card,
+.month-summary-card,
+.year-summary-card {
+  padding: 12px;
+  margin-bottom: 9px;
+}
+
+.month-overview,
+.year-overview,
+.workassign-dispo-page {
+  gap: 9px;
+}
+
+.month-overview-title,
+.year-overview-title,
+.workassign-dispo-title {
+  font-size: 22px;
+}
+
+.month-overview-subtitle,
+.year-overview-subtitle,
+.workassign-dispo-subtitle {
+  font-size: 12px;
+}
+
+.month-overview-hero,
+.year-overview-hero,
+.workassign-dispo-head {
+  padding: 12px !important;
+}
+
+.month-overview-actions,
+.year-overview-actions,
+.workassign-dispo-actions,
+.month-card-actions,
+.month-action-group {
+  gap: 6px;
+}
+
+.hbz-btn,
+.save-btn,
+.app-nav-btn,
+.hbz-chip,
+.month-chip,
+.year-chip,
+.daily-check-filter-btn {
+  min-height: 36px;
+  touch-action: manipulation;
+}
+
+.hbz-btn {
+  padding: 6px 10px;
+}
+
+.hbz-input,
+.hbz-select,
+.hbz-textarea {
+  font-size: 14px;
+  padding: 8px 10px;
+}
+
+.hbz-chipbar,
+.month-chip-list,
+.year-chip-list,
+.assignment-chip-list {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 5px;
+}
+
+.hbz-chip,
+.month-chip,
+.year-chip,
+.assignment-chip {
+  flex: 0 0 auto;
+  padding: 7px 11px;
+  font-size: 12px;
+}
+
+.month-summary-grid,
+.year-summary-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.month-summary-card,
+.year-summary-card {
+  padding: 10px 11px;
+}
+
+.month-summary-label,
+.year-summary-label {
+  font-size: 11px;
+  margin-bottom: 3px;
+}
+
+.month-summary-value,
+.year-summary-value,
+.month-card-mainhrs {
+  font-size: 19px;
+}
+
+.month-main-card {
+  padding: 12px !important;
+}
+
+.month-card-edit-grid,
+.month-card-meta,
+.year-filter-grid,
+.year-range-grid,
+.month-filter-grid,
+.employee-form-grid,
+.project-form-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.month-table,
+.year-table,
+.employee-table,
+.zt-table {
+  min-width: 0;
+  font-size: 12px;
+}
+
+.month-cards {
+  gap: 9px;
+}
+
+.month-card {
+  padding: 11px;
+}
+
+.mobile-time-entry {
+  display: block;
+  padding-bottom: 82px;
+}
+
+.mobile-time-grid {
+  gap: 8px !important;
+  margin: 10px 0 !important;
+}
+
+.mobile-time-card {
+  min-height: 66px !important;
+  padding: 10px !important;
+}
+
+.mobile-time-icon {
+  width: 27px !important;
+  height: 27px !important;
+}
+
+.mobile-time-value {
+  font-size: 19px !important;
+}
+
+.mobile-accordion {
+  margin: 8px 0 !important;
+}
+
+.mobile-accordion summary {
+  padding: 11px !important;
+}
+
+.mobile-sticky-save {
+  bottom: 6px !important;
+  padding: 8px !important;
+}
+
+.mobile-sticky-save .save-btn {
+  min-height: 48px !important;
+}
+
+.daily-check-grid {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px;
+}
+
+.workassign-matrix {
+  min-width: 720px;
+}
+
+.workassign-employee-col,
+.workassign-employee-cell {
+  min-width: 170px;
+  width: 170px;
+}
+
+@media (max-width: 768px) {
+  .app-shell {
+    padding: 7px;
+  }
+
+  .app-nav-right .app-user-name {
+    display: none;
+  }
+
+  .app-nav-right .hbz-btn {
+    padding-left: 9px;
+    padding-right: 9px;
+  }
+
+  .month-summary-grid,
+  .year-summary-grid,
+  .month-card-edit-grid,
+  .month-card-meta,
+  .year-filter-grid,
+  .year-range-grid,
+  .month-filter-grid,
+  .employee-form-grid,
+  .project-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .mobile-time-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 430px) {
+  .app-title-main {
+    font-size: 13px;
+  }
+
+  .app-logo-circle {
+    width: 30px;
+    height: 30px;
+  }
+
+  .mobile-time-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .mobile-time-value {
+    font-size: 17px !important;
+  }
+}

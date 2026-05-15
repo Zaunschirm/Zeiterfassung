@@ -525,15 +525,7 @@ export default function TimeTracking() {
   const missingReminderLoading = false;
 
   return (
-    <div className="hbz-container zeiterfassung-unified-view">
-      <style>{`
-        .zeiterfassung-unified-view .hbz-card.tight { padding: 14px; border-radius: 18px; }
-        .zeiterfassung-unified-view .hbz-row { gap: 10px; }
-        .zeiterfassung-unified-view .hbz-chipbar { gap: 8px; row-gap: 8px; }
-        .zeiterfassung-unified-view .hbz-chip { min-height: 34px; padding: 6px 11px; }
-        .zeiterfassung-unified-view .save-bar { position: sticky; bottom: 8px; z-index: 30; padding: 8px; background: rgba(244, 236, 225, .88); backdrop-filter: blur(10px); border-radius: 18px; }
-        .zeiterfassung-unified-view .save-btn.lg { width: 100%; min-height: 52px; }
-      `}</style>
+    <div className="hbz-container">
 
       {isStaff && ownDailyStatus && (
         <div className={`hbz-card tight staff-own-status staff-own-status-${ownDailyStatus.status}`}>
