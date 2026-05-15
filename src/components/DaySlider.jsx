@@ -300,6 +300,7 @@ export default function DaySlider() {
   const [weatherError, setWeatherError] = useState("");
 
   const [absenceType, setAbsenceType] = useState(null);
+  const [badWeather, setBadWeather] = useState(false);
 
   const [projects, setProjects] = useState([]);
   const [projectId, setProjectId] = useState(null);
@@ -922,12 +923,16 @@ export default function DaySlider() {
       weather_source: weatherSource || null,
       weather_fetched_at: weatherFetchedAt || null,
       crane_hours: craneUsed ? Number(craneHours || 0) : 0,
+      bad_weather: !!badWeather,
+      bad_weather_minutes: badWeather ? Math.max(toMin - fromMin - breakMin, 0) : 0,
       voice_note: (note || "").trim() || null,
       note: `${
         absenceType === "krank"
           ? "[Krank] "
           : absenceType === "urlaub"
           ? "[Urlaub] "
+          : badWeather
+          ? "[Schlechtwetter] "
           : ""
       }${(note || "").trim()}`.trim() || null,
     };
@@ -967,6 +972,7 @@ export default function DaySlider() {
 
       setNote("");
       setAbsenceType(null);
+      setBadWeather(false);
       setBreakMin(30);
       setTravelMin(0);
       setCraneUsed(false);
@@ -992,6 +998,7 @@ export default function DaySlider() {
       break_min: row.break_min ?? 0,
       travel_minutes: row.travel_minutes ?? row.travel_min ?? 0,
       crane_hours: row.crane_hours ?? 0,
+      bad_weather: !!row.bad_weather,
       weather_manual: row.weather_manual || "",
       weather_auto: row.weather_auto || "",
       weather_final: getWeatherFinalLabel(row),
@@ -1024,6 +1031,8 @@ export default function DaySlider() {
       break_min: parseInt(editState.break_min || "0", 10) || 0,
       travel_minutes: parseInt(editState.travel_minutes || "0", 10) || 0,
       crane_hours: parseInt(editState.crane_hours || "0", 10) || 0,
+      bad_weather: !!editState.bad_weather,
+      bad_weather_minutes: editState.bad_weather ? Math.max(to_m - from_m - (parseInt(editState.break_min || "0", 10) || 0), 0) : 0,
       voice_note: editState.note?.trim() || null,
       weather_manual: editState.weather_manual?.trim() || null,
       weather_final:
@@ -1070,11 +1079,38 @@ export default function DaySlider() {
     { label: "Pause", value: `${breakMin} min` },
     { label: "Fahrzeit", value: formatTravelLabel(travelMin) },
     { label: "Kran", value: craneUsed ? `${craneHours} h` : "—" },
+    { label: "Schlechtwetter", value: badWeather ? "Ja" : "—" },
     { label: "Wetter", value: finalWeather || "—" },
   ];
 
   return (
     <div className="month-overview">
+      <style>{`
+        .mobile-time-entry { display: none; }
+        @media (max-width: 768px) {
+          .mobile-time-entry { display: block; padding-bottom: 92px; }
+          .month-overview { padding-left: 8px; padding-right: 8px; }
+          .month-main-card { padding: 14px !important; border-radius: 20px; }
+          .mobile-time-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 14px 0; }
+          .mobile-time-card { border: 1px solid #ead7c5; background: #fffdfb; border-radius: 16px; padding: 14px 12px; display: flex; gap: 10px; align-items: center; min-height: 78px; box-shadow: 0 8px 22px rgba(88, 54, 30, .07); }
+          .mobile-time-icon { width: 30px; height: 30px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; color: white; font-size: 13px; flex: 0 0 auto; }
+          .mobile-time-icon.start { background: #42a66b; } .mobile-time-icon.end { background: #df5b55; } .mobile-time-icon.pause { background: #e89539; } .mobile-time-icon.travel { background: #4b79a8; }
+          .mobile-time-label { font-size: 12px; color: #7a5b44; font-weight: 800; }
+          .mobile-time-value { font-size: 22px; font-weight: 900; color: #2d1e15; line-height: 1.05; margin-top: 3px; }
+          .mobile-accordion { border: 1px solid #ead7c5; border-radius: 16px; background: #fffdfb; overflow: hidden; margin: 10px 0; box-shadow: 0 8px 22px rgba(88, 54, 30, .06); }
+          .mobile-accordion summary { list-style: none; cursor: pointer; padding: 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px; font-weight: 900; color: #2d1e15; }
+          .mobile-accordion summary::-webkit-details-marker { display: none; }
+          .mobile-accordion summary span { font-size: 12px; font-weight: 800; color: #8b6b54; background: #f5eadf; padding: 4px 8px; border-radius: 999px; white-space: nowrap; }
+          .mobile-accordion[open] { padding-bottom: 12px; }
+          .mobile-accordion[open] > :not(summary) { margin-left: 14px; margin-right: 14px; }
+          .mobile-chip-section { margin-top: 12px; }
+          .mobile-voice-btn { width: 100%; border: 1px solid #9a603b; background: #9a603b; color: #fff; border-radius: 14px; padding: 13px 14px; font-weight: 900; font-size: 15px; box-shadow: 0 8px 18px rgba(123, 74, 45, .2); }
+          .mobile-voice-btn.active { background: #6f3f25; }
+          .mobile-total-box { margin-top: 14px; }
+          .mobile-sticky-save { position: sticky; bottom: 8px; z-index: 30; padding: 10px; background: rgba(244, 236, 225, .88); backdrop-filter: blur(10px); border-radius: 20px; box-shadow: 0 -6px 24px rgba(88, 54, 30, .12); margin-top: 12px; }
+          .mobile-sticky-save .save-btn { width: 100%; min-height: 52px; font-size: 16px; border-radius: 16px; }
+        }
+      `}</style>
       <div className="month-overview-hero hbz-card">
         <div className="month-overview-hero__content">
           <div>
@@ -1330,7 +1366,55 @@ export default function DaySlider() {
           </div>
         )}
 
-        {isManager && (
+        {isMobile && (
+          <div className="mobile-time-entry">
+            {isManager && (
+              <details className="mobile-accordion" open>
+                <summary>👥 Mitarbeiter <span>{selectedCodes.length} / {employees.length} gewählt</span></summary>
+                <EmployeePicker employees={employees} selected={selectedCodes} onChange={setSelectedCodes} enableMulti={true} />
+              </details>
+            )}
+            <div className="mobile-time-grid">
+              <div className="mobile-time-card"><span className="mobile-time-icon start">▶</span><div><div className="mobile-time-label">Start</div><div className="mobile-time-value">{toHM(fromMin)}</div></div></div>
+              <div className="mobile-time-card"><span className="mobile-time-icon end">■</span><div><div className="mobile-time-label">Ende</div><div className="mobile-time-value">{toHM(toMin)}</div></div></div>
+              <div className="mobile-time-card"><span className="mobile-time-icon pause">☕</span><div><div className="mobile-time-label">Pause</div><div className="mobile-time-value">{formatTravelLabel(breakMin)}</div></div></div>
+              <div className="mobile-time-card"><span className="mobile-time-icon travel">🚙</span><div><div className="mobile-time-label">Fahrzeit</div><div className="mobile-time-value">{formatTravelLabel(travelMin)}</div></div></div>
+            </div>
+            <details className="mobile-accordion"><summary>⏱ Zeiten anpassen <span>{toHM(fromMin)} – {toHM(toMin)}</span></summary>
+              <div className="month-card-edit-grid" style={{ marginTop: 10 }}>
+                <div className="month-card-field"><label className="hbz-label">Start</label><input type="range" min={5 * 60} max={19 * 60 + 30} step={15} value={fromMin} onChange={(e) => { if (absenceType) setAbsenceType(null); setFromMin(Number(e.target.value)); }} style={{ width: "100%" }} /><div className="month-card-mainhrs" style={{ marginTop: 8 }}>{toHM(fromMin)}</div></div>
+                <div className="month-card-field"><label className="hbz-label">Ende</label><input type="range" min={5 * 60} max={19 * 60 + 30} step={15} value={toMin} onChange={(e) => { if (absenceType) setAbsenceType(null); setToMin(Number(e.target.value)); }} style={{ width: "100%" }} /><div className="month-card-mainhrs" style={{ marginTop: 8 }}>{toHM(toMin)}</div></div>
+              </div>
+              <div className="mobile-chip-section"><div className="month-card-title">Pause</div><div className="hbz-chipbar">{PAUSE_OPTIONS.map((m) => (<button key={m} type="button" className={`hbz-chip ${breakMin === m ? "active" : ""}`} onClick={() => { if (absenceType) setAbsenceType(null); setBreakMin(m); }}>{formatTravelLabel(m)}</button>))}</div></div>
+            </details>
+            <details className="mobile-accordion"><summary>👷 Abwesenheit <span>{absenceType ? (absenceType === "krank" ? "Krank" : "Urlaub") : badWeather ? "Schlechtwetter" : "Normal"}</span></summary>
+              <div className="hbz-chipbar">
+                <button type="button" className={`hbz-chip ${absenceType === "krank" ? "active" : ""}`} onClick={() => { setBadWeather(false); setAbsenceType("krank"); setProjectId(null); const d = new Date(`${date}T00:00:00`); const isFri = d.getDay() === 5; setFromMin(7 * 60); setToMin(isFri ? 10 * 60 : 16 * 60); setBreakMin(0); setTravelMin(0); }}>Krank</button>
+                <button type="button" className={`hbz-chip ${absenceType === "urlaub" ? "active" : ""}`} onClick={() => { setBadWeather(false); setAbsenceType("urlaub"); setProjectId(null); setFromMin(7 * 60); setToMin(7 * 60 + 15); setBreakMin(15); setTravelMin(0); }}>Urlaub</button>
+                <button type="button" className={`hbz-chip ${badWeather ? "active" : ""}`} onClick={() => { setAbsenceType(null); setBadWeather((v) => !v); }}>Schlechtwetter</button>
+                {(absenceType || badWeather) && <button type="button" className="hbz-chip" onClick={() => { setAbsenceType(null); setBadWeather(false); }}>Normal</button>}
+              </div>
+            </details>
+            <details className="mobile-accordion"><summary>🚙 Fahrzeit <span>{formatTravelLabel(travelMin)}</span></summary><div className="hbz-chipbar">{TRAVEL_OPTIONS.map((m) => (<button key={m} type="button" className={`hbz-chip ${travelMin === m ? "active" : ""}`} onClick={() => { if (absenceType) setAbsenceType(null); setTravelMin(m); }}>{formatTravelLabel(m)}</button>))}</div></details>
+            <details className="mobile-accordion"><summary>🏗 Kranzeit <span>{craneUsed ? `${craneHours} h` : "—"}</span></summary><div className="hbz-chipbar" style={{ alignItems: "center" }}><button type="button" className={`hbz-chip ${craneUsed ? "active" : ""}`} onClick={() => setCraneUsed((v) => !v)} disabled={!!absenceType}>🏗 Kran verwendet</button>{craneUsed && (<select className="hbz-input" value={craneHours} onChange={(e) => setCraneHours(Number(e.target.value))} disabled={!!absenceType} style={{ maxWidth: 140 }}>{CRANE_HOUR_OPTIONS.map((h) => <option key={h} value={h}>{h} h</option>)}</select>)}</div></details>
+            <details className="mobile-accordion"><summary>☁ Wetter <span>{finalWeather || "—"}</span></summary>
+              <div className="month-card-field"><label className="hbz-label">Automatisch von Baustelle + Buchung</label><div className="hbz-input" style={{ display: "flex", alignItems: "center", gap: 8 }}><span>{weatherLoading ? "Lade Wetter…" : weatherAuto || "—"}</span><button type="button" className="hbz-btn btn-small" onClick={() => loadWeatherForCurrentBooking(true)} disabled={weatherLoading || !projectAddress || !!absenceType}>Aktualisieren</button></div></div>
+              <div className="month-card-field" style={{ marginTop: 10 }}><label className="hbz-label">Manuell ändern</label><select className="hbz-input" value={weatherManual || "Automatisch"} disabled={!!absenceType} onChange={(e) => { const value = e.target.value; setWeatherManual(value === "Automatisch" ? "" : value); }}>{WEATHER_MANUAL_OPTIONS.map((opt) => <option key={opt} value={opt}>{opt}</option>)}</select></div>
+            </details>
+            <details className="mobile-accordion" open><summary>🎤 Notiz / Tätigkeit <span>{note ? "ausgefüllt" : "leer"}</span></summary>
+              <button type="button" className={`mobile-voice-btn ${voiceListening ? "active" : ""}`} onClick={startVoiceNote} disabled={!voiceSupported || voiceListening}>{voiceListening ? "🎤 Aufnahme läuft…" : "🎤 Notiz sprechen"}</button>
+              {!voiceSupported && <div className="help" style={{ marginTop: 6 }}>Spracherkennung ist in diesem Browser nicht verfügbar. Am iPhone kannst du alternativ die Diktierfunktion der Tastatur verwenden.</div>}
+              <textarea className="hbz-textarea" rows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder="z. B. Tätigkeit, Besonderheiten…" style={{ marginTop: 10 }} />
+            </details>
+            <div className="year-range-active mobile-total-box"><strong>Arbeitszeit heute:</strong> {totalHours.toFixed(2)} h{totalOvertime > 0 ? ` | Ü: ${totalOvertime.toFixed(2)} h` : " | keine Überstunden"}</div>
+            {error && <div className="year-error-box" style={{ marginTop: 12 }}><b>Hinweis:</b> {error}</div>}
+            <div className="mobile-sticky-save"><button type="button" className="save-btn lg" onClick={handleSave} disabled={saving}>{saving ? "Speichere…" : "Speichern"}</button></div>
+          </div>
+        )}
+
+        {!isMobile && (
+          <>
+          {isManager && (
           <div className="month-employee-block">
             <div className="month-employee-head">
               <label className="hbz-label">Mitarbeiter</label>
@@ -1346,7 +1430,7 @@ export default function DaySlider() {
               enableMulti={true}
             />
           </div>
-        )}
+          )}
 
         <div className="month-summary-grid" style={{ marginTop: 16 }}>
           {summaryCards.map((card) => (
@@ -1434,6 +1518,7 @@ export default function DaySlider() {
                   absenceType === "krank" ? "active" : ""
                 }`}
                 onClick={() => {
+                  setBadWeather(false);
                   setAbsenceType("krank");
                   setProjectId(null);
                   const d = new Date(`${date}T00:00:00`);
@@ -1453,6 +1538,7 @@ export default function DaySlider() {
                   absenceType === "urlaub" ? "active" : ""
                 }`}
                 onClick={() => {
+                  setBadWeather(false);
                   setAbsenceType("urlaub");
                   setProjectId(null);
                   setFromMin(7 * 60);
@@ -1464,11 +1550,15 @@ export default function DaySlider() {
                 Urlaub
               </button>
 
-              {absenceType && (
+              <button type="button" className={`hbz-chip ${badWeather ? "active" : ""}`} onClick={() => { setAbsenceType(null); setBadWeather((v) => !v); }}>
+                Schlechtwetter
+              </button>
+
+              {(absenceType || badWeather) && (
                 <button
                   type="button"
                   className="hbz-chip"
-                  onClick={() => setAbsenceType(null)}
+                  onClick={() => { setAbsenceType(null); setBadWeather(false); }}
                   title="Abwesenheit zurücksetzen"
                 >
                   Normal
@@ -1642,6 +1732,8 @@ export default function DaySlider() {
             {saving ? "Speichere…" : "Speichern"}
           </button>
         </div>
+        </>
+        )}
       </div>
 
       <div className="hbz-card month-main-card">
