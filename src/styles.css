@@ -2811,347 +2811,279 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   }
 }
 
-/* ===== Einheitliche Handy-/Desktop-Ansicht 2026-05-15 =====
-   Handy/Android ist die Referenz. Desktop verwendet dieselbe Struktur und nur mehr Breite. */
+/* =========================================================
+   FINAL FIX 2026-05-15
+   Handy/Android Ansicht als Master – Desktop wird nicht mehr
+   breitgezogen. Symbole/Emojis bleiben unverändert.
+   ========================================================= */
 :root {
-  --hbz-compact-gap: 8px;
+  --hbz-mobile-master-width: 860px;
+  --hbz-mobile-master-narrow: 720px;
+}
+
+/* App insgesamt wie Handy-Layout behandeln: zentriert, begrenzt, nicht strecken */
+.app-shell,
+.hbz-container,
+.app-footer {
+  max-width: var(--hbz-mobile-master-width) !important;
+  width: min(100%, var(--hbz-mobile-master-width)) !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
 }
 
 .app-shell {
-  max-width: 980px;
-  padding: 8px;
+  padding-left: 10px !important;
+  padding-right: 10px !important;
 }
 
-.app-page {
-  margin-top: 8px;
+.hbz-container {
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+  margin-top: 10px !important;
+  margin-bottom: 22px !important;
 }
 
+/* Navigation: gleiche Bedienlogik wie Handy, nur breiter */
 .app-nav {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  border-radius: 16px;
-  padding: 7px 8px;
-  top: 6px;
-  margin-bottom: 8px;
+  max-width: var(--hbz-mobile-master-width) !important;
+  width: 100% !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+  border-radius: 18px !important;
+  padding: 7px 10px !important;
+  gap: 8px !important;
 }
 
 .app-nav-left {
-  flex: 1 1 auto;
-  min-width: 210px;
-}
-
-.app-logo-circle {
-  width: 34px;
-  height: 34px;
-}
-
-.app-logo-circle span {
-  font-size: 15px;
+  min-width: 0 !important;
+  flex: 1 1 auto !important;
 }
 
 .app-title-main {
-  font-size: 15px;
-  line-height: 1.1;
+  white-space: nowrap !important;
 }
 
-.app-title-sub {
-  font-size: 9px;
-  line-height: 1.1;
+/* Auf Desktop keine 2-Spalten/ausgedehnten Riesenflächen erzwingen */
+.hbz-layout-row,
+.year-overview-topgrid,
+.month-overview-topgrid,
+.employee-form-grid,
+.project-form-grid,
+.year-filter-grid,
+.year-range-grid,
+.month-filter-grid,
+.month-summary-grid,
+.year-summary-grid {
+  max-width: 100% !important;
 }
 
-.app-nav-center {
+.hbz-card {
+  border-radius: 16px !important;
+  padding: 12px 14px !important;
+  margin-bottom: 12px !important;
+}
+
+.hbz-card.tight {
+  padding: 11px 13px !important;
+}
+
+.hbz-title,
+.page-title {
+  font-size: 18px !important;
+  line-height: 1.15 !important;
+}
+
+.hbz-section-title {
+  font-size: 12px !important;
+  margin-bottom: 6px !important;
+}
+
+/* Zeiterfassung: kompakt, aber dieselbe Struktur auf Desktop und Handy */
+.hbz-row {
   display: flex !important;
-  order: 3;
-  flex: 1 1 100%;
-  width: 100%;
-  gap: 6px;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  padding: 4px;
-  background: #f5ebe0;
+  flex-wrap: wrap !important;
+  gap: 10px !important;
+  align-items: flex-start !important;
 }
 
-.app-nav-center .app-nav-btn {
-  flex: 0 0 auto;
-  white-space: nowrap;
-  justify-content: center;
-  padding: 7px 11px;
-  font-size: 12px;
+.hbz-col {
+  flex: 1 1 220px !important;
+  min-width: 0 !important;
 }
 
-.app-nav-right {
-  display: flex !important;
-  flex: 0 0 auto;
-  gap: 6px;
-}
-
-.app-user-badge {
-  padding: 3px 7px;
-  font-size: 11px;
-}
-
-.app-user-initial {
-  width: 20px;
-  height: 20px;
-}
-
-.app-nav-mobile-toggle,
-.app-nav-menu-mobile {
-  display: none !important;
-}
-
-.hbz-container,
-.app-footer {
-  max-width: 980px;
-}
-
-.hbz-card,
-.month-summary-card,
-.year-summary-card,
-.month-card,
-.mobile-accordion,
-.mobile-time-card {
-  border-radius: 14px;
-}
-
-.hbz-card,
-.month-summary-card,
-.year-summary-card {
-  padding: 12px;
-  margin-bottom: 9px;
-}
-
-.month-overview,
-.year-overview,
-.workassign-dispo-page {
-  gap: 9px;
-}
-
-.month-overview-title,
-.year-overview-title,
-.workassign-dispo-title {
-  font-size: 22px;
-}
-
-.month-overview-subtitle,
-.year-overview-subtitle,
-.workassign-dispo-subtitle {
-  font-size: 12px;
-}
-
-.month-overview-hero,
-.year-overview-hero,
-.workassign-dispo-head {
-  padding: 12px !important;
-}
-
-.month-overview-actions,
-.year-overview-actions,
-.workassign-dispo-actions,
-.month-card-actions,
-.month-action-group {
-  gap: 6px;
-}
-
-.hbz-btn,
-.save-btn,
-.app-nav-btn,
-.hbz-chip,
-.month-chip,
-.year-chip,
-.daily-check-filter-btn {
-  min-height: 36px;
-  touch-action: manipulation;
-}
-
-.hbz-btn {
-  padding: 6px 10px;
+.hbz-col-auto {
+  flex: 0 1 auto !important;
+  min-width: 0 !important;
 }
 
 .hbz-input,
 .hbz-select,
 .hbz-textarea {
-  font-size: 14px;
-  padding: 8px 10px;
+  min-height: 34px !important;
+  padding: 6px 9px !important;
+  font-size: 13px !important;
 }
 
+.hbz-textarea {
+  min-height: 54px !important;
+}
+
+.hbz-btn,
+.save-btn {
+  min-height: 32px !important;
+}
+
+/* Chips enger und gleichmäßig; nicht über die ganze Breite aufblasen */
 .hbz-chipbar,
+.assignment-chip-list,
+.daily-control-grid,
+.daily-check-grid,
 .month-chip-list,
 .year-chip-list,
-.assignment-chip-list {
-  flex-wrap: nowrap;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  padding-bottom: 5px;
+.workassign-project-palette {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 7px !important;
+  overflow: visible !important;
 }
 
 .hbz-chip,
+.assignment-chip,
+.daily-control-chip,
 .month-chip,
 .year-chip,
-.assignment-chip {
-  flex: 0 0 auto;
-  padding: 7px 11px;
-  font-size: 12px;
+.workassign-project-token {
+  min-height: 30px !important;
+  padding: 6px 10px !important;
+  font-size: 12px !important;
+  line-height: 1.15 !important;
+  max-width: 100% !important;
 }
 
-.month-summary-grid,
-.year-summary-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+.daily-control-chip {
+  flex: 0 1 auto !important;
 }
 
-.month-summary-card,
-.year-summary-card {
-  padding: 10px 11px;
+.daily-control-name,
+.daily-control-state {
+  white-space: nowrap !important;
 }
 
-.month-summary-label,
-.year-summary-label {
-  font-size: 11px;
-  margin-bottom: 3px;
+.daily-control-head {
+  margin-bottom: 8px !important;
 }
 
-.month-summary-value,
-.year-summary-value,
-.month-card-mainhrs {
-  font-size: 19px;
+.daily-control-summary {
+  gap: 5px !important;
 }
 
-.month-main-card {
-  padding: 12px !important;
+.daily-control-count {
+  padding: 3px 7px !important;
+  font-size: 11px !important;
 }
 
-.month-card-edit-grid,
-.month-card-meta,
-.year-filter-grid,
-.year-range-grid,
-.month-filter-grid,
-.employee-form-grid,
-.project-form-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+/* Zeitblock nicht auseinanderziehen */
+.day-slider-container {
+  margin-top: 6px !important;
 }
 
-.month-table,
-.year-table,
-.employee-table,
-.zt-table {
-  min-width: 0;
-  font-size: 12px;
+.day-slider-track,
+.day-slider-range {
+  height: 5px !important;
 }
 
-.month-cards {
-  gap: 9px;
+.day-slider-handle {
+  width: 17px !important;
+  height: 17px !important;
 }
 
-.month-card {
-  padding: 11px;
+.save-bar {
+  margin-top: 10px !important;
+  justify-content: flex-end !important;
 }
 
-.mobile-time-entry {
-  display: block;
-  padding-bottom: 82px;
+.save-btn.lg {
+  padding: 8px 18px !important;
+  font-size: 13px !important;
 }
 
-.mobile-time-grid {
-  gap: 8px !important;
-  margin: 10px 0 !important;
+/* Tabellen bleiben scrollbar, aber sprengen nicht den Desktop-Master */
+.hbz-table-wrapper,
+.employee-table-wrap,
+.month-table-wrap,
+.year-table-wrap,
+.workassign-matrix-wrap {
+  max-width: 100% !important;
+  overflow-x: auto !important;
 }
 
-.mobile-time-card {
-  min-height: 66px !important;
-  padding: 10px !important;
+/* Monats-/Jahresseiten auch nicht riesig aufziehen */
+.month-overview-title,
+.year-overview-title {
+  font-size: 24px !important;
 }
 
-.mobile-time-icon {
-  width: 27px !important;
-  height: 27px !important;
+.month-overview-hero__content,
+.year-overview-hero__content,
+.month-main-header,
+.year-main-header {
+  gap: 10px !important;
 }
 
-.mobile-time-value {
-  font-size: 19px !important;
-}
+/* Handy bleibt Master: unter 760px alles wirklich einspaltig und touchfreundlich */
+@media (max-width: 760px) {
+  .app-shell,
+  .hbz-container,
+  .app-footer {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
 
-.mobile-accordion {
-  margin: 8px 0 !important;
-}
-
-.mobile-accordion summary {
-  padding: 11px !important;
-}
-
-.mobile-sticky-save {
-  bottom: 6px !important;
-  padding: 8px !important;
-}
-
-.mobile-sticky-save .save-btn {
-  min-height: 48px !important;
-}
-
-.daily-check-grid {
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 8px;
-}
-
-.workassign-matrix {
-  min-width: 720px;
-}
-
-.workassign-employee-col,
-.workassign-employee-cell {
-  min-width: 170px;
-  width: 170px;
-}
-
-@media (max-width: 768px) {
   .app-shell {
-    padding: 7px;
+    padding-left: 8px !important;
+    padding-right: 8px !important;
   }
 
-  .app-nav-right .app-user-name {
-    display: none;
+  .hbz-card,
+  .hbz-card.tight {
+    padding: 10px 10px !important;
+    border-radius: 14px !important;
   }
 
-  .app-nav-right .hbz-btn {
-    padding-left: 9px;
-    padding-right: 9px;
+  .hbz-row {
+    gap: 8px !important;
   }
 
-  .month-summary-grid,
-  .year-summary-grid,
-  .month-card-edit-grid,
-  .month-card-meta,
-  .year-filter-grid,
-  .year-range-grid,
-  .month-filter-grid,
-  .employee-form-grid,
-  .project-form-grid {
-    grid-template-columns: 1fr;
+  .hbz-col,
+  .hbz-col-auto {
+    flex: 1 1 100% !important;
+    width: 100% !important;
   }
 
-  .mobile-time-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 430px) {
-  .app-title-main {
-    font-size: 13px;
-  }
-
-  .app-logo-circle {
-    width: 30px;
-    height: 30px;
+  .hbz-chip,
+  .assignment-chip,
+  .daily-control-chip,
+  .month-chip,
+  .year-chip,
+  .workassign-project-token {
+    min-height: 32px !important;
+    padding: 6px 9px !important;
   }
 
-  .mobile-time-grid {
-    grid-template-columns: 1fr 1fr;
+  .daily-control-chip {
+    width: auto !important;
+    justify-content: flex-start !important;
   }
 
-  .mobile-time-value {
-    font-size: 17px !important;
+  .save-bar {
+    position: sticky;
+    bottom: 8px;
+    z-index: 10;
+    justify-content: flex-end !important;
+    pointer-events: none;
+  }
+
+  .save-bar .save-btn {
+    pointer-events: auto;
   }
 }

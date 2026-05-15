@@ -51,32 +51,20 @@ export default function TimeTracking() {
   })();
   const initialCurrentUser = { ...(employeeFromLS || {}), ...(sessionUser || {}) };
   const [currentUser, setCurrentUser] = useState(initialCurrentUser);
+  const [userHydrated, setUserHydrated] = useState(false);
 
   const getRoleValue = (user) =>
     String(user?.role || user?.rolle || user?.user_role || user?.type || "")
       .trim()
       .toLowerCase();
 
-  // Wichtig:
-  // Bei manchen Browsern bleibt im localStorage noch ein alter Benutzer hängen.
-  // Für die Tageskontrolle nehmen wir daher die niedrigste Berechtigung aus allen bekannten Quellen.
-  // Wenn irgendwo "mitarbeiter" steht, darf die große Kontrolle NICHT angezeigt werden.
-  const knownRoles = [employeeFromLS, sessionUser, currentUser]
-    .map(getRoleValue)
-    .filter(Boolean);
-  const hasStaffRole = knownRoles.some((role) =>
-    ["mitarbeiter", "employee", "arbeiter", "ma"].includes(role)
-  );
-  const hasAdminOrTeamleiterRole = knownRoles.some((role) =>
-    role === "admin" || role === "teamleiter"
-  );
-  const currentRole = hasStaffRole
-    ? "mitarbeiter"
-    : hasAdminOrTeamleiterRole
-      ? knownRoles.find((role) => role === "admin" || role === "teamleiter")
-      : getRoleValue(currentUser);
+  // Rechte werden bewusst NUR aus dem aktuell geladenen Mitarbeiter verwendet.
+  // Wichtig: Wenn eine Rolle fehlt/unklar ist, wird sicherheitshalber wie Mitarbeiter behandelt.
+  // Dadurch können normale MA niemals durch alte localStorage/session-Werte alle Mitarbeiter sehen.
+  const currentRole = userHydrated ? getRoleValue(currentUser) : "";
   const isAdmin = currentRole === "admin";
-  const isAdminOrTeamleiter = currentRole === "admin" || currentRole === "teamleiter";
+  const isTeamleiter = currentRole === "teamleiter";
+  const isAdminOrTeamleiter = isAdmin || isTeamleiter;
   const isStaff = !isAdminOrTeamleiter;
   const canSeeAllEmployees = isAdminOrTeamleiter;
 
@@ -158,7 +146,10 @@ export default function TimeTracking() {
     async function hydrateCurrentUser() {
       const lookupCode = sessionUser?.code || initialCurrentUser?.code;
       const lookupId = sessionUser?.id || initialCurrentUser?.id;
-      if (!lookupCode && !lookupId) return;
+      if (!lookupCode && !lookupId) {
+        setUserHydrated(true);
+        return;
+      }
 
       try {
         let query = supabase
@@ -177,6 +168,8 @@ export default function TimeTracking() {
         }
       } catch (e) {
         console.warn("[TimeTracking] current user fallback:", e);
+      } finally {
+        if (!cancelled) setUserHydrated(true);
       }
     }
 
