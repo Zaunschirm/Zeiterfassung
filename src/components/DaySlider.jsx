@@ -339,16 +339,9 @@ export default function DaySlider() {
   const [editState, setEditState] = useState(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [isMobile, setIsMobile] = useState(false);
+  const [isMobile] = useState(true);
 
   const [error, setError] = useState("");
-
-  useEffect(() => {
-    const handleResize = () => setIsMobile(window.innerWidth <= 768);
-    handleResize();
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -1102,29 +1095,30 @@ export default function DaySlider() {
   return (
     <div className="month-overview">
       <style>{`
-        .mobile-time-entry { display: none; }
-        @media (max-width: 768px) {
-          .mobile-time-entry { display: block; padding-bottom: 92px; }
-          .month-overview { padding-left: 8px; padding-right: 8px; }
-          .month-main-card { padding: 14px !important; border-radius: 20px; }
-          .mobile-time-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 14px 0; }
-          .mobile-time-card { border: 1px solid #ead7c5; background: #fffdfb; border-radius: 16px; padding: 14px 12px; display: flex; gap: 10px; align-items: center; min-height: 78px; box-shadow: 0 8px 22px rgba(88, 54, 30, .07); }
-          .mobile-time-icon { width: 30px; height: 30px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; color: white; font-size: 13px; flex: 0 0 auto; }
-          .mobile-time-icon.start { background: #42a66b; } .mobile-time-icon.end { background: #df5b55; } .mobile-time-icon.pause { background: #e89539; } .mobile-time-icon.travel { background: #4b79a8; }
-          .mobile-time-label { font-size: 12px; color: #7a5b44; font-weight: 800; }
-          .mobile-time-value { font-size: 22px; font-weight: 900; color: #2d1e15; line-height: 1.05; margin-top: 3px; }
-          .mobile-accordion { border: 1px solid #ead7c5; border-radius: 16px; background: #fffdfb; overflow: hidden; margin: 10px 0; box-shadow: 0 8px 22px rgba(88, 54, 30, .06); }
-          .mobile-accordion summary { list-style: none; cursor: pointer; padding: 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px; font-weight: 900; color: #2d1e15; }
-          .mobile-accordion summary::-webkit-details-marker { display: none; }
-          .mobile-accordion summary span { font-size: 12px; font-weight: 800; color: #8b6b54; background: #f5eadf; padding: 4px 8px; border-radius: 999px; white-space: nowrap; }
-          .mobile-accordion[open] { padding-bottom: 12px; }
-          .mobile-accordion[open] > :not(summary) { margin-left: 14px; margin-right: 14px; }
-          .mobile-chip-section { margin-top: 12px; }
-          .mobile-voice-btn { width: 100%; border: 1px solid #9a603b; background: #9a603b; color: #fff; border-radius: 14px; padding: 13px 14px; font-weight: 900; font-size: 15px; box-shadow: 0 8px 18px rgba(123, 74, 45, .2); }
-          .mobile-voice-btn.active { background: #6f3f25; }
-          .mobile-total-box { margin-top: 14px; }
-          .mobile-sticky-save { position: sticky; bottom: 8px; z-index: 30; padding: 10px; background: rgba(244, 236, 225, .88); backdrop-filter: blur(10px); border-radius: 20px; box-shadow: 0 -6px 24px rgba(88, 54, 30, .12); margin-top: 12px; }
-          .mobile-sticky-save .save-btn { width: 100%; min-height: 52px; font-size: 16px; border-radius: 16px; }
+        /* Eine Ansicht für alle Geräte: Handy-/Android-Layout ist jetzt Standard auch am Desktop. */
+        .mobile-time-entry { display: block; padding-bottom: 92px; }
+        .month-overview { padding-left: 8px; padding-right: 8px; }
+        .month-main-card { padding: 14px !important; border-radius: 20px; }
+        .mobile-time-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 14px 0; }
+        .mobile-time-card { border: 1px solid #ead7c5; background: #fffdfb; border-radius: 16px; padding: 14px 12px; display: flex; gap: 10px; align-items: center; min-height: 78px; box-shadow: 0 8px 22px rgba(88, 54, 30, .07); }
+        .mobile-time-icon { width: 30px; height: 30px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; color: white; font-size: 13px; flex: 0 0 auto; }
+        .mobile-time-icon.start { background: #42a66b; } .mobile-time-icon.end { background: #df5b55; } .mobile-time-icon.pause { background: #e89539; } .mobile-time-icon.travel { background: #4b79a8; }
+        .mobile-time-label { font-size: 12px; color: #7a5b44; font-weight: 800; }
+        .mobile-time-value { font-size: 22px; font-weight: 900; color: #2d1e15; line-height: 1.05; margin-top: 3px; }
+        .mobile-accordion { border: 1px solid #ead7c5; border-radius: 16px; background: #fffdfb; overflow: hidden; margin: 10px 0; box-shadow: 0 8px 22px rgba(88, 54, 30, .06); }
+        .mobile-accordion summary { list-style: none; cursor: pointer; padding: 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px; font-weight: 900; color: #2d1e15; }
+        .mobile-accordion summary::-webkit-details-marker { display: none; }
+        .mobile-accordion summary span { font-size: 12px; font-weight: 800; color: #8b6b54; background: #f5eadf; padding: 4px 8px; border-radius: 999px; white-space: nowrap; }
+        .mobile-accordion[open] { padding-bottom: 12px; }
+        .mobile-accordion[open] > :not(summary) { margin-left: 14px; margin-right: 14px; }
+        .mobile-chip-section { margin-top: 12px; }
+        .mobile-voice-btn { width: 100%; border: 1px solid #9a603b; background: #9a603b; color: #fff; border-radius: 14px; padding: 13px 14px; font-weight: 900; font-size: 15px; box-shadow: 0 8px 18px rgba(123, 74, 45, .2); }
+        .mobile-voice-btn.active { background: #6f3f25; }
+        .mobile-total-box { margin-top: 14px; }
+        .mobile-sticky-save { position: sticky; bottom: 8px; z-index: 30; padding: 10px; background: rgba(244, 236, 225, .88); backdrop-filter: blur(10px); border-radius: 20px; box-shadow: 0 -6px 24px rgba(88, 54, 30, .12); margin-top: 12px; }
+        .mobile-sticky-save .save-btn { width: 100%; min-height: 52px; font-size: 16px; border-radius: 16px; }
+        @media (min-width: 900px) {
+          .mobile-time-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
         }
       `}</style>
       <div className="month-overview-hero hbz-card">
