@@ -281,10 +281,14 @@ export default function DaySlider() {
   const [toMin, setToMin] = useState(16 * 60 + 30);
   const [breakMin, setBreakMin] = useState(30);
   const [travelMin, setTravelMin] = useState(0);
+  const [note, setNote] = useState("");
   const [craneUsed, setCraneUsed] = useState(false);
   const [craneHours, setCraneHours] = useState(1);
-  const [badWeather, setBadWeather] = useState(false);
-  const [note, setNote] = useState("");
+  const [voiceListening, setVoiceListening] = useState(false);
+  const [voiceSupported, setVoiceSupported] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+  });
   const [weatherAuto, setWeatherAuto] = useState("");
   const [weatherManual, setWeatherManual] = useState("");
   const [weatherCode, setWeatherCode] = useState(null);
@@ -418,11 +422,10 @@ export default function DaySlider() {
             .select("id, code, name, role, active, disabled, show_in_daily_check")
             .eq("active", true)
             .eq("disabled", false)
-            .neq("role", "buchhaltung")
             .order("name", { ascending: true });
 
           if (error) throw error;
-          const list = (data || []).filter((e) => String(e.role || "").toLowerCase() !== "buchhaltung");
+          const list = data || [];
           setEmployees(list);
 
           if (session?.code) {
@@ -833,13 +836,57 @@ export default function DaySlider() {
     );
   };
 
+
+  function startVoiceNote() {
+    if (typeof window === "undefined") return;
+
+    const SpeechRecognition =
+      window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      setVoiceSupported(false);
+      alert("Spracherkennung wird von diesem Browser leider nicht unterstützt. Am iPhone bitte Safari bzw. die Tastatur-Diktierfunktion verwenden.");
+      return;
+    }
+
+    try {
+      const recognition = new SpeechRecognition();
+      recognition.lang = "de-AT";
+      recognition.interimResults = false;
+      recognition.maxAlternatives = 1;
+
+      recognition.onstart = () => setVoiceListening(true);
+      recognition.onerror = () => setVoiceListening(false);
+      recognition.onend = () => setVoiceListening(false);
+
+      recognition.onresult = (event) => {
+        const spokenText = Array.from(event.results || [])
+          .map((result) => result?.[0]?.transcript || "")
+          .join(" ")
+          .trim();
+
+        if (spokenText) {
+          setNote((prev) => {
+            const base = (prev || "").trim();
+            return base ? `${base}\n${spokenText}` : spokenText;
+          });
+        }
+      };
+
+      recognition.start();
+    } catch (e) {
+      console.error("[DaySlider] voice note error:", e);
+      setVoiceListening(false);
+      alert("Sprachnotiz konnte nicht gestartet werden.");
+    }
+  }
+
   async function handleSave() {
     setError("");
 
-    const isFullDayAbsence = absenceType === "krank" || absenceType === "urlaub";
-    const badWeatherMinutes = badWeather ? Math.max(toMin - fromMin - breakMin, 0) : 0;
+    const isAbsence = absenceType === "krank" || absenceType === "urlaub";
 
-    if (!isFullDayAbsence && !projectId) {
+    if (!isAbsence && !projectId) {
       setError("Bitte Projekt auswählen.");
       return;
     }
@@ -875,8 +922,7 @@ export default function DaySlider() {
       weather_source: weatherSource || null,
       weather_fetched_at: weatherFetchedAt || null,
       crane_hours: craneUsed ? Number(craneHours || 0) : 0,
-      bad_weather: !!badWeather,
-      bad_weather_minutes: badWeatherMinutes,
+      voice_note: (note || "").trim() || null,
       note: `${
         absenceType === "krank"
           ? "[Krank] "
@@ -921,11 +967,10 @@ export default function DaySlider() {
 
       setNote("");
       setAbsenceType(null);
-      setBadWeather(false);
-      setCraneUsed(false);
-      setCraneHours(1);
       setBreakMin(30);
       setTravelMin(0);
+      setCraneUsed(false);
+      setCraneHours(1);
       setWeatherManual("");
       await loadEntries();
       await loadDailyCheckEntries();
@@ -947,8 +992,6 @@ export default function DaySlider() {
       break_min: row.break_min ?? 0,
       travel_minutes: row.travel_minutes ?? row.travel_min ?? 0,
       crane_hours: row.crane_hours ?? 0,
-      bad_weather: !!row.bad_weather,
-      bad_weather_minutes: row.bad_weather_minutes ?? 0,
       weather_manual: row.weather_manual || "",
       weather_auto: row.weather_auto || "",
       weather_final: getWeatherFinalLabel(row),
@@ -981,8 +1024,7 @@ export default function DaySlider() {
       break_min: parseInt(editState.break_min || "0", 10) || 0,
       travel_minutes: parseInt(editState.travel_minutes || "0", 10) || 0,
       crane_hours: parseInt(editState.crane_hours || "0", 10) || 0,
-      bad_weather: !!editState.bad_weather,
-      bad_weather_minutes: editState.bad_weather ? Math.max(to_m - from_m - (parseInt(editState.break_min || "0", 10) || 0), 0) : 0,
+      voice_note: editState.note?.trim() || null,
       weather_manual: editState.weather_manual?.trim() || null,
       weather_final:
         (editState.weather_manual || "").trim() || editState.weather_auto || null,
@@ -1027,6 +1069,7 @@ export default function DaySlider() {
     { label: "Ende", value: toHM(toMin) },
     { label: "Pause", value: `${breakMin} min` },
     { label: "Fahrzeit", value: formatTravelLabel(travelMin) },
+    { label: "Kran", value: craneUsed ? `${craneHours} h` : "—" },
     { label: "Wetter", value: finalWeather || "—" },
   ];
 
@@ -1392,7 +1435,6 @@ export default function DaySlider() {
                 }`}
                 onClick={() => {
                   setAbsenceType("krank");
-                  setBadWeather(false);
                   setProjectId(null);
                   const d = new Date(`${date}T00:00:00`);
                   const isFri = d.getDay() === 5;
@@ -1412,7 +1454,6 @@ export default function DaySlider() {
                 }`}
                 onClick={() => {
                   setAbsenceType("urlaub");
-                  setBadWeather(false);
                   setProjectId(null);
                   setFromMin(7 * 60);
                   setToMin(7 * 60 + 15);
@@ -1423,28 +1464,12 @@ export default function DaySlider() {
                 Urlaub
               </button>
 
-
-              <button
-                type="button"
-                className={`hbz-chip ${badWeather ? "active" : ""}`}
-                onClick={() => {
-                  setBadWeather((v) => !v);
-                  if (absenceType) setAbsenceType(null);
-                }}
-                title="Schlechtwetter für die eingestellte Uhrzeit markieren"
-              >
-                Schlechtwetter
-              </button>
-
-              {(absenceType || badWeather) && (
+              {absenceType && (
                 <button
                   type="button"
                   className="hbz-chip"
-                  onClick={() => {
-                    setAbsenceType(null);
-                    setBadWeather(false);
-                  }}
-                  title="Zur normalen Buchung zurücksetzen"
+                  onClick={() => setAbsenceType(null)}
+                  title="Abwesenheit zurücksetzen"
                 >
                   Normal
                 </button>
@@ -1481,32 +1506,37 @@ export default function DaySlider() {
 
           <div className="year-section">
             <div className="month-card-title">Kranzeit</div>
-            <div className="hbz-chipbar">
+            <div className="hbz-chipbar" style={{ alignItems: "center" }}>
               <button
                 type="button"
                 className={`hbz-chip ${craneUsed ? "active" : ""}`}
                 onClick={() => setCraneUsed((v) => !v)}
+                disabled={!!absenceType}
+                title="Kranzeit zu diesem Zeiteintrag speichern"
               >
                 🏗 Kran verwendet
               </button>
 
               {craneUsed && (
-                <select
-                  className="hbz-input"
-                  value={craneHours}
-                  onChange={(e) => setCraneHours(Number(e.target.value))}
-                  style={{ maxWidth: 140 }}
-                >
-                  {CRANE_HOUR_OPTIONS.map((h) => (
-                    <option key={h} value={h}>
-                      {h} h
-                    </option>
-                  ))}
-                </select>
+                <div className="month-card-field" style={{ minWidth: 180, margin: 0 }}>
+                  <label className="hbz-label">Kranstunden</label>
+                  <select
+                    className="hbz-input"
+                    value={craneHours}
+                    onChange={(e) => setCraneHours(Number(e.target.value))}
+                    disabled={!!absenceType}
+                  >
+                    {CRANE_HOUR_OPTIONS.map((h) => (
+                      <option key={h} value={h}>
+                        {h} h
+                      </option>
+                    ))}
+                  </select>
+                </div>
               )}
             </div>
             <div className="help" style={{ marginTop: 8 }}>
-              Wird als Kranzeit zum Eintrag gespeichert und kann später in der Nachkalkulation ausgewertet werden.
+              Wird als <b>Kranzeit</b> zum Eintrag gespeichert und kann später in der Nachkalkulation ausgewertet werden.
             </div>
           </div>
 
@@ -1570,7 +1600,18 @@ export default function DaySlider() {
         </div>
 
         <div className="month-card-field" style={{ marginTop: 16 }}>
-          <label className="hbz-label">Notiz</label>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 6 }}>
+            <label className="hbz-label" style={{ margin: 0 }}>Notiz / Tätigkeit</label>
+            <button
+              type="button"
+              className={`hbz-btn btn-small ${voiceListening ? "hbz-btn-primary" : ""}`}
+              onClick={startVoiceNote}
+              disabled={!voiceSupported || voiceListening}
+              title={voiceSupported ? "Notiz per Sprache aufnehmen" : "Spracherkennung wird nicht unterstützt"}
+            >
+              {voiceListening ? "🎤 Höre zu…" : "🎤 Notiz sprechen"}
+            </button>
+          </div>
           <textarea
             className="hbz-textarea"
             rows={3}
@@ -1578,6 +1619,11 @@ export default function DaySlider() {
             onChange={(e) => setNote(e.target.value)}
             placeholder="z. B. Tätigkeit, Besonderheiten…"
           />
+          {!voiceSupported && (
+            <div className="help" style={{ marginTop: 6 }}>
+              Spracherkennung ist in diesem Browser nicht verfügbar. Am iPhone kannst du alternativ die Diktierfunktion der Tastatur verwenden.
+            </div>
+          )}
         </div>
 
         {error && (
@@ -1623,10 +1669,9 @@ export default function DaySlider() {
                       <th className="num">Ende</th>
                       <th className="num">Pause</th>
                       <th className="num">Fahrzeit</th>
+                      <th className="num">Kran</th>
                       <th className="num">Stunden</th>
                       <th className="num">Überstunden</th>
-                      <th className="num">Kran</th>
-                      <th>Schlechtwetter</th>
                       <th>Wetter</th>
                       <th>Notiz</th>
                       <th className="num">Aktion</th>
@@ -1654,10 +1699,9 @@ export default function DaySlider() {
                             <td className="num">{toHM(end)}</td>
                             <td className="num">{breakM} min</td>
                             <td className="num">{travelM} min</td>
+                            <td className="num">{r.crane_hours ? `${r.crane_hours} h` : "—"}</td>
                             <td className="num">{hrs.toFixed(2)}</td>
                             <td className="num">{ot.toFixed(2)}</td>
-                            <td className="num">{Number(r.crane_hours || 0) > 0 ? `${Number(r.crane_hours || 0)} h` : "—"}</td>
-                            <td>{r.bad_weather ? `${toHM(start)}–${toHM(end)} (${h2(r.bad_weather_minutes || work).toFixed(2)} h)` : "—"}</td>
                             <td>{getWeatherFinalLabel(r) || "—"}</td>
                             <td>{r.note || ""}</td>
                             <td className="num">
@@ -1767,6 +1811,25 @@ export default function DaySlider() {
                                 }))
                               }
                             />
+                          </td>
+                          <td className="num">
+                            <select
+                              className="hbz-input"
+                              value={editState.crane_hours ?? 0}
+                              onChange={(e) =>
+                                setEditState((s) => ({
+                                  ...s,
+                                  crane_hours: e.target.value,
+                                }))
+                              }
+                            >
+                              <option value={0}>—</option>
+                              {CRANE_HOUR_OPTIONS.map((h) => (
+                                <option key={h} value={h}>
+                                  {h} h
+                                </option>
+                              ))}
+                            </select>
                           </td>
                           <td className="num">
                             {(() => {
@@ -1898,6 +1961,7 @@ export default function DaySlider() {
                           <span>Ende: {toHM(end)}</span>
                           <span>Pause: {breakM} min</span>
                           <span>Fahrzeit: {travelM} min</span>
+                          {r.crane_hours ? <span>Kran: {r.crane_hours} h</span> : null}
                         </div>
 
                         <div className="month-card-row">
