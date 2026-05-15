@@ -259,6 +259,7 @@ function getWeekDays(dateStr, count = 5) {
 export default function DaySlider() {
   const session = getSession()?.user || null;
   const [currentUser, setCurrentUser] = useState(session);
+  const [userHydrated, setUserHydrated] = useState(false);
 
   const normalizeRole = (value) => {
     const r = String(value || "mitarbeiter").trim().toLowerCase();
@@ -273,7 +274,7 @@ export default function DaySlider() {
 
   // Wichtig: Nur Admin und Teamleiter dürfen in der Zeiterfassung/Tageskontrolle andere MA sehen.
   // Buchhaltung/Verwaltung und normale Mitarbeiter bleiben in der ZA immer auf sich selbst beschränkt.
-  const isPrivilegedRole = role === "admin" || role === "teamleiter";
+  const isPrivilegedRole = userHydrated && (role === "admin" || role === "teamleiter");
   const canWriteOwnTime = !!permissions.writeOwnTime;
   const canWriteAllTime = isPrivilegedRole && !!permissions.writeAllTime;
   const canEditOwnTime = !!permissions.editOwnTime;
@@ -351,7 +352,11 @@ export default function DaySlider() {
     let cancelled = false;
 
     async function hydrateCurrentUser() {
-      if (!session?.code && !session?.id) return;
+      setUserHydrated(false);
+      if (!session?.code && !session?.id) {
+        setUserHydrated(true);
+        return;
+      }
 
       try {
         let query = supabase
@@ -367,6 +372,8 @@ export default function DaySlider() {
         if (!cancelled && data) setCurrentUser((prev) => ({ ...(prev || {}), ...data }));
       } catch (e) {
         logSbError("[DaySlider] current user load error:", e);
+      } finally {
+        if (!cancelled) setUserHydrated(true);
       }
     }
 
@@ -454,12 +461,23 @@ export default function DaySlider() {
             setSelectedCodes([]);
           }
         } else {
-          const { data, error } = await supabase
+          let query = supabase
             .from("employees")
             .select("id, code, name, role, active, disabled, show_in_daily_check")
-            .eq("code", session?.code)
-            .limit(1)
-            .maybeSingle();
+            .limit(1);
+
+          const ownCode = currentUser?.code || session?.code;
+          const ownId = currentUser?.id || session?.id;
+          if (!ownCode && !ownId) {
+            setEmployees([]);
+            setSelectedCodes([]);
+            setEmployeeRow(null);
+            return;
+          }
+          if (ownCode) query = query.eq("code", ownCode);
+          else if (ownId) query = query.eq("id", ownId);
+
+          const { data, error } = await query.maybeSingle();
           if (error) throw error;
           if (data) {
             setEmployees([data]);
@@ -474,7 +492,7 @@ export default function DaySlider() {
 
     loadEmployees();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isManager, session?.code]);
+  }, [isManager, session?.code, session?.id, currentUser?.code, currentUser?.id]);
 
   useEffect(() => {
     if (!isStaff) return;
@@ -510,6 +528,7 @@ export default function DaySlider() {
     () => projects.find((p) => String(p.id) === String(projectId)) || null,
     [projects, projectId]
   );
+  const ownEmployeeLabel = employeeRow?.name || currentUser?.name || session?.name || session?.code || "Du";
   const projectAddress = selectedProject?.address || "";
   const finalWeather = weatherManual || weatherAuto || "";
 
@@ -1471,11 +1490,22 @@ export default function DaySlider() {
 
         {isMobile && (
           <div className="mobile-time-entry">
-            {isManager && (
+            {isManager ? (
               <details className="mobile-accordion" open>
                 <summary>👥 Mitarbeiter <span>{selectedCodes.length} / {employees.length} gewählt</span></summary>
                 <EmployeePicker employees={employees} selected={selectedCodes} onChange={setSelectedCodes} enableMulti={true} />
               </details>
+            ) : (
+              <div className="month-employee-block staff-employee-lock">
+                <div className="month-employee-head">
+                  <label className="hbz-label">Mitarbeiter</label>
+                  <span className="badge-soft">1 / 1 gewählt</span>
+                </div>
+                <div className="hbz-chipbar">
+                  <button type="button" className="hbz-chip active" disabled>{ownEmployeeLabel}</button>
+                </div>
+                <div className="help" style={{ marginTop: 6 }}>Du kannst nur für dich selbst erfassen.</div>
+              </div>
             )}
             <div className="mobile-time-grid">
               <div className="mobile-time-card"><span className="mobile-time-icon start">▶</span><div><div className="mobile-time-label">Start</div><div className="mobile-time-value">{toHM(fromMin)}</div></div></div>
@@ -1517,7 +1547,7 @@ export default function DaySlider() {
 
         {!isMobile && (
           <>
-          {isManager && (
+          {isManager ? (
           <div className="month-employee-block">
             <div className="month-employee-head">
               <label className="hbz-label">Mitarbeiter</label>
@@ -1532,6 +1562,17 @@ export default function DaySlider() {
               onChange={setSelectedCodes}
               enableMulti={true}
             />
+          </div>
+          ) : (
+          <div className="month-employee-block staff-employee-lock">
+            <div className="month-employee-head">
+              <label className="hbz-label">Mitarbeiter</label>
+              <span className="badge-soft">1 / 1 gewählt</span>
+            </div>
+            <div className="hbz-chipbar">
+              <button type="button" className="hbz-chip active" disabled>{ownEmployeeLabel}</button>
+            </div>
+            <div className="help" style={{ marginTop: 6 }}>Du kannst nur für dich selbst erfassen.</div>
           </div>
           )}
 
