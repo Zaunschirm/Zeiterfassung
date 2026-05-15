@@ -269,21 +269,46 @@ export default function DaySlider() {
   };
 
   const role = normalizeRole(currentUser?.role || session?.role || "mitarbeiter");
-  const permissions = getUserPermissions(currentUser || session);
+
+  function normalizePermissionObject(value) {
+    if (!value) return {};
+    if (typeof value === "string") {
+      try {
+        const parsed = JSON.parse(value);
+        return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+      } catch {
+        return {};
+      }
+    }
+    if (typeof value === "object" && !Array.isArray(value)) return value;
+    return {};
+  }
+
+  const importedPermissions = getUserPermissions(currentUser || session) || {};
+  const directPermissions = {
+    ...normalizePermissionObject(session?.permissions),
+    ...normalizePermissionObject(currentUser?.permissions),
+  };
+  const permissions = {
+    ...importedPermissions,
+    ...directPermissions,
+  };
+
+  const hasPermissionFlag = (...keys) =>
+    keys.some((key) => permissions?.[key] === true || permissions?.[key] === "true" || permissions?.[key] === 1);
 
   // Rechte getrennt behandeln:
   // - Tageskontrolle/Eintragskontrolle komplett: nur Admin
-  // - Zeiterfassung für andere MA: nur mit Recht writeAllTime
+  // - Zeiterfassung für andere MA: nur mit Recht "Für alle MA Stunden schreiben"
   // - BU/VW bleibt immer auf sich selbst beschränkt
   const isAdmin = role === "admin";
-  const isPrivilegedRole = role === "admin" || role === "teamleiter";
   const isBuvw = role === "verwaltung";
-  const canWriteOwnTime = !!permissions.writeOwnTime || isAdmin;
-  const canWriteAllTime = !isBuvw && (isAdmin || !!permissions.writeAllTime);
-  const canEditOwnTime = !!permissions.editOwnTime || isAdmin;
-  const canEditAllTime = !isBuvw && (isAdmin || !!permissions.editAllTime);
-  const canDeleteOwnTime = !!permissions.deleteOwnTime || isAdmin;
-  const canDeleteAllTime = !isBuvw && (isAdmin || !!permissions.deleteAllTime);
+  const canWriteOwnTime = hasPermissionFlag("writeOwnTime", "write_own_time") || isAdmin;
+  const canWriteAllTime = !isBuvw && (isAdmin || hasPermissionFlag("writeAllTime", "write_all_time", "canWriteAllTime", "can_write_all_time"));
+  const canEditOwnTime = hasPermissionFlag("editOwnTime", "edit_own_time") || isAdmin;
+  const canEditAllTime = !isBuvw && (isAdmin || hasPermissionFlag("editAllTime", "edit_all_time", "canEditAllTime", "can_edit_all_time"));
+  const canDeleteOwnTime = hasPermissionFlag("deleteOwnTime", "delete_own_time") || isAdmin;
+  const canDeleteAllTime = !isBuvw && (isAdmin || hasPermissionFlag("deleteAllTime", "delete_all_time", "canDeleteAllTime", "can_delete_all_time"));
   const canSelectEmployees = canWriteAllTime;
   const canSeeAllEntries = isAdmin;
   const canSeeFullDailyCheck = isAdmin;
