@@ -211,8 +211,23 @@ const isActiveEmployee = (e) => e?.disabled !== true && e?.active !== false;
 export default function MonthlyOverview() {
   const session = getSession()?.user || null;
   const role = (session?.role || "mitarbeiter").toLowerCase();
-  const isStaff = role === "mitarbeiter";
-  const isManager = !isStaff;
+  const isAdmin = role === "admin";
+  const isManager = role === "admin" || role === "teamleiter";
+  const isStaff = !isManager;
+  const isBuVwRole = (value) => {
+    const normalized = String(value || "").trim().toLowerCase();
+    return ["buchhaltung", "verwaltung", "bu/vw", "bu_vw", "buvw"].includes(normalized);
+  };
+  const filterEmployeesForCurrentUser = (list = []) => {
+    if (isAdmin) return list;
+    if (isBuVwRole(role)) {
+      return list.filter((emp) =>
+        (session?.id != null && String(emp.id) === String(session.id)) ||
+        (session?.code && String(emp.code) === String(session.code))
+      );
+    }
+    return list.filter((emp) => !isBuVwRole(emp?.role));
+  };
 
   const now = new Date();
   const currentYear = now.getFullYear();
@@ -271,17 +286,18 @@ export default function MonthlyOverview() {
           .order("name", { ascending: true });
 
         if (!error) {
-          setEmployees(data || []);
-          if ((data || []).length && selectedCodes.length === 0) {
+          const visibleEmployees = filterEmployeesForCurrentUser(data || []);
+          setEmployees(visibleEmployees);
+          if (visibleEmployees.length && selectedCodes.length === 0) {
             if (session?.code) {
-              const me = (data || []).find((e) => e.code === session.code);
+              const me = visibleEmployees.find((e) => e.code === session.code);
               if (me) {
                 setSelectedCodes([me.code]);
               } else {
-                setSelectedCodes(data.map((e) => e.code));
+                setSelectedCodes(visibleEmployees.map((e) => e.code));
               }
             } else {
-              setSelectedCodes(data.map((e) => e.code));
+              setSelectedCodes(visibleEmployees.map((e) => e.code));
             }
           }
         }
@@ -321,7 +337,7 @@ export default function MonthlyOverview() {
       setProjects((prj.data || []).filter((p) => p?.disabled !== true));
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isManager]);
+  }, [isManager, role, session?.id, session?.code]);
 
   useEffect(() => {
     loadMonth();

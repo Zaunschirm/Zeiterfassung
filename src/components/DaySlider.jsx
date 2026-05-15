@@ -271,6 +271,22 @@ export default function DaySlider() {
   const canSeeAllEntries = canSelectEmployees;
   const isStaff = !canSelectEmployees;
   const isManager = canSelectEmployees;
+  const isAdmin = role === "admin";
+  const isBuVwRole = (value) => {
+    const normalized = String(value || "").trim().toLowerCase();
+    return ["buchhaltung", "verwaltung", "bu/vw", "bu_vw", "buvw"].includes(normalized);
+  };
+  const filterEmployeesForCurrentUser = (list = []) => {
+    if (isAdmin) return list;
+    if (isBuVwRole(role)) {
+      return list.filter((emp) =>
+        (currentUser?.id != null && String(emp.id) === String(currentUser.id)) ||
+        (currentUser?.code && String(emp.code) === String(currentUser.code)) ||
+        (session?.code && String(emp.code) === String(session.code))
+      );
+    }
+    return list.filter((emp) => !isBuVwRole(emp?.role));
+  };
 
   const [date, setDate] = useState(() =>
     new Date().toISOString().slice(0, 10)
@@ -426,7 +442,7 @@ export default function DaySlider() {
             .order("name", { ascending: true });
 
           if (error) throw error;
-          const list = data || [];
+          const list = filterEmployeesForCurrentUser(data || []);
           setEmployees(list);
 
           if (session?.code) {
@@ -461,7 +477,7 @@ export default function DaySlider() {
 
     loadEmployees();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isManager, session?.code]);
+  }, [isManager, session?.code, role, currentUser?.id, currentUser?.code]);
 
   useEffect(() => {
     if (!isStaff) return;

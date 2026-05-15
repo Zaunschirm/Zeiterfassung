@@ -84,6 +84,23 @@ export default function WorkAssignments() {
   const canViewAssignments =
     hasPermission(currentUser || session, "viewAssignments") || hasPermission(currentUser || session, "manageAssignments");
   const canEditAssignments = hasPermission(currentUser || session, "manageAssignments");
+  const currentRole = normalizeRole(currentUser?.role || session?.role);
+  const isAdmin = currentRole === "admin";
+  const isBuVwRole = (value) => {
+    const normalized = normalizeRole(value);
+    return ["buchhaltung", "verwaltung", "bu/vw", "bu_vw", "buvw"].includes(normalized);
+  };
+  const filterEmployeesForCurrentUser = (list = []) => {
+    if (isAdmin) return list;
+    if (isBuVwRole(currentRole)) {
+      return list.filter((emp) =>
+        (currentUser?.id != null && String(emp.id) === String(currentUser.id)) ||
+        (currentUser?.code && String(emp.code) === String(currentUser.code)) ||
+        (session?.code && String(emp.code) === String(session.code))
+      );
+    }
+    return list.filter((emp) => !isBuVwRole(emp?.role));
+  };
 
   const [weekAnchor, setWeekAnchor] = useState(() => formatLocalDate(new Date()));
   const [employees, setEmployees] = useState([]);
@@ -215,7 +232,6 @@ export default function WorkAssignments() {
             .select("id, name, role, active, disabled")
             .eq("active", true)
             .eq("disabled", false)
-            .neq("role", "buchhaltung")
             .order("name", { ascending: true }),
           supabase
             .from("projects")
@@ -227,7 +243,7 @@ export default function WorkAssignments() {
         if (employeesRes.error) throw employeesRes.error;
         if (projectsRes.error) throw projectsRes.error;
 
-        const employeeData = (employeesRes.data || []).filter((e) => String(e.role || "").toLowerCase() !== "buchhaltung");
+        const employeeData = filterEmployeesForCurrentUser(employeesRes.data || []);
         setEmployees(employeeData);
         setProjects(projectsRes.data || []);
         setEmployeeOrder(
@@ -275,7 +291,7 @@ export default function WorkAssignments() {
 
   useEffect(() => {
     loadAssignments();
-  }, [weekAnchor]);
+  }, [weekAnchor, currentRole, currentUser?.id, currentUser?.code, session?.code]);
 
   function shiftWeek(direction) {
     const start = startOfWeek(weekAnchor);
@@ -301,7 +317,7 @@ export default function WorkAssignments() {
       window.removeEventListener("hbz-prev-week", handlePrevWeek);
       window.removeEventListener("hbz-next-week", handleNextWeek);
     };
-  }, [weekAnchor]);
+  }, [weekAnchor, currentRole, currentUser?.id, currentUser?.code, session?.code]);
 
   function getCellRows(employeeId, dateStr) {
     return cellMap.get(`${employeeId}__${dateStr}`) || [];

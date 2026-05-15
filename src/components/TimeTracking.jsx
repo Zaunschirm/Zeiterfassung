@@ -75,9 +75,28 @@ export default function TimeTracking() {
     : hasAdminOrTeamleiterRole
       ? knownRoles.find((role) => role === "admin" || role === "teamleiter")
       : getRoleValue(currentUser);
+  const isAdmin = currentRole === "admin";
   const isAdminOrTeamleiter = currentRole === "admin" || currentRole === "teamleiter";
   const isStaff = !isAdminOrTeamleiter;
   const canSeeAllEmployees = isAdminOrTeamleiter;
+
+  const isBuVwRole = (role) => {
+    const value = String(role || "").trim().toLowerCase();
+    return ["buchhaltung", "verwaltung", "bu/vw", "bu_vw", "buvw"].includes(value);
+  };
+  const sameEmployee = (emp, user = currentUser) => {
+    if (!emp || !user) return false;
+    return (
+      (user?.id != null && String(emp.id) === String(user.id)) ||
+      (user?.code && String(emp.code) === String(user.code)) ||
+      (user?.name && String(emp.name) === String(user.name))
+    );
+  };
+  const filterEmployeesForCurrentUser = (list = []) => {
+    if (isAdmin) return list;
+    if (isBuVwRole(currentRole)) return list.filter((emp) => sameEmployee(emp));
+    return list.filter((emp) => !isBuVwRole(emp?.role));
+  };
 
 
   // Stammdaten
@@ -167,7 +186,7 @@ export default function TimeTracking() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [currentRole, currentUser?.id, currentUser?.code]);
 
   // Berechnungen
   const workMinutes = useMemo(
@@ -235,11 +254,12 @@ export default function TimeTracking() {
           .eq("disabled", false)
           .order("name", { ascending: true });
 
-        setEmployees(emp || []);
+        const visibleEmployees = filterEmployeesForCurrentUser(emp || []);
+        setEmployees(visibleEmployees);
 
         // Falls noch niemand gewählt ist: eingeloggte Person vorauswählen
-        if ((emp || []).length && selectedEmployees.length === 0 && currentUser?.code) {
-          const me = (emp || []).find((e) => e.code === currentUser.code);
+        if (visibleEmployees.length && selectedEmployees.length === 0 && currentUser?.code) {
+          const me = visibleEmployees.find((e) => e.code === currentUser.code);
           if (me) setSelectedEmployees([me]);
         }
       } catch (e) {
@@ -247,7 +267,7 @@ export default function TimeTracking() {
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [currentRole, currentUser?.id, currentUser?.code]);
 
   const loadEntriesForDay = async () => {
     try {

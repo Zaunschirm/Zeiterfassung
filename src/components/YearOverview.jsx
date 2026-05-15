@@ -250,6 +250,21 @@ export default function YearOverview() {
   const session = getSession()?.user || null;
   const role = (session?.role || "mitarbeiter").toLowerCase();
   const isAdmin = role === "admin";
+  const isManager = role === "admin" || role === "teamleiter";
+  const isBuVwRole = (value) => {
+    const normalized = String(value || "").trim().toLowerCase();
+    return ["buchhaltung", "verwaltung", "bu/vw", "bu_vw", "buvw"].includes(normalized);
+  };
+  const filterEmployeesForCurrentUser = (list = []) => {
+    if (isAdmin) return list;
+    if (isBuVwRole(role)) {
+      return list.filter((emp) =>
+        (session?.id != null && String(emp.id) === String(session.id)) ||
+        (session?.code && String(emp.code) === String(session.code))
+      );
+    }
+    return list.filter((emp) => !isBuVwRole(emp?.role));
+  };
 
   const now = new Date();
   const currentYear = now.getFullYear();
@@ -293,11 +308,12 @@ export default function YearOverview() {
       try {
         const { data: e } = await supabase
           .from("employees")
-          .select("id, code, name, active, disabled")
+          .select("id, code, name, role, active, disabled")
           .order("name");
 
-        setEmployees(e || []);
-        setSelectedCodes((e || []).map((x) => x.code));
+        const visibleEmployees = filterEmployeesForCurrentUser(e || []);
+        setEmployees(visibleEmployees);
+        setSelectedCodes(visibleEmployees.map((x) => x.code));
 
         const { data: p } = await supabase
           .from("projects")
@@ -309,7 +325,7 @@ export default function YearOverview() {
         console.error("Stammdaten Fehler:", err);
       }
     })();
-  }, []);
+  }, [role, session?.id, session?.code]);
 
   useEffect(() => {
     setPdfOptions((prev) => ({
