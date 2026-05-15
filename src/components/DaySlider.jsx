@@ -259,7 +259,6 @@ function getWeekDays(dateStr, count = 5) {
 export default function DaySlider() {
   const session = getSession()?.user || null;
   const [currentUser, setCurrentUser] = useState(session);
-  const [userHydrated, setUserHydrated] = useState(false);
 
   const normalizeRole = (value) => {
     const r = String(value || "mitarbeiter").trim().toLowerCase();
@@ -272,19 +271,24 @@ export default function DaySlider() {
   const role = normalizeRole(currentUser?.role || session?.role || "mitarbeiter");
   const permissions = getUserPermissions(currentUser || session);
 
-  // Wichtig: Nur Admin und Teamleiter dürfen in der Zeiterfassung/Tageskontrolle andere MA sehen.
-  // Buchhaltung/Verwaltung und normale Mitarbeiter bleiben in der ZA immer auf sich selbst beschränkt.
-  const isPrivilegedRole = userHydrated && (role === "admin" || role === "teamleiter");
-  const canWriteOwnTime = !!permissions.writeOwnTime;
-  const canWriteAllTime = isPrivilegedRole && !!permissions.writeAllTime;
-  const canEditOwnTime = !!permissions.editOwnTime;
-  const canEditAllTime = isPrivilegedRole && !!permissions.editAllTime;
-  const canDeleteOwnTime = !!permissions.deleteOwnTime;
-  const canDeleteAllTime = isPrivilegedRole && !!permissions.deleteAllTime;
-  const canSelectEmployees = isPrivilegedRole && (canWriteAllTime || canEditAllTime || canDeleteAllTime);
-  const canSeeAllEntries = canSelectEmployees;
-  const isStaff = !isPrivilegedRole;
-  const isManager = isPrivilegedRole;
+  // Rechte getrennt behandeln:
+  // - Tageskontrolle/Eintragskontrolle komplett: nur Admin
+  // - Zeiterfassung für andere MA: nur mit Recht writeAllTime
+  // - BU/VW bleibt immer auf sich selbst beschränkt
+  const isAdmin = role === "admin";
+  const isPrivilegedRole = role === "admin" || role === "teamleiter";
+  const isBuvw = role === "verwaltung";
+  const canWriteOwnTime = !!permissions.writeOwnTime || isAdmin;
+  const canWriteAllTime = !isBuvw && (isAdmin || !!permissions.writeAllTime);
+  const canEditOwnTime = !!permissions.editOwnTime || isAdmin;
+  const canEditAllTime = !isBuvw && (isAdmin || !!permissions.editAllTime);
+  const canDeleteOwnTime = !!permissions.deleteOwnTime || isAdmin;
+  const canDeleteAllTime = !isBuvw && (isAdmin || !!permissions.deleteAllTime);
+  const canSelectEmployees = canWriteAllTime;
+  const canSeeAllEntries = isAdmin;
+  const canSeeFullDailyCheck = isAdmin;
+  const isStaff = !canSelectEmployees;
+  const isManager = canSelectEmployees;
 
   const [date, setDate] = useState(() =>
     new Date().toISOString().slice(0, 10)
@@ -352,11 +356,7 @@ export default function DaySlider() {
     let cancelled = false;
 
     async function hydrateCurrentUser() {
-      setUserHydrated(false);
-      if (!session?.code && !session?.id) {
-        setUserHydrated(true);
-        return;
-      }
+      if (!session?.code && !session?.id) return;
 
       try {
         let query = supabase
@@ -372,8 +372,6 @@ export default function DaySlider() {
         if (!cancelled && data) setCurrentUser((prev) => ({ ...(prev || {}), ...data }));
       } catch (e) {
         logSbError("[DaySlider] current user load error:", e);
-      } finally {
-        if (!cancelled) setUserHydrated(true);
       }
     }
 
@@ -440,13 +438,19 @@ export default function DaySlider() {
         if (isManager) {
           const { data, error } = await supabase
             .from("employees")
-            .select("id, code, name, role, active, disabled, show_in_daily_check")
+            .select("id, code, name, role, active, disabled, permissions, show_in_daily_check")
             .eq("active", true)
             .eq("disabled", false)
             .order("name", { ascending: true });
 
           if (error) throw error;
-          const list = data || [];
+          const rawList = data || [];
+          const list = isAdmin
+            ? rawList
+            : rawList.filter((e) => {
+                const r = normalizeRole(e?.role);
+                return r !== "verwaltung";
+              });
           setEmployees(list);
 
           if (session?.code) {
@@ -461,23 +465,12 @@ export default function DaySlider() {
             setSelectedCodes([]);
           }
         } else {
-          let query = supabase
+          const { data, error } = await supabase
             .from("employees")
-            .select("id, code, name, role, active, disabled, show_in_daily_check")
-            .limit(1);
-
-          const ownCode = currentUser?.code || session?.code;
-          const ownId = currentUser?.id || session?.id;
-          if (!ownCode && !ownId) {
-            setEmployees([]);
-            setSelectedCodes([]);
-            setEmployeeRow(null);
-            return;
-          }
-          if (ownCode) query = query.eq("code", ownCode);
-          else if (ownId) query = query.eq("id", ownId);
-
-          const { data, error } = await query.maybeSingle();
+            .select("id, code, name, role, active, disabled, permissions, show_in_daily_check")
+            .eq("code", session?.code)
+            .limit(1)
+            .maybeSingle();
           if (error) throw error;
           if (data) {
             setEmployees([data]);
@@ -492,7 +485,7 @@ export default function DaySlider() {
 
     loadEmployees();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isManager, session?.code, session?.id, currentUser?.code, currentUser?.id]);
+  }, [isManager, isAdmin, session?.code]);
 
   useEffect(() => {
     if (!isStaff) return;
@@ -501,7 +494,7 @@ export default function DaySlider() {
       try {
         const { data, error } = await supabase
           .from("employees")
-          .select("id, code, name, role, active, disabled, show_in_daily_check")
+          .select("id, code, name, role, active, disabled, permissions, show_in_daily_check")
           .eq("code", session.code)
           .limit(1)
           .maybeSingle();
@@ -528,7 +521,6 @@ export default function DaySlider() {
     () => projects.find((p) => String(p.id) === String(projectId)) || null,
     [projects, projectId]
   );
-  const ownEmployeeLabel = employeeRow?.name || currentUser?.name || session?.name || session?.code || "Du";
   const projectAddress = selectedProject?.address || "";
   const finalWeather = weatherManual || weatherAuto || "";
 
@@ -690,10 +682,9 @@ export default function DaySlider() {
         .order("employee_name", { ascending: true })
         .order("start_min", { ascending: true });
 
-      // Wichtig: Admin/Teamleiter sehen in der unteren Tagesübersicht immer ALLE Einträge
-      // des ausgewählten Tages – unabhängig davon, welche Mitarbeiter oben zum Speichern
-      // ausgewählt sind. Die Mitarbeiter-Auswahl steuert nur, für wen neu gespeichert wird.
-      if (isStaff && employeeRow?.id) {
+      // Sicht der Einträge: Admin sieht alle. Alle anderen sehen nur eigene Einträge,
+      // auch wenn sie das Recht haben, Zeiten für andere Mitarbeiter zu erfassen.
+      if (!canSeeAllEntries && employeeRow?.id) {
         query = query.eq("employee_id", employeeRow.id);
       }
 
@@ -710,18 +701,23 @@ export default function DaySlider() {
 
   async function loadDailyCheckEntries() {
     try {
-      if (!isManager) {
-        setDailyCheckEntries([]);
-        return;
-      }
-
       setDailyCheckLoading(true);
 
-      const { data, error } = await supabase
+      let query = supabase
         .from("v_time_entries_expanded")
         .select("*")
         .eq("work_date", date);
 
+      // Tageskontrolle: nur Admin sieht alle. Alle anderen sehen nur sich selbst.
+      if (!canSeeFullDailyCheck) {
+        if (!employeeRow?.id) {
+          setDailyCheckEntries([]);
+          return;
+        }
+        query = query.eq("employee_id", employeeRow.id);
+      }
+
+      const { data, error } = await query;
       if (error) throw error;
       setDailyCheckEntries(data || []);
     } catch (e) {
@@ -736,7 +732,7 @@ export default function DaySlider() {
     loadEntries();
     loadDailyCheckEntries();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [date, isManager, selectedCodes, employeeRow?.id]);
+  }, [date, isManager, selectedCodes, employeeRow?.id, canSeeAllEntries, canSeeFullDailyCheck]);
 
   const shiftDate = (days) => {
     setDate((old) => {
@@ -774,9 +770,13 @@ export default function DaySlider() {
   const holidayNameToday = useMemo(() => getHolidayName(date), [date]);
 
   const dailyCheckRows = useMemo(() => {
-    if (!isManager) return [];
+    const baseEmployees = canSeeFullDailyCheck
+      ? (employees || [])
+      : employeeRow
+      ? [employeeRow]
+      : [];
 
-    const checkEmployees = (employees || [])
+    const checkEmployees = baseEmployees
       // Deaktiviert = nicht mehr in der Tageskontrolle prüfen.
       // Wichtig: bestehende Stunden deaktivierter MA bleiben unten trotzdem sichtbar,
       // weil die Eintragsliste direkt aus v_time_entries_expanded kommt.
@@ -826,7 +826,7 @@ export default function DaySlider() {
         entryCount: empEntries.length,
       };
     });
-  }, [date, dailyCheckEntries, employees, isManager, buakSollHoursToday]);
+  }, [date, dailyCheckEntries, employees, employeeRow, canSeeFullDailyCheck, buakSollHoursToday]);
 
   const dailyCheckSummary = useMemo(() => {
     const count = (status) => dailyCheckRows.filter((row) => row.status === status).length;
@@ -1272,8 +1272,7 @@ export default function DaySlider() {
         </div>
       </div>
 
-      {isManager && (
-        <div className="hbz-card month-main-card daily-check-card">
+      <div className="hbz-card month-main-card daily-check-card">
           <div className="month-main-header">
             <div>
               <div className="month-card-title">📊 Tageskontrolle</div>
@@ -1318,23 +1317,25 @@ export default function DaySlider() {
               )}
             </div>
 
-            <div className="daily-check-employee-filter">
-              <div className="daily-check-filter-label">Mitarbeiter oben anzeigen:</div>
-              <div className="daily-check-filter-row">
-                <button type="button" className={`daily-check-filter-btn ${dailyCheckEmployeeCodes.length === 0 ? "active" : ""}`} onClick={() => setDailyCheckEmployeeCodes([])}>
-                  Alle MA
-                </button>
-                {dailyCheckRows.map((emp) => {
-                  const key = String(emp.code || emp.id || "");
-                  const active = dailyCheckEmployeeCodes.includes(key);
-                  return (
-                    <button key={emp.id || emp.code} type="button" className={`daily-check-filter-btn ${active ? "active" : ""}`} onClick={() => toggleDailyCheckEmployee(key)}>
-                      {emp.name || emp.code}
-                    </button>
-                  );
-                })}
+            {canSeeFullDailyCheck && (
+              <div className="daily-check-employee-filter">
+                <div className="daily-check-filter-label">Mitarbeiter oben anzeigen:</div>
+                <div className="daily-check-filter-row">
+                  <button type="button" className={`daily-check-filter-btn ${dailyCheckEmployeeCodes.length === 0 ? "active" : ""}`} onClick={() => setDailyCheckEmployeeCodes([])}>
+                    Alle MA
+                  </button>
+                  {dailyCheckRows.map((emp) => {
+                    const key = String(emp.code || emp.id || "");
+                    const active = dailyCheckEmployeeCodes.includes(key);
+                    return (
+                      <button key={emp.id || emp.code} type="button" className={`daily-check-filter-btn ${active ? "active" : ""}`} onClick={() => toggleDailyCheckEmployee(key)}>
+                        {emp.name || emp.code}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
+            )}
           </div>
           {dailyCheckRows.length === 0 ? (
             <div className="month-empty-state">
@@ -1362,11 +1363,11 @@ export default function DaySlider() {
           )}
 
           <div className="help" style={{ marginTop: 10 }}>
-            Geprüft werden nur aktive Mitarbeiter mit „In Tageskontrolle anzeigen“.
-            Freie BUAK-Tage werden nicht als fehlend gewertet.
+            {canSeeFullDailyCheck
+              ? "Geprüft werden nur aktive Mitarbeiter mit „In Tageskontrolle anzeigen“. Freie BUAK-Tage werden nicht als fehlend gewertet."
+              : "Du siehst hier nur deine eigene Tageskontrolle. Freie BUAK-Tage werden nicht als fehlend gewertet."}
           </div>
         </div>
-      )}
 
       <div className="hbz-card month-main-card">
         <div className="month-card-title">Zeiten erfassen</div>
@@ -1490,22 +1491,11 @@ export default function DaySlider() {
 
         {isMobile && (
           <div className="mobile-time-entry">
-            {isManager ? (
+            {isManager && (
               <details className="mobile-accordion" open>
                 <summary>👥 Mitarbeiter <span>{selectedCodes.length} / {employees.length} gewählt</span></summary>
                 <EmployeePicker employees={employees} selected={selectedCodes} onChange={setSelectedCodes} enableMulti={true} />
               </details>
-            ) : (
-              <div className="month-employee-block staff-employee-lock">
-                <div className="month-employee-head">
-                  <label className="hbz-label">Mitarbeiter</label>
-                  <span className="badge-soft">1 / 1 gewählt</span>
-                </div>
-                <div className="hbz-chipbar">
-                  <button type="button" className="hbz-chip active" disabled>{ownEmployeeLabel}</button>
-                </div>
-                <div className="help" style={{ marginTop: 6 }}>Du kannst nur für dich selbst erfassen.</div>
-              </div>
             )}
             <div className="mobile-time-grid">
               <div className="mobile-time-card"><span className="mobile-time-icon start">▶</span><div><div className="mobile-time-label">Start</div><div className="mobile-time-value">{toHM(fromMin)}</div></div></div>
@@ -1547,7 +1537,7 @@ export default function DaySlider() {
 
         {!isMobile && (
           <>
-          {isManager ? (
+          {isManager && (
           <div className="month-employee-block">
             <div className="month-employee-head">
               <label className="hbz-label">Mitarbeiter</label>
@@ -1562,17 +1552,6 @@ export default function DaySlider() {
               onChange={setSelectedCodes}
               enableMulti={true}
             />
-          </div>
-          ) : (
-          <div className="month-employee-block staff-employee-lock">
-            <div className="month-employee-head">
-              <label className="hbz-label">Mitarbeiter</label>
-              <span className="badge-soft">1 / 1 gewählt</span>
-            </div>
-            <div className="hbz-chipbar">
-              <button type="button" className="hbz-chip active" disabled>{ownEmployeeLabel}</button>
-            </div>
-            <div className="help" style={{ marginTop: 6 }}>Du kannst nur für dich selbst erfassen.</div>
           </div>
           )}
 
