@@ -63,6 +63,21 @@ function normalizeRole(role) {
   return String(role || "").trim().toLowerCase();
 }
 
+const ACTIVE_PROJECT_COLORS = [
+  { bg: "#e8f1ff", border: "#8fb2e8", text: "#173f70" },
+  { bg: "#e9f7ee", border: "#83c99a", text: "#1f5b32" },
+  { bg: "#fff0df", border: "#e4a15b", text: "#74400d" },
+  { bg: "#ffeceb", border: "#df8b84", text: "#7a2822" },
+  { bg: "#e7f7f5", border: "#7ac8c0", text: "#155d59" },
+  { bg: "#f1ecff", border: "#aa95df", text: "#49327a" },
+  { bg: "#eef7df", border: "#a9c86b", text: "#465d18" },
+  { bg: "#fdebf4", border: "#d58db2", text: "#783255" },
+  { bg: "#fff7d8", border: "#d7b84d", text: "#66500a" },
+  { bg: "#e6f2fb", border: "#78aed2", text: "#1d526f" },
+  { bg: "#f0eee9", border: "#b7a995", text: "#4d4033" },
+  { bg: "#eaf4e8", border: "#8dbb84", text: "#2d5b26" },
+];
+
 function employeeDefaultSort(a, b) {
   const roleA = normalizeRole(a.role);
   const roleB = normalizeRole(b.role);
@@ -88,6 +103,8 @@ export default function WorkAssignments() {
   const [weekAnchor, setWeekAnchor] = useState(() => formatLocalDate(new Date()));
   const [employees, setEmployees] = useState([]);
   const [projects, setProjects] = useState([]);
+  const [projectSearch, setProjectSearch] = useState("");
+  const [selectedProjectId, setSelectedProjectId] = useState("");
   const [assignments, setAssignments] = useState([]);
   const [employeeOrder, setEmployeeOrder] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -148,6 +165,32 @@ export default function WorkAssignments() {
     return map;
   }, [projects]);
 
+  const projectColorMap = useMemo(() => {
+    const map = new Map();
+    projects.forEach((project, index) => {
+      map.set(String(project.id), ACTIVE_PROJECT_COLORS[index % ACTIVE_PROJECT_COLORS.length]);
+    });
+    return map;
+  }, [projects]);
+
+  const filteredProjects = useMemo(() => {
+    const q = projectSearch.trim().toLowerCase();
+    if (!q) return projects;
+    return projects.filter((project) => {
+      const haystack = `${project.cost_center || ""} ${project.name || ""}`.toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [projects, projectSearch]);
+
+  function getProjectColorStyle(projectId) {
+    const color = projectColorMap.get(String(projectId)) || ACTIVE_PROJECT_COLORS[0];
+    return {
+      "--project-bg": color.bg,
+      "--project-border": color.border,
+      "--project-text": color.text,
+    };
+  }
+
   const cellMap = useMemo(() => {
     const map = new Map();
 
@@ -203,6 +246,17 @@ export default function WorkAssignments() {
       return employeeDefaultSort(a, b);
     });
   }, [employees, employeeOrder, weekSortMap]);
+
+  const visibleAssignmentEmployees = useMemo(() => {
+    if (canEditAssignments) return orderedEmployees;
+
+    const currentEmployeeId = currentUser?.id || session?.id;
+    if (!currentEmployeeId) return [];
+
+    return orderedEmployees.filter(
+      (employee) => String(employee.id) === String(currentEmployeeId)
+    );
+  }, [canEditAssignments, orderedEmployees, currentUser?.id, session?.id]);
 
   useEffect(() => {
     async function bootstrap() {
@@ -431,7 +485,7 @@ export default function WorkAssignments() {
   async function onCellClick(employeeId, dateStr) {
     if (!canEditAssignments) return;
 
-    const projectIdValue = projectRef.current?.value?.trim();
+    const projectIdValue = selectedProjectId || projectRef.current?.value?.trim();
 
     if (!projectIdValue) {
       alert("Bitte oben ein Projekt auswählen.");
@@ -441,10 +495,33 @@ export default function WorkAssignments() {
     await addProjectToCell(employeeId, dateStr, projectIdValue);
   }
 
+  function selectProject(projectId) {
+    const value = String(projectId || "").trim();
+    setSelectedProjectId(value);
+    if (projectRef.current) projectRef.current.value = value;
+  }
+
+  function onPaletteProjectDragStart(e, projectId) {
+    if (!canEditAssignments) return;
+
+    const projectIdValue = String(projectId || "").trim();
+    if (!projectIdValue) {
+      e.preventDefault();
+      return;
+    }
+
+    selectProject(projectIdValue);
+    e.dataTransfer.clearData();
+    e.dataTransfer.setData("projectId", projectIdValue);
+    e.dataTransfer.setData("text/plain", projectIdValue);
+    e.dataTransfer.effectAllowed = "copy";
+    setDragProjectId(projectIdValue);
+  }
+
   function onProjectDragStart(e) {
     if (!canEditAssignments) return;
 
-    const projectIdValue = projectRef.current?.value?.trim();
+    const projectIdValue = selectedProjectId || projectRef.current?.value?.trim();
 
     if (!projectIdValue) {
       e.preventDefault();
@@ -471,6 +548,7 @@ export default function WorkAssignments() {
       e.dataTransfer.getData("projectId") ||
       e.dataTransfer.getData("text/plain") ||
       dragProjectId ||
+      selectedProjectId ||
       projectRef.current?.value?.trim() ||
       "";
 
@@ -529,7 +607,7 @@ export default function WorkAssignments() {
 
   const compactRowsByDate = useMemo(() => {
     return weekDateStrings.map((dateStr) => {
-      const dayRows = orderedEmployees
+      const dayRows = visibleAssignmentEmployees
         .map((employee) => ({
           employee,
           rows: getCellRows(employee.id, dateStr),
@@ -538,7 +616,7 @@ export default function WorkAssignments() {
 
       return { dateStr, rows: dayRows };
     });
-  }, [weekDateStrings, orderedEmployees, cellMap]);
+  }, [weekDateStrings, visibleAssignmentEmployees, cellMap]);
 
   return (
     <div className="workassign-dispo-page">
@@ -570,7 +648,7 @@ export default function WorkAssignments() {
         <div className="workassign-dispo-toolbar">
           <div className="help">
             {canEditAssignments
-              ? "Projekt oben im Dropdown auswählen und danach unten auf die gewünschte Zelle klicken. Oder rechts den kleinen Drag-Button verwenden. Mitarbeiter können weiter per Ziehen sortiert werden."
+              ? "Aktive Projekte oben als farbige Chips in die Zelle ziehen oder antippen und danach unten in die gewünschte Zelle klicken. Mitarbeiter können weiter per Ziehen sortiert werden."
               : "Hier siehst du die Arbeitseinteilung der Woche. Änderungen sind mit deinem Benutzer nicht erlaubt."}
           </div>
 
@@ -591,16 +669,31 @@ export default function WorkAssignments() {
       {canEditAssignments ? (
       <div className="hbz-card workassign-project-palette-card">
         <div className="workassign-project-palette-head">
-          <div className="month-card-title">Projekt auswählen</div>
-          <div className="help">
-            {canEditAssignments ? "Danach Zelle klicken oder den Drag-Button benutzen." : "Nur Anzeige – Änderungen sind deaktiviert."}
+          <div>
+            <div className="month-card-title">Aktive Projekte</div>
+            <div className="help">Farben gelten nur für aktive Projekte in dieser Ansicht. Projekt antippen oder direkt in die Zelle ziehen.</div>
           </div>
+          <span className="badge">{projects.length} aktiv</span>
         </div>
 
-        <div className="hbz-row">
+        <div className="workassign-project-tools">
           <div className="hbz-col">
-            <label className="hbz-label">Projekt</label>
-            <select ref={projectRef} className="hbz-select" defaultValue="">
+            <label className="hbz-label">Projekt suchen</label>
+            <input
+              className="hbz-input"
+              value={projectSearch}
+              onChange={(e) => setProjectSearch(e.target.value)}
+              placeholder="Kostenstelle oder Projektname…"
+            />
+          </div>
+          <div className="hbz-col workassign-project-select-backup">
+            <label className="hbz-label">Backup-Auswahl</label>
+            <select
+              ref={projectRef}
+              className="hbz-select"
+              value={selectedProjectId}
+              onChange={(e) => setSelectedProjectId(e.target.value)}
+            >
               <option value="">Bitte Projekt wählen…</option>
               {projects.map((project) => (
                 <option key={project.id} value={project.id}>
@@ -609,17 +702,11 @@ export default function WorkAssignments() {
               ))}
             </select>
           </div>
-
-          <div
-            className="hbz-col-auto"
-            style={{ display: "flex", alignItems: "end", gap: 8 }}
-          >
+          <div className="hbz-col-auto workassign-project-actions">
             <button
               type="button"
               className="hbz-btn"
-              onClick={() => {
-                if (projectRef.current) projectRef.current.value = "";
-              }}
+              onClick={() => selectProject("")}
             >
               Auswahl löschen
             </button>
@@ -630,11 +717,34 @@ export default function WorkAssignments() {
               draggable={canEditAssignments}
               onDragStart={onProjectDragStart}
               onDragEnd={onProjectDragEnd}
-              title="Projekt in eine Zelle ziehen"
+              title="Ausgewähltes Projekt in eine Zelle ziehen"
             >
-              Projekt ziehen
+              Auswahl ziehen
             </button>
           </div>
+        </div>
+
+        <div className="workassign-project-palette">
+          {filteredProjects.length === 0 ? (
+            <div className="workassign-project-empty">Kein aktives Projekt gefunden.</div>
+          ) : (
+            filteredProjects.map((project) => (
+              <button
+                key={project.id}
+                type="button"
+                className={`workassign-project-token color-token ${String(selectedProjectId) === String(project.id) ? "active" : ""}`}
+                style={getProjectColorStyle(project.id)}
+                draggable={canEditAssignments}
+                onClick={() => selectProject(project.id)}
+                onDragStart={(e) => onPaletteProjectDragStart(e, project.id)}
+                onDragEnd={onProjectDragEnd}
+                title="Projekt ziehen oder antippen"
+              >
+                <span className="project-color-dot" />
+                <span>{projectLabel(project)}</span>
+              </button>
+            ))
+          )}
         </div>
       </div>
       ) : null}
@@ -649,42 +759,36 @@ export default function WorkAssignments() {
             {compactRowsByDate.every((day) => day.rows.length === 0) ? (
               <div className="month-empty-state">Für diese Woche ist noch keine Arbeitseinteilung eingetragen.</div>
             ) : (
-              compactRowsByDate.map((day) => (
-                <div className="workassign-day-card" key={day.dateStr}>
-                  <div className="workassign-day-card-head">
-                    <div>
-                      <div className="workassign-day-card-title">{dayShort(day.dateStr)}</div>
-                      <div className="workassign-day-card-date">{dayLabel(day.dateStr)}</div>
+              compactRowsByDate.map((day) => {
+                const projectsForDay = day.rows.flatMap((entry) => entry.rows);
+                return (
+                  <div className="workassign-compact-row" key={day.dateStr}>
+                    <div className="workassign-compact-date">
+                      <strong>{dayShort(day.dateStr)}</strong>
+                      <span>{dayLabel(day.dateStr)}</span>
                     </div>
-                    <span className="badge">{day.rows.length} MA</span>
-                  </div>
 
-                  {day.rows.length === 0 ? (
-                    <div className="workassign-day-empty">Keine Einteilung</div>
-                  ) : (
-                    <div className="workassign-day-list">
-                      {day.rows.map(({ employee, rows }) => (
-                        <div className="workassign-day-entry" key={`${day.dateStr}-${employee.id}`}>
-                          <div className="workassign-day-employee">
-                            <span>{employee.name}</span>
-                            {normalizeRole(employee.role) === "teamleiter" ? <span className="badge">TL</span> : null}
-                          </div>
-                          <div className="workassign-day-projects">
-                            {rows.map((row) => {
-                              const project = projectMap.get(String(row.project_id));
-                              return (
-                                <span className="workassign-cell-chip" key={row.id}>
-                                  {projectLabel(project)}
-                                </span>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      ))}
+                    <div className="workassign-compact-projects">
+                      {projectsForDay.length === 0 ? (
+                        <span className="workassign-compact-empty">frei / keine Einteilung</span>
+                      ) : (
+                        projectsForDay.map((row) => {
+                          const project = projectMap.get(String(row.project_id));
+                          return (
+                            <span
+                              className="workassign-cell-chip color-token"
+                              style={getProjectColorStyle(row.project_id)}
+                              key={row.id}
+                            >
+                              {projectLabel(project)}
+                            </span>
+                          );
+                        })
+                      )}
                     </div>
-                  )}
-                </div>
-              ))
+                  </div>
+                );
+              })
             )}
           </div>
         ) : (
@@ -770,7 +874,11 @@ export default function WorkAssignments() {
                                   const project = projectMap.get(String(row.project_id));
 
                                   return (
-                                    <span className="workassign-cell-chip" key={row.id}>
+                                    <span
+                                      className="workassign-cell-chip color-token"
+                                      style={getProjectColorStyle(row.project_id)}
+                                      key={row.id}
+                                    >
                                       {projectLabel(project)}
                                       {canEditAssignments ? (
                                         <button

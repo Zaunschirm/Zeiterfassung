@@ -2901,3 +2901,152 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     grid-template-columns: 1fr;
   }
 }
+
+/* ===== Arbeitseinteilung kompakt + aktive Projektfarben ===== */
+.workassign-project-palette-card {
+  padding: 10px 12px;
+}
+
+.workassign-project-tools {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr) auto;
+  gap: 8px;
+  align-items: end;
+  margin-bottom: 10px;
+}
+
+.workassign-project-actions {
+  display: flex;
+  gap: 6px;
+  align-items: end;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.workassign-project-palette {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 7px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 2px 0 5px;
+}
+
+.workassign-project-token.color-token,
+.workassign-cell-chip.color-token {
+  background: var(--project-bg, #f7ede1);
+  border-color: var(--project-border, rgba(171, 141, 109, 0.7));
+  color: var(--project-text, #5a3a23);
+}
+
+.workassign-project-token {
+  flex: 0 0 auto;
+  min-height: 34px;
+  max-width: 260px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: none;
+}
+
+.workassign-project-token.active {
+  box-shadow: 0 0 0 2px rgba(123, 74, 45, 0.32);
+  transform: translateY(-1px);
+}
+
+.project-color-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: var(--project-border, #7b4a2d);
+  flex: 0 0 auto;
+}
+
+.workassign-project-empty {
+  width: 100%;
+  border: 1px dashed rgba(171, 141, 109, 0.55);
+  border-radius: 12px;
+  background: #fffaf3;
+  padding: 8px 10px;
+  font-size: 13px;
+  color: #6a5342;
+}
+
+.workassign-list-view {
+  gap: 6px;
+  padding: 8px;
+}
+
+.workassign-compact-row {
+  display: grid;
+  grid-template-columns: 82px 1fr;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(203, 182, 156, 0.42);
+  border-radius: 12px;
+  background: linear-gradient(180deg, #fffdfa, #f8f1e7);
+  padding: 7px 8px;
+}
+
+.workassign-compact-date {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  line-height: 1.1;
+  color: #3f2c1b;
+}
+
+.workassign-compact-date strong {
+  font-size: 13px;
+  text-transform: capitalize;
+}
+
+.workassign-compact-date span {
+  font-size: 12px;
+  color: #7a614e;
+}
+
+.workassign-compact-projects {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-width: 0;
+}
+
+.workassign-compact-projects .workassign-cell-chip {
+  padding: 4px 8px;
+  font-size: 11px;
+  max-width: 100%;
+}
+
+.workassign-compact-empty {
+  font-size: 12px;
+  color: #7a614e;
+  background: #fffaf3;
+  border: 1px dashed rgba(171, 141, 109, 0.45);
+  border-radius: 999px;
+  padding: 4px 8px;
+}
+
+@media (max-width: 700px) {
+  .workassign-project-tools {
+    grid-template-columns: 1fr;
+  }
+
+  .workassign-project-actions {
+    justify-content: flex-start;
+  }
+
+  .workassign-project-select-backup {
+    display: none;
+  }
+
+  .workassign-project-token {
+    max-width: 220px;
+  }
+
+  .workassign-compact-row {
+    grid-template-columns: 68px 1fr;
+    padding: 6px 7px;
+  }
+}
