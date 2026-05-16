@@ -3,7 +3,6 @@ import { supabase } from "../lib/supabase";
 import { getSession } from "../lib/session";
 import DaySlider from "./DaySlider";
 import EntryTable from "./EntryTable";
-import PushSettings from "./PushSettings";
 import {
   WEATHER_MANUAL_OPTIONS,
   fetchWeatherForBooking,
@@ -52,40 +51,33 @@ export default function TimeTracking() {
   })();
   const initialCurrentUser = { ...(employeeFromLS || {}), ...(sessionUser || {}) };
   const [currentUser, setCurrentUser] = useState(initialCurrentUser);
-  const [userHydrated, setUserHydrated] = useState(false);
 
   const getRoleValue = (user) =>
     String(user?.role || user?.rolle || user?.user_role || user?.type || "")
       .trim()
       .toLowerCase();
 
-  // Rechte werden bewusst NUR aus dem aktuell geladenen Mitarbeiter verwendet.
-  // Wichtig: Wenn eine Rolle fehlt/unklar ist, wird sicherheitshalber wie Mitarbeiter behandelt.
-  // Dadurch können normale MA niemals durch alte localStorage/session-Werte alle Mitarbeiter sehen.
-  const currentRole = userHydrated ? getRoleValue(currentUser) : "";
-  const isAdmin = currentRole === "admin";
-  const isTeamleiter = currentRole === "teamleiter";
-  const isAdminOrTeamleiter = isAdmin || isTeamleiter;
+  // Wichtig:
+  // Bei manchen Browsern bleibt im localStorage noch ein alter Benutzer hängen.
+  // Für die Tageskontrolle nehmen wir daher die niedrigste Berechtigung aus allen bekannten Quellen.
+  // Wenn irgendwo "mitarbeiter" steht, darf die große Kontrolle NICHT angezeigt werden.
+  const knownRoles = [employeeFromLS, sessionUser, currentUser]
+    .map(getRoleValue)
+    .filter(Boolean);
+  const hasStaffRole = knownRoles.some((role) =>
+    ["mitarbeiter", "employee", "arbeiter", "ma"].includes(role)
+  );
+  const hasAdminOrTeamleiterRole = knownRoles.some((role) =>
+    role === "admin" || role === "teamleiter"
+  );
+  const currentRole = hasStaffRole
+    ? "mitarbeiter"
+    : hasAdminOrTeamleiterRole
+      ? knownRoles.find((role) => role === "admin" || role === "teamleiter")
+      : getRoleValue(currentUser);
+  const isAdminOrTeamleiter = currentRole === "admin" || currentRole === "teamleiter";
   const isStaff = !isAdminOrTeamleiter;
   const canSeeAllEmployees = isAdminOrTeamleiter;
-
-  const isBuVwRole = (role) => {
-    const value = String(role || "").trim().toLowerCase();
-    return ["buchhaltung", "verwaltung", "bu/vw", "bu_vw", "buvw"].includes(value);
-  };
-  const sameEmployee = (emp, user = currentUser) => {
-    if (!emp || !user) return false;
-    return (
-      (user?.id != null && String(emp.id) === String(user.id)) ||
-      (user?.code && String(emp.code) === String(user.code)) ||
-      (user?.name && String(emp.name) === String(user.name))
-    );
-  };
-  const filterEmployeesForCurrentUser = (list = []) => {
-    if (isAdmin) return list;
-    if (isBuVwRole(currentRole)) return list.filter((emp) => sameEmployee(emp));
-    return list.filter((emp) => !isBuVwRole(emp?.role));
-  };
 
 
   // Stammdaten
@@ -147,10 +139,7 @@ export default function TimeTracking() {
     async function hydrateCurrentUser() {
       const lookupCode = sessionUser?.code || initialCurrentUser?.code;
       const lookupId = sessionUser?.id || initialCurrentUser?.id;
-      if (!lookupCode && !lookupId) {
-        setUserHydrated(true);
-        return;
-      }
+      if (!lookupCode && !lookupId) return;
 
       try {
         let query = supabase
@@ -169,8 +158,6 @@ export default function TimeTracking() {
         }
       } catch (e) {
         console.warn("[TimeTracking] current user fallback:", e);
-      } finally {
-        if (!cancelled) setUserHydrated(true);
       }
     }
 
@@ -180,7 +167,7 @@ export default function TimeTracking() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentRole, currentUser?.id, currentUser?.code]);
+  }, []);
 
   // Berechnungen
   const workMinutes = useMemo(
@@ -248,12 +235,11 @@ export default function TimeTracking() {
           .eq("disabled", false)
           .order("name", { ascending: true });
 
-        const visibleEmployees = filterEmployeesForCurrentUser(emp || []);
-        setEmployees(visibleEmployees);
+        setEmployees(emp || []);
 
         // Falls noch niemand gewählt ist: eingeloggte Person vorauswählen
-        if (visibleEmployees.length && selectedEmployees.length === 0 && currentUser?.code) {
-          const me = visibleEmployees.find((e) => e.code === currentUser.code);
+        if ((emp || []).length && selectedEmployees.length === 0 && currentUser?.code) {
+          const me = (emp || []).find((e) => e.code === currentUser.code);
           if (me) setSelectedEmployees([me]);
         }
       } catch (e) {
@@ -261,7 +247,7 @@ export default function TimeTracking() {
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentRole, currentUser?.id, currentUser?.code]);
+  }, []);
 
   const loadEntriesForDay = async () => {
     try {
@@ -945,9 +931,9 @@ export default function TimeTracking() {
             {saving ? "Speichere…" : "Speichern"}
           </button>
         </div>
-      </div>
 
-      <PushSettings currentUser={currentUser} />
+        <PushSettings currentUser={currentUser} />
+      </div>
 
       {/* Tagesliste */}
       <div className="hbz-card tight" style={{ marginTop: 12 }}>
