@@ -183,7 +183,18 @@ export default function WorkAssignments() {
   }, [projects, projectSearch]);
 
   function getProjectColorStyle(projectId) {
-    const color = projectColorMap.get(String(projectId)) || ACTIVE_PROJECT_COLORS[0];
+    const color = projectColorMap.get(String(projectId));
+
+    // Nur aktive Projekte bekommen Farben. Falls ein altes/deaktiviertes Projekt
+    // noch in einer bestehenden Einteilung vorkommt, bleibt es neutral/grau.
+    if (!color) {
+      return {
+        "--project-bg": "#f3f0eb",
+        "--project-border": "#c8bbad",
+        "--project-text": "#5f564d",
+      };
+    }
+
     return {
       "--project-bg": color.bg,
       "--project-border": color.border,
@@ -488,7 +499,7 @@ export default function WorkAssignments() {
     const projectIdValue = selectedProjectId || projectRef.current?.value?.trim();
 
     if (!projectIdValue) {
-      alert("Bitte oben ein Projekt auswählen.");
+      alert("Bitte oben ein Projekt antippen oder direkt in die Zelle ziehen.");
       return;
     }
 
@@ -525,7 +536,7 @@ export default function WorkAssignments() {
 
     if (!projectIdValue) {
       e.preventDefault();
-      alert("Bitte zuerst oben im Dropdown ein Projekt auswählen.");
+      alert("Bitte zuerst oben ein Projekt antippen oder direkt ziehen.");
       return;
     }
 
@@ -676,7 +687,7 @@ export default function WorkAssignments() {
           <span className="badge">{projects.length} aktiv</span>
         </div>
 
-        <div className="workassign-project-tools">
+        <div className="workassign-project-tools no-dropdown">
           <div className="hbz-col">
             <label className="hbz-label">Projekt suchen</label>
             <input
@@ -686,22 +697,6 @@ export default function WorkAssignments() {
               placeholder="Kostenstelle oder Projektname…"
             />
           </div>
-          <div className="hbz-col workassign-project-select-backup">
-            <label className="hbz-label">Backup-Auswahl</label>
-            <select
-              ref={projectRef}
-              className="hbz-select"
-              value={selectedProjectId}
-              onChange={(e) => setSelectedProjectId(e.target.value)}
-            >
-              <option value="">Bitte Projekt wählen…</option>
-              {projects.map((project) => (
-                <option key={project.id} value={project.id}>
-                  {projectLabel(project)}
-                </option>
-              ))}
-            </select>
-          </div>
           <div className="hbz-col-auto workassign-project-actions">
             <button
               type="button"
@@ -710,21 +705,10 @@ export default function WorkAssignments() {
             >
               Auswahl löschen
             </button>
-
-            <button
-              type="button"
-              className="hbz-btn hbz-btn-primary"
-              draggable={canEditAssignments}
-              onDragStart={onProjectDragStart}
-              onDragEnd={onProjectDragEnd}
-              title="Ausgewähltes Projekt in eine Zelle ziehen"
-            >
-              Auswahl ziehen
-            </button>
           </div>
         </div>
 
-        <div className="workassign-project-palette">
+        <div className="workassign-project-palette visible-project-list">
           {filteredProjects.length === 0 ? (
             <div className="workassign-project-empty">Kein aktives Projekt gefunden.</div>
           ) : (

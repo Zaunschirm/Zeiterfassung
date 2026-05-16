@@ -3050,3 +3050,68 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     padding: 6px 7px;
   }
 }
+
+
+/* ===== Fix: Arbeitseinteilung ohne Dropdown, Projektleiste sichtbar und farbig ===== */
+.workassign-project-tools.no-dropdown {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto;
+  gap: 8px;
+  align-items: end;
+  margin-bottom: 10px;
+}
+
+.workassign-project-tools.no-dropdown .workassign-project-actions {
+  justify-content: flex-end;
+}
+
+.workassign-project-select-backup {
+  display: none !important;
+}
+
+.workassign-project-palette.visible-project-list {
+  display: flex !important;
+  flex-wrap: wrap;
+  gap: 8px;
+  overflow-x: visible;
+  padding: 4px 0 2px;
+  min-height: 38px;
+}
+
+.workassign-project-token.color-token,
+.workassign-cell-chip.color-token {
+  background: var(--project-bg, #f7ede1) !important;
+  border-color: var(--project-border, rgba(171, 141, 109, 0.7)) !important;
+  color: var(--project-text, #5a3a23) !important;
+}
+
+.workassign-project-token.color-token {
+  font-weight: 700;
+  border-width: 1px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.035);
+}
+
+.workassign-cell-chip.color-token {
+  font-weight: 600;
+}
+
+.workassign-project-token.color-token.active {
+  box-shadow: 0 0 0 2px rgba(123, 74, 45, 0.38), 0 8px 16px rgba(0, 0, 0, 0.08);
+}
+
+@media (max-width: 700px) {
+  .workassign-project-tools.no-dropdown {
+    grid-template-columns: 1fr;
+  }
+
+  .workassign-project-tools.no-dropdown .workassign-project-actions {
+    justify-content: flex-start;
+  }
+
+  .workassign-project-palette.visible-project-list {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 6px;
+  }
+}
