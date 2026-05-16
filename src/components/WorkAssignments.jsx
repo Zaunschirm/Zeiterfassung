@@ -84,23 +84,6 @@ export default function WorkAssignments() {
   const canViewAssignments =
     hasPermission(currentUser || session, "viewAssignments") || hasPermission(currentUser || session, "manageAssignments");
   const canEditAssignments = hasPermission(currentUser || session, "manageAssignments");
-  const currentRole = normalizeRole(currentUser?.role || session?.role);
-  const isAdmin = currentRole === "admin";
-  const isBuVwRole = (value) => {
-    const normalized = normalizeRole(value);
-    return ["buchhaltung", "verwaltung", "bu/vw", "bu_vw", "buvw"].includes(normalized);
-  };
-  const filterEmployeesForCurrentUser = (list = []) => {
-    if (isAdmin) return list;
-    if (isBuVwRole(currentRole)) {
-      return list.filter((emp) =>
-        (currentUser?.id != null && String(emp.id) === String(currentUser.id)) ||
-        (currentUser?.code && String(emp.code) === String(currentUser.code)) ||
-        (session?.code && String(emp.code) === String(session.code))
-      );
-    }
-    return list.filter((emp) => !isBuVwRole(emp?.role));
-  };
 
   const [weekAnchor, setWeekAnchor] = useState(() => formatLocalDate(new Date()));
   const [employees, setEmployees] = useState([]);
@@ -232,6 +215,7 @@ export default function WorkAssignments() {
             .select("id, name, role, active, disabled")
             .eq("active", true)
             .eq("disabled", false)
+            .neq("role", "buchhaltung")
             .order("name", { ascending: true }),
           supabase
             .from("projects")
@@ -243,7 +227,7 @@ export default function WorkAssignments() {
         if (employeesRes.error) throw employeesRes.error;
         if (projectsRes.error) throw projectsRes.error;
 
-        const employeeData = filterEmployeesForCurrentUser(employeesRes.data || []);
+        const employeeData = (employeesRes.data || []).filter((e) => String(e.role || "").toLowerCase() !== "buchhaltung");
         setEmployees(employeeData);
         setProjects(projectsRes.data || []);
         setEmployeeOrder(
@@ -291,7 +275,7 @@ export default function WorkAssignments() {
 
   useEffect(() => {
     loadAssignments();
-  }, [weekAnchor, currentRole, currentUser?.id, currentUser?.code, session?.code]);
+  }, [weekAnchor]);
 
   function shiftWeek(direction) {
     const start = startOfWeek(weekAnchor);
@@ -317,7 +301,7 @@ export default function WorkAssignments() {
       window.removeEventListener("hbz-prev-week", handlePrevWeek);
       window.removeEventListener("hbz-next-week", handleNextWeek);
     };
-  }, [weekAnchor, currentRole, currentUser?.id, currentUser?.code, session?.code]);
+  }, [weekAnchor]);
 
   function getCellRows(employeeId, dateStr) {
     return cellMap.get(`${employeeId}__${dateStr}`) || [];
@@ -543,6 +527,19 @@ export default function WorkAssignments() {
     await persistEmployeeOrder(nextOrder);
   }
 
+  const compactRowsByDate = useMemo(() => {
+    return weekDateStrings.map((dateStr) => {
+      const dayRows = orderedEmployees
+        .map((employee) => ({
+          employee,
+          rows: getCellRows(employee.id, dateStr),
+        }))
+        .filter((entry) => entry.rows.length > 0);
+
+      return { dateStr, rows: dayRows };
+    });
+  }, [weekDateStrings, orderedEmployees, cellMap]);
+
   return (
     <div className="workassign-dispo-page">
       <div className="workassign-dispo-head hbz-card">
@@ -591,6 +588,7 @@ export default function WorkAssignments() {
         {error ? <div className="year-error-box">{error}</div> : null}
       </div>
 
+      {canEditAssignments ? (
       <div className="hbz-card workassign-project-palette-card">
         <div className="workassign-project-palette-head">
           <div className="month-card-title">Projekt auswählen</div>
@@ -639,12 +637,56 @@ export default function WorkAssignments() {
           </div>
         </div>
       </div>
+      ) : null}
 
       <div className="hbz-card workassign-matrix-card">
         {!canViewAssignments ? (
           <div className="year-error-box">Du hast keine Berechtigung für die Arbeitseinteilung.</div>
         ) : loading ? (
           <div className="month-empty-state">Lade Arbeitseinteilung…</div>
+        ) : !canEditAssignments ? (
+          <div className="workassign-list-view">
+            {compactRowsByDate.every((day) => day.rows.length === 0) ? (
+              <div className="month-empty-state">Für diese Woche ist noch keine Arbeitseinteilung eingetragen.</div>
+            ) : (
+              compactRowsByDate.map((day) => (
+                <div className="workassign-day-card" key={day.dateStr}>
+                  <div className="workassign-day-card-head">
+                    <div>
+                      <div className="workassign-day-card-title">{dayShort(day.dateStr)}</div>
+                      <div className="workassign-day-card-date">{dayLabel(day.dateStr)}</div>
+                    </div>
+                    <span className="badge">{day.rows.length} MA</span>
+                  </div>
+
+                  {day.rows.length === 0 ? (
+                    <div className="workassign-day-empty">Keine Einteilung</div>
+                  ) : (
+                    <div className="workassign-day-list">
+                      {day.rows.map(({ employee, rows }) => (
+                        <div className="workassign-day-entry" key={`${day.dateStr}-${employee.id}`}>
+                          <div className="workassign-day-employee">
+                            <span>{employee.name}</span>
+                            {normalizeRole(employee.role) === "teamleiter" ? <span className="badge">TL</span> : null}
+                          </div>
+                          <div className="workassign-day-projects">
+                            {rows.map((row) => {
+                              const project = projectMap.get(String(row.project_id));
+                              return (
+                                <span className="workassign-cell-chip" key={row.id}>
+                                  {projectLabel(project)}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
         ) : (
           <div className="workassign-matrix-wrap">
             <table className="workassign-matrix">
