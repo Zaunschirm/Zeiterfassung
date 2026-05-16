@@ -3,6 +3,7 @@ import { supabase } from "../lib/supabase";
 import { getSession } from "../lib/session";
 import { getUserPermissions } from "../lib/permissions";
 import EmployeePicker from "./EmployeePicker.jsx";
+import PushSettings from "./PushSettings.jsx";
 import {
   WEATHER_MANUAL_OPTIONS,
   fetchWeatherForBooking,
@@ -1150,6 +1151,8 @@ export default function DaySlider() {
         </div>
       </div>
 
+      <PushSettings currentUser={currentUser || session} />
+
       {isManager && (
         <div className="hbz-card month-main-card daily-check-card">
           <div className="month-main-header">
@@ -1246,13 +1249,7 @@ export default function DaySlider() {
         </div>
       )}
 
-      
-
-      <details className="mobile-accordion push-settings-accordion" style={{marginTop:16}}>
-        <summary>⚙️ Meine Einstellungen</summary>
-        <PushSettings employee={employeeRow} currentUser={user} />
-      </details>
-<div className="hbz-card month-main-card">
+      <div className="hbz-card month-main-card">
         <div className="month-card-title">Zeiten erfassen</div>
 
         <div className="month-filter-grid">
