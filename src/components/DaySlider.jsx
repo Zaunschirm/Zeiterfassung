@@ -3,6 +3,7 @@ import { supabase } from "../lib/supabase";
 import { getSession } from "../lib/session";
 import { getUserPermissions } from "../lib/permissions";
 import EmployeePicker from "./EmployeePicker.jsx";
+import PushSettings from "./PushSettings.jsx";
 import {
   WEATHER_MANUAL_OPTIONS,
   fetchWeatherForBooking,
@@ -259,59 +260,16 @@ function getWeekDays(dateStr, count = 5) {
 export default function DaySlider() {
   const session = getSession()?.user || null;
   const [currentUser, setCurrentUser] = useState(session);
-
-  const normalizeRole = (value) => {
-    const r = String(value || "mitarbeiter").trim().toLowerCase();
-    if (r === "admin") return "admin";
-    if (r === "teamleiter") return "teamleiter";
-    if (r === "buchhaltung" || r === "verwaltung" || r === "bu/vw" || r === "buvw") return "verwaltung";
-    return "mitarbeiter";
-  };
-
-  const role = normalizeRole(currentUser?.role || session?.role || "mitarbeiter");
-
-  function normalizePermissionObject(value) {
-    if (!value) return {};
-    if (typeof value === "string") {
-      try {
-        const parsed = JSON.parse(value);
-        return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
-      } catch {
-        return {};
-      }
-    }
-    if (typeof value === "object" && !Array.isArray(value)) return value;
-    return {};
-  }
-
-  const importedPermissions = getUserPermissions(currentUser || session) || {};
-  const directPermissions = {
-    ...normalizePermissionObject(session?.permissions),
-    ...normalizePermissionObject(currentUser?.permissions),
-  };
-  const permissions = {
-    ...importedPermissions,
-    ...directPermissions,
-  };
-
-  const hasPermissionFlag = (...keys) =>
-    keys.some((key) => permissions?.[key] === true || permissions?.[key] === "true" || permissions?.[key] === 1);
-
-  // Rechte getrennt behandeln:
-  // - Tageskontrolle/Eintragskontrolle komplett: nur Admin
-  // - Zeiterfassung für andere MA: nur mit Recht "Für alle MA Stunden schreiben"
-  // - BU/VW bleibt immer auf sich selbst beschränkt
-  const isAdmin = role === "admin";
-  const isBuvw = role === "verwaltung";
-  const canWriteOwnTime = hasPermissionFlag("writeOwnTime", "write_own_time") || isAdmin;
-  const canWriteAllTime = !isBuvw && (isAdmin || hasPermissionFlag("writeAllTime", "write_all_time", "canWriteAllTime", "can_write_all_time"));
-  const canEditOwnTime = hasPermissionFlag("editOwnTime", "edit_own_time") || isAdmin;
-  const canEditAllTime = !isBuvw && (isAdmin || hasPermissionFlag("editAllTime", "edit_all_time", "canEditAllTime", "can_edit_all_time"));
-  const canDeleteOwnTime = hasPermissionFlag("deleteOwnTime", "delete_own_time") || isAdmin;
-  const canDeleteAllTime = !isBuvw && (isAdmin || hasPermissionFlag("deleteAllTime", "delete_all_time", "canDeleteAllTime", "can_delete_all_time"));
-  const canSelectEmployees = canWriteAllTime;
-  const canSeeAllEntries = isAdmin;
-  const canSeeFullDailyCheck = isAdmin;
+  const role = (currentUser?.role || session?.role || "mitarbeiter").toLowerCase();
+  const permissions = getUserPermissions(currentUser || session);
+  const canWriteOwnTime = !!permissions.writeOwnTime;
+  const canWriteAllTime = !!permissions.writeAllTime;
+  const canEditOwnTime = !!permissions.editOwnTime;
+  const canEditAllTime = !!permissions.editAllTime;
+  const canDeleteOwnTime = !!permissions.deleteOwnTime;
+  const canDeleteAllTime = !!permissions.deleteAllTime;
+  const canSelectEmployees = canWriteAllTime || canEditAllTime || canDeleteAllTime;
+  const canSeeAllEntries = canSelectEmployees;
   const isStaff = !canSelectEmployees;
   const isManager = canSelectEmployees;
 
@@ -463,19 +421,13 @@ export default function DaySlider() {
         if (isManager) {
           const { data, error } = await supabase
             .from("employees")
-            .select("id, code, name, role, active, disabled, permissions, show_in_daily_check")
+            .select("id, code, name, role, active, disabled, show_in_daily_check")
             .eq("active", true)
             .eq("disabled", false)
             .order("name", { ascending: true });
 
           if (error) throw error;
-          const rawList = data || [];
-          const list = isAdmin
-            ? rawList
-            : rawList.filter((e) => {
-                const r = normalizeRole(e?.role);
-                return r !== "verwaltung";
-              });
+          const list = data || [];
           setEmployees(list);
 
           if (session?.code) {
@@ -492,7 +444,7 @@ export default function DaySlider() {
         } else {
           const { data, error } = await supabase
             .from("employees")
-            .select("id, code, name, role, active, disabled, permissions, show_in_daily_check")
+            .select("id, code, name, role, active, disabled, show_in_daily_check")
             .eq("code", session?.code)
             .limit(1)
             .maybeSingle();
@@ -510,7 +462,7 @@ export default function DaySlider() {
 
     loadEmployees();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isManager, isAdmin, session?.code]);
+  }, [isManager, session?.code]);
 
   useEffect(() => {
     if (!isStaff) return;
@@ -519,7 +471,7 @@ export default function DaySlider() {
       try {
         const { data, error } = await supabase
           .from("employees")
-          .select("id, code, name, role, active, disabled, permissions, show_in_daily_check")
+          .select("id, code, name, role, active, disabled, show_in_daily_check")
           .eq("code", session.code)
           .limit(1)
           .maybeSingle();
@@ -707,9 +659,10 @@ export default function DaySlider() {
         .order("employee_name", { ascending: true })
         .order("start_min", { ascending: true });
 
-      // Sicht der Einträge: Admin sieht alle. Alle anderen sehen nur eigene Einträge,
-      // auch wenn sie das Recht haben, Zeiten für andere Mitarbeiter zu erfassen.
-      if (!canSeeAllEntries && employeeRow?.id) {
+      // Wichtig: Admin/Teamleiter sehen in der unteren Tagesübersicht immer ALLE Einträge
+      // des ausgewählten Tages – unabhängig davon, welche Mitarbeiter oben zum Speichern
+      // ausgewählt sind. Die Mitarbeiter-Auswahl steuert nur, für wen neu gespeichert wird.
+      if (isStaff && employeeRow?.id) {
         query = query.eq("employee_id", employeeRow.id);
       }
 
@@ -726,23 +679,18 @@ export default function DaySlider() {
 
   async function loadDailyCheckEntries() {
     try {
+      if (!isManager) {
+        setDailyCheckEntries([]);
+        return;
+      }
+
       setDailyCheckLoading(true);
 
-      let query = supabase
+      const { data, error } = await supabase
         .from("v_time_entries_expanded")
         .select("*")
         .eq("work_date", date);
 
-      // Tageskontrolle: nur Admin sieht alle. Alle anderen sehen nur sich selbst.
-      if (!canSeeFullDailyCheck) {
-        if (!employeeRow?.id) {
-          setDailyCheckEntries([]);
-          return;
-        }
-        query = query.eq("employee_id", employeeRow.id);
-      }
-
-      const { data, error } = await query;
       if (error) throw error;
       setDailyCheckEntries(data || []);
     } catch (e) {
@@ -757,7 +705,7 @@ export default function DaySlider() {
     loadEntries();
     loadDailyCheckEntries();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [date, isManager, selectedCodes, employeeRow?.id, canSeeAllEntries, canSeeFullDailyCheck]);
+  }, [date, isManager, selectedCodes, employeeRow?.id]);
 
   const shiftDate = (days) => {
     setDate((old) => {
@@ -795,13 +743,9 @@ export default function DaySlider() {
   const holidayNameToday = useMemo(() => getHolidayName(date), [date]);
 
   const dailyCheckRows = useMemo(() => {
-    const baseEmployees = canSeeFullDailyCheck
-      ? (employees || [])
-      : employeeRow
-      ? [employeeRow]
-      : [];
+    if (!isManager) return [];
 
-    const checkEmployees = baseEmployees
+    const checkEmployees = (employees || [])
       // Deaktiviert = nicht mehr in der Tageskontrolle prüfen.
       // Wichtig: bestehende Stunden deaktivierter MA bleiben unten trotzdem sichtbar,
       // weil die Eintragsliste direkt aus v_time_entries_expanded kommt.
@@ -851,7 +795,7 @@ export default function DaySlider() {
         entryCount: empEntries.length,
       };
     });
-  }, [date, dailyCheckEntries, employees, employeeRow, canSeeFullDailyCheck, buakSollHoursToday]);
+  }, [date, dailyCheckEntries, employees, isManager, buakSollHoursToday]);
 
   const dailyCheckSummary = useMemo(() => {
     const count = (status) => dailyCheckRows.filter((row) => row.status === status).length;
@@ -894,74 +838,6 @@ export default function DaySlider() {
     );
   };
 
-
-  const getExistingEmployeeId = (row) => String(row?.employee_id ?? row?.employeeId ?? "");
-
-  const timesOverlap = (aStart, aEnd, bStart, bEnd) => {
-    const as = Number(aStart ?? 0);
-    const ae = Number(aEnd ?? 0);
-    const bs = Number(bStart ?? 0);
-    const be = Number(bEnd ?? 0);
-    return as < be && bs < ae;
-  };
-
-  const isSameBooking = (existing, next) => {
-    return (
-      String(existing?.work_date || existing?.date || "").slice(0, 10) === String(next.work_date || "").slice(0, 10) &&
-      String(getExistingEmployeeId(existing)) === String(next.employee_id) &&
-      String(existing?.project_id ?? "") === String(next.project_id ?? "") &&
-      Number(existing?.start_min ?? existing?.from_min ?? 0) === Number(next.start_min ?? 0) &&
-      Number(existing?.end_min ?? existing?.to_min ?? 0) === Number(next.end_min ?? 0) &&
-      Number(existing?.break_min ?? 0) === Number(next.break_min ?? 0) &&
-      Number(existing?.travel_minutes ?? existing?.travel_min ?? 0) === Number(next.travel_minutes ?? 0) &&
-      String(existing?.absence_type ?? "") === String(next.absence_type ?? "")
-    );
-  };
-
-  const isOverlappingBooking = (existing, next) => {
-    if (String(existing?.work_date || existing?.date || "").slice(0, 10) !== String(next.work_date || "").slice(0, 10)) return false;
-    if (String(getExistingEmployeeId(existing)) !== String(next.employee_id)) return false;
-    return timesOverlap(existing?.start_min ?? existing?.from_min, existing?.end_min ?? existing?.to_min, next.start_min, next.end_min);
-  };
-
-  async function findDuplicateOrOverlap(rows) {
-    const employeeIds = Array.from(new Set(rows.map((row) => String(row.employee_id)).filter(Boolean)));
-    let existing = (entries || []).filter((row) =>
-      String(row?.work_date || row?.date || "").slice(0, 10) === date &&
-      employeeIds.includes(String(getExistingEmployeeId(row)))
-    );
-
-    try {
-      const { data, error } = await supabase
-        .from("time_entries")
-        .select("id, work_date, employee_id, project_id, start_min, end_min, break_min, travel_minutes, absence_type")
-        .eq("work_date", date)
-        .in("employee_id", employeeIds);
-      if (!error && Array.isArray(data)) {
-        const seen = new Set(existing.map((row) => String(row.id || `${getExistingEmployeeId(row)}-${row.start_min}-${row.end_min}-${row.project_id}`)));
-        for (const row of data) {
-          const key = String(row.id || `${getExistingEmployeeId(row)}-${row.start_min}-${row.end_min}-${row.project_id}`);
-          if (!seen.has(key)) existing.push(row);
-        }
-      }
-    } catch (e) {
-      logSbError("[DaySlider] duplicate check fallback", e);
-    }
-
-    for (const row of rows) {
-      const exact = existing.find((entry) => isSameBooking(entry, row));
-      if (exact) return { type: "exact", row, existing: exact };
-    }
-
-    const overlaps = [];
-    for (const row of rows) {
-      const hit = existing.find((entry) => !isSameBooking(entry, row) && isOverlappingBooking(entry, row));
-      if (hit) overlaps.push({ row, existing: hit });
-    }
-
-    if (overlaps.length) return { type: "overlap", overlaps };
-    return null;
-  }
 
   function startVoiceNote() {
     if (typeof window === "undefined") return;
@@ -1008,7 +884,6 @@ export default function DaySlider() {
   }
 
   async function handleSave() {
-    if (saving) return;
     setError("");
 
     const isAbsence = absenceType === "krank" || absenceType === "urlaub";
@@ -1051,7 +926,6 @@ export default function DaySlider() {
       crane_hours: craneUsed ? Number(craneHours || 0) : 0,
       bad_weather: !!badWeather,
       bad_weather_minutes: badWeather ? Math.max(toMin - fromMin - breakMin, 0) : 0,
-      absence_type: absenceType || null,
       voice_note: (note || "").trim() || null,
       note: `${
         absenceType === "krank"
@@ -1074,16 +948,6 @@ export default function DaySlider() {
           return;
         }
         const rows = chosen.map((e) => ({ ...base, employee_id: e.id }));
-        const conflict = await findDuplicateOrOverlap(rows);
-        if (conflict?.type === "exact") {
-          const emp = chosen.find((e) => String(e.id) === String(conflict.row.employee_id));
-          setError(`Doppeleintrag verhindert: Für ${emp?.name || "diesen Mitarbeiter"} gibt es am ${date} bereits exakt diesen Eintrag.`);
-          return;
-        }
-        if (conflict?.type === "overlap") {
-          const ok = window.confirm("Achtung: Für mindestens einen Mitarbeiter gibt es am ausgewählten Tag bereits einen überschneidenden Zeiteintrag. Trotzdem speichern?");
-          if (!ok) return;
-        }
         const { error } = await supabase.from("time_entries").insert(rows);
         if (error) throw error;
         alert(`Gespeichert für ${rows.length} Mitarbeiter.`);
@@ -1100,19 +964,9 @@ export default function DaySlider() {
           alert("Nicht erlaubt: Mitarbeiter dürfen nur für sich buchen.");
           return;
         }
-        const rows = [{ ...base, employee_id: employeeRow.id }];
-        const conflict = await findDuplicateOrOverlap(rows);
-        if (conflict?.type === "exact") {
-          setError(`Doppeleintrag verhindert: Für dich gibt es am ${date} bereits exakt diesen Eintrag.`);
-          return;
-        }
-        if (conflict?.type === "overlap") {
-          const ok = window.confirm("Achtung: Für dich gibt es am ausgewählten Tag bereits einen überschneidenden Zeiteintrag. Trotzdem speichern?");
-          if (!ok) return;
-        }
         const { error } = await supabase
           .from("time_entries")
-          .insert(rows[0]);
+          .insert({ ...base, employee_id: employeeRow.id });
         if (error) throw error;
         alert("Gespeichert.");
       }
@@ -1297,7 +1151,8 @@ export default function DaySlider() {
         </div>
       </div>
 
-      <div className="hbz-card month-main-card daily-check-card">
+      {isManager && (
+        <div className="hbz-card month-main-card daily-check-card">
           <div className="month-main-header">
             <div>
               <div className="month-card-title">📊 Tageskontrolle</div>
@@ -1342,25 +1197,23 @@ export default function DaySlider() {
               )}
             </div>
 
-            {canSeeFullDailyCheck && (
-              <div className="daily-check-employee-filter">
-                <div className="daily-check-filter-label">Mitarbeiter oben anzeigen:</div>
-                <div className="daily-check-filter-row">
-                  <button type="button" className={`daily-check-filter-btn ${dailyCheckEmployeeCodes.length === 0 ? "active" : ""}`} onClick={() => setDailyCheckEmployeeCodes([])}>
-                    Alle MA
-                  </button>
-                  {dailyCheckRows.map((emp) => {
-                    const key = String(emp.code || emp.id || "");
-                    const active = dailyCheckEmployeeCodes.includes(key);
-                    return (
-                      <button key={emp.id || emp.code} type="button" className={`daily-check-filter-btn ${active ? "active" : ""}`} onClick={() => toggleDailyCheckEmployee(key)}>
-                        {emp.name || emp.code}
-                      </button>
-                    );
-                  })}
-                </div>
+            <div className="daily-check-employee-filter">
+              <div className="daily-check-filter-label">Mitarbeiter oben anzeigen:</div>
+              <div className="daily-check-filter-row">
+                <button type="button" className={`daily-check-filter-btn ${dailyCheckEmployeeCodes.length === 0 ? "active" : ""}`} onClick={() => setDailyCheckEmployeeCodes([])}>
+                  Alle MA
+                </button>
+                {dailyCheckRows.map((emp) => {
+                  const key = String(emp.code || emp.id || "");
+                  const active = dailyCheckEmployeeCodes.includes(key);
+                  return (
+                    <button key={emp.id || emp.code} type="button" className={`daily-check-filter-btn ${active ? "active" : ""}`} onClick={() => toggleDailyCheckEmployee(key)}>
+                      {emp.name || emp.code}
+                    </button>
+                  );
+                })}
               </div>
-            )}
+            </div>
           </div>
           {dailyCheckRows.length === 0 ? (
             <div className="month-empty-state">
@@ -1388,11 +1241,11 @@ export default function DaySlider() {
           )}
 
           <div className="help" style={{ marginTop: 10 }}>
-            {canSeeFullDailyCheck
-              ? "Geprüft werden nur aktive Mitarbeiter mit „In Tageskontrolle anzeigen“. Freie BUAK-Tage werden nicht als fehlend gewertet."
-              : "Du siehst hier nur deine eigene Tageskontrolle. Freie BUAK-Tage werden nicht als fehlend gewertet."}
+            Geprüft werden nur aktive Mitarbeiter mit „In Tageskontrolle anzeigen“.
+            Freie BUAK-Tage werden nicht als fehlend gewertet.
           </div>
         </div>
+      )}
 
       <div className="hbz-card month-main-card">
         <div className="month-card-title">Zeiten erfassen</div>
@@ -1880,6 +1733,9 @@ export default function DaySlider() {
             {saving ? "Speichere…" : "Speichern"}
           </button>
         </div>
+
+        <PushSettings currentUser={employeeRow || currentUser || session} />
+
         </>
         )}
       </div>
