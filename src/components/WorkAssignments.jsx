@@ -417,6 +417,30 @@ export default function WorkAssignments() {
     }
   }
 
+
+  async function markAssignmentChanged(employeeId, dateStr) {
+    if (!employeeId || !dateStr) return;
+
+    try {
+      const { error } = await supabase
+        .from("work_assignment_push_pending")
+        .upsert(
+          {
+            employee_id: Number(employeeId),
+            assignment_date: dateStr,
+            changed_at: new Date().toISOString(),
+          },
+          { onConflict: "employee_id,assignment_date" }
+        );
+
+      if (error) {
+        console.warn("[WorkAssignments] push pending not saved:", error);
+      }
+    } catch (e) {
+      console.warn("[WorkAssignments] push pending error:", e);
+    }
+  }
+
   async function addProjectToCell(employeeId, dateStr, projectId) {
     if (!canEditAssignments || !projectId) return;
 
@@ -449,6 +473,7 @@ export default function WorkAssignments() {
         throw error;
       }
 
+      await markAssignmentChanged(employeeId, dateStr);
       await loadAssignments();
     } catch (e) {
       console.error("[WorkAssignments] add project error:", e);
@@ -466,6 +491,7 @@ export default function WorkAssignments() {
 
   async function removeProject(rowId) {
     if (!canEditAssignments) return;
+    const rowToRemove = assignments.find((row) => String(row.id) === String(rowId));
     if (!window.confirm("Projekt aus der Arbeitseinteilung entfernen?")) return;
 
     try {
@@ -478,6 +504,9 @@ export default function WorkAssignments() {
 
       if (error) throw error;
 
+      if (rowToRemove) {
+        await markAssignmentChanged(rowToRemove.employee_id, rowToRemove.assignment_date);
+      }
       await loadAssignments();
     } catch (e) {
       console.error("[WorkAssignments] remove project error:", e);
