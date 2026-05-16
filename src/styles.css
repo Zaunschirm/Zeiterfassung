@@ -2811,444 +2811,97 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   }
 }
 
-/* ===== Arbeitseinteilung: kompakte Mitarbeiter-Ansicht ===== */
-.workassign-list-view {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 12px;
-}
 
-.workassign-day-card {
-  border: 1px solid rgba(203, 182, 156, 0.48);
-  border-radius: 16px;
-  background: linear-gradient(180deg, #fffdfa, #f8f1e7);
-  padding: 10px;
-}
-
-.workassign-day-card-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 10px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid rgba(203, 182, 156, 0.45);
-  margin-bottom: 8px;
-}
-
-.workassign-day-card-title {
-  font-size: 15px;
-  font-weight: 800;
-  color: #3f2c1b;
-  text-transform: capitalize;
-}
-
-.workassign-day-card-date {
-  font-size: 12px;
-  color: #7a614e;
-  margin-top: 1px;
-}
-
-.workassign-day-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.workassign-day-entry {
-  display: grid;
-  grid-template-columns: minmax(130px, 0.75fr) 1fr;
-  gap: 8px;
-  align-items: start;
-  border: 1px solid rgba(203, 182, 156, 0.36);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.72);
-  padding: 8px;
-}
-
-.workassign-day-employee {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  font-weight: 800;
-  color: #2f241b;
-}
-
-.workassign-day-projects {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  justify-content: flex-start;
-}
-
-.workassign-day-empty {
-  border: 1px dashed rgba(171, 141, 109, 0.55);
-  border-radius: 12px;
-  background: #fffaf3;
-  padding: 8px 10px;
-  font-size: 13px;
-  color: #6a5342;
-}
-
-@media (max-width: 700px) {
-  .workassign-list-view {
-    padding: 10px;
-  }
-
-  .workassign-day-entry {
-    grid-template-columns: 1fr;
-  }
-}
-
-/* ===== Arbeitseinteilung kompakt + aktive Projektfarben ===== */
-.workassign-project-palette-card {
-  padding: 10px 12px;
-}
-
-.workassign-project-tools {
-  display: grid;
-  grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr) auto;
-  gap: 8px;
-  align-items: end;
-  margin-bottom: 10px;
-}
-
-.workassign-project-actions {
-  display: flex;
-  gap: 6px;
-  align-items: end;
-  justify-content: flex-end;
-  flex-wrap: wrap;
-}
-
-.workassign-project-palette {
-  display: flex;
-  flex-wrap: nowrap;
-  gap: 7px;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  padding: 2px 0 5px;
-}
-
-.workassign-project-token.color-token,
-.workassign-cell-chip.color-token {
-  background: var(--project-bg, #f7ede1);
-  border-color: var(--project-border, rgba(171, 141, 109, 0.7));
-  color: var(--project-text, #5a3a23);
-}
-
-.workassign-project-token {
-  flex: 0 0 auto;
-  min-height: 34px;
-  max-width: 260px;
-  white-space: nowrap;
+/* ===== Meine Einstellungen / Push ===== */
+.user-options-card {
   overflow: hidden;
-  text-overflow: ellipsis;
-  box-shadow: none;
 }
 
-.workassign-project-token.active {
-  box-shadow: 0 0 0 2px rgba(123, 74, 45, 0.32);
-  transform: translateY(-1px);
-}
-
-.project-color-dot {
-  width: 9px;
-  height: 9px;
-  border-radius: 999px;
-  background: var(--project-border, #7b4a2d);
-  flex: 0 0 auto;
-}
-
-.workassign-project-empty {
+.user-options-toggle {
   width: 100%;
-  border: 1px dashed rgba(171, 141, 109, 0.55);
-  border-radius: 12px;
-  background: #fffaf3;
-  padding: 8px 10px;
-  font-size: 13px;
-  color: #6a5342;
-}
-
-.workassign-list-view {
-  gap: 6px;
-  padding: 8px;
-}
-
-.workassign-compact-row {
-  display: grid;
-  grid-template-columns: 82px 1fr;
-  align-items: center;
-  gap: 8px;
-  border: 1px solid rgba(203, 182, 156, 0.42);
-  border-radius: 12px;
-  background: linear-gradient(180deg, #fffdfa, #f8f1e7);
-  padding: 7px 8px;
-}
-
-.workassign-compact-date {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  line-height: 1.1;
+  border: 0;
+  background: transparent;
   color: #3f2c1b;
-}
-
-.workassign-compact-date strong {
-  font-size: 13px;
-  text-transform: capitalize;
-}
-
-.workassign-compact-date span {
-  font-size: 12px;
-  color: #7a614e;
-}
-
-.workassign-compact-projects {
   display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-  min-width: 0;
-}
-
-.workassign-compact-projects .workassign-cell-chip {
-  padding: 4px 8px;
-  font-size: 11px;
-  max-width: 100%;
-}
-
-.workassign-compact-empty {
-  font-size: 12px;
-  color: #7a614e;
-  background: #fffaf3;
-  border: 1px dashed rgba(171, 141, 109, 0.45);
-  border-radius: 999px;
-  padding: 4px 8px;
-}
-
-@media (max-width: 700px) {
-  .workassign-project-tools {
-    grid-template-columns: 1fr;
-  }
-
-  .workassign-project-actions {
-    justify-content: flex-start;
-  }
-
-  .workassign-project-select-backup {
-    display: none;
-  }
-
-  .workassign-project-token {
-    max-width: 220px;
-  }
-
-  .workassign-compact-row {
-    grid-template-columns: 68px 1fr;
-    padding: 6px 7px;
-  }
-}
-
-
-/* ===== Fix: Arbeitseinteilung ohne Dropdown, Projektleiste sichtbar und farbig ===== */
-.workassign-project-tools.no-dropdown {
-  display: grid;
-  grid-template-columns: minmax(180px, 1fr) auto;
-  gap: 8px;
-  align-items: end;
-  margin-bottom: 10px;
-}
-
-.workassign-project-tools.no-dropdown .workassign-project-actions {
-  justify-content: flex-end;
-}
-
-.workassign-project-select-backup {
-  display: none !important;
-}
-
-.workassign-project-palette.visible-project-list {
-  display: flex !important;
-  flex-wrap: wrap;
-  gap: 8px;
-  overflow-x: visible;
-  padding: 4px 0 2px;
-  min-height: 38px;
-}
-
-.workassign-project-token.color-token,
-.workassign-cell-chip.color-token {
-  background: var(--project-bg, #f7ede1) !important;
-  border-color: var(--project-border, rgba(171, 141, 109, 0.7)) !important;
-  color: var(--project-text, #5a3a23) !important;
-}
-
-.workassign-project-token.color-token {
-  font-weight: 700;
-  border-width: 1px;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.035);
-}
-
-.workassign-cell-chip.color-token {
-  font-weight: 600;
-}
-
-.workassign-project-token.color-token.active {
-  box-shadow: 0 0 0 2px rgba(123, 74, 45, 0.38), 0 8px 16px rgba(0, 0, 0, 0.08);
-}
-
-@media (max-width: 700px) {
-  .workassign-project-tools.no-dropdown {
-    grid-template-columns: 1fr;
-  }
-
-  .workassign-project-tools.no-dropdown .workassign-project-actions {
-    justify-content: flex-start;
-  }
-
-  .workassign-project-palette.visible-project-list {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    padding-bottom: 6px;
-  }
-}
-
-/* ===== Push Einstellungen ===== */
-.push-settings-card {
-  border-color: rgba(123, 74, 45, 0.18);
-}
-
-.push-settings-head {
-  display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
+  gap: 10px;
+  padding: 2px 0;
+  font-weight: 800;
+  cursor: pointer;
+  text-align: left;
+}
+
+.user-options-chevron {
+  color: #7b4a2d;
+  font-size: 12px;
+}
+
+.user-options-panel {
+  margin-top: 10px;
+  border-top: 1px solid rgba(203, 182, 156, 0.55);
+  padding-top: 10px;
 }
 
 .push-settings-options {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin-top: 10px;
+  gap: 12px;
 }
 
-.push-toggle-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 13px;
-  color: #3f2c1b;
-  padding: 8px 10px;
+.push-option-group {
+  border: 1px solid rgba(203, 182, 156, 0.45);
   border-radius: 14px;
   background: #fffaf3;
-  border: 1px solid rgba(203, 182, 156, 0.45);
+  padding: 10px;
 }
 
-.push-toggle-row input[type="checkbox"] {
-  width: 18px;
-  height: 18px;
+.push-toggle-row,
+.push-radio-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #3f2c1b;
+}
+
+.push-toggle-row input,
+.push-radio-row input {
   accent-color: #7b4a2d;
-  flex: 0 0 auto;
+}
+
+.push-inline-setting {
+  margin-top: 8px;
+  max-width: 180px;
+}
+
+.push-radio-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 8px;
 }
 
 .push-settings-message {
-  margin-top: 8px;
-  padding: 8px 10px;
-  border-radius: 12px;
-  background: #f7ede1;
+  margin-top: 10px;
+  color: #6b4a32;
 }
 
 .push-permission-granted {
   background: #edf8ef;
-  color: #225522;
+  border: 1px solid rgba(65, 140, 82, 0.35);
 }
 
 .push-permission-denied {
   background: #fff1ef;
-  color: #7d1c1c;
+  border: 1px solid rgba(197, 87, 68, 0.35);
 }
 
-/* ===== Meine Einstellungen kompakt ===== */
-.user-options-card {
-  padding: 8px 10px;
-}
-
-.user-options-toggle {
-  width: 100%;
-  border: none;
-  background: transparent;
-  color: #3f2c1b;
-  display: grid;
-  grid-template-columns: 1fr auto auto;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 800;
-  text-align: left;
-  padding: 4px 2px;
-}
-
-.user-options-chevron {
-  color: #7b4a2d;
-  font-size: 11px;
-}
-
-.user-options-panel {
-  margin-top: 8px;
-  border-top: 1px solid rgba(203, 182, 156, 0.55);
-  padding-top: 8px;
-}
-
-.push-option-group {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 8px;
-  border-radius: 14px;
-  background: linear-gradient(180deg, #fffdfa, #f8f1e7);
-  border: 1px solid rgba(203, 182, 156, 0.45);
-}
-
-.push-inline-setting {
-  display: grid;
-  grid-template-columns: 90px 140px;
-  align-items: center;
-  gap: 8px;
-  padding-left: 28px;
-}
-
-.push-radio-list {
-  display: grid;
-  gap: 6px;
-  padding-left: 28px;
-}
-
-.push-radio-row {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  font-size: 13px;
-  color: #3f2c1b;
-}
-
-.push-radio-row input[type="radio"] {
-  width: 16px;
-  height: 16px;
-  accent-color: #7b4a2d;
-}
-
-@media (max-width: 520px) {
-  .push-inline-setting {
-    grid-template-columns: 1fr;
-    padding-left: 0;
+@media (max-width: 600px) {
+  .user-options-toggle {
+    font-size: 13px;
   }
-
   .push-radio-list {
-    padding-left: 0;
+    flex-direction: column;
   }
 }

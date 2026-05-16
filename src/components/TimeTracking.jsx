@@ -3,6 +3,7 @@ import { supabase } from "../lib/supabase";
 import { getSession } from "../lib/session";
 import DaySlider from "./DaySlider";
 import EntryTable from "./EntryTable";
+import PushSettings from "./PushSettings";
 import {
   WEATHER_MANUAL_OPTIONS,
   fetchWeatherForBooking,
@@ -945,6 +946,8 @@ export default function TimeTracking() {
           </button>
         </div>
       </div>
+
+      <PushSettings currentUser={currentUser} />
 
       {/* Tagesliste */}
       <div className="hbz-card tight" style={{ marginTop: 12 }}>

@@ -2,11 +2,7 @@ import { supabase } from "../lib/supabase";
 
 export function arePushNotificationsSupported() {
   if (typeof window === "undefined") return false;
-  return (
-    "serviceWorker" in navigator &&
-    "PushManager" in window &&
-    "Notification" in window
-  );
+  return "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
 }
 
 export function getNotificationPermission() {
@@ -19,11 +15,7 @@ function urlBase64ToUint8Array(base64String) {
   const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
   const rawData = window.atob(base64);
   const outputArray = new Uint8Array(rawData.length);
-
-  for (let i = 0; i < rawData.length; ++i) {
-    outputArray[i] = rawData.charCodeAt(i);
-  }
-
+  for (let i = 0; i < rawData.length; ++i) outputArray[i] = rawData.charCodeAt(i);
   return outputArray;
 }
 
@@ -33,47 +25,48 @@ async function getServiceWorkerRegistration() {
   return navigator.serviceWorker.register("/sw.js");
 }
 
-export async function savePushSubscription({ employeeId }) {
+function detectPlatform() {
+  const ua = navigator.userAgent || "";
+  if (/iPhone|iPad|iPod/i.test(ua)) return "iOS";
+  if (/Android/i.test(ua)) return "Android";
+  if (/Windows/i.test(ua)) return "Windows";
+  return "Browser";
+}
+
+export async function savePushSubscription({ employeeId, employeeName }) {
   if (!employeeId) throw new Error("Mitarbeiter-ID fehlt.");
-  if (!arePushNotificationsSupported()) {
-    throw new Error("Push wird auf diesem Gerät/Browser nicht unterstützt.");
-  }
+  if (!arePushNotificationsSupported()) throw new Error("Push wird auf diesem Gerät/Browser nicht unterstützt.");
 
   const vapidPublicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY;
-  if (!vapidPublicKey) {
-    throw new Error("VITE_VAPID_PUBLIC_KEY fehlt in der Umgebung.");
-  }
+  if (!vapidPublicKey) throw new Error("VITE_VAPID_PUBLIC_KEY fehlt in der Umgebung.");
 
   let permission = Notification.permission;
-  if (permission === "default") {
-    permission = await Notification.requestPermission();
-  }
-
-  if (permission !== "granted") {
-    throw new Error("Push-Benachrichtigungen wurden nicht erlaubt.");
-  }
+  if (permission === "default") permission = await Notification.requestPermission();
+  if (permission !== "granted") throw new Error("Push-Benachrichtigungen wurden nicht erlaubt.");
 
   const registration = await getServiceWorkerRegistration();
-  const subscription = await registration.pushManager.subscribe({
-    userVisibleOnly: true,
-    applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
-  });
+  let subscription = await registration.pushManager.getSubscription();
+  if (!subscription) {
+    subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
+    });
+  }
 
   const json = subscription.toJSON();
   const payload = {
     employee_id: employeeId,
+    employee_name: employeeName || null,
     endpoint: subscription.endpoint,
-    p256dh: json?.keys?.p256dh || null,
-    auth: json?.keys?.auth || null,
-    user_agent: navigator.userAgent || null,
-    enabled: true,
+    p256dh: json?.keys?.p256dh || "",
+    auth: json?.keys?.auth || "",
+    push_enabled: true,
+    device_name: detectPlatform(),
+    platform: detectPlatform(),
     updated_at: new Date().toISOString(),
   };
 
-  const { error } = await supabase
-    .from("push_subscriptions")
-    .upsert(payload, { onConflict: "endpoint" });
-
+  const { error } = await supabase.from("push_subscriptions").upsert(payload, { onConflict: "endpoint" });
   if (error) throw error;
   return subscription;
 }

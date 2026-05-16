@@ -11,12 +11,12 @@ function normalizeRole(role) {
 }
 
 const DEFAULT_PREFS = {
-  daily_missing_reminder: false,
-  daily_reminder_time: "18:00",
-  work_assignment_push: false,
-  work_assignment_push_timing: "workday_morning",
-  admin_weekly_summary: true,
-  admin_monthly_summary: true,
+  time_tracking_push_enabled: false,
+  time_tracking_push_time: "18:00",
+  work_assignment_push_enabled: false,
+  work_assignment_push_mode: "06:00_workday",
+  weekly_admin_push: true,
+  monthly_admin_push: true,
 };
 
 export default function PushSettings({ currentUser }) {
@@ -49,27 +49,25 @@ export default function PushSettings({ currentUser }) {
 
       try {
         const { data, error } = await supabase
-          .from("push_preferences")
-          .select("daily_missing_reminder, daily_reminder_time, work_assignment_push, work_assignment_push_timing, admin_weekly_summary, admin_monthly_summary")
+          .from("employee_push_settings")
+          .select("time_tracking_push_enabled, time_tracking_push_time, work_assignment_push_enabled, work_assignment_push_mode, weekly_admin_push, monthly_admin_push")
           .eq("employee_id", userId)
           .maybeSingle();
 
         if (error && error.code !== "PGRST116") throw error;
         if (!cancelled && data) {
           setPrefs({
-            daily_missing_reminder: !!data.daily_missing_reminder,
-            daily_reminder_time: String(data.daily_reminder_time || "18:00").slice(0, 5),
-            work_assignment_push: !!data.work_assignment_push,
-            work_assignment_push_timing: data.work_assignment_push_timing || "workday_morning",
-            admin_weekly_summary: data.admin_weekly_summary !== false,
-            admin_monthly_summary: data.admin_monthly_summary !== false,
+            time_tracking_push_enabled: !!data.time_tracking_push_enabled,
+            time_tracking_push_time: String(data.time_tracking_push_time || "18:00").slice(0, 5),
+            work_assignment_push_enabled: !!data.work_assignment_push_enabled,
+            work_assignment_push_mode: data.work_assignment_push_mode || "06:00_workday",
+            weekly_admin_push: data.weekly_admin_push !== false,
+            monthly_admin_push: data.monthly_admin_push !== false,
           });
         }
       } catch (e) {
-        console.warn("[PushSettings] preferences load error:", e);
-        if (!cancelled) {
-          setMessage("Push-Einstellungen konnten noch nicht geladen werden. SQL-Migration prüfen.");
-        }
+        console.warn("[PushSettings] settings load error:", e);
+        if (!cancelled) setMessage("Push-Einstellungen konnten noch nicht geladen werden. SQL prüfen.");
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -86,17 +84,17 @@ export default function PushSettings({ currentUser }) {
 
     const payload = {
       employee_id: userId,
-      daily_missing_reminder: !!nextPrefs.daily_missing_reminder,
-      daily_reminder_time: nextPrefs.daily_reminder_time || "18:00",
-      work_assignment_push: !!nextPrefs.work_assignment_push,
-      work_assignment_push_timing: nextPrefs.work_assignment_push_timing || "workday_morning",
-      admin_weekly_summary: isAdmin ? !!nextPrefs.admin_weekly_summary : false,
-      admin_monthly_summary: isAdmin ? !!nextPrefs.admin_monthly_summary : false,
+      time_tracking_push_enabled: !!nextPrefs.time_tracking_push_enabled,
+      time_tracking_push_time: nextPrefs.time_tracking_push_time || "18:00",
+      work_assignment_push_enabled: !!nextPrefs.work_assignment_push_enabled,
+      work_assignment_push_mode: nextPrefs.work_assignment_push_mode || "06:00_workday",
+      weekly_admin_push: isAdmin ? !!nextPrefs.weekly_admin_push : false,
+      monthly_admin_push: isAdmin ? !!nextPrefs.monthly_admin_push : false,
       updated_at: new Date().toISOString(),
     };
 
     const { error } = await supabase
-      .from("push_preferences")
+      .from("employee_push_settings")
       .upsert(payload, { onConflict: "employee_id" });
 
     if (error) throw error;
@@ -104,7 +102,7 @@ export default function PushSettings({ currentUser }) {
 
   async function ensurePushAllowed() {
     if (!userId) return null;
-    const subscription = await savePushSubscription({ employeeId: userId });
+    const subscription = await savePushSubscription({ employeeId: userId, employeeName: currentUser?.name });
     setPermission(getNotificationPermission());
     return subscription;
   }
@@ -115,19 +113,14 @@ export default function PushSettings({ currentUser }) {
     setMessage("");
 
     try {
-      if (needsPushPermission) {
-        await ensurePushAllowed();
-      }
+      if (needsPushPermission) await ensurePushAllowed();
       await upsertPrefs(nextPrefs);
       setPrefs(nextPrefs);
       setMessage("Einstellung gespeichert.");
     } catch (e) {
       console.error("[PushSettings] save error:", e);
       setPermission(getNotificationPermission());
-      setMessage(
-        e?.message ||
-          "Push konnte nicht aktiviert werden. Am iPhone muss die App meist am Home-Bildschirm installiert sein."
-      );
+      setMessage(e?.message || "Push konnte nicht aktiviert werden.");
     } finally {
       setSaving(false);
     }
@@ -136,23 +129,17 @@ export default function PushSettings({ currentUser }) {
   function updatePreference(key, value) {
     const nextPrefs = { ...prefs, [key]: value };
     const needsPushPermission =
-      (key === "daily_missing_reminder" || key === "work_assignment_push" || key === "admin_weekly_summary" || key === "admin_monthly_summary") &&
-      !!value;
+      ["time_tracking_push_enabled", "work_assignment_push_enabled", "weekly_admin_push", "monthly_admin_push"].includes(key) && !!value;
     savePrefs(nextPrefs, needsPushPermission);
   }
 
   if (!userId) return null;
 
-  const permissionLabel =
-    permission === "granted" ? "Erlaubt" : permission === "denied" ? "Blockiert" : "Nicht aktiviert";
+  const permissionLabel = permission === "granted" ? "Erlaubt" : permission === "denied" ? "Blockiert" : "Nicht aktiviert";
 
   return (
-    <div className="hbz-card tight push-settings-card user-options-card">
-      <button
-        type="button"
-        className="user-options-toggle"
-        onClick={() => setOpen((value) => !value)}
-      >
+    <div className="hbz-card tight push-settings-card user-options-card" style={{ marginTop: 12 }}>
+      <button type="button" className="user-options-toggle" onClick={() => setOpen((value) => !value)}>
         <span>{title}</span>
         <span className={`badge-soft push-permission-${permission}`}>{permissionLabel}</span>
         <span className="user-options-chevron">{open ? "▲" : "▼"}</span>
@@ -173,9 +160,9 @@ export default function PushSettings({ currentUser }) {
                   <label className="push-toggle-row">
                     <input
                       type="checkbox"
-                      checked={!!prefs.daily_missing_reminder}
+                      checked={!!prefs.time_tracking_push_enabled}
                       disabled={loading || saving || !supported}
-                      onChange={(e) => updatePreference("daily_missing_reminder", e.target.checked)}
+                      onChange={(e) => updatePreference("time_tracking_push_enabled", e.target.checked)}
                     />
                     <span>Erinnerung, wenn meine Tageserfassung fehlt</span>
                   </label>
@@ -185,9 +172,9 @@ export default function PushSettings({ currentUser }) {
                     <input
                       type="time"
                       className="hbz-input"
-                      value={prefs.daily_reminder_time || "18:00"}
-                      disabled={loading || saving || !prefs.daily_missing_reminder}
-                      onChange={(e) => updatePreference("daily_reminder_time", e.target.value || "18:00")}
+                      value={prefs.time_tracking_push_time || "18:00"}
+                      disabled={loading || saving || !prefs.time_tracking_push_enabled}
+                      onChange={(e) => updatePreference("time_tracking_push_time", e.target.value || "18:00")}
                     />
                   </div>
                 </div>
@@ -196,9 +183,9 @@ export default function PushSettings({ currentUser }) {
                   <label className="push-toggle-row">
                     <input
                       type="checkbox"
-                      checked={!!prefs.work_assignment_push}
+                      checked={!!prefs.work_assignment_push_enabled}
                       disabled={loading || saving || !supported}
-                      onChange={(e) => updatePreference("work_assignment_push", e.target.checked)}
+                      onChange={(e) => updatePreference("work_assignment_push_enabled", e.target.checked)}
                     />
                     <span>Arbeitseinteilung erhalten, wenn sich meine Einteilung geändert hat</span>
                   </label>
@@ -207,22 +194,22 @@ export default function PushSettings({ currentUser }) {
                     <label className="push-radio-row">
                       <input
                         type="radio"
-                        name="work_assignment_push_timing"
-                        value="previous_evening"
-                        checked={prefs.work_assignment_push_timing === "previous_evening"}
-                        disabled={loading || saving || !prefs.work_assignment_push}
-                        onChange={(e) => updatePreference("work_assignment_push_timing", e.target.value)}
+                        name="work_assignment_push_mode"
+                        value="20:00_previous_day"
+                        checked={prefs.work_assignment_push_mode === "20:00_previous_day"}
+                        disabled={loading || saving || !prefs.work_assignment_push_enabled}
+                        onChange={(e) => updatePreference("work_assignment_push_mode", e.target.value)}
                       />
                       <span>Am Vortag um 20:00</span>
                     </label>
                     <label className="push-radio-row">
                       <input
                         type="radio"
-                        name="work_assignment_push_timing"
-                        value="workday_morning"
-                        checked={prefs.work_assignment_push_timing === "workday_morning"}
-                        disabled={loading || saving || !prefs.work_assignment_push}
-                        onChange={(e) => updatePreference("work_assignment_push_timing", e.target.value)}
+                        name="work_assignment_push_mode"
+                        value="06:00_workday"
+                        checked={prefs.work_assignment_push_mode === "06:00_workday"}
+                        disabled={loading || saving || !prefs.work_assignment_push_enabled}
+                        onChange={(e) => updatePreference("work_assignment_push_mode", e.target.value)}
                       />
                       <span>Am Arbeitstag um 06:00</span>
                     </label>
@@ -234,24 +221,22 @@ export default function PushSettings({ currentUser }) {
 
             {isAdmin && (
               <>
-                <div className="help">
-                  Admin bekommt Sammelinfos. Mitarbeiter stellen ihre eigenen Erinnerungen selbst ein.
-                </div>
+                <div className="help">Admin bekommt Sammelinfos. Mitarbeiter stellen ihre eigenen Erinnerungen selbst ein.</div>
                 <label className="push-toggle-row">
                   <input
                     type="checkbox"
-                    checked={!!prefs.admin_weekly_summary}
+                    checked={!!prefs.weekly_admin_push}
                     disabled={loading || saving || !supported}
-                    onChange={(e) => updatePreference("admin_weekly_summary", e.target.checked)}
+                    onChange={(e) => updatePreference("weekly_admin_push", e.target.checked)}
                   />
                   <span>Wöchentliche Übersicht fehlender Einträge erhalten</span>
                 </label>
                 <label className="push-toggle-row">
                   <input
                     type="checkbox"
-                    checked={!!prefs.admin_monthly_summary}
+                    checked={!!prefs.monthly_admin_push}
                     disabled={loading || saving || !supported}
-                    onChange={(e) => updatePreference("admin_monthly_summary", e.target.checked)}
+                    onChange={(e) => updatePreference("monthly_admin_push", e.target.checked)}
                   />
                   <span>Am 03. Übersicht fürs Vormonat erhalten</span>
                 </label>
