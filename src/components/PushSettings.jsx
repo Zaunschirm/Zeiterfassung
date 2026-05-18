@@ -249,14 +249,34 @@ export default function PushSettings({ currentUser }) {
                   </div>
 
                   <div className="push-inline-setting">
-                    <label className="hbz-label">Uhrzeit Arbeitseinteilung</label>
-                    <input
-                      type="time"
-                      className="hbz-input"
-                      value={prefs.work_assignment_push_time || "06:00"}
-                      disabled={loading || saving || !prefs.work_assignment_push_enabled}
-                      onChange={(e) => updatePreference("work_assignment_push_time", e.target.value || "06:00")}
-                    />
+                    <label className="hbz-label">
+  Uhrzeit {prefs.work_assignment_push_day === "previous_day"
+    ? "am Vortag"
+    : "am Arbeitstag"}
+</label>
+
+<input
+  type="time"
+  className="hbz-input"
+  value={
+    prefs.work_assignment_push_time ||
+    (prefs.work_assignment_push_day === "previous_day"
+      ? "20:00"
+      : "06:00")
+  }
+  disabled={loading || saving || !prefs.work_assignment_push_enabled}
+  onChange={(e) => {
+    const nextPrefs = {
+      ...prefs,
+      work_assignment_push_time:
+        e.target.value ||
+        (prefs.work_assignment_push_day === "previous_day"
+          ? "20:00"
+          : "06:00"),
+    };
+    savePrefs(nextPrefs);
+  }}
+/>
                   </div>
 
                   <div className="help">Jeder MA stellt selbst ein, ob die geänderte Einteilung am Vortag oder am Arbeitstag kommt. Es wird nur der letzte aktuelle Stand geschickt, nicht jede einzelne Änderung.</div>
