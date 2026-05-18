@@ -13,10 +13,10 @@ function normalizeRole(role) {
 const DEFAULT_PREFS = {
   time_tracking_push_enabled: false,
   time_tracking_push_time: "18:00",
-  work_assignment_push_enabled: false,
+  work_assignment_enabled: false,
   work_assignment_push_mode: "06:00_workday",
-  work_assignment_push_day: "workday",
-  work_assignment_push_time: "06:00",
+  work_assignment_day: "workday",
+  work_assignment_time: "06:00",
   weekly_admin_push: true,
   monthly_admin_push: true,
 };
@@ -52,7 +52,7 @@ export default function PushSettings({ currentUser }) {
       try {
         const { data, error } = await supabase
           .from("employee_push_settings")
-          .select("time_tracking_push_enabled, time_tracking_push_time, work_assignment_push_enabled, work_assignment_push_mode, work_assignment_push_day, work_assignment_push_time, weekly_admin_push, monthly_admin_push")
+          .select("time_tracking_push_enabled, time_tracking_push_time, work_assignment_enabled, work_assignment_push_mode, work_assignment_day, work_assignment_time, weekly_admin_push, monthly_admin_push")
           .eq("employee_id", userId)
           .maybeSingle();
 
@@ -61,13 +61,13 @@ export default function PushSettings({ currentUser }) {
           setPrefs({
             time_tracking_push_enabled: !!data.time_tracking_push_enabled,
             time_tracking_push_time: String(data.time_tracking_push_time || "18:00").slice(0, 5),
-            work_assignment_push_enabled: !!data.work_assignment_push_enabled,
+            work_assignment_enabled: !!data.work_assignment_enabled,
             work_assignment_push_mode: data.work_assignment_push_mode || "06:00_workday",
-            work_assignment_push_day:
-              data.work_assignment_push_day ||
+            work_assignment_day:
+              data.work_assignment_day ||
               (String(data.work_assignment_push_mode || "").includes("previous_day") ? "previous_day" : "workday"),
-            work_assignment_push_time:
-              String(data.work_assignment_push_time || "").slice(0, 5) ||
+            work_assignment_time:
+              String(data.work_assignment_time || "").slice(0, 5) ||
               (String(data.work_assignment_push_mode || "").includes("20:00") ? "20:00" : "06:00"),
             weekly_admin_push: data.weekly_admin_push !== false,
             monthly_admin_push: data.monthly_admin_push !== false,
@@ -90,8 +90,8 @@ export default function PushSettings({ currentUser }) {
   async function upsertPrefs(nextPrefs) {
     if (!userId) return;
 
-    const workAssignmentDay = nextPrefs.work_assignment_push_day || "workday";
-    const workAssignmentTime = nextPrefs.work_assignment_push_time || (workAssignmentDay === "previous_day" ? "20:00" : "06:00");
+    const workAssignmentDay = nextPrefs.work_assignment_day || "workday";
+    const workAssignmentTime = nextPrefs.work_assignment_time || (workAssignmentDay === "previous_day" ? "20:00" : "06:00");
     const workAssignmentMode =
       workAssignmentDay === "previous_day" && workAssignmentTime === "20:00"
         ? "20:00_previous_day"
@@ -103,10 +103,10 @@ export default function PushSettings({ currentUser }) {
       employee_id: userId,
       time_tracking_push_enabled: !!nextPrefs.time_tracking_push_enabled,
       time_tracking_push_time: nextPrefs.time_tracking_push_time || "18:00",
-      work_assignment_push_enabled: !!nextPrefs.work_assignment_push_enabled,
+      work_assignment_enabled: !!nextPrefs.work_assignment_enabled,
       work_assignment_push_mode: workAssignmentMode,
-      work_assignment_push_day: workAssignmentDay,
-      work_assignment_push_time: workAssignmentTime,
+      work_assignment_day: workAssignmentDay,
+      work_assignment_time: workAssignmentTime,
       weekly_admin_push: isAdmin ? !!nextPrefs.weekly_admin_push : false,
       monthly_admin_push: isAdmin ? !!nextPrefs.monthly_admin_push : false,
       updated_at: new Date().toISOString(),
@@ -148,7 +148,7 @@ export default function PushSettings({ currentUser }) {
   function updatePreference(key, value) {
     const nextPrefs = { ...prefs, [key]: value };
     const needsPushPermission =
-      ["time_tracking_push_enabled", "work_assignment_push_enabled", "weekly_admin_push", "monthly_admin_push"].includes(key) && !!value;
+      ["time_tracking_push_enabled", "work_assignment_enabled", "weekly_admin_push", "monthly_admin_push"].includes(key) && !!value;
     savePrefs(nextPrefs, needsPushPermission);
   }
 
@@ -202,9 +202,9 @@ export default function PushSettings({ currentUser }) {
                   <label className="push-toggle-row">
                     <input
                       type="checkbox"
-                      checked={!!prefs.work_assignment_push_enabled}
+                      checked={!!prefs.work_assignment_enabled}
                       disabled={loading || saving || !supported}
-                      onChange={(e) => updatePreference("work_assignment_push_enabled", e.target.checked)}
+                      onChange={(e) => updatePreference("work_assignment_enabled", e.target.checked)}
                     />
                     <span>Arbeitseinteilung erhalten, wenn sich meine Einteilung geändert hat</span>
                   </label>
@@ -213,15 +213,15 @@ export default function PushSettings({ currentUser }) {
                     <label className="push-radio-row">
                       <input
                         type="radio"
-                        name="work_assignment_push_day"
+                        name="work_assignment_day"
                         value="previous_day"
-                        checked={(prefs.work_assignment_push_day || "workday") === "previous_day"}
-                        disabled={loading || saving || !prefs.work_assignment_push_enabled}
+                        checked={(prefs.work_assignment_day || "workday") === "previous_day"}
+                        disabled={loading || saving || !prefs.work_assignment_enabled}
                         onChange={(e) => {
                           const nextPrefs = {
                             ...prefs,
-                            work_assignment_push_day: e.target.value,
-                            work_assignment_push_time: prefs.work_assignment_push_time || "20:00",
+                            work_assignment_day: e.target.value,
+                            work_assignment_time: prefs.work_assignment_time || "20:00",
                           };
                           savePrefs(nextPrefs);
                         }}
@@ -231,15 +231,15 @@ export default function PushSettings({ currentUser }) {
                     <label className="push-radio-row">
                       <input
                         type="radio"
-                        name="work_assignment_push_day"
+                        name="work_assignment_day"
                         value="workday"
-                        checked={(prefs.work_assignment_push_day || "workday") === "workday"}
-                        disabled={loading || saving || !prefs.work_assignment_push_enabled}
+                        checked={(prefs.work_assignment_day || "workday") === "workday"}
+                        disabled={loading || saving || !prefs.work_assignment_enabled}
                         onChange={(e) => {
                           const nextPrefs = {
                             ...prefs,
-                            work_assignment_push_day: e.target.value,
-                            work_assignment_push_time: prefs.work_assignment_push_time || "06:00",
+                            work_assignment_day: e.target.value,
+                            work_assignment_time: prefs.work_assignment_time || "06:00",
                           };
                           savePrefs(nextPrefs);
                         }}
@@ -249,34 +249,14 @@ export default function PushSettings({ currentUser }) {
                   </div>
 
                   <div className="push-inline-setting">
-                    <label className="hbz-label">
-  Uhrzeit {prefs.work_assignment_push_day === "previous_day"
-    ? "am Vortag"
-    : "am Arbeitstag"}
-</label>
-
-<input
-  type="time"
-  className="hbz-input"
-  value={
-    prefs.work_assignment_push_time ||
-    (prefs.work_assignment_push_day === "previous_day"
-      ? "20:00"
-      : "06:00")
-  }
-  disabled={loading || saving || !prefs.work_assignment_push_enabled}
-  onChange={(e) => {
-    const nextPrefs = {
-      ...prefs,
-      work_assignment_push_time:
-        e.target.value ||
-        (prefs.work_assignment_push_day === "previous_day"
-          ? "20:00"
-          : "06:00"),
-    };
-    savePrefs(nextPrefs);
-  }}
-/>
+                    <label className="hbz-label">Uhrzeit Arbeitseinteilung</label>
+                    <input
+                      type="time"
+                      className="hbz-input"
+                      value={prefs.work_assignment_time || "06:00"}
+                      disabled={loading || saving || !prefs.work_assignment_enabled}
+                      onChange={(e) => updatePreference("work_assignment_time", e.target.value || "06:00")}
+                    />
                   </div>
 
                   <div className="help">Jeder MA stellt selbst ein, ob die geänderte Einteilung am Vortag oder am Arbeitstag kommt. Es wird nur der letzte aktuelle Stand geschickt, nicht jede einzelne Änderung.</div>
