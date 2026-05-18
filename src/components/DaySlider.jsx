@@ -1733,12 +1733,11 @@ export default function DaySlider() {
             {saving ? "Speichere…" : "Speichern"}
           </button>
         </div>
-
-        <PushSettings currentUser={employeeRow || currentUser || session} />
-
         </>
         )}
       </div>
+
+      <PushSettings currentUser={currentUser || employeeRow || session} />
 
       <div className="hbz-card month-main-card">
         <div className="month-main-header">
