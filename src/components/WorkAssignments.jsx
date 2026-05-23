@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { getSession } from "../lib/session";
 import { hasPermission } from "../lib/permissions";
+import { getBuakSollHoursForDay, getBuakWeekType, getHolidayName } from "../utils/time";
 
 function formatLocalDate(date) {
   const y = date.getFullYear();
@@ -51,6 +52,48 @@ function dayLabel(dateStr) {
     day: "2-digit",
     month: "2-digit",
   });
+}
+
+
+function getDayMeta(dateStr) {
+  const holidayName = getHolidayName(dateStr);
+  const weekType = getBuakWeekType(dateStr);
+  const sollHours = Number(getBuakSollHoursForDay(dateStr)) || 0;
+  const d = new Date(`${dateStr}T12:00:00`);
+  const dow = d.getDay();
+  const isFriday = dow === 5;
+
+  return {
+    holidayName,
+    isHoliday: !!holidayName,
+    weekType,
+    isShortWeek: weekType === "kurz",
+    isLongWeek: weekType === "lang",
+    isShortWeekFriday: weekType === "kurz" && isFriday,
+    sollHours,
+  };
+}
+
+function isHolidayDate(dateStr) {
+  return getDayMeta(dateStr).isHoliday;
+}
+
+function isPlanningRequiredDate(dateStr) {
+  const meta = getDayMeta(dateStr);
+  if (meta.isHoliday) return false;
+  if (meta.weekType) return meta.sollHours > 0;
+
+  // Fallback für Jahre ohne BUAK-Kalender: Mo–Fr gelten als Planungstage.
+  const d = new Date(`${dateStr}T12:00:00`);
+  const dow = d.getDay();
+  return dow >= 1 && dow <= 5;
+}
+
+function weekTypeBadge(dateStr) {
+  const t = getBuakWeekType(dateStr);
+  if (t === "kurz") return { className: "short", label: "Kurzwoche" };
+  if (t === "lang") return { className: "long", label: "Langwoche" };
+  return { className: "neutral", label: "BUAK-Woche offen" };
 }
 
 function projectLabel(project) {
@@ -373,25 +416,43 @@ export default function WorkAssignments() {
   }
 
   function getEmployeeWeekStatus(employeeId) {
-    const plannedDays = weekDateStrings.filter((dateStr) => getCellRows(employeeId, dateStr).length > 0).length;
+    const requiredDates = weekDateStrings.filter(isPlanningRequiredDate);
+    const plannedRequiredDays = requiredDates.filter((dateStr) => getCellRows(employeeId, dateStr).length > 0).length;
+    const anyPlannedDays = weekDateStrings.filter((dateStr) => getCellRows(employeeId, dateStr).length > 0).length;
 
-    if (plannedDays === 0) {
-      return { className: "missing", label: "Keine Einteilung in dieser Woche" };
+    if (requiredDates.length === 0) {
+      return anyPlannedDays > 0
+        ? { className: "planned", label: "Einteilung vorhanden" }
+        : { className: "free", label: "Keine Solltage in dieser Woche" };
     }
 
-    if (plannedDays >= weekDateStrings.length) {
-      return { className: "planned", label: "Vollständig eingeteilt" };
+    if (plannedRequiredDays === 0) {
+      return { className: "missing", label: "Keine Einteilung an Solltagen" };
     }
 
-    return { className: "partial", label: `${plannedDays} von ${weekDateStrings.length} Tagen eingeteilt` };
+    if (plannedRequiredDays >= requiredDates.length) {
+      return { className: "planned", label: "Solltage vollständig eingeteilt" };
+    }
+
+    return { className: "partial", label: `${plannedRequiredDays} von ${requiredDates.length} Solltagen eingeteilt` };
   }
 
-  function getCellStatus(cellRows) {
-    if ((cellRows || []).length > 0) {
-      return { className: "planned", label: "eingeteilt" };
+  function getCellStatus(dateStr, cellRows) {
+    const meta = getDayMeta(dateStr);
+
+    if (meta.isHoliday) {
+      return { className: "holiday", label: meta.holidayName || "Feiertag", locked: true };
     }
 
-    return { className: "open", label: "offen" };
+    if ((cellRows || []).length > 0) {
+      return { className: "planned", label: "eingeteilt", locked: false };
+    }
+
+    if (meta.isShortWeekFriday) {
+      return { className: "shortweek", label: "kurze Woche / frei", locked: false };
+    }
+
+    return { className: "open", label: "offen", locked: false };
   }
 
   function getNextSortOrderForEmployee(employeeId) {
@@ -465,6 +526,12 @@ export default function WorkAssignments() {
 
   async function addProjectToCell(employeeId, dateStr, projectId) {
     if (!canEditAssignments || !projectId) return;
+
+    const meta = getDayMeta(dateStr);
+    if (meta.isHoliday) {
+      alert(`${dayLabel(dateStr)} ist ein Feiertag (${meta.holidayName}). Feiertage sind in der Arbeitseinteilung gesperrt.`);
+      return;
+    }
 
     const projectIdValue = String(projectId).trim();
     if (!projectIdValue) {
@@ -547,6 +614,12 @@ export default function WorkAssignments() {
   async function onCellClick(employeeId, dateStr) {
     if (!canEditAssignments) return;
 
+    const meta = getDayMeta(dateStr);
+    if (meta.isHoliday) {
+      alert(`${dayLabel(dateStr)} ist ein Feiertag (${meta.holidayName}). Feiertage dürfen nicht überschrieben werden.`);
+      return;
+    }
+
     const projectIdValue = selectedProjectId || projectRef.current?.value?.trim();
 
     if (!projectIdValue) {
@@ -605,6 +678,14 @@ export default function WorkAssignments() {
   async function onCellDrop(e, employeeId, dateStr) {
     e.preventDefault();
     if (!canEditAssignments) return;
+
+    const meta = getDayMeta(dateStr);
+    if (meta.isHoliday) {
+      alert(`${dayLabel(dateStr)} ist ein Feiertag (${meta.holidayName}). Feiertage dürfen nicht überschrieben werden.`);
+      setHoverCell("");
+      setDragProjectId("");
+      return;
+    }
 
     const droppedProjectId =
       e.dataTransfer.getData("projectId") ||
@@ -687,7 +768,12 @@ export default function WorkAssignments() {
           <div>
             <div className="workassign-dispo-kicker">Planung</div>
             <h2 className="workassign-dispo-title">Arbeitseinteilung</h2>
-            <div className="workassign-dispo-subtitle">{weekLabel}</div>
+            <div className="workassign-dispo-subtitle workassign-week-titleline">
+              <span>{weekLabel}</span>
+              <span className={`workassign-week-badge ${weekTypeBadge(weekAnchor).className}`}>
+                {weekTypeBadge(weekAnchor).label}
+              </span>
+            </div>
           </div>
 
           <div className="workassign-dispo-actions">
@@ -710,7 +796,7 @@ export default function WorkAssignments() {
         <div className="workassign-dispo-toolbar">
           <div className="help">
             {canEditAssignments
-              ? "Aktive Projekte oben als farbige Chips in die Zelle ziehen oder antippen und danach unten in die gewünschte Zelle klicken. Mitarbeiter können weiter per Ziehen sortiert werden."
+              ? "Aktive Projekte oben als farbige Chips in die Zelle ziehen oder antippen und danach unten in die gewünschte Zelle klicken. Feiertage sind gesperrt, kurze Wochen bleiben bei Bedarf überschreibbar."
               : "Hier siehst du die Arbeitseinteilung der Woche. Änderungen sind mit deinem Benutzer nicht erlaubt."}
           </div>
 
@@ -732,6 +818,8 @@ export default function WorkAssignments() {
           <span><i className="workassign-status-dot partial" /> teilweise</span>
           <span><i className="workassign-status-dot open" /> offen</span>
           <span><i className="workassign-status-dot missing" /> keine Einteilung</span>
+          <span><i className="workassign-status-dot holiday" /> Feiertag gesperrt</span>
+          <span><i className="workassign-status-dot shortweek" /> Kurzwoche frei/überschreibbar</span>
         </div>
       </div>
 
@@ -798,11 +886,12 @@ export default function WorkAssignments() {
           <div className="month-empty-state">Lade Arbeitseinteilung…</div>
         ) : !canEditAssignments ? (
           <div className="workassign-list-view">
-            {compactRowsByDate.every((day) => day.rows.length === 0) ? (
+            {compactRowsByDate.every((day) => day.rows.length === 0 && !getDayMeta(day.dateStr).isHoliday) ? (
               <div className="month-empty-state">Für diese Woche ist noch keine Arbeitseinteilung eingetragen.</div>
             ) : (
               compactRowsByDate.map((day) => {
                 const projectsForDay = day.rows.flatMap((entry) => entry.rows);
+                const dayMeta = getDayMeta(day.dateStr);
                 return (
                   <div className="workassign-compact-row" key={day.dateStr}>
                     <div className="workassign-compact-date">
@@ -812,7 +901,9 @@ export default function WorkAssignments() {
 
                     <div className="workassign-compact-projects">
                       {projectsForDay.length === 0 ? (
-                        <span className="workassign-compact-empty">frei / keine Einteilung</span>
+                        <span className={`workassign-compact-empty ${dayMeta.isHoliday ? "holiday" : dayMeta.isShortWeekFriday ? "shortweek" : ""}`}>
+                          {dayMeta.isHoliday ? `Feiertag: ${dayMeta.holidayName}` : dayMeta.isShortWeekFriday ? "Kurzwoche / frei" : "frei / keine Einteilung"}
+                        </span>
                       ) : (
                         projectsForDay.map((row) => {
                           const project = projectMap.get(String(row.project_id));
@@ -841,14 +932,25 @@ export default function WorkAssignments() {
                   <th className="workassign-sticky-left workassign-employee-col">
                     Mitarbeiter
                   </th>
-                  {weekDateStrings.map((dateStr) => (
-                    <th key={dateStr}>
+                  {weekDateStrings.map((dateStr) => {
+                    const dayMeta = getDayMeta(dateStr);
+                    return (
+                    <th
+                      key={dateStr}
+                      className={`${dayMeta.isHoliday ? "workassign-day-holiday" : ""} ${dayMeta.isShortWeekFriday ? "workassign-day-shortweek" : ""}`}
+                    >
                       <div className="workassign-day-headline">
                         <div className="workassign-day-short">{dayShort(dateStr)}</div>
                         <div className="workassign-day-date">{dayLabel(dateStr)}</div>
+                        {dayMeta.isHoliday ? (
+                          <div className="workassign-day-badge holiday">Feiertag · {dayMeta.holidayName}</div>
+                        ) : dayMeta.isShortWeekFriday ? (
+                          <div className="workassign-day-badge shortweek">Kurzwoche · frei</div>
+                        ) : null}
                       </div>
                     </th>
-                  ))}
+                    );
+                  })}
                 </tr>
               </thead>
 
@@ -895,17 +997,19 @@ export default function WorkAssignments() {
                       {weekDateStrings.map((dateStr) => {
                         const cellRows = getCellRows(employee.id, dateStr);
                         const cellKey = `${employee.id}__${dateStr}`;
-                        const cellStatus = getCellStatus(cellRows);
+                        const dayMeta = getDayMeta(dateStr);
+                        const cellStatus = getCellStatus(dateStr, cellRows);
 
                         return (
                           <td
                             key={cellKey}
-                            className={`workassign-drop-cell workassign-cell-${cellStatus.className} ${
+                            className={`workassign-drop-cell workassign-cell-${cellStatus.className} ${cellStatus.locked ? "workassign-cell-locked" : ""} ${
                               hoverCell === cellKey ? "workassign-drop-cell-hover" : ""
                             }`}
+                            title={dayMeta.isHoliday ? `${dayMeta.holidayName} – gesperrt` : dayMeta.isShortWeekFriday ? "Kurzwoche – frei, aber überschreibbar" : ""}
                             onClick={() => onCellClick(employee.id, dateStr)}
                             onDragOver={(e) => {
-                              if (!canEditAssignments) return;
+                              if (!canEditAssignments || cellStatus.locked) return;
                               e.preventDefault();
                               setHoverCell(cellKey);
                             }}
