@@ -7,6 +7,7 @@ import {
   WEATHER_MANUAL_OPTIONS,
   fetchWeatherForBooking,
 } from "../utils/weather";
+import { getEmployeeWorkDay, hmToMinutes } from "../utils/time";
 
 // --------------------------------------------------
 // Helfer/Format
@@ -144,7 +145,7 @@ export default function TimeTracking() {
       try {
         let query = supabase
           .from("employees")
-          .select("id, code, name, role, active, disabled")
+          .select("*")
           .limit(1);
 
         if (lookupCode) query = query.eq("code", lookupCode);
@@ -216,6 +217,35 @@ export default function TimeTracking() {
       : [];
   }, [employees, isStaff, currentUser?.id, currentUser?.code, currentUser?.name, currentUser?.role]);
 
+  const defaultTimeEmployee = useMemo(() => {
+    if (selectedEmployees.length === 1) return selectedEmployees[0];
+    if (isStaff && visibleTrackingEmployees[0]) return visibleTrackingEmployees[0];
+    if (currentUser?.id || currentUser?.code) return currentUser;
+    return null;
+  }, [selectedEmployees, isStaff, visibleTrackingEmployees, currentUser]);
+
+  const selectedWorkDayDefaults = useMemo(
+    () => getEmployeeWorkDay(defaultTimeEmployee, date),
+    [defaultTimeEmployee, date]
+  );
+
+  function applySelectedEmployeeDefaults(force = false) {
+    if (absenceType && !force) return;
+    const d = selectedWorkDayDefaults;
+    if (!d || !d.active) return;
+    const start = hmToMinutes(d.start);
+    const end = hmToMinutes(d.end);
+    if (end <= start) return;
+    setFromMin(start);
+    setToMin(end);
+    setBreakMinutes(d.breakMinutes || 0);
+  }
+
+  useEffect(() => {
+    applySelectedEmployeeDefaults(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [date, defaultTimeEmployee?.id, defaultTimeEmployee?.code]);
+
   // --------------------------------------------------
   // Daten laden
   // --------------------------------------------------
@@ -230,7 +260,7 @@ export default function TimeTracking() {
 
         const { data: emp } = await supabase
           .from("employees")
-          .select("id, code, name, role, active, disabled")
+          .select("*")
           .eq("active", true)
           .eq("disabled", false)
           .order("name", { ascending: true });
@@ -347,25 +377,29 @@ export default function TimeTracking() {
 
   // NEU: Krank / Urlaub (setzt Zeiten fix, ohne bestehende Logik zu ändern)
   const krankMinutesForDate = (isoDate) => {
-    const d = new Date(`${isoDate}T00:00:00`);
-    const isFri = d.getDay() === 5;
-    return isFri ? 180 : 540; // Fr 3h, sonst 9h
+    const d = getEmployeeWorkDay(defaultTimeEmployee, isoDate);
+    if (d?.requiredMinutes > 0) return d.requiredMinutes;
+    return 0;
   };
 
   const applyKrank = () => {
     const mins = krankMinutesForDate(date);
     // Wir setzen Start/Ende so, dass workMinutes exakt passt (Pause 0)
     setAbsenceType((prev) => (prev === "krank" ? null : "krank"));
+    const d = getEmployeeWorkDay(defaultTimeEmployee, date);
     setBreakMinutes(0);
-    setFromMin(7 * 60); // 07:00
-    setToMin(7 * 60 + mins); // 07:00 + (9h/3h)
+    const start = d?.active ? hmToMinutes(d.start) : 7 * 60;
+    setFromMin(start);
+    setToMin(start + mins);
   };
 
   const applyUrlaub = () => {
     // Urlaub zählt nicht zu Stunden: workMinutes = 0, aber Zeitspanne muss gültig sein (Ende > Start)
     setAbsenceType((prev) => (prev === "urlaub" ? null : "urlaub"));
-    setFromMin(7 * 60); // 07:00
-    setToMin(7 * 60 + 1); // 1 Minute, damit Validation OK
+    const d = getEmployeeWorkDay(defaultTimeEmployee, date);
+    const start = d?.active ? hmToMinutes(d.start) : 7 * 60;
+    setFromMin(start);
+    setToMin(start + 1); // 1 Minute, damit Validation OK
     setBreakMinutes(1); // ergibt 0 Arbeitsminuten
   };
 
@@ -473,10 +507,8 @@ export default function TimeTracking() {
   // Render
   // --------------------------------------------------
 
-  const selectedDay = new Date(`${date}T12:00:00`);
-  const selectedWeekDay = selectedDay.getDay();
-  const buakSollForSelectedDay = selectedWeekDay >= 1 && selectedWeekDay <= 4 ? 9 : selectedWeekDay === 5 ? 6 : 0;
-  const buakWeekTypeForSelectedDay = buakSollForSelectedDay > 0 ? "kurz" : "";
+  const buakSollForSelectedDay = selectedWorkDayDefaults?.requiredHours || 0;
+  const buakWeekTypeForSelectedDay = selectedWorkDayDefaults?.model === "buak" ? "BUAK" : "Standard";
   const formatDateAT = (iso) => new Date(`${iso}T12:00:00`).toLocaleDateString("de-AT");
 
   const dailyControlEmployees = canSeeAllEmployees ? employees : visibleTrackingEmployees;
@@ -527,7 +559,7 @@ export default function TimeTracking() {
             <div className="help">
               {buakSollForSelectedDay > 0 ? (
                 <>
-                  {date} · {buakWeekTypeForSelectedDay === "kurz" ? "Kurze Woche" : buakWeekTypeForSelectedDay === "lang" ? "Lange Woche" : "BUAK"} · Soll: <b>{buakSollForSelectedDay} h</b>
+                  {date} · {buakWeekTypeForSelectedDay} · Soll: <b>{buakSollForSelectedDay} h</b>
                 </>
               ) : (
                 <>
@@ -690,6 +722,14 @@ export default function TimeTracking() {
         <hr className="hr-soft" />
 
         <div className="hbz-section-title">Zeit</div>
+        {selectedWorkDayDefaults?.active && (
+          <div className="help" style={{ marginTop: 4, marginBottom: 8 }}>
+            Standard laut Arbeitszeitmodell: <b>{selectedWorkDayDefaults.start}–{selectedWorkDayDefaults.end}</b>, Pause <b>{selectedWorkDayDefaults.breakMinutes} min</b>, Soll <b>{selectedWorkDayDefaults.requiredHours} h</b>
+            <button type="button" className="hbz-btn btn-small" style={{ marginLeft: 8 }} onClick={() => applySelectedEmployeeDefaults(true)}>
+              Standard übernehmen
+            </button>
+          </div>
+        )}
 
         {/* NEU: Krank / Urlaub */}
         <div className="hbz-row" style={{ marginTop: 8, gap: 8, alignItems: "center" }}>

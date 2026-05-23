@@ -9,6 +9,7 @@ import {
   fetchWeatherForBooking,
   getWeatherFinalLabel,
 } from "../utils/weather";
+import { getEmployeeWorkDay, hmToMinutes } from "../utils/time";
 
 // Utils
 const toHM = (m) =>
@@ -344,7 +345,7 @@ export default function DaySlider() {
       try {
         let query = supabase
           .from("employees")
-          .select("id, code, name, role, active, disabled, permissions")
+          .select("*")
           .limit(1);
 
         if (session?.code) query = query.eq("code", session.code);
@@ -421,7 +422,7 @@ export default function DaySlider() {
         if (isManager) {
           const { data, error } = await supabase
             .from("employees")
-            .select("id, code, name, role, active, disabled, show_in_daily_check")
+            .select("*")
             .eq("active", true)
             .eq("disabled", false)
             .order("name", { ascending: true });
@@ -444,7 +445,7 @@ export default function DaySlider() {
         } else {
           const { data, error } = await supabase
             .from("employees")
-            .select("id, code, name, role, active, disabled, show_in_daily_check")
+            .select("*")
             .eq("code", session?.code)
             .limit(1)
             .maybeSingle();
@@ -471,7 +472,7 @@ export default function DaySlider() {
       try {
         const { data, error } = await supabase
           .from("employees")
-          .select("id, code, name, role, active, disabled, show_in_daily_check")
+          .select("*")
           .eq("code", session.code)
           .limit(1)
           .maybeSingle();
@@ -500,6 +501,62 @@ export default function DaySlider() {
   );
   const projectAddress = selectedProject?.address || "";
   const finalWeather = weatherManual || weatherAuto || "";
+  const defaultTimeEmployee = useMemo(() => {
+    if (selectedCodes.length === 1) {
+      const selected = employees.find((e) => e.code === selectedCodes[0]);
+      if (selected) return selected;
+    }
+    if (employeeRow) return employeeRow;
+    return currentUser || session || null;
+  }, [selectedCodes, employees, employeeRow, currentUser, session]);
+
+  const selectedWorkDayDefaults = useMemo(
+    () => getEmployeeWorkDay(defaultTimeEmployee, date),
+    [defaultTimeEmployee, date]
+  );
+
+  function applySelectedEmployeeDefaults(force = false) {
+    if (absenceType && !force) return;
+    const d = selectedWorkDayDefaults;
+    if (!d || !d.active) return;
+    const start = hmToMinutes(d.start);
+    const end = hmToMinutes(d.end);
+    if (end <= start) return;
+    setFromMin(start);
+    setToMin(end);
+    setBreakMin(d.breakMinutes || 0);
+  }
+
+  useEffect(() => {
+    applySelectedEmployeeDefaults(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [date, defaultTimeEmployee?.id, defaultTimeEmployee?.code]);
+
+  function applyKrankDefaults() {
+    const d = getEmployeeWorkDay(defaultTimeEmployee, date);
+    const start = d?.active ? hmToMinutes(d.start) : 7 * 60;
+    const mins = d?.requiredMinutes || 0;
+    setBadWeather(false);
+    setAbsenceType("krank");
+    setProjectId(null);
+    setFromMin(start);
+    setToMin(start + mins);
+    setBreakMin(0);
+    setTravelMin(0);
+  }
+
+  function applyUrlaubDefaults() {
+    const d = getEmployeeWorkDay(defaultTimeEmployee, date);
+    const start = d?.active ? hmToMinutes(d.start) : 7 * 60;
+    setBadWeather(false);
+    setAbsenceType("urlaub");
+    setProjectId(null);
+    setFromMin(start);
+    setToMin(start + 15);
+    setBreakMin(15);
+    setTravelMin(0);
+  }
+
 
   async function loadWeatherForCurrentBooking(force = false) {
     if (absenceType === "krank" || absenceType === "urlaub") {
@@ -739,7 +796,7 @@ export default function DaySlider() {
   const canEditEntry = (row) => !!row && (canEditAllTime || (canEditOwnTime && isOwnEntry(row)));
   const canDeleteEntry = (row) => !!row && (canDeleteAllTime || (canDeleteOwnTime && isOwnEntry(row)));
 
-  const buakSollHoursToday = useMemo(() => getBuakSollHoursForDay(date), [date]);
+  const buakSollHoursToday = selectedWorkDayDefaults?.requiredHours || 0;
   const holidayNameToday = useMemo(() => getHolidayName(date), [date]);
 
   const dailyCheckRows = useMemo(() => {
@@ -769,9 +826,11 @@ export default function DaySlider() {
       let label = "Fehlt";
       let icon = "❌";
 
-      if (buakSollHoursToday <= 0) {
+      const empSollHours = getEmployeeWorkDay(emp, date)?.requiredHours || 0;
+
+      if (empSollHours <= 0) {
         status = "not_required";
-        label = "frei laut BUAK";
+        label = "frei laut Modell";
         icon = "⚪";
       } else if (hasUrlaub) {
         status = "urlaub";
@@ -795,7 +854,7 @@ export default function DaySlider() {
         entryCount: empEntries.length,
       };
     });
-  }, [date, dailyCheckEntries, employees, isManager, buakSollHoursToday]);
+  }, [date, dailyCheckEntries, employees, isManager]);
 
   const dailyCheckSummary = useMemo(() => {
     const count = (status) => dailyCheckRows.filter((row) => row.status === status).length;
@@ -1375,7 +1434,13 @@ export default function DaySlider() {
                 <EmployeePicker employees={employees} selected={selectedCodes} onChange={setSelectedCodes} enableMulti={true} />
               </details>
             )}
-            <div className="mobile-time-grid">
+            {selectedWorkDayDefaults?.active && (
+            <div className="help" style={{ margin: "8px 0" }}>
+              Standard: <b>{selectedWorkDayDefaults.start}–{selectedWorkDayDefaults.end}</b>, Pause <b>{selectedWorkDayDefaults.breakMinutes} min</b>, Soll <b>{selectedWorkDayDefaults.requiredHours} h</b>
+              <button type="button" className="hbz-btn btn-small" style={{ marginLeft: 8 }} onClick={() => applySelectedEmployeeDefaults(true)}>Standard übernehmen</button>
+            </div>
+          )}
+          <div className="mobile-time-grid">
               <div className="mobile-time-card"><span className="mobile-time-icon start">▶</span><div><div className="mobile-time-label">Start</div><div className="mobile-time-value">{toHM(fromMin)}</div></div></div>
               <div className="mobile-time-card"><span className="mobile-time-icon end">■</span><div><div className="mobile-time-label">Ende</div><div className="mobile-time-value">{toHM(toMin)}</div></div></div>
               <div className="mobile-time-card"><span className="mobile-time-icon pause">☕</span><div><div className="mobile-time-label">Pause</div><div className="mobile-time-value">{formatTravelLabel(breakMin)}</div></div></div>
@@ -1390,8 +1455,8 @@ export default function DaySlider() {
             </details>
             <details className="mobile-accordion"><summary>👷 Abwesenheit <span>{absenceType ? (absenceType === "krank" ? "Krank" : "Urlaub") : badWeather ? "Schlechtwetter" : "Normal"}</span></summary>
               <div className="hbz-chipbar">
-                <button type="button" className={`hbz-chip ${absenceType === "krank" ? "active" : ""}`} onClick={() => { setBadWeather(false); setAbsenceType("krank"); setProjectId(null); const d = new Date(`${date}T00:00:00`); const isFri = d.getDay() === 5; setFromMin(7 * 60); setToMin(isFri ? 10 * 60 : 16 * 60); setBreakMin(0); setTravelMin(0); }}>Krank</button>
-                <button type="button" className={`hbz-chip ${absenceType === "urlaub" ? "active" : ""}`} onClick={() => { setBadWeather(false); setAbsenceType("urlaub"); setProjectId(null); setFromMin(7 * 60); setToMin(7 * 60 + 15); setBreakMin(15); setTravelMin(0); }}>Urlaub</button>
+                <button type="button" className={`hbz-chip ${absenceType === "krank" ? "active" : ""}`} onClick={applyKrankDefaults}>Krank</button>
+                <button type="button" className={`hbz-chip ${absenceType === "urlaub" ? "active" : ""}`} onClick={applyUrlaubDefaults}>Urlaub</button>
                 <button type="button" className={`hbz-chip ${badWeather ? "active" : ""}`} onClick={() => { setAbsenceType(null); setBadWeather((v) => !v); }}>Schlechtwetter</button>
                 {(absenceType || badWeather) && <button type="button" className="hbz-chip" onClick={() => { setAbsenceType(null); setBadWeather(false); }}>Normal</button>}
               </div>
@@ -1445,6 +1510,12 @@ export default function DaySlider() {
         <div className="year-sections" style={{ marginTop: 18 }}>
           <div className="year-section">
             <div className="month-card-title">Arbeitszeit</div>
+            {selectedWorkDayDefaults?.active && (
+              <div className="help" style={{ marginTop: 6 }}>
+                Standard: <b>{selectedWorkDayDefaults.start}–{selectedWorkDayDefaults.end}</b>, Pause <b>{selectedWorkDayDefaults.breakMinutes} min</b>, Soll <b>{selectedWorkDayDefaults.requiredHours} h</b>
+                <button type="button" className="hbz-btn btn-small" style={{ marginLeft: 8 }} onClick={() => applySelectedEmployeeDefaults(true)}>Standard übernehmen</button>
+              </div>
+            )}
 
             <div className="month-card-edit-grid" style={{ marginTop: 10 }}>
               <div className="month-card-field">
@@ -1518,17 +1589,7 @@ export default function DaySlider() {
                 className={`hbz-chip ${
                   absenceType === "krank" ? "active" : ""
                 }`}
-                onClick={() => {
-                  setBadWeather(false);
-                  setAbsenceType("krank");
-                  setProjectId(null);
-                  const d = new Date(`${date}T00:00:00`);
-                  const isFri = d.getDay() === 5;
-                  setFromMin(7 * 60);
-                  setToMin(isFri ? 10 * 60 : 16 * 60);
-                  setBreakMin(0);
-                  setTravelMin(0);
-                }}
+onClick={applyKrankDefaults}
               >
                 Krank
               </button>
@@ -1538,15 +1599,7 @@ export default function DaySlider() {
                 className={`hbz-chip ${
                   absenceType === "urlaub" ? "active" : ""
                 }`}
-                onClick={() => {
-                  setBadWeather(false);
-                  setAbsenceType("urlaub");
-                  setProjectId(null);
-                  setFromMin(7 * 60);
-                  setToMin(7 * 60 + 15);
-                  setBreakMin(15);
-                  setTravelMin(0);
-                }}
+onClick={applyUrlaubDefaults}
               >
                 Urlaub
               </button>

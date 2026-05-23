@@ -280,3 +280,128 @@ export function calcBuakSollHoursForYear(year) {
 
   return soll;
 }
+// ---------------- Frei einstellbare Arbeitszeitmodelle ----------------
+// Speichern in employees.work_time_model (buak | verwaltung | individuell)
+// und employees.work_time_settings (jsonb) mit days 1=Mo ... 7=So.
+export const DEFAULT_OFFICE_WORK_TIME_SETTINGS = {
+  model: "verwaltung",
+  days: {
+    1: { active: true, start: "07:30", end: "16:00", breakMinutes: 30 },
+    2: { active: true, start: "07:30", end: "16:00", breakMinutes: 30 },
+    3: { active: true, start: "07:30", end: "16:00", breakMinutes: 30 },
+    4: { active: true, start: "07:30", end: "16:00", breakMinutes: 30 },
+    5: { active: true, start: "07:30", end: "12:00", breakMinutes: 30 },
+    6: { active: false, start: "", end: "", breakMinutes: 0 },
+    7: { active: false, start: "", end: "", breakMinutes: 0 },
+  },
+};
+
+export function hmToMinutes(hm) {
+  if (!hm) return 0;
+  const [h, m] = String(hm).split(":").map((x) => parseInt(x || "0", 10));
+  return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
+}
+
+export function minutesToHM(minutes) {
+  const n = Math.max(0, Number(minutes) || 0);
+  return `${String(Math.floor(n / 60)).padStart(2, "0")}:${String(n % 60).padStart(2, "0")}`;
+}
+
+export function getIsoWeekday(dateStr) {
+  const iso = normalizeDateStr(dateStr);
+  const d = new Date(`${iso}T12:00:00`);
+  if (isNaN(d.getTime())) return 0;
+  const js = d.getDay();
+  return js === 0 ? 7 : js;
+}
+
+export function getEmployeeWorkTimeModel(employee) {
+  const role = String(employee?.role || "").trim().toLowerCase();
+  const explicit = String(employee?.work_time_model || employee?.employment_type || "").trim().toLowerCase();
+  if (explicit) return explicit;
+  if (["buchhaltung", "verwaltung", "verwaltung_buchhaltung", "office"].includes(role)) return "verwaltung";
+  return "buak";
+}
+
+export function normalizeWorkTimeSettings(rawSettings, model = "verwaltung") {
+  let parsed = rawSettings || null;
+  if (typeof parsed === "string") {
+    try { parsed = JSON.parse(parsed); } catch { parsed = null; }
+  }
+
+  const base = JSON.parse(JSON.stringify(DEFAULT_OFFICE_WORK_TIME_SETTINGS));
+  if (model && model !== "verwaltung") base.model = model;
+
+  const srcDays = parsed?.days && typeof parsed.days === "object" ? parsed.days : {};
+  for (let day = 1; day <= 7; day += 1) {
+    const src = srcDays[String(day)] || srcDays[day] || {};
+    base.days[day] = {
+      ...base.days[day],
+      ...src,
+      active: typeof src.active === "boolean" ? src.active : base.days[day].active,
+      start: src.start ?? base.days[day].start,
+      end: src.end ?? base.days[day].end,
+      breakMinutes: Number(src.breakMinutes ?? src.break_minutes ?? base.days[day].breakMinutes) || 0,
+    };
+  }
+  return base;
+}
+
+export function getEmployeeWorkDay(employee, dateStr) {
+  const model = getEmployeeWorkTimeModel(employee);
+  const dow = getIsoWeekday(dateStr);
+
+  if (model === "buak") {
+    const sollHours = Number(getBuakSollHoursForDay(dateStr)) || 0;
+    const breakMinutes = sollHours > 0 ? 30 : 0;
+    const startMin = DEFAULT_START;
+    const endMin = sollHours > 0 ? startMin + Math.round(sollHours * 60) + breakMinutes : startMin;
+    return {
+      model,
+      active: sollHours > 0,
+      start: minutesToHM(startMin),
+      end: minutesToHM(endMin),
+      breakMinutes,
+      requiredMinutes: Math.round(sollHours * 60),
+      requiredHours: sollHours,
+    };
+  }
+
+  const settings = normalizeWorkTimeSettings(employee?.work_time_settings, model);
+  const day = settings.days[dow] || { active: false, start: "", end: "", breakMinutes: 0 };
+  const startMin = hmToMinutes(day.start);
+  const endMin = hmToMinutes(day.end);
+  const breakMinutes = Number(day.breakMinutes ?? day.break_minutes ?? 0) || 0;
+  const requiredMinutes = day.active ? Math.max(endMin - startMin - breakMinutes, 0) : 0;
+
+  return {
+    model,
+    active: !!day.active && requiredMinutes > 0,
+    start: day.start || "",
+    end: day.end || "",
+    breakMinutes,
+    requiredMinutes,
+    requiredHours: Math.round((requiredMinutes / 60) * 100) / 100,
+  };
+}
+
+export function getEmployeeSollHoursForDay(employee, dateStr) {
+  return getEmployeeWorkDay(employee, dateStr).requiredHours || 0;
+}
+
+export function calcEmployeeSollHoursForRange(employee, from, to, includeHolidays = true) {
+  if (!from || !to) return 0;
+  const start = new Date(`${from}T12:00:00`);
+  const end = new Date(`${to}T12:00:00`);
+  if (isNaN(start.getTime()) || isNaN(end.getTime())) return 0;
+  let minutes = 0;
+  const d = new Date(start);
+  while (d <= end) {
+    const iso = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+    if (includeHolidays || !getHolidayName(iso)) {
+      minutes += getEmployeeWorkDay(employee, iso).requiredMinutes || 0;
+    }
+    d.setDate(d.getDate() + 1);
+  }
+  return Math.round((minutes / 60) * 100) / 100;
+}

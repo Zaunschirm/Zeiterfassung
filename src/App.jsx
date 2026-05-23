@@ -46,7 +46,7 @@ export default function App() {
         try {
           let query = supabase
             .from("employees")
-            .select("id, name, code, role, active, disabled, permissions")
+            .select("*")
             .limit(1);
 
           if (user?.code) query = query.eq("code", user.code);
@@ -88,7 +88,7 @@ export default function App() {
     try {
       let query = supabase
         .from("employees")
-        .select("id, name, code, role, active, disabled, permissions")
+        .select("*")
         .limit(1);
 
       if (user?.code) query = query.eq("code", user.code);

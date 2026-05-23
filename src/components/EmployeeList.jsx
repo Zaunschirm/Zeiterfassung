@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
+import { DEFAULT_OFFICE_WORK_TIME_SETTINGS, normalizeWorkTimeSettings } from "../utils/time";
 
 const PERMISSION_OPTIONS = [
   { key: "writeOwnTime", label: "Eigene Stunden schreiben" },
@@ -23,6 +24,22 @@ const ROLE_OPTIONS = [
   { value: "teamleiter", label: "Teamleiter" },
   { value: "admin", label: "Admin" },
   { value: "buchhaltung", label: "Verwaltung/Buchhaltung" },
+];
+
+const WORK_TIME_MODEL_OPTIONS = [
+  { value: "buak", label: "BUAK / Zimmerer" },
+  { value: "verwaltung", label: "Verwaltung / Buchhaltung" },
+  { value: "individuell", label: "Individuell" },
+];
+
+const WEEKDAYS = [
+  [1, "Montag"],
+  [2, "Dienstag"],
+  [3, "Mittwoch"],
+  [4, "Donnerstag"],
+  [5, "Freitag"],
+  [6, "Samstag"],
+  [7, "Sonntag"],
 ];
 
 function roleLabel(role) {
@@ -57,6 +74,8 @@ export default function EmployeeList() {
   const [role, setRole] = useState("mitarbeiter");
   const [permissions, setPermissions] = useState({ ...EMPTY_PERMISSIONS });
   const [showInDailyCheck, setShowInDailyCheck] = useState(true);
+  const [workTimeModel, setWorkTimeModel] = useState("buak");
+  const [workTimeSettings, setWorkTimeSettings] = useState(() => normalizeWorkTimeSettings(DEFAULT_OFFICE_WORK_TIME_SETTINGS));
   const [saving, setSaving] = useState(false);
 
   const [editId, setEditId] = useState(null);
@@ -72,7 +91,7 @@ export default function EmployeeList() {
 
     const { data, error } = await supabase
       .from("employees")
-      .select("id, name, role, disabled, code, permissions, show_in_daily_check")
+      .select("*")
       .order("name", { ascending: true });
 
     setLoading(false);
@@ -154,6 +173,8 @@ export default function EmployeeList() {
         viewYearOverview: true,
       });
       setShowInDailyCheck(false);
+      setWorkTimeModel("verwaltung");
+      setWorkTimeSettings(normalizeWorkTimeSettings(DEFAULT_OFFICE_WORK_TIME_SETTINGS, "verwaltung"));
       return;
     }
 
@@ -224,9 +245,12 @@ export default function EmployeeList() {
     setEditId(row.id);
     setName(row.name || "");
     setCode(row.code || "");
+    const nextModel = row.work_time_model || (String(row.role || "").toLowerCase() === "buchhaltung" ? "verwaltung" : "buak");
     setRole(row.role || "mitarbeiter");
     setPermissions(normalizePermissions(row.permissions));
     setShowInDailyCheck(row.show_in_daily_check !== false);
+    setWorkTimeModel(nextModel);
+    setWorkTimeSettings(normalizeWorkTimeSettings(row.work_time_settings, nextModel));
   }
 
   function clearForm() {
@@ -236,6 +260,34 @@ export default function EmployeeList() {
     setRole("mitarbeiter");
     setPermissions({ ...EMPTY_PERMISSIONS });
     setShowInDailyCheck(true);
+    setWorkTimeModel("buak");
+    setWorkTimeSettings(normalizeWorkTimeSettings(DEFAULT_OFFICE_WORK_TIME_SETTINGS, "verwaltung"));
+  }
+
+  function updateWorkTimeDay(day, patch) {
+    setWorkTimeSettings((prev) => {
+      const normalized = normalizeWorkTimeSettings(prev, workTimeModel);
+      return {
+        ...normalized,
+        model: workTimeModel,
+        days: {
+          ...normalized.days,
+          [day]: {
+            ...normalized.days[day],
+            ...patch,
+          },
+        },
+      };
+    });
+  }
+
+  function handleWorkTimeModelChange(nextModel) {
+    setWorkTimeModel(nextModel);
+    if (nextModel === "verwaltung") {
+      setWorkTimeSettings(normalizeWorkTimeSettings(DEFAULT_OFFICE_WORK_TIME_SETTINGS, nextModel));
+    } else if (nextModel === "individuell") {
+      setWorkTimeSettings((prev) => normalizeWorkTimeSettings(prev, nextModel));
+    }
   }
 
   async function createEmployee(e) {
@@ -252,6 +304,8 @@ export default function EmployeeList() {
         role,
         permissions,
         show_in_daily_check: role === "buchhaltung" ? false : showInDailyCheck,
+        work_time_model: role === "buchhaltung" && workTimeModel === "buak" ? "verwaltung" : workTimeModel,
+        work_time_settings: workTimeModel === "buak" ? null : workTimeSettings,
       };
 
       if (editId) {
@@ -328,6 +382,89 @@ export default function EmployeeList() {
               ))}
             </select>
           </div>
+
+          <div>
+            <label className="hbz-label">Arbeitszeitmodell</label>
+            <select
+              className="hbz-input"
+              value={workTimeModel}
+              onChange={(e) => handleWorkTimeModelChange(e.target.value)}
+            >
+              {WORK_TIME_MODEL_OPTIONS.map((item) => (
+                <option key={item.value} value={item.value}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+            <div className="help" style={{ marginTop: 4 }}>
+              BUAK bleibt wie bisher. Verwaltung/Individuell verwendet fixe Start-, Pausen- und Endzeiten.
+            </div>
+          </div>
+
+          {workTimeModel !== "buak" && (
+            <div style={{ gridColumn: "1 / -1" }}>
+              <label className="hbz-label">Standardzeiten je Wochentag</label>
+              <div
+                style={{
+                  border: "1px solid #e6ded2",
+                  borderRadius: 14,
+                  padding: 12,
+                  background: "#fcfaf7",
+                  display: "grid",
+                  gap: 8,
+                }}
+              >
+                {WEEKDAYS.map(([day, label]) => {
+                  const d = normalizeWorkTimeSettings(workTimeSettings, workTimeModel).days[day];
+                  return (
+                    <div
+                      key={day}
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "130px 90px 120px 120px 120px",
+                        gap: 8,
+                        alignItems: "center",
+                      }}
+                    >
+                      <label className="employee-control-check" style={{ margin: 0 }}>
+                        <input
+                          type="checkbox"
+                          checked={!!d.active}
+                          onChange={(e) => updateWorkTimeDay(day, { active: e.target.checked })}
+                        />
+                        <span><strong>{label}</strong></span>
+                      </label>
+                      <span className="help">aktiv</span>
+                      <input
+                        type="time"
+                        className="hbz-input"
+                        value={d.start || ""}
+                        disabled={!d.active}
+                        onChange={(e) => updateWorkTimeDay(day, { start: e.target.value })}
+                      />
+                      <input
+                        type="number"
+                        min={0}
+                        step={15}
+                        className="hbz-input"
+                        value={d.breakMinutes ?? 0}
+                        disabled={!d.active}
+                        onChange={(e) => updateWorkTimeDay(day, { breakMinutes: Number(e.target.value) || 0 })}
+                        placeholder="Pause min"
+                      />
+                      <input
+                        type="time"
+                        className="hbz-input"
+                        value={d.end || ""}
+                        disabled={!d.active}
+                        onChange={(e) => updateWorkTimeDay(day, { end: e.target.value })}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           <div className="employee-form-actions" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button className="save-btn" disabled={saving}>
@@ -427,6 +564,7 @@ export default function EmployeeList() {
                   <th>Name</th>
                   <th>Code</th>
                   <th>Rolle</th>
+                  <th>Arbeitszeitmodell</th>
                   <th>Rechte</th>
                   <th>Status</th>
                   <th>Tageskontrolle</th>
@@ -436,7 +574,7 @@ export default function EmployeeList() {
               <tbody>
                 {rows.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="employee-empty">
+                    <td colSpan={8} className="employee-empty">
                       Keine Mitarbeiter gefunden.
                     </td>
                   </tr>
@@ -453,6 +591,7 @@ export default function EmployeeList() {
                     <td>{r.name}</td>
                     <td>{r.code}</td>
                     <td>{roleLabel(r.role)}</td>
+                    <td>{WORK_TIME_MODEL_OPTIONS.find((m) => m.value === (r.work_time_model || (String(r.role || "").toLowerCase() === "buchhaltung" ? "verwaltung" : "buak")))?.label || "BUAK / Zimmerer"}</td>
                     <td style={{ minWidth: 240 }}>{permissionSummary(r.permissions)}</td>
                     <td>
                       <span

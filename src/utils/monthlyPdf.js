@@ -191,11 +191,12 @@ const isAbsenceRow = (r) => {
   return note.includes("[Urlaub]") || note.includes("[Krank]");
 };
 
-const isBadWeatherRow = (r) => r?.bad_weather === true || r?.bad_weather === "true";
-const rowWorkMinutes = (r) => Math.max((r.start_min ?? r.from_min ?? 0) - 0, 0) && Math.max((r.end_min ?? r.to_min ?? 0) - (r.start_min ?? r.from_min ?? 0) - (r.break_min || 0), 0);
-const getProjectAddress = (r, projects = []) => {
-  const prj = projects.find((p) => String(p.id) === String(r.project_id));
-  return r.project_address || r.address || r.project_address_text || prj?.address || prj?.adresse || prj?.site_address || "—";
+const isBadWeatherRow = (r) => r?.bad_weather === true || r?.bad_weather === 1 || r?.bad_weather === "true";
+const projectAddressOf = (r, projects = []) => {
+  const direct = r?.project_address || r?.address || r?.project_adresse || r?.baustellenadresse;
+  if (direct) return direct;
+  const p = projects.find((x) => String(x.id) === String(r?.project_id));
+  return p?.address || p?.adresse || p?.baustellenadresse || p?.location || "—";
 };
 
 const isVacationRow = (r) => (r?.note || "").toString().includes("[Urlaub]");
@@ -213,23 +214,8 @@ const isActiveEmployee = (e) => e?.disabled !== true && e?.active !== false;
 export default function MonthlyOverview() {
   const session = getSession()?.user || null;
   const role = (session?.role || "mitarbeiter").toLowerCase();
-  const isAdmin = role === "admin";
-  const isManager = role === "admin" || role === "teamleiter";
-  const isStaff = !isManager;
-  const isBuVwRole = (value) => {
-    const normalized = String(value || "").trim().toLowerCase();
-    return ["buchhaltung", "verwaltung", "bu/vw", "bu_vw", "buvw"].includes(normalized);
-  };
-  const filterEmployeesForCurrentUser = (list = []) => {
-    if (isAdmin) return list;
-    if (isBuVwRole(role)) {
-      return list.filter((emp) =>
-        (session?.id != null && String(emp.id) === String(session.id)) ||
-        (session?.code && String(emp.code) === String(session.code))
-      );
-    }
-    return list.filter((emp) => !isBuVwRole(emp?.role));
-  };
+  const isStaff = role === "mitarbeiter";
+  const isManager = !isStaff;
 
   const now = new Date();
   const currentYear = now.getFullYear();
@@ -288,18 +274,17 @@ export default function MonthlyOverview() {
           .order("name", { ascending: true });
 
         if (!error) {
-          const visibleEmployees = filterEmployeesForCurrentUser(data || []);
-          setEmployees(visibleEmployees);
-          if (visibleEmployees.length && selectedCodes.length === 0) {
+          setEmployees(data || []);
+          if ((data || []).length && selectedCodes.length === 0) {
             if (session?.code) {
-              const me = visibleEmployees.find((e) => e.code === session.code);
+              const me = (data || []).find((e) => e.code === session.code);
               if (me) {
                 setSelectedCodes([me.code]);
               } else {
-                setSelectedCodes(visibleEmployees.map((e) => e.code));
+                setSelectedCodes(data.map((e) => e.code));
               }
             } else {
-              setSelectedCodes(visibleEmployees.map((e) => e.code));
+              setSelectedCodes(data.map((e) => e.code));
             }
           }
         }
@@ -339,7 +324,7 @@ export default function MonthlyOverview() {
       setProjects((prj.data || []).filter((p) => p?.disabled !== true));
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isManager, role, session?.id, session?.code]);
+  }, [isManager]);
 
   useEffect(() => {
     loadMonth();
@@ -496,6 +481,20 @@ export default function MonthlyOverview() {
     );
   }, [rows]);
 
+  const badWeatherRows = useMemo(() =>
+    rows
+      .filter(isBadWeatherRow)
+      .map((r) => {
+        const start = r.start_min ?? r.from_min ?? 0;
+        const end = r.end_min ?? r.to_min ?? 0;
+        const pause = r.break_min || 0;
+        const minutes = r.bad_weather_minutes || Math.max(end - start - pause, 0);
+        return { ...r, _start: start, _end: end, _badWeatherHours: h2(minutes), _address: projectAddressOf(r, projects) };
+      })
+      .sort((a, b) => (a.work_date || "").localeCompare(b.work_date || "") || String(a.employee_name || "").localeCompare(String(b.employee_name || ""))),
+    [rows, projects]
+  );
+
   const weekly = useMemo(() => {
     const w = {};
     for (const r of grouped) {
@@ -571,24 +570,6 @@ export default function MonthlyOverview() {
       travelHrs: h2(travel),
     };
   }, [grouped]);
-
-  const badWeatherRows = useMemo(() => {
-    return (rows || [])
-      .filter(isBadWeatherRow)
-      .map((r) => {
-        const start = r.start_min ?? r.from_min ?? 0;
-        const end = r.end_min ?? r.to_min ?? 0;
-        const mins = r.bad_weather_minutes || rowWorkMinutes(r);
-        return {
-          ...r,
-          _badWeatherStart: start,
-          _badWeatherEnd: end,
-          _badWeatherHours: h2(mins),
-          _projectAddress: getProjectAddress(r, projects),
-        };
-      })
-      .sort((a, b) => String(a.work_date).localeCompare(String(b.work_date)) || String(a.employee_name || "").localeCompare(String(b.employee_name || "")));
-  }, [rows, projects]);
 
   function startEdit(row) {
     if (!isManager) return;
@@ -673,9 +654,10 @@ export default function MonthlyOverview() {
       "Ende",
       "Pause (min)",
       "Fahrzeit (min)",
-      "Schlechtwetter",
       "Stunden (inkl. Fahrzeit)",
       "Überstunden",
+      "Schlechtwetter",
+      "Adresse",
       "Notiz",
     ];
 
@@ -696,7 +678,6 @@ export default function MonthlyOverview() {
           toHM(end),
           r.break_min ?? 0,
           r._travel ?? 0,
-          isBadWeatherRow(r) ? "Ja" : "",
           hrs.toFixed(2),
           ot.toFixed(2),
           (r.note || "").replace(/[\r\n;]/g, " "),
@@ -1708,6 +1689,34 @@ export default function MonthlyOverview() {
         </div>
       </div>
 
+      {badWeatherRows.length > 0 && (
+        <div className="hbz-card month-main-card">
+          <div className="month-card-title">Schlechtwetter</div>
+          <div className="help" style={{ marginBottom: 10 }}>Nur Einträge mit Schlechtwetter-Kennzeichnung.</div>
+          <div className="month-table-wrap">
+            <table className="month-table">
+              <thead>
+                <tr>
+                  <th>Datum</th><th>Uhrzeit</th><th>Mitarbeiter</th><th>Projekt</th><th>Adresse</th><th className="num">Stunden</th>
+                </tr>
+              </thead>
+              <tbody>
+                {badWeatherRows.map((r) => (
+                  <tr key={`bad-weather-${r.id}`}>
+                    <td>{formatDateAT(r.work_date)}</td>
+                    <td>{toHM(r._start)}–{toHM(r._end)}</td>
+                    <td>{r.employee_name || r.employee_id}</td>
+                    <td>{r.project_name || "—"}</td>
+                    <td>{r._address}</td>
+                    <td className="num">{r._badWeatherHours.toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       <div className="hbz-card month-main-card">
         <div className="month-main-header">
           <div>
@@ -1735,9 +1744,9 @@ export default function MonthlyOverview() {
                         <th className="num">Ende</th>
                         <th className="num">Pause</th>
                         <th className="num">Fahrzeit</th>
-                        <th className="num">Schlechtwetter</th>
                         <th className="num">Stunden</th>
                         <th className="num">Überstunden</th>
+                        <th>Schlechtwetter</th>
                         <th>Notiz</th>
                         <th className="num">Aktion</th>
                       </tr>
@@ -1760,9 +1769,9 @@ export default function MonthlyOverview() {
                               <td className="num">{toHM(end)}</td>
                               <td className="num">{r.break_min ?? 0} min</td>
                               <td className="num">{r._travel ?? 0} min</td>
-                              <td className="num">{isBadWeatherRow(r) ? "Ja" : "—"}</td>
                               <td className="num">{hrs.toFixed(2)}</td>
                               <td className="num">{ot.toFixed(2)}</td>
+                              <td>{isBadWeatherRow(r) ? `🌧 ${toHM(start)}–${toHM(end)}` : "—"}</td>
                               <td>{r.note || ""}</td>
                               <td className="num">
                                 {isManager ? (

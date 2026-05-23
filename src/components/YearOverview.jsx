@@ -8,6 +8,8 @@ import {
   calcBuakSollHoursForMonth,
   getHolidayName,
   getBuakSollHoursForDay,
+  getEmployeeSollHoursForDay,
+  calcEmployeeSollHoursForRange,
 } from "../utils/time";
 
 // ---- Helpers ----
@@ -169,7 +171,8 @@ function buildPayrollMonthlySummary(sourceRows, monthList, selectedEmployees = [
     eachDateBetween(range.from, range.to).forEach((date) => {
       const holidayName = getHolidayName(date);
       if (!holidayName) return;
-      const sollHours = getBuakSollHoursForDay(date) || 0;
+      const empInfo = (selectedEmployees || []).find((e) => (e.name || e.code || "—") === item.employee) || {};
+      const sollHours = getEmployeeSollHoursForDay(empInfo, date) || 0;
       if (sollHours <= 0) return;
       const alreadyInWorkTime = item.entryDates.has(date);
       const extraHours = alreadyInWorkTime ? 0 : sollHours;
@@ -180,7 +183,9 @@ function buildPayrollMonthlySummary(sourceRows, monthList, selectedEmployees = [
 
   return Array.from(employeeMonthMap.values()).map((item) => {
     const totalHours = h2(item.totalMinutes);
-    const sollHours = calcBuakSollHoursForMonth(item.month) || 0;
+    const range = getMonthRange(item.month);
+    const empInfo = (selectedEmployees || []).find((e) => (e.name || e.code || "—") === item.employee) || {};
+    const sollHours = range ? calcEmployeeSollHoursForRange(empInfo, range.from, range.to, true) : 0;
     const payrollHours = totalHours + (item.holidayExtraHours || 0);
     const overtime = payrollHours - sollHours;
     return {
@@ -308,7 +313,7 @@ export default function YearOverview() {
       try {
         const { data: e } = await supabase
           .from("employees")
-          .select("id, code, name, role, active, disabled")
+          .select("*")
           .order("name");
 
         const visibleEmployees = filterEmployeesForCurrentUser(e || []);
@@ -530,11 +535,12 @@ export default function YearOverview() {
   }, [rows]);
 
   const buakSoll = useMemo(() => {
-    if (activeRange.mode === "year" && activeRange.yearForBuak) {
-      return calcBuakSollHoursForYear(parseInt(activeRange.yearForBuak, 10));
-    }
-    return calcBuakSollForMonthList(activeRange.monthList);
-  }, [activeRange]);
+    const selected = employees.filter((e) => selectedCodes.includes(e.code));
+    return selected.reduce(
+      (sum, emp) => sum + calcEmployeeSollHoursForRange(emp, activeRange.from, activeRange.to, true),
+      0
+    );
+  }, [activeRange, employees, selectedCodes]);
 
   const buakDiff = useMemo(
     () => totals.totalH - buakSoll,
@@ -855,19 +861,17 @@ export default function YearOverview() {
 
     const payrollSummary = buildPayrollMonthlySummary(
       selectedRows,
-      activeRange.monthList
+      activeRange.monthList,
+      employees.filter((e) => pdfOptions.selectedEmployeeCodes.includes(e.code))
     );
 
     const selectedEmployeeCount = uniq(
       selectedRows.map((r) => r.employee_name || String(r.employee_id || "—"))
     ).length;
 
-    const exportBuakSollBase =
-      activeRange.mode === "year" && activeRange.yearForBuak
-        ? calcBuakSollHoursForYear(parseInt(activeRange.yearForBuak, 10))
-        : calcBuakSollForMonthList(activeRange.monthList);
-
-    const exportBuakSoll = exportBuakSollBase * (selectedEmployeeCount || 1);
+    const exportBuakSoll = employees
+      .filter((e) => pdfOptions.selectedEmployeeCodes.includes(e.code))
+      .reduce((sum, emp) => sum + calcEmployeeSollHoursForRange(emp, activeRange.from, activeRange.to, true), 0);
     const exportBuakDiff = exportTotals.totalH - exportBuakSoll;
 
     const doc = new jsPDF({
