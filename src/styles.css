@@ -2810,3 +2810,56 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     flex: 1 1 auto;
   }
 }
+
+
+/* ===== Arbeitszeitmodelle Mitarbeiter ===== */
+.employee-control-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #5a3a23;
+  line-height: 1.2;
+}
+
+.employee-control-check input[type="checkbox"] {
+  accent-color: #7b4a2d;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+}
+
+.employee-worktime-grid {
+  display: grid;
+  grid-template-columns: 1.15fr repeat(4, minmax(90px, 1fr));
+  gap: 8px;
+  align-items: end;
+  margin-top: 8px;
+}
+
+.employee-worktime-day {
+  padding: 10px;
+  border-radius: 14px;
+  border: 1px solid rgba(203, 182, 156, 0.45);
+  background: linear-gradient(180deg, #fffdfa, #f8f1e7);
+}
+
+.employee-worktime-day-title {
+  font-size: 13px;
+  font-weight: 800;
+  color: #3f2c1b;
+}
+
+.employee-worktime-fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(85px, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+
+@media (max-width: 768px) {
+  .employee-worktime-grid,
+  .employee-worktime-fields {
+    grid-template-columns: 1fr;
+  }
+}
