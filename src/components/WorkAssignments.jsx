@@ -372,6 +372,28 @@ export default function WorkAssignments() {
     return cellMap.get(`${employeeId}__${dateStr}`) || [];
   }
 
+  function getEmployeeWeekStatus(employeeId) {
+    const plannedDays = weekDateStrings.filter((dateStr) => getCellRows(employeeId, dateStr).length > 0).length;
+
+    if (plannedDays === 0) {
+      return { className: "missing", label: "Keine Einteilung in dieser Woche" };
+    }
+
+    if (plannedDays >= weekDateStrings.length) {
+      return { className: "planned", label: "Vollständig eingeteilt" };
+    }
+
+    return { className: "partial", label: `${plannedDays} von ${weekDateStrings.length} Tagen eingeteilt` };
+  }
+
+  function getCellStatus(cellRows) {
+    if ((cellRows || []).length > 0) {
+      return { className: "planned", label: "eingeteilt" };
+    }
+
+    return { className: "open", label: "offen" };
+  }
+
   function getNextSortOrderForEmployee(employeeId) {
     const position = orderedEmployees.findIndex(
       (emp) => String(emp.id) === String(employeeId)
@@ -704,6 +726,13 @@ export default function WorkAssignments() {
         </div>
 
         {error ? <div className="year-error-box">{error}</div> : null}
+
+        <div className="workassign-status-legend">
+          <span><i className="workassign-status-dot planned" /> eingeteilt</span>
+          <span><i className="workassign-status-dot partial" /> teilweise</span>
+          <span><i className="workassign-status-dot open" /> offen</span>
+          <span><i className="workassign-status-dot missing" /> keine Einteilung</span>
+        </div>
       </div>
 
       {canEditAssignments ? (
@@ -826,6 +855,7 @@ export default function WorkAssignments() {
               <tbody>
                 {orderedEmployees.map((employee) => {
                   const rowKey = String(employee.id);
+                  const employeeStatus = getEmployeeWeekStatus(employee.id);
 
                   return (
                     <tr
@@ -849,6 +879,10 @@ export default function WorkAssignments() {
                       >
                         <div className="workassign-employee-cell-inner">
                           {canEditAssignments ? <span className="workassign-row-drag">↕</span> : null}
+                          <span
+                            className={`workassign-status-dot ${employeeStatus.className}`}
+                            title={employeeStatus.label}
+                          />
                           <span className="workassign-employee-name">
                             {employee.name}
                           </span>
@@ -861,11 +895,12 @@ export default function WorkAssignments() {
                       {weekDateStrings.map((dateStr) => {
                         const cellRows = getCellRows(employee.id, dateStr);
                         const cellKey = `${employee.id}__${dateStr}`;
+                        const cellStatus = getCellStatus(cellRows);
 
                         return (
                           <td
                             key={cellKey}
-                            className={`workassign-drop-cell ${
+                            className={`workassign-drop-cell workassign-cell-${cellStatus.className} ${
                               hoverCell === cellKey ? "workassign-drop-cell-hover" : ""
                             }`}
                             onClick={() => onCellClick(employee.id, dateStr)}
@@ -881,7 +916,10 @@ export default function WorkAssignments() {
                           >
                             <div className="workassign-cell-content">
                               {cellRows.length === 0 ? (
-                                <div className="workassign-cell-empty">—</div>
+                                <div className="workassign-cell-empty">
+                                  <span className={`workassign-status-dot ${cellStatus.className}`} />
+                                  <span>{cellStatus.label}</span>
+                                </div>
                               ) : (
                                 cellRows.map((row) => {
                                   const project = projectMap.get(String(row.project_id));

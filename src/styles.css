@@ -2812,54 +2812,92 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 }
 
 
-/* ===== Arbeitszeitmodelle Mitarbeiter ===== */
-.employee-control-check {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  color: #5a3a23;
-  line-height: 1.2;
+/* ===== Arbeitseinteilung Farben / Punkte ===== */
+.color-token {
+  background: var(--project-bg, #f7ede1) !important;
+  border-color: var(--project-border, rgba(171, 141, 109, 0.7)) !important;
+  color: var(--project-text, #5a3a23) !important;
 }
 
-.employee-control-check input[type="checkbox"] {
-  accent-color: #7b4a2d;
-  width: 16px;
-  height: 16px;
+.project-color-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  display: inline-block;
+  background: var(--project-border, #7b4a2d);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.65);
   flex: 0 0 auto;
 }
 
-.employee-worktime-grid {
-  display: grid;
-  grid-template-columns: 1.15fr repeat(4, minmax(90px, 1fr));
-  gap: 8px;
-  align-items: end;
-  margin-top: 8px;
+.workassign-status-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-top: 10px;
+  font-size: 12px;
+  color: rgba(255, 248, 241, 0.92);
 }
 
-.employee-worktime-day {
-  padding: 10px;
-  border-radius: 14px;
-  border: 1px solid rgba(203, 182, 156, 0.45);
-  background: linear-gradient(180deg, #fffdfa, #f8f1e7);
+.workassign-status-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
-.employee-worktime-day-title {
-  font-size: 13px;
-  font-weight: 800;
-  color: #3f2c1b;
+.workassign-status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  display: inline-block;
+  flex: 0 0 auto;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  box-shadow: 0 0 0 1px rgba(90, 58, 35, 0.12);
 }
 
-.employee-worktime-fields {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(85px, 1fr));
-  gap: 8px;
-  margin-top: 8px;
+.workassign-status-dot.planned {
+  background: #2f9e44;
 }
 
-@media (max-width: 768px) {
-  .employee-worktime-grid,
-  .employee-worktime-fields {
-    grid-template-columns: 1fr;
-  }
+.workassign-status-dot.partial {
+  background: #f0ad2e;
+}
+
+.workassign-status-dot.open {
+  background: #f0ad2e;
+}
+
+.workassign-status-dot.missing {
+  background: #d94841;
+}
+
+.workassign-drop-cell.workassign-cell-planned {
+  background: linear-gradient(180deg, #f4fbf5, #eef8ef);
+}
+
+.workassign-drop-cell.workassign-cell-open {
+  background: linear-gradient(180deg, #fffdf4, #fff5d9);
+}
+
+.workassign-cell-empty {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #8a6545;
+  font-weight: 700;
+}
+
+.workassign-cell-planned .workassign-cell-content {
+  min-height: 48px;
+}
+
+.workassign-cell-open:hover {
+  box-shadow: inset 0 0 0 2px rgba(240, 173, 46, 0.22);
+}
+
+.workassign-cell-planned:hover {
+  box-shadow: inset 0 0 0 2px rgba(47, 158, 68, 0.18);
+}
+
+.workassign-employee-cell-inner .workassign-status-dot {
+  margin-left: 2px;
 }
