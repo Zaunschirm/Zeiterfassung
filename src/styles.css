@@ -3041,3 +3041,151 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     gap: 8px;
   }
 }
+
+/* ===== v8 Arbeitseinteilung Mitarbeiteransicht: schönere Wochenkarten ===== */
+.workassign-matrix-card {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+}
+
+.workassign-list-view {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+  padding: 12px 0 4px;
+}
+
+.workassign-compact-row {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: space-between;
+  min-height: 132px;
+  gap: 12px;
+  border-radius: 20px;
+  padding: 14px 14px 12px;
+  border: 1px solid rgba(203, 182, 156, 0.55);
+  background: linear-gradient(180deg, rgba(255, 253, 249, 0.98), rgba(248, 241, 231, 0.96));
+  box-shadow: 0 10px 22px rgba(60, 41, 27, 0.07);
+  overflow: hidden;
+}
+
+.workassign-compact-row::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 6px;
+  border-radius: 20px 0 0 20px;
+  background: #d8a51e;
+}
+
+.workassign-compact-row.assigned::before {
+  background: #34a853;
+}
+
+.workassign-compact-row.holiday::before {
+  background: #b43a32;
+}
+
+.workassign-compact-row.short-free::before {
+  background: #caa66a;
+}
+
+.workassign-compact-row.assigned,
+.workassign-compact-row.missing,
+.workassign-compact-row.holiday,
+.workassign-compact-row.short-free {
+  border-left: 1px solid rgba(203, 182, 156, 0.55);
+}
+
+.workassign-compact-row.holiday {
+  background: linear-gradient(180deg, #fff7f5, #fdecea);
+  border-color: rgba(180, 58, 50, 0.22);
+}
+
+.workassign-compact-row.short-free {
+  background: linear-gradient(180deg, #fffaf0, #f8ecd7);
+  border-color: rgba(202, 166, 106, 0.35);
+}
+
+.workassign-compact-row.missing {
+  background: linear-gradient(180deg, #fffdf9, #f8f1e7);
+  border-color: rgba(216, 165, 30, 0.35);
+}
+
+.workassign-compact-date {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-left: 4px;
+}
+
+.workassign-compact-date strong {
+  font-size: 18px;
+  line-height: 1.1;
+  color: #3f2c1b;
+}
+
+.workassign-compact-date span {
+  font-size: 12px;
+  color: #7a614e;
+}
+
+.workassign-compact-projects {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: 8px;
+  min-height: 44px;
+}
+
+.workassign-compact-projects .workassign-cell-chip,
+.workassign-compact-projects .color-token {
+  max-width: 100%;
+  white-space: normal;
+  line-height: 1.25;
+  border-radius: 12px;
+  padding: 6px 9px;
+  font-size: 11px;
+  box-shadow: none;
+}
+
+.workassign-compact-empty,
+.workassign-day-note {
+  border-radius: 12px;
+  padding: 7px 9px;
+  font-size: 11px;
+  line-height: 1.25;
+  white-space: normal;
+}
+
+.workassign-day-note.holiday,
+.workassign-day-note.short-free {
+  width: 100%;
+  justify-content: flex-start;
+}
+
+.workassign-dispo-head {
+  margin-bottom: 18px;
+}
+
+@media (max-width: 1100px) {
+  .workassign-list-view {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .workassign-list-view {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .workassign-compact-row {
+    min-height: 0;
+  }
+}
