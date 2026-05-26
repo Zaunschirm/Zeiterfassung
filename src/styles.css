@@ -2811,206 +2811,233 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   }
 }
 
+/* ===== Arbeitseinteilung: Farben, Punkte, Feiertage, Kurz/Lang ===== */
+.workassign-week-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.2;
+  border: 1px solid rgba(255, 255, 255, 0.42);
+  color: #fffaf4;
+  vertical-align: middle;
+}
 
-/* ===== Arbeitseinteilung Farben / Punkte ===== */
+.workassign-week-badge.short {
+  background: rgba(225, 168, 54, 0.45);
+}
+
+.workassign-week-badge.long {
+  background: rgba(123, 74, 45, 0.42);
+}
+
+.workassign-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-top: 10px;
+  font-size: 12px;
+  color: rgba(255, 248, 241, 0.95);
+}
+
+.workassign-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.legend-dot,
+.project-color-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  display: inline-block;
+  flex: 0 0 auto;
+}
+
+.legend-green { background: #3caa5b; }
+.legend-yellow { background: #d8a51e; }
+.legend-red { background: #c94d3e; }
+.legend-holiday { background: #9b2d2d; }
+.legend-short { background: #caa66a; }
+
 .color-token {
   background: var(--project-bg, #f7ede1) !important;
   border-color: var(--project-border, rgba(171, 141, 109, 0.7)) !important;
   color: var(--project-text, #5a3a23) !important;
 }
 
+.color-token.active {
+  box-shadow: 0 0 0 2px rgba(123, 74, 45, 0.2), 0 8px 16px rgba(0, 0, 0, 0.08);
+  transform: translateY(-1px);
+}
+
 .project-color-dot {
-  width: 9px;
-  height: 9px;
-  border-radius: 999px;
-  display: inline-block;
   background: var(--project-border, #7b4a2d);
-  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.65);
-  flex: 0 0 auto;
 }
 
-.workassign-status-legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 12px;
-  margin-top: 10px;
-  font-size: 12px;
-  color: rgba(255, 248, 241, 0.92);
-}
-
-.workassign-status-legend span {
+.workassign-day-tag {
   display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.workassign-status-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 999px;
-  display: inline-block;
-  flex: 0 0 auto;
-  border: 1px solid rgba(255, 255, 255, 0.72);
-  box-shadow: 0 0 0 1px rgba(90, 58, 35, 0.12);
-}
-
-.workassign-status-dot.planned {
-  background: #2f9e44;
-}
-
-.workassign-status-dot.partial {
-  background: #f0ad2e;
-}
-
-.workassign-status-dot.open {
-  background: #f0ad2e;
-}
-
-.workassign-status-dot.missing {
-  background: #d94841;
-}
-
-.workassign-drop-cell.workassign-cell-planned {
-  background: linear-gradient(180deg, #f4fbf5, #eef8ef);
-}
-
-.workassign-drop-cell.workassign-cell-open {
-  background: linear-gradient(180deg, #fffdf4, #fff5d9);
-}
-
-.workassign-cell-empty {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  color: #8a6545;
-  font-weight: 700;
-}
-
-.workassign-cell-planned .workassign-cell-content {
-  min-height: 48px;
-}
-
-.workassign-cell-open:hover {
-  box-shadow: inset 0 0 0 2px rgba(240, 173, 46, 0.22);
-}
-
-.workassign-cell-planned:hover {
-  box-shadow: inset 0 0 0 2px rgba(47, 158, 68, 0.18);
-}
-
-.workassign-employee-cell-inner .workassign-status-dot {
-  margin-left: 2px;
-}
-
-/* ===== Arbeitseinteilung Feiertage / Kurz-Lang-Wochen ===== */
-.workassign-week-titleline {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.workassign-week-badge {
-  display: inline-flex;
-  align-items: center;
-  border-radius: 999px;
-  padding: 3px 9px;
-  font-size: 11px;
-  font-weight: 800;
-  border: 1px solid rgba(255, 255, 255, 0.38);
-  background: rgba(255, 255, 255, 0.16);
-  color: #fffaf4;
-}
-
-.workassign-week-badge.short {
-  background: rgba(75, 163, 95, 0.25);
-  border-color: rgba(184, 239, 195, 0.55);
-}
-
-.workassign-week-badge.long {
-  background: rgba(210, 104, 61, 0.26);
-  border-color: rgba(255, 202, 173, 0.55);
-}
-
-.workassign-day-badge {
-  display: inline-flex;
-  align-items: center;
   align-self: flex-start;
-  width: max-content;
-  max-width: 150px;
-  border-radius: 999px;
-  padding: 2px 7px;
   margin-top: 3px;
+  padding: 2px 6px;
+  border-radius: 999px;
   font-size: 10px;
   font-weight: 800;
-  line-height: 1.15;
   text-transform: none;
   letter-spacing: 0;
-  white-space: normal;
 }
 
-.workassign-day-badge.holiday {
-  background: #fff1ef;
-  color: #a42f25;
-  border: 1px solid rgba(202, 72, 65, 0.35);
+.workassign-day-tag.holiday {
+  background: #ffe7e2;
+  color: #8a241d;
+  border: 1px solid rgba(186, 65, 52, 0.35);
 }
 
-.workassign-day-badge.shortweek {
-  background: #eef8ef;
-  color: #2d6f38;
-  border: 1px solid rgba(65, 140, 82, 0.35);
+.workassign-day-tag.shortfree {
+  background: #fff6dc;
+  color: #79550e;
+  border: 1px solid rgba(203, 160, 66, 0.4);
 }
 
-.workassign-matrix th.workassign-day-holiday {
-  background: linear-gradient(180deg, #fff1ef, #f6d8d4);
-  color: #7d2b24;
+.workassign-day-holiday {
+  background: linear-gradient(180deg, #ffece9, #f7d7d1) !important;
 }
 
-.workassign-matrix th.workassign-day-shortweek {
-  background: linear-gradient(180deg, #eff8ef, #ddeddf);
-  color: #2d6536;
+.workassign-day-shortfree {
+  background: linear-gradient(180deg, #fff7df, #f0e2bd) !important;
 }
 
-.workassign-status-dot.holiday {
-  background: #c0392b;
+.workassign-cell-assigned {
+  box-shadow: inset 4px 0 0 rgba(60, 170, 91, 0.75);
 }
 
-.workassign-status-dot.shortweek {
-  background: #64b56b;
+.workassign-cell-open {
+  box-shadow: inset 4px 0 0 rgba(216, 165, 30, 0.75);
 }
 
-.workassign-status-dot.free {
-  background: #9a938c;
+.workassign-cell-shortfree {
+  background: #fff8e8 !important;
+  box-shadow: inset 4px 0 0 rgba(202, 166, 106, 0.95);
 }
 
-.workassign-drop-cell.workassign-cell-holiday {
-  background: linear-gradient(180deg, #fff6f5, #ffe7e3);
-  box-shadow: inset 0 0 0 1px rgba(192, 57, 43, 0.16);
-}
-
-.workassign-drop-cell.workassign-cell-shortweek {
-  background: linear-gradient(180deg, #f7fff7, #eaf7ec);
-  box-shadow: inset 0 0 0 1px rgba(80, 160, 92, 0.12);
-}
-
-.workassign-cell-locked {
+.workassign-cell-holiday {
+  background: #fff0ee !important;
+  box-shadow: inset 4px 0 0 rgba(155, 45, 45, 0.95);
   cursor: not-allowed;
 }
 
-.workassign-cell-holiday:hover {
-  box-shadow: inset 0 0 0 2px rgba(192, 57, 43, 0.22);
+.workassign-cell-locked,
+.workassign-cell-shortfree-note {
+  color: #7a614e;
+  font-size: 11px;
+  line-height: 1.25;
+  padding: 2px 0;
 }
 
-.workassign-cell-shortweek:hover {
-  box-shadow: inset 0 0 0 2px rgba(100, 181, 107, 0.22);
+.workassign-cell-locked {
+  color: #8a241d;
+  font-weight: 700;
 }
 
-.workassign-compact-empty.holiday {
-  color: #a42f25;
-  font-weight: 800;
+.workassign-cell-shortfree-note {
+  color: #7a5a17;
 }
 
-.workassign-compact-empty.shortweek {
-  color: #2d6f38;
-  font-weight: 800;
+.workassign-list-view {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+}
+
+.workassign-compact-row {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: 12px;
+  align-items: center;
+  border: 1px solid rgba(203, 182, 156, 0.45);
+  border-radius: 16px;
+  padding: 10px 12px;
+  background: linear-gradient(180deg, #fffdfa, #f8f1e7);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.035);
+}
+
+.workassign-compact-row.assigned {
+  border-left: 5px solid #3caa5b;
+}
+
+.workassign-compact-row.missing {
+  border-left: 5px solid #c94d3e;
+}
+
+.workassign-compact-row.holiday {
+  border-left: 5px solid #9b2d2d;
+  background: linear-gradient(180deg, #fff8f7, #fde9e5);
+}
+
+.workassign-compact-row.short-free {
+  border-left: 5px solid #caa66a;
+  background: linear-gradient(180deg, #fffaf0, #f7ead1);
+}
+
+.workassign-compact-date {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: #3f2c1b;
+}
+
+.workassign-compact-date strong {
+  font-size: 14px;
+}
+
+.workassign-compact-date span {
+  font-size: 12px;
+  color: #7a614e;
+}
+
+.workassign-compact-projects {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  align-items: center;
+}
+
+.workassign-compact-empty,
+.workassign-day-note {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 5px 9px;
+  font-size: 12px;
+  border: 1px solid rgba(203, 182, 156, 0.55);
+  background: rgba(255, 255, 255, 0.65);
+  color: #6a5342;
+}
+
+.workassign-day-note.holiday {
+  border-color: rgba(155, 45, 45, 0.35);
+  color: #8a241d;
+  background: #fff0ee;
+  font-weight: 700;
+}
+
+.workassign-day-note.short-free {
+  border-color: rgba(202, 166, 106, 0.5);
+  color: #7a5a17;
+  background: #fff8e8;
+  font-weight: 700;
+}
+
+@media (max-width: 700px) {
+  .workassign-compact-row {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
 }
