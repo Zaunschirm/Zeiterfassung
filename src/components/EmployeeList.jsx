@@ -214,15 +214,8 @@ export default function EmployeeList() {
     try {
       let entriesResponse = await supabase
         .from("time_entries")
-        .select("id, employee_id, work_date, start_min, end_min, from_min, to_min, break_min, travel_minutes, travel_min, note, za_hours")
+        .select("id, employee_id, work_date, start_min, end_min, break_min, travel_minutes, note, za_hours")
         .order("work_date", { ascending: true });
-
-      if (entriesResponse.error && String(entriesResponse.error.message || "").includes("za_hours")) {
-        entriesResponse = await supabase
-          .from("time_entries")
-          .select("id, employee_id, work_date, start_min, end_min, from_min, to_min, break_min, travel_minutes, travel_min, note")
-          .order("work_date", { ascending: true });
-      }
 
       if (entriesResponse.error) throw entriesResponse.error;
       setEntries(entriesResponse.data || []);
