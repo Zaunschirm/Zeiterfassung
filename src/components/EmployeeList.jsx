@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
-import { DEFAULT_OFFICE_WORK_TIME_SETTINGS, normalizeWorkTimeSettings } from "../utils/time";
+import { DEFAULT_OFFICE_WORK_TIME_SETTINGS, getEmployeeSollHoursForDay, normalizeWorkTimeSettings } from "../utils/time";
 
 const PERMISSION_OPTIONS = [
   { key: "writeOwnTime", label: "Eigene Stunden schreiben" },
@@ -64,10 +64,45 @@ function permissionSummary(permissions) {
   return `${active.slice(0, 2).join(", ")} +${active.length - 2}`;
 }
 
+
+function parseHours(value) {
+  if (value === null || typeof value === "undefined") return 0;
+  const n = Number(String(value).replace(",", "."));
+  return Number.isFinite(n) ? n : 0;
+}
+
+function formatHours(value) {
+  const n = Math.round((Number(value) || 0) * 100) / 100;
+  const sign = n > 0 ? "+" : "";
+  return `${sign}${n.toFixed(2).replace(".", ",")} h`;
+}
+
+function rowWorkHours(row) {
+  const note = String(row?.note || "");
+  if (note.includes("[Urlaub]") || note.includes("[Krank]") || note.includes("[Zeitausgleich]")) return 0;
+  const start = row.start_min ?? row.from_min ?? 0;
+  const end = row.end_min ?? row.to_min ?? 0;
+  const pause = row.break_min ?? 0;
+  const travel = row.travel_minutes ?? row.travel_min ?? 0;
+  return Math.max(end - start - pause, 0) / 60 + (Number(travel) || 0) / 60;
+}
+
+function isAbsenceNote(row, marker) {
+  return String(row?.note || "").includes(marker);
+}
+
+function sortByDateDesc(a, b) {
+  return String(b.adjustment_date || "").localeCompare(String(a.adjustment_date || ""));
+}
+
 export default function EmployeeList() {
   const [rows, setRows] = useState([]);
+  const [entries, setEntries] = useState([]);
+  const [overtimeAdjustments, setOvertimeAdjustments] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [overtimeLoading, setOvertimeLoading] = useState(false);
   const [err, setErr] = useState("");
+  const [overtimeErr, setOvertimeErr] = useState("");
 
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
@@ -77,6 +112,10 @@ export default function EmployeeList() {
   const [workTimeModel, setWorkTimeModel] = useState("buak");
   const [workTimeSettings, setWorkTimeSettings] = useState(() => normalizeWorkTimeSettings(DEFAULT_OFFICE_WORK_TIME_SETTINGS));
   const [saving, setSaving] = useState(false);
+  const [adjustEmployeeId, setAdjustEmployeeId] = useState("");
+  const [adjustHours, setAdjustHours] = useState("");
+  const [adjustNote, setAdjustNote] = useState("");
+  const [adjustSaving, setAdjustSaving] = useState(false);
 
   const [editId, setEditId] = useState(null);
 
@@ -84,6 +123,168 @@ export default function EmployeeList() {
     () => Object.values(permissions).filter(Boolean).length,
     [permissions]
   );
+
+
+  const overtimeByEmployee = useMemo(() => {
+    const map = new Map();
+    for (const emp of rows) {
+      map.set(String(emp.id), {
+        employee: emp,
+        worked: 0,
+        soll: 0,
+        generated: 0,
+        usedZa: 0,
+        corrections: 0,
+        balance: 0,
+      });
+    }
+
+    const dayMap = new Map();
+    for (const row of entries || []) {
+      const empId = String(row.employee_id || "");
+      if (!empId) continue;
+      const key = `${empId}__${row.work_date}`;
+      if (!dayMap.has(key)) {
+        dayMap.set(key, {
+          employeeId: empId,
+          date: row.work_date,
+          worked: 0,
+          usedZa: 0,
+          hasZa: false,
+          hasPaidAbsence: false,
+          rows: [],
+        });
+      }
+      const day = dayMap.get(key);
+      day.rows.push(row);
+      day.worked += rowWorkHours(row);
+      if (isAbsenceNote(row, "[Zeitausgleich]")) {
+        day.hasZa = true;
+        day.usedZa += parseHours(row.za_hours);
+      }
+      if (isAbsenceNote(row, "[Urlaub]") || isAbsenceNote(row, "[Krank]")) {
+        day.hasPaidAbsence = true;
+      }
+    }
+
+    for (const day of dayMap.values()) {
+      const summary = map.get(day.employeeId);
+      if (!summary) continue;
+      const emp = summary.employee;
+      const soll = Number(getEmployeeSollHoursForDay(day.date, emp)) || 0;
+      const zaFallback = day.hasZa && day.usedZa <= 0 ? soll : day.usedZa;
+
+      summary.worked += day.worked;
+      summary.usedZa += zaFallback;
+
+      let dailyChange = 0;
+      if (day.hasPaidAbsence && !day.hasZa && day.worked <= 0) {
+        dailyChange = 0;
+      } else if (day.hasZa && day.worked <= 0) {
+        dailyChange = -zaFallback;
+      } else if (day.hasZa) {
+        dailyChange = day.worked - soll - zaFallback;
+        summary.soll += soll;
+      } else {
+        dailyChange = day.worked - soll;
+        summary.soll += soll;
+      }
+
+      summary.generated += dailyChange;
+    }
+
+    for (const adj of overtimeAdjustments || []) {
+      const empId = String(adj.employee_id || "");
+      const summary = map.get(empId);
+      if (!summary) continue;
+      summary.corrections += parseHours(adj.hours);
+    }
+
+    for (const summary of map.values()) {
+      summary.balance = summary.generated + summary.corrections;
+    }
+
+    return map;
+  }, [rows, entries, overtimeAdjustments]);
+
+  async function loadOvertimeData(employeeRows = rows) {
+    setOvertimeErr("");
+    setOvertimeLoading(true);
+
+    try {
+      let entriesResponse = await supabase
+        .from("time_entries")
+        .select("id, employee_id, work_date, start_min, end_min, from_min, to_min, break_min, travel_minutes, travel_min, note, za_hours")
+        .order("work_date", { ascending: true });
+
+      if (entriesResponse.error && String(entriesResponse.error.message || "").includes("za_hours")) {
+        entriesResponse = await supabase
+          .from("time_entries")
+          .select("id, employee_id, work_date, start_min, end_min, from_min, to_min, break_min, travel_minutes, travel_min, note")
+          .order("work_date", { ascending: true });
+      }
+
+      if (entriesResponse.error) throw entriesResponse.error;
+      setEntries(entriesResponse.data || []);
+
+      const adjustmentsResponse = await supabase
+        .from("overtime_adjustments")
+        .select("*")
+        .order("adjustment_date", { ascending: false })
+        .limit(500);
+
+      if (adjustmentsResponse.error) {
+        setOvertimeAdjustments([]);
+        setOvertimeErr("Überstunden-Korrekturen konnten nicht geladen werden. Bitte zuerst die SQL-Tabelle anlegen.");
+      } else {
+        setOvertimeAdjustments(adjustmentsResponse.data || []);
+      }
+
+      if (!adjustEmployeeId && employeeRows?.length) {
+        setAdjustEmployeeId(String(employeeRows[0].id));
+      }
+    } catch (e) {
+      setOvertimeErr(String(e?.message || e));
+    } finally {
+      setOvertimeLoading(false);
+    }
+  }
+
+  async function saveOvertimeAdjustment(e) {
+    e.preventDefault();
+    setOvertimeErr("");
+
+    const employeeId = String(adjustEmployeeId || "");
+    const hours = parseHours(adjustHours);
+
+    if (!employeeId) {
+      setOvertimeErr("Bitte Mitarbeiter auswählen.");
+      return;
+    }
+
+    if (!hours) {
+      setOvertimeErr("Bitte Stunden eingeben, z. B. 8 oder -4,5.");
+      return;
+    }
+
+    setAdjustSaving(true);
+    try {
+      const { error } = await supabase.from("overtime_adjustments").insert({
+        employee_id: employeeId,
+        adjustment_date: new Date().toISOString().slice(0, 10),
+        hours,
+        note: (adjustNote || "Manuelle Korrektur").trim(),
+      });
+      if (error) throw error;
+      setAdjustHours("");
+      setAdjustNote("");
+      await loadOvertimeData(rows);
+    } catch (e2) {
+      setOvertimeErr(String(e2?.message || e2));
+    } finally {
+      setAdjustSaving(false);
+    }
+  }
 
   async function load() {
     setErr("");
@@ -101,10 +302,12 @@ export default function EmployeeList() {
       return;
     }
 
-    setRows((data || []).map((row) => ({
+    const nextRows = (data || []).map((row) => ({
       ...row,
       permissions: normalizePermissions(row.permissions),
-    })));
+    }));
+    setRows(nextRows);
+    await loadOvertimeData(nextRows);
   }
 
   useEffect(() => {
@@ -546,6 +749,106 @@ export default function EmployeeList() {
         </form>
 
         {err && <div className="hbz-section error">{err}</div>}
+      </div>
+
+      <div className="hbz-card employee-page-card">
+        <div className="employee-page-head">
+          <div>
+            <div className="hbz-section-title">Zeitausgleich</div>
+            <h3 className="employee-page-title">Überstunden- / ZA-Konto</h3>
+          </div>
+          <button type="button" className="hbz-btn btn-small" onClick={() => loadOvertimeData(rows)} disabled={overtimeLoading}>
+            {overtimeLoading ? "Aktualisiere…" : "Aktualisieren"}
+          </button>
+        </div>
+
+        <form onSubmit={saveOvertimeAdjustment} className="employee-form-grid" style={{ marginBottom: 16 }}>
+          <div>
+            <label className="hbz-label">Mitarbeiter</label>
+            <select className="hbz-input" value={adjustEmployeeId} onChange={(e) => setAdjustEmployeeId(e.target.value)}>
+              {rows.map((r) => (
+                <option key={r.id} value={String(r.id)}>{r.name}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="hbz-label">Korrektur Stunden</label>
+            <input
+              className="hbz-input"
+              value={adjustHours}
+              onChange={(e) => setAdjustHours(e.target.value)}
+              placeholder="z. B. +8 oder -4,5"
+            />
+            <div className="help" style={{ marginTop: 4 }}>Plus erhöht das Konto, Minus zieht Stunden ab.</div>
+          </div>
+
+          <div style={{ gridColumn: "span 2" }}>
+            <label className="hbz-label">Notiz</label>
+            <input
+              className="hbz-input"
+              value={adjustNote}
+              onChange={(e) => setAdjustNote(e.target.value)}
+              placeholder="z. B. Startwert per 01.06.2026 oder Korrektur Mai"
+            />
+          </div>
+
+          <div className="employee-form-actions">
+            <button className="save-btn" disabled={adjustSaving}>{adjustSaving ? "Speichere…" : "Korrektur speichern"}</button>
+          </div>
+        </form>
+
+        {overtimeErr && <div className="hbz-section error">{overtimeErr}</div>}
+
+        <div className="employee-table-wrap">
+          <table className="employee-table">
+            <thead>
+              <tr>
+                <th>Mitarbeiter</th>
+                <th className="num">Arbeitsstunden</th>
+                <th className="num">Soll</th>
+                <th className="num">ZA genommen</th>
+                <th className="num">Automatik</th>
+                <th className="num">Korrekturen</th>
+                <th className="num">Aktueller Stand</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => {
+                const balance = overtimeByEmployee.get(String(r.id));
+                return (
+                  <tr key={`za-${r.id}`} style={{ opacity: r.disabled ? 0.5 : 1 }}>
+                    <td>{r.name}</td>
+                    <td className="num">{formatHours(balance?.worked || 0)}</td>
+                    <td className="num">{formatHours(balance?.soll || 0)}</td>
+                    <td className="num">{formatHours(-(balance?.usedZa || 0))}</td>
+                    <td className="num">{formatHours(balance?.generated || 0)}</td>
+                    <td className="num">{formatHours(balance?.corrections || 0)}</td>
+                    <td className="num"><strong>{formatHours(balance?.balance || 0)}</strong></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        <details style={{ marginTop: 14 }}>
+          <summary className="hbz-label" style={{ cursor: "pointer" }}>Letzte manuelle Korrekturen anzeigen</summary>
+          <div className="employee-table-wrap" style={{ marginTop: 10 }}>
+            <table className="employee-table">
+              <thead>
+                <tr><th>Datum</th><th>Mitarbeiter</th><th className="num">Stunden</th><th>Notiz</th></tr>
+              </thead>
+              <tbody>
+                {[...overtimeAdjustments].sort(sortByDateDesc).slice(0, 20).map((a) => {
+                  const emp = rows.find((r) => String(r.id) === String(a.employee_id));
+                  return <tr key={a.id}><td>{a.adjustment_date}</td><td>{emp?.name || a.employee_id}</td><td className="num">{formatHours(a.hours)}</td><td>{a.note || "—"}</td></tr>;
+                })}
+                {!overtimeAdjustments.length && <tr><td colSpan={4} className="employee-empty">Noch keine manuellen Korrekturen vorhanden.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </details>
       </div>
 
       <div className="hbz-card employee-page-card">

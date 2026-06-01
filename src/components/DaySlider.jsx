@@ -249,8 +249,26 @@ function isAbsenceEntry(row, type) {
     );
   }
 
+  if (type === "zeitausgleich") {
+    return (
+      absenceType === "zeitausgleich" ||
+      absenceType === "za" ||
+      note.includes("[zeitausgleich]") ||
+      note.includes("zeitausgleich")
+    );
+  }
+
   return false;
 }
+
+const isAbsenceType = (type) => ["krank", "urlaub", "zeitausgleich"].includes(String(type || "").toLowerCase());
+
+const getAbsenceLabel = (type) => {
+  if (type === "krank") return "Krank";
+  if (type === "urlaub") return "Urlaub";
+  if (type === "zeitausgleich") return "Zeitausgleich";
+  return "";
+};
 
 const logSbError = (prefix, error) =>
   console.error(prefix, error?.message || error);
@@ -302,6 +320,7 @@ export default function DaySlider() {
   const [craneHours, setCraneHours] = useState(1);
   const [privatePkwUsed, setPrivatePkwUsed] = useState(false);
   const [privatePkwKm, setPrivatePkwKm] = useState("");
+  const [zaHours, setZaHours] = useState(0);
   const [voiceListening, setVoiceListening] = useState(false);
   const [voiceSupported, setVoiceSupported] = useState(() => {
     if (typeof window === "undefined") return false;
@@ -573,346 +592,28 @@ export default function DaySlider() {
     setTravelMin(0);
   }
 
-
-  async function loadWeatherForCurrentBooking(force = false) {
-    if (absenceType === "krank" || absenceType === "urlaub") {
-      setWeatherAuto("");
-      setWeatherCode(null);
-      setTemperature(null);
-      setPrecipitation(null);
-      setWeatherSource("");
-      setWeatherFetchedAt(null);
-      setWeatherError("");
-      if (!weatherManual) setWeatherManual("");
+  function applyZeitausgleichDefaults() {
+    const defaultHours = Number(selectedWorkDayDefaults?.requiredHours || 0);
+    const input = prompt(
+      "Zeitausgleich Stunden eingeben (leer = ganzer Tag laut Soll):",
+      defaultHours ? String(defaultHours).replace(".", ",") : ""
+    );
+    if (input === null) return;
+    const parsed = input === "" ? defaultHours : Number(String(input).replace(",", "."));
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      alert("Bitte gültige Stunden eingeben, z. B. 9 oder 4,5.");
       return;
     }
-
-    if (!projectAddress) {
-      setWeatherAuto("");
-      setWeatherCode(null);
-      setTemperature(null);
-      setPrecipitation(null);
-      setWeatherSource("");
-      setWeatherFetchedAt(null);
-      setWeatherError("Beim Projekt ist keine Baustellenadresse hinterlegt.");
-      return;
-    }
-
-    try {
-      setWeatherLoading(true);
-      setWeatherError("");
-      const weather = await fetchWeatherForBooking({
-        address: projectAddress,
-        date,
-        startMin: fromMin,
-        endMin: toMin,
-      });
-
-      if (!weather?.ok && !force) {
-        setWeatherAuto("");
-        setWeatherCode(null);
-        setTemperature(null);
-        setPrecipitation(null);
-        setWeatherSource("");
-        setWeatherFetchedAt(null);
-        setWeatherError("Wetter konnte nicht automatisch geladen werden.");
-        return;
-      }
-
-      setWeatherAuto(weather?.weather_auto || "");
-      setWeatherCode(
-        typeof weather?.weather_code !== "undefined" ? weather.weather_code : null
-      );
-      setTemperature(
-        typeof weather?.temperature === "number" ? weather.temperature : null
-      );
-      setPrecipitation(
-        typeof weather?.precipitation === "number" ? weather.precipitation : null
-      );
-      setWeatherSource(weather?.weather_source || "");
-      setWeatherFetchedAt(weather?.weather_fetched_at || null);
-    } catch (e) {
-      logSbError("[DaySlider] weather load error:", e);
-      setWeatherAuto("");
-      setWeatherCode(null);
-      setTemperature(null);
-      setPrecipitation(null);
-      setWeatherSource("");
-      setWeatherFetchedAt(null);
-      setWeatherError("Wetter konnte nicht geladen werden.");
-    } finally {
-      setWeatherLoading(false);
-    }
+    setAbsenceType("zeitausgleich");
+    setZaHours(parsed);
+    setProjectId("");
+    setTravelMin(0);
+    setCraneUsed(false);
+    setCraneHours(1);
+    setPrivatePkwUsed(false);
+    setPrivatePkwKm("");
+    applyWorkDayDefaults();
   }
-
-  useEffect(() => {
-    if (!projectId || absenceType) return;
-    loadWeatherForCurrentBooking();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, date, fromMin, toMin, absenceType]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadAssignmentSuggestions() {
-      try {
-        setAssignmentSuggestions([]);
-        setAssignmentInfo("");
-
-        const relevantIds = isManager
-          ? employees
-              .filter((e) => selectedCodes.includes(e.code))
-              .map((e) => e.id)
-          : employeeRow?.id
-          ? [employeeRow.id]
-          : [];
-
-        if (!date || relevantIds.length === 0) return;
-
-        const weekDates = getWeekDays(date);
-        const { data, error } = await supabase
-          .from("work_assignments")
-          .select("assignment_date, employee_id, project_id, projects(id, name, code)")
-          .in("employee_id", relevantIds)
-          .in("assignment_date", weekDates);
-
-        if (error) throw error;
-
-        const todayRows = (data || []).filter((row) => row.assignment_date === date);
-
-        const uniqueProjects = [];
-        const seen = new Set();
-        for (const row of todayRows) {
-          const prj = row.projects || null;
-          const id = prj?.id || row.project_id;
-          if (!id || seen.has(String(id))) continue;
-          seen.add(String(id));
-          uniqueProjects.push({
-            id,
-            name: prj?.name || projects.find((p) => String(p.id) === String(id))?.name || `Projekt ${id}`,
-            code: prj?.code || projects.find((p) => String(p.id) === String(id))?.code || "",
-          });
-        }
-
-        if (cancelled) return;
-
-        setAssignmentSuggestions(uniqueProjects);
-
-        if (todayRows.length > 0) {
-          const persons = new Set(todayRows.map((row) => row.employee_id)).size;
-          setAssignmentInfo(
-            persons > 1
-              ? `Arbeitseinteilung gefunden: ${uniqueProjects.length} Projekt${uniqueProjects.length === 1 ? "" : "e"} für ${persons} Mitarbeiter.`
-              : `Arbeitseinteilung gefunden: ${uniqueProjects.length} Projekt${uniqueProjects.length === 1 ? "" : "e"} für diesen Tag.`
-          );
-        }
-
-        if (!absenceType && !projectId && uniqueProjects.length > 0) {
-          setProjectId(uniqueProjects[0].id);
-        }
-      } catch (e) {
-        logSbError("[DaySlider] work assignments load error:", e);
-      }
-    }
-
-    loadAssignmentSuggestions();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [date, isManager, selectedCodes, employeeRow?.id, employees, projects, absenceType]);
-
-  async function loadEntries() {
-    try {
-      setLoading(true);
-      let query = supabase
-        .from("v_time_entries_expanded")
-        .select("*")
-        .eq("work_date", date)
-        .order("employee_name", { ascending: true })
-        .order("start_min", { ascending: true });
-
-      // Wichtig: Admin/Teamleiter sehen in der unteren Tagesübersicht immer ALLE Einträge
-      // des ausgewählten Tages – unabhängig davon, welche Mitarbeiter oben zum Speichern
-      // ausgewählt sind. Die Mitarbeiter-Auswahl steuert nur, für wen neu gespeichert wird.
-      if (isStaff && employeeRow?.id) {
-        query = query.eq("employee_id", employeeRow.id);
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
-      setEntries(data || []);
-    } catch (e) {
-      logSbError("[DaySlider] entries load error:", e);
-      setEntries([]);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function loadDailyCheckEntries() {
-    try {
-      if (!isManager) {
-        setDailyCheckEntries([]);
-        return;
-      }
-
-      setDailyCheckLoading(true);
-
-      const { data, error } = await supabase
-        .from("v_time_entries_expanded")
-        .select("*")
-        .eq("work_date", date);
-
-      if (error) throw error;
-      setDailyCheckEntries(data || []);
-    } catch (e) {
-      logSbError("[DaySlider] daily check entries load error:", e);
-      setDailyCheckEntries([]);
-    } finally {
-      setDailyCheckLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    loadEntries();
-    loadDailyCheckEntries();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [date, isManager, selectedCodes, employeeRow?.id]);
-
-  const shiftDate = (days) => {
-    setDate((old) => {
-      const d = new Date(old);
-      d.setDate(d.getDate() + days);
-      return d.toISOString().slice(0, 10);
-    });
-  };
-
-
-  useEffect(() => {
-    function handlePrevDay() {
-      shiftDate(-1);
-    }
-
-    function handleNextDay() {
-      shiftDate(1);
-    }
-
-    window.addEventListener("hbz-prev-day", handlePrevDay);
-    window.addEventListener("hbz-next-day", handleNextDay);
-
-    return () => {
-      window.removeEventListener("hbz-prev-day", handlePrevDay);
-      window.removeEventListener("hbz-next-day", handleNextDay);
-    };
-  }, []);
-
-  const currentEmployeeId = employeeRow?.id || employees.find((e) => e.code === session?.code)?.id || null;
-  const isOwnEntry = (row) => String(row?.employee_id ?? "") === String(currentEmployeeId ?? "");
-  const canEditEntry = (row) => !!row && (canEditAllTime || (canEditOwnTime && isOwnEntry(row)));
-  const canDeleteEntry = (row) => !!row && (canDeleteAllTime || (canDeleteOwnTime && isOwnEntry(row)));
-
-  const buakSollHoursToday = selectedWorkDayDefaults?.requiredHours || 0;
-  const holidayNameToday = useMemo(() => getHolidayName(date), [date]);
-
-  const dailyCheckRows = useMemo(() => {
-    if (!isManager) return [];
-
-    const checkEmployees = (employees || [])
-      // Deaktiviert = nicht mehr in der Tageskontrolle prüfen.
-      // Wichtig: bestehende Stunden deaktivierter MA bleiben unten trotzdem sichtbar,
-      // weil die Eintragsliste direkt aus v_time_entries_expanded kommt.
-      .filter((emp) => emp?.active !== false && emp?.disabled !== true)
-      .sort((a, b) => String(a?.name || "").localeCompare(String(b?.name || ""), "de"));
-
-    const rowsForDay = (dailyCheckEntries || []).filter(
-      (row) => String(row?.work_date || row?.date || "").slice(0, 10) === date
-    );
-
-    return checkEmployees.map((emp) => {
-      const empEntries = rowsForDay.filter(
-        (row) => String(row?.employee_id || "") === String(emp.id || "")
-      );
-
-      const hasUrlaub = empEntries.some((row) => isAbsenceEntry(row, "urlaub"));
-      const hasKrank = empEntries.some((row) => isAbsenceEntry(row, "krank"));
-      const hasEntry = empEntries.length > 0;
-
-      let status = "missing";
-      let label = "Fehlt";
-      let icon = "❌";
-
-      const empSollHours = getEmployeeWorkDay(emp, date)?.requiredHours || 0;
-
-      if (empSollHours <= 0) {
-        status = "not_required";
-        label = "frei laut Modell";
-        icon = "⚪";
-      } else if (hasUrlaub) {
-        status = "urlaub";
-        label = "Urlaub";
-        icon = "🟡";
-      } else if (hasKrank) {
-        status = "krank";
-        label = "Krank";
-        icon = "🔵";
-      } else if (hasEntry) {
-        status = "ok";
-        label = "Eingetragen";
-        icon = "✅";
-      }
-
-      return {
-        ...emp,
-        status,
-        statusLabel: label,
-        statusIcon: icon,
-        entryCount: empEntries.length,
-      };
-    });
-  }, [date, dailyCheckEntries, employees, isManager]);
-
-  const dailyCheckSummary = useMemo(() => {
-    const count = (status) => dailyCheckRows.filter((row) => row.status === status).length;
-    return {
-      ok: count("ok"),
-      missing: count("missing"),
-      urlaub: count("urlaub"),
-      krank: count("krank"),
-      notRequired: count("not_required"),
-      total: dailyCheckRows.length,
-    };
-  }, [dailyCheckRows]);
-
-  const filteredDailyCheckRows = useMemo(() => {
-    let rows = dailyCheckRows;
-
-    if (dailyCheckStatusFilter === "missing") {
-      rows = rows.filter((row) => row.status === "missing");
-    } else if (dailyCheckStatusFilter === "ok") {
-      rows = rows.filter((row) => row.status === "ok");
-    } else if (dailyCheckStatusFilter === "absence") {
-      rows = rows.filter((row) => row.status === "urlaub" || row.status === "krank");
-    } else if (dailyCheckStatusFilter === "not_required") {
-      rows = rows.filter((row) => row.status === "not_required");
-    }
-
-    if (dailyCheckEmployeeCodes.length > 0) {
-      const selected = new Set(dailyCheckEmployeeCodes.map(String));
-      rows = rows.filter((row) => selected.has(String(row.code || row.id || "")));
-    }
-
-    return rows;
-  }, [dailyCheckEmployeeCodes, dailyCheckRows, dailyCheckStatusFilter]);
-
-  const toggleDailyCheckEmployee = (code) => {
-    const key = String(code || "");
-    if (!key) return;
-    setDailyCheckEmployeeCodes((old) =>
-      old.includes(key) ? old.filter((x) => x !== key) : [...old, key]
-    );
-  };
-
 
   function startVoiceNote() {
     if (typeof window === "undefined") return;
@@ -987,7 +688,7 @@ export default function DaySlider() {
   async function handleSave() {
     setError("");
 
-    const isAbsence = absenceType === "krank" || absenceType === "urlaub";
+    const isAbsence = isAbsenceType(absenceType);
 
     if (!isAbsence && !projectId) {
       setError("Bitte Projekt auswählen.");
@@ -1026,6 +727,7 @@ export default function DaySlider() {
       weather_fetched_at: weatherFetchedAt || null,
       crane_hours: craneUsed ? Number(craneHours || 0) : 0,
       private_pkw_km: privatePkwUsed ? parsePrivatePkwKm(privatePkwKm) : 0,
+      za_hours: absenceType === "zeitausgleich" ? Number(zaHours || 0) : 0,
       bad_weather: !!badWeather,
       bad_weather_minutes: badWeather ? Math.max(toMin - fromMin - breakMin, 0) : 0,
       voice_note: (note || "").trim() || null,
@@ -1034,6 +736,8 @@ export default function DaySlider() {
           ? "[Krank] "
           : absenceType === "urlaub"
           ? "[Urlaub] "
+          : absenceType === "zeitausgleich"
+          ? "[Zeitausgleich] "
           : badWeather
           ? "[Schlechtwetter] "
           : ""
@@ -1075,6 +779,7 @@ export default function DaySlider() {
 
       setNote("");
       setAbsenceType(null);
+      setZaHours(0);
       setBadWeather(false);
       setBreakMin(30);
       setTravelMin(0);
@@ -1104,6 +809,7 @@ export default function DaySlider() {
       travel_minutes: row.travel_minutes ?? row.travel_min ?? 0,
       crane_hours: row.crane_hours ?? 0,
       private_pkw_km: row.private_pkw_km ?? 0,
+      za_hours: row.za_hours ?? 0,
       bad_weather: !!row.bad_weather,
       weather_manual: row.weather_manual || "",
       weather_auto: row.weather_auto || "",
@@ -1138,6 +844,7 @@ export default function DaySlider() {
       travel_minutes: parseInt(editState.travel_minutes || "0", 10) || 0,
       crane_hours: parseInt(editState.crane_hours || "0", 10) || 0,
       private_pkw_km: parsePrivatePkwKm(editState.private_pkw_km),
+      za_hours: parsePrivatePkwKm(editState.za_hours),
       bad_weather: !!editState.bad_weather,
       bad_weather_minutes: editState.bad_weather ? Math.max(to_m - from_m - (parseInt(editState.break_min || "0", 10) || 0), 0) : 0,
       voice_note: editState.note?.trim() || null,
@@ -1279,6 +986,7 @@ export default function DaySlider() {
               <span className="badge-soft">❌ {dailyCheckSummary.missing}</span>
               <span className="badge-soft">🟡 {dailyCheckSummary.urlaub}</span>
               <span className="badge-soft">🔵 {dailyCheckSummary.krank}</span>
+              <span className="badge-soft">🟣 {dailyCheckSummary.zeitausgleich}</span>
             </div>
           </div>
 
@@ -1295,7 +1003,7 @@ export default function DaySlider() {
                 ✅ Eingetragen ({dailyCheckSummary.ok})
               </button>
               <button type="button" className={`daily-check-filter-btn ${dailyCheckStatusFilter === "absence" ? "active" : ""}`} onClick={() => setDailyCheckStatusFilter("absence")}>
-                🟡/🔵 Urlaub/Krank ({dailyCheckSummary.urlaub + dailyCheckSummary.krank})
+                🟡/🔵/🟣 Urlaub/Krank/ZA ({dailyCheckSummary.urlaub + dailyCheckSummary.krank + (dailyCheckSummary.zeitausgleich || 0)})
               </button>
               {dailyCheckSummary.notRequired > 0 && (
                 <button type="button" className={`daily-check-filter-btn ${dailyCheckStatusFilter === "not_required" ? "active" : ""}`} onClick={() => setDailyCheckStatusFilter("not_required")}>
@@ -1373,7 +1081,7 @@ export default function DaySlider() {
             <select
               className="hbz-select"
               value={projectId ?? ""}
-              disabled={absenceType === "krank" || absenceType === "urlaub"}
+              disabled={isAbsenceType(absenceType)}
               onChange={(e) => setProjectId(e.target.value || null)}
             >
               <option value="">— ohne Projekt —</option>
@@ -1386,7 +1094,7 @@ export default function DaySlider() {
           </div>
         </div>
 
-        {assignmentSuggestions.length > 0 && absenceType !== "krank" && absenceType !== "urlaub" && (
+        {assignmentSuggestions.length > 0 && !isAbsenceType(absenceType) && (
           <div className="assignment-prefill-box">
             <div className="assignment-prefill-head">
               <strong>Arbeitseinteilung</strong>
@@ -1415,7 +1123,7 @@ export default function DaySlider() {
           </div>
         )}
 
-        {projectAddress && absenceType !== "krank" && absenceType !== "urlaub" && (
+        {projectAddress && !isAbsenceType(absenceType) && (
           <div
             className="help"
             style={{
@@ -1462,9 +1170,9 @@ export default function DaySlider() {
           </div>
         )}
 
-        {(absenceType === "krank" || absenceType === "urlaub") && (
+        {isAbsenceType(absenceType) && (
           <div className="help" style={{ marginTop: 8 }}>
-            Bei Krank/Urlaub ist kein Projekt nötig.
+            Bei Krank/Urlaub/Zeitausgleich ist kein Projekt nötig.
           </div>
         )}
 
@@ -1501,10 +1209,11 @@ export default function DaySlider() {
               </div>
               <div className="mobile-chip-section"><div className="month-card-title">Pause</div><div className="hbz-chipbar">{PAUSE_OPTIONS.map((m) => (<button key={m} type="button" className={`hbz-chip ${breakMin === m ? "active" : ""}`} onClick={() => { if (absenceType) setAbsenceType(null); setBreakMin(m); }}>{formatTravelLabel(m)}</button>))}</div></div>
             </details>
-            <details className="mobile-accordion"><summary>👷 Abwesenheit <span>{absenceType ? (absenceType === "krank" ? "Krank" : "Urlaub") : badWeather ? "Schlechtwetter" : "Normal"}</span></summary>
+            <details className="mobile-accordion"><summary>👷 Abwesenheit <span>{absenceType ? getAbsenceLabel(absenceType) : badWeather ? "Schlechtwetter" : "Normal"}</span></summary>
               <div className="hbz-chipbar">
                 <button type="button" className={`hbz-chip ${absenceType === "krank" ? "active" : ""}`} onClick={applyKrankDefaults}>Krank</button>
                 <button type="button" className={`hbz-chip ${absenceType === "urlaub" ? "active" : ""}`} onClick={applyUrlaubDefaults}>Urlaub</button>
+                <button type="button" className={`hbz-chip ${absenceType === "zeitausgleich" ? "active" : ""}`} onClick={applyZeitausgleichDefaults}>Zeitausgleich</button>
                 <button type="button" className={`hbz-chip ${badWeather ? "active" : ""}`} onClick={() => { setAbsenceType(null); setBadWeather((v) => !v); }}>Schlechtwetter</button>
                 {(absenceType || badWeather) && <button type="button" className="hbz-chip" onClick={() => { setAbsenceType(null); setBadWeather(false); }}>Normal</button>}
               </div>
@@ -1650,6 +1359,16 @@ onClick={applyKrankDefaults}
 onClick={applyUrlaubDefaults}
               >
                 Urlaub
+              </button>
+
+              <button
+                type="button"
+                className={`hbz-chip ${
+                  absenceType === "zeitausgleich" ? "active" : ""
+                }`}
+onClick={applyZeitausgleichDefaults}
+              >
+                Zeitausgleich
               </button>
 
               <button type="button" className={`hbz-chip ${badWeather ? "active" : ""}`} onClick={() => { setAbsenceType(null); setBadWeather((v) => !v); }}>
