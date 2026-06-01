@@ -171,7 +171,7 @@ export default function EmployeeList() {
       const summary = map.get(day.employeeId);
       if (!summary) continue;
       const emp = summary.employee;
-      const soll = Number(getEmployeeSollHoursForDay(emp, day.date)) || 0;
+      const soll = Number(getEmployeeSollHoursForDay(day.date, emp)) || 0;
       const zaFallback = day.hasZa && day.usedZa <= 0 ? soll : day.usedZa;
 
       summary.worked += day.worked;
@@ -214,13 +214,13 @@ export default function EmployeeList() {
     try {
       let entriesResponse = await supabase
         .from("time_entries")
-        .select("id, employee_id, work_date, start_min, end_min, break_min, travel_minutes, travel_min, note, za_hours")
+        .select("id, employee_id, work_date, start_min, end_min, from_min, to_min, break_min, travel_minutes, travel_min, note, za_hours")
         .order("work_date", { ascending: true });
 
       if (entriesResponse.error && String(entriesResponse.error.message || "").includes("za_hours")) {
         entriesResponse = await supabase
           .from("time_entries")
-          .select("id, employee_id, work_date, start_min, end_min, break_min, travel_minutes, travel_min, note")
+          .select("id, employee_id, work_date, start_min, end_min, from_min, to_min, break_min, travel_minutes, travel_min, note")
           .order("work_date", { ascending: true });
       }
 
