@@ -593,27 +593,383 @@ export default function DaySlider() {
   }
 
   function applyZeitausgleichDefaults() {
-    const defaultHours = Number(selectedWorkDayDefaults?.requiredHours || 0);
-    const input = prompt(
+    const d = getEmployeeWorkDay(defaultTimeEmployee, date);
+    const defaultHours = Number(d?.requiredHours || 0);
+    const start = d?.active ? hmToMinutes(d.start) : 7 * 60;
+
+    const input = window.prompt(
       "Zeitausgleich Stunden eingeben (leer = ganzer Tag laut Soll):",
       defaultHours ? String(defaultHours).replace(".", ",") : ""
     );
     if (input === null) return;
-    const parsed = input === "" ? defaultHours : Number(String(input).replace(",", "."));
+
+    const cleaned = String(input || "").trim();
+    const parsed = cleaned === "" ? defaultHours : Number(cleaned.replace(",", "."));
     if (!Number.isFinite(parsed) || parsed < 0) {
       alert("Bitte gültige Stunden eingeben, z. B. 9 oder 4,5.");
       return;
     }
+
+    setBadWeather(false);
     setAbsenceType("zeitausgleich");
-    setZaHours(parsed);
-    setProjectId("");
+    setZaHours(Math.round(parsed * 100) / 100);
+    setProjectId(null);
+    setFromMin(start);
+    setToMin(start + 15);
+    setBreakMin(15);
     setTravelMin(0);
     setCraneUsed(false);
     setCraneHours(1);
     setPrivatePkwUsed(false);
     setPrivatePkwKm("");
-    applyWorkDayDefaults();
   }
+
+
+  async function loadWeatherForCurrentBooking(force = false) {
+    if (isAbsenceType(absenceType)) {
+      setWeatherAuto("");
+      setWeatherCode(null);
+      setTemperature(null);
+      setPrecipitation(null);
+      setWeatherSource("");
+      setWeatherFetchedAt(null);
+      setWeatherError("");
+      if (!weatherManual) setWeatherManual("");
+      return;
+    }
+
+    if (!projectAddress) {
+      setWeatherAuto("");
+      setWeatherCode(null);
+      setTemperature(null);
+      setPrecipitation(null);
+      setWeatherSource("");
+      setWeatherFetchedAt(null);
+      setWeatherError("Beim Projekt ist keine Baustellenadresse hinterlegt.");
+      return;
+    }
+
+    try {
+      setWeatherLoading(true);
+      setWeatherError("");
+      const weather = await fetchWeatherForBooking({
+        address: projectAddress,
+        date,
+        startMin: fromMin,
+        endMin: toMin,
+      });
+
+      if (!weather?.ok && !force) {
+        setWeatherAuto("");
+        setWeatherCode(null);
+        setTemperature(null);
+        setPrecipitation(null);
+        setWeatherSource("");
+        setWeatherFetchedAt(null);
+        setWeatherError("Wetter konnte nicht automatisch geladen werden.");
+        return;
+      }
+
+      setWeatherAuto(weather?.weather_auto || "");
+      setWeatherCode(
+        typeof weather?.weather_code !== "undefined" ? weather.weather_code : null
+      );
+      setTemperature(
+        typeof weather?.temperature === "number" ? weather.temperature : null
+      );
+      setPrecipitation(
+        typeof weather?.precipitation === "number" ? weather.precipitation : null
+      );
+      setWeatherSource(weather?.weather_source || "");
+      setWeatherFetchedAt(weather?.weather_fetched_at || null);
+    } catch (e) {
+      logSbError("[DaySlider] weather load error:", e);
+      setWeatherAuto("");
+      setWeatherCode(null);
+      setTemperature(null);
+      setPrecipitation(null);
+      setWeatherSource("");
+      setWeatherFetchedAt(null);
+      setWeatherError("Wetter konnte nicht geladen werden.");
+    } finally {
+      setWeatherLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!projectId || absenceType) return;
+    loadWeatherForCurrentBooking();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, date, fromMin, toMin, absenceType]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadAssignmentSuggestions() {
+      try {
+        setAssignmentSuggestions([]);
+        setAssignmentInfo("");
+
+        const relevantIds = isManager
+          ? employees
+              .filter((e) => selectedCodes.includes(e.code))
+              .map((e) => e.id)
+          : employeeRow?.id
+          ? [employeeRow.id]
+          : [];
+
+        if (!date || relevantIds.length === 0) return;
+
+        const weekDates = getWeekDays(date);
+        const { data, error } = await supabase
+          .from("work_assignments")
+          .select("assignment_date, employee_id, project_id, projects(id, name, code)")
+          .in("employee_id", relevantIds)
+          .in("assignment_date", weekDates);
+
+        if (error) throw error;
+
+        const todayRows = (data || []).filter((row) => row.assignment_date === date);
+
+        const uniqueProjects = [];
+        const seen = new Set();
+        for (const row of todayRows) {
+          const prj = row.projects || null;
+          const id = prj?.id || row.project_id;
+          if (!id || seen.has(String(id))) continue;
+          seen.add(String(id));
+          uniqueProjects.push({
+            id,
+            name: prj?.name || projects.find((p) => String(p.id) === String(id))?.name || `Projekt ${id}`,
+            code: prj?.code || projects.find((p) => String(p.id) === String(id))?.code || "",
+          });
+        }
+
+        if (cancelled) return;
+
+        setAssignmentSuggestions(uniqueProjects);
+
+        if (todayRows.length > 0) {
+          const persons = new Set(todayRows.map((row) => row.employee_id)).size;
+          setAssignmentInfo(
+            persons > 1
+              ? `Arbeitseinteilung gefunden: ${uniqueProjects.length} Projekt${uniqueProjects.length === 1 ? "" : "e"} für ${persons} Mitarbeiter.`
+              : `Arbeitseinteilung gefunden: ${uniqueProjects.length} Projekt${uniqueProjects.length === 1 ? "" : "e"} für diesen Tag.`
+          );
+        }
+
+        if (!absenceType && !projectId && uniqueProjects.length > 0) {
+          setProjectId(uniqueProjects[0].id);
+        }
+      } catch (e) {
+        logSbError("[DaySlider] work assignments load error:", e);
+      }
+    }
+
+    loadAssignmentSuggestions();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [date, isManager, selectedCodes, employeeRow?.id, employees, projects, absenceType]);
+
+  async function loadEntries() {
+    try {
+      setLoading(true);
+      let query = supabase
+        .from("v_time_entries_expanded")
+        .select("*")
+        .eq("work_date", date)
+        .order("employee_name", { ascending: true })
+        .order("start_min", { ascending: true });
+
+      // Wichtig: Admin/Teamleiter sehen in der unteren Tagesübersicht immer ALLE Einträge
+      // des ausgewählten Tages – unabhängig davon, welche Mitarbeiter oben zum Speichern
+      // ausgewählt sind. Die Mitarbeiter-Auswahl steuert nur, für wen neu gespeichert wird.
+      if (isStaff && employeeRow?.id) {
+        query = query.eq("employee_id", employeeRow.id);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      setEntries(data || []);
+    } catch (e) {
+      logSbError("[DaySlider] entries load error:", e);
+      setEntries([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadDailyCheckEntries() {
+    try {
+      if (!isManager) {
+        setDailyCheckEntries([]);
+        return;
+      }
+
+      setDailyCheckLoading(true);
+
+      const { data, error } = await supabase
+        .from("v_time_entries_expanded")
+        .select("*")
+        .eq("work_date", date);
+
+      if (error) throw error;
+      setDailyCheckEntries(data || []);
+    } catch (e) {
+      logSbError("[DaySlider] daily check entries load error:", e);
+      setDailyCheckEntries([]);
+    } finally {
+      setDailyCheckLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadEntries();
+    loadDailyCheckEntries();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [date, isManager, selectedCodes, employeeRow?.id]);
+
+  const shiftDate = (days) => {
+    setDate((old) => {
+      const d = new Date(old);
+      d.setDate(d.getDate() + days);
+      return d.toISOString().slice(0, 10);
+    });
+  };
+
+
+  useEffect(() => {
+    function handlePrevDay() {
+      shiftDate(-1);
+    }
+
+    function handleNextDay() {
+      shiftDate(1);
+    }
+
+    window.addEventListener("hbz-prev-day", handlePrevDay);
+    window.addEventListener("hbz-next-day", handleNextDay);
+
+    return () => {
+      window.removeEventListener("hbz-prev-day", handlePrevDay);
+      window.removeEventListener("hbz-next-day", handleNextDay);
+    };
+  }, []);
+
+  const currentEmployeeId = employeeRow?.id || employees.find((e) => e.code === session?.code)?.id || null;
+  const isOwnEntry = (row) => String(row?.employee_id ?? "") === String(currentEmployeeId ?? "");
+  const canEditEntry = (row) => !!row && (canEditAllTime || (canEditOwnTime && isOwnEntry(row)));
+  const canDeleteEntry = (row) => !!row && (canDeleteAllTime || (canDeleteOwnTime && isOwnEntry(row)));
+
+  const buakSollHoursToday = selectedWorkDayDefaults?.requiredHours || 0;
+  const holidayNameToday = useMemo(() => getHolidayName(date), [date]);
+
+  const dailyCheckRows = useMemo(() => {
+    if (!isManager) return [];
+
+    const checkEmployees = (employees || [])
+      // Deaktiviert = nicht mehr in der Tageskontrolle prüfen.
+      // Wichtig: bestehende Stunden deaktivierter MA bleiben unten trotzdem sichtbar,
+      // weil die Eintragsliste direkt aus v_time_entries_expanded kommt.
+      .filter((emp) => emp?.active !== false && emp?.disabled !== true)
+      .sort((a, b) => String(a?.name || "").localeCompare(String(b?.name || ""), "de"));
+
+    const rowsForDay = (dailyCheckEntries || []).filter(
+      (row) => String(row?.work_date || row?.date || "").slice(0, 10) === date
+    );
+
+    return checkEmployees.map((emp) => {
+      const empEntries = rowsForDay.filter(
+        (row) => String(row?.employee_id || "") === String(emp.id || "")
+      );
+
+      const hasUrlaub = empEntries.some((row) => isAbsenceEntry(row, "urlaub"));
+      const hasKrank = empEntries.some((row) => isAbsenceEntry(row, "krank"));
+      const hasZeitausgleich = empEntries.some((row) => isAbsenceEntry(row, "zeitausgleich"));
+      const hasEntry = empEntries.length > 0;
+
+      let status = "missing";
+      let label = "Fehlt";
+      let icon = "❌";
+
+      const empSollHours = getEmployeeWorkDay(emp, date)?.requiredHours || 0;
+
+      if (empSollHours <= 0) {
+        status = "not_required";
+        label = "frei laut Modell";
+        icon = "⚪";
+      } else if (hasUrlaub) {
+        status = "urlaub";
+        label = "Urlaub";
+        icon = "🟡";
+      } else if (hasKrank) {
+        status = "krank";
+        label = "Krank";
+        icon = "🔵";
+      } else if (hasZeitausgleich) {
+        status = "zeitausgleich";
+        label = "Zeitausgleich";
+        icon = "🟣";
+      } else if (hasEntry) {
+        status = "ok";
+        label = "Eingetragen";
+        icon = "✅";
+      }
+
+      return {
+        ...emp,
+        status,
+        statusLabel: label,
+        statusIcon: icon,
+        entryCount: empEntries.length,
+      };
+    });
+  }, [date, dailyCheckEntries, employees, isManager]);
+
+  const dailyCheckSummary = useMemo(() => {
+    const count = (status) => dailyCheckRows.filter((row) => row.status === status).length;
+    return {
+      ok: count("ok"),
+      missing: count("missing"),
+      urlaub: count("urlaub"),
+      krank: count("krank"),
+      zeitausgleich: count("zeitausgleich"),
+      notRequired: count("not_required"),
+      total: dailyCheckRows.length,
+    };
+  }, [dailyCheckRows]);
+
+  const filteredDailyCheckRows = useMemo(() => {
+    let rows = dailyCheckRows;
+
+    if (dailyCheckStatusFilter === "missing") {
+      rows = rows.filter((row) => row.status === "missing");
+    } else if (dailyCheckStatusFilter === "ok") {
+      rows = rows.filter((row) => row.status === "ok");
+    } else if (dailyCheckStatusFilter === "absence") {
+      rows = rows.filter((row) => row.status === "urlaub" || row.status === "krank" || row.status === "zeitausgleich");
+    } else if (dailyCheckStatusFilter === "not_required") {
+      rows = rows.filter((row) => row.status === "not_required");
+    }
+
+    if (dailyCheckEmployeeCodes.length > 0) {
+      const selected = new Set(dailyCheckEmployeeCodes.map(String));
+      rows = rows.filter((row) => selected.has(String(row.code || row.id || "")));
+    }
+
+    return rows;
+  }, [dailyCheckEmployeeCodes, dailyCheckRows, dailyCheckStatusFilter]);
+
+  const toggleDailyCheckEmployee = (code) => {
+    const key = String(code || "");
+    if (!key) return;
+    setDailyCheckEmployeeCodes((old) =>
+      old.includes(key) ? old.filter((x) => x !== key) : [...old, key]
+    );
+  };
+
 
   function startVoiceNote() {
     if (typeof window === "undefined") return;
@@ -894,6 +1250,7 @@ export default function DaySlider() {
     { label: "Fahrzeit", value: formatTravelLabel(travelMin) },
     { label: "Kran", value: craneUsed ? `${craneHours} h` : "—" },
     { label: "Privat-PKW", value: privatePkwUsed ? formatPrivatePkwKm(privatePkwKm) : "—" },
+    { label: "Zeitausgleich", value: absenceType === "zeitausgleich" ? `${zaHours} h` : "—" },
     { label: "Schlechtwetter", value: badWeather ? "Ja" : "—" },
     { label: "Wetter", value: finalWeather || "—" },
   ];
