@@ -42,6 +42,20 @@ const PAUSE_OPTIONS = [0, 15, 30, 45, 60, 75, 90];
 const TRAVEL_OPTIONS = [0, 15, 30, 45, 60, 75, 90, 105, 120, 135, 150];
 const CRANE_HOUR_OPTIONS = Array.from({ length: 15 }, (_, i) => i + 1);
 
+const parsePrivatePkwKm = (value) => {
+  const normalized = String(value ?? "")
+    .replace(",", ".")
+    .replace(/[^0-9.]/g, "");
+  const parsed = Number.parseFloat(normalized);
+  if (!Number.isFinite(parsed) || parsed < 0) return 0;
+  return Math.round(parsed * 10) / 10;
+};
+
+const formatPrivatePkwKm = (value) => {
+  const km = parsePrivatePkwKm(value);
+  return km > 0 ? `${km.toLocaleString("de-AT")} km` : "—";
+};
+
 const BUAK_WEEK_TYPES_2026 = {
   1: "K",
   2: "K",
@@ -286,6 +300,8 @@ export default function DaySlider() {
   const [note, setNote] = useState("");
   const [craneUsed, setCraneUsed] = useState(false);
   const [craneHours, setCraneHours] = useState(1);
+  const [privatePkwUsed, setPrivatePkwUsed] = useState(false);
+  const [privatePkwKm, setPrivatePkwKm] = useState("");
   const [voiceListening, setVoiceListening] = useState(false);
   const [voiceSupported, setVoiceSupported] = useState(() => {
     if (typeof window === "undefined") return false;
@@ -942,6 +958,32 @@ export default function DaySlider() {
     }
   }
 
+  function togglePrivatePkw() {
+    if (absenceType) return;
+
+    if (privatePkwUsed) {
+      setPrivatePkwUsed(false);
+      setPrivatePkwKm("");
+      return;
+    }
+
+    const input = window.prompt(
+      "Wie viele Kilometer wurden mit dem privaten PKW gefahren?",
+      privatePkwKm || ""
+    );
+
+    if (input === null) return;
+
+    const km = parsePrivatePkwKm(input);
+    if (km <= 0) {
+      alert("Bitte eine KM-Zahl größer als 0 eingeben.");
+      return;
+    }
+
+    setPrivatePkwKm(String(km));
+    setPrivatePkwUsed(true);
+  }
+
   async function handleSave() {
     setError("");
 
@@ -983,6 +1025,7 @@ export default function DaySlider() {
       weather_source: weatherSource || null,
       weather_fetched_at: weatherFetchedAt || null,
       crane_hours: craneUsed ? Number(craneHours || 0) : 0,
+      private_pkw_km: privatePkwUsed ? parsePrivatePkwKm(privatePkwKm) : 0,
       bad_weather: !!badWeather,
       bad_weather_minutes: badWeather ? Math.max(toMin - fromMin - breakMin, 0) : 0,
       voice_note: (note || "").trim() || null,
@@ -1037,6 +1080,8 @@ export default function DaySlider() {
       setTravelMin(0);
       setCraneUsed(false);
       setCraneHours(1);
+      setPrivatePkwUsed(false);
+      setPrivatePkwKm("");
       setWeatherManual("");
       await loadEntries();
       await loadDailyCheckEntries();
@@ -1058,6 +1103,7 @@ export default function DaySlider() {
       break_min: row.break_min ?? 0,
       travel_minutes: row.travel_minutes ?? row.travel_min ?? 0,
       crane_hours: row.crane_hours ?? 0,
+      private_pkw_km: row.private_pkw_km ?? 0,
       bad_weather: !!row.bad_weather,
       weather_manual: row.weather_manual || "",
       weather_auto: row.weather_auto || "",
@@ -1091,6 +1137,7 @@ export default function DaySlider() {
       break_min: parseInt(editState.break_min || "0", 10) || 0,
       travel_minutes: parseInt(editState.travel_minutes || "0", 10) || 0,
       crane_hours: parseInt(editState.crane_hours || "0", 10) || 0,
+      private_pkw_km: parsePrivatePkwKm(editState.private_pkw_km),
       bad_weather: !!editState.bad_weather,
       bad_weather_minutes: editState.bad_weather ? Math.max(to_m - from_m - (parseInt(editState.break_min || "0", 10) || 0), 0) : 0,
       voice_note: editState.note?.trim() || null,
@@ -1139,6 +1186,7 @@ export default function DaySlider() {
     { label: "Pause", value: `${breakMin} min` },
     { label: "Fahrzeit", value: formatTravelLabel(travelMin) },
     { label: "Kran", value: craneUsed ? `${craneHours} h` : "—" },
+    { label: "Privat-PKW", value: privatePkwUsed ? formatPrivatePkwKm(privatePkwKm) : "—" },
     { label: "Schlechtwetter", value: badWeather ? "Ja" : "—" },
     { label: "Wetter", value: finalWeather || "—" },
   ];
@@ -1462,7 +1510,7 @@ export default function DaySlider() {
               </div>
             </details>
             <details className="mobile-accordion"><summary>🚙 Fahrzeit <span>{formatTravelLabel(travelMin)}</span></summary><div className="hbz-chipbar">{TRAVEL_OPTIONS.map((m) => (<button key={m} type="button" className={`hbz-chip ${travelMin === m ? "active" : ""}`} onClick={() => { if (absenceType) setAbsenceType(null); setTravelMin(m); }}>{formatTravelLabel(m)}</button>))}</div></details>
-            <details className="mobile-accordion"><summary>🏗 Kranzeit <span>{craneUsed ? `${craneHours} h` : "—"}</span></summary><div className="hbz-chipbar" style={{ alignItems: "center" }}><button type="button" className={`hbz-chip ${craneUsed ? "active" : ""}`} onClick={() => setCraneUsed((v) => !v)} disabled={!!absenceType}>🏗 Kran verwendet</button>{craneUsed && (<select className="hbz-input" value={craneHours} onChange={(e) => setCraneHours(Number(e.target.value))} disabled={!!absenceType} style={{ maxWidth: 140 }}>{CRANE_HOUR_OPTIONS.map((h) => <option key={h} value={h}>{h} h</option>)}</select>)}</div></details>
+            <details className="mobile-accordion"><summary>🏗 Kran / Privat-PKW <span>{craneUsed ? `${craneHours} h` : privatePkwUsed ? formatPrivatePkwKm(privatePkwKm) : "—"}</span></summary><div className="hbz-chipbar" style={{ alignItems: "center" }}><button type="button" className={`hbz-chip ${craneUsed ? "active" : ""}`} onClick={() => setCraneUsed((v) => !v)} disabled={!!absenceType}>🏗 Kran verwendet</button><button type="button" className={`hbz-chip ${privatePkwUsed ? "active" : ""}`} onClick={togglePrivatePkw} disabled={!!absenceType} title="Gefahrene Kilometer mit privatem PKW erfassen">🚗 Privat-PKW</button>{craneUsed && (<select className="hbz-input" value={craneHours} onChange={(e) => setCraneHours(Number(e.target.value))} disabled={!!absenceType} style={{ maxWidth: 140 }}>{CRANE_HOUR_OPTIONS.map((h) => <option key={h} value={h}>{h} h</option>)}</select>)}{privatePkwUsed && (<input className="hbz-input" type="number" min="0" step="0.1" value={privatePkwKm} onChange={(e) => setPrivatePkwKm(e.target.value)} disabled={!!absenceType} style={{ maxWidth: 140 }} placeholder="KM" />)}</div></details>
             <details className="mobile-accordion"><summary>☁ Wetter <span>{finalWeather || "—"}</span></summary>
               <div className="month-card-field"><label className="hbz-label">Automatisch von Baustelle + Buchung</label><div className="hbz-input" style={{ display: "flex", alignItems: "center", gap: 8 }}><span>{weatherLoading ? "Lade Wetter…" : weatherAuto || "—"}</span><button type="button" className="hbz-btn btn-small" onClick={() => loadWeatherForCurrentBooking(true)} disabled={weatherLoading || !projectAddress || !!absenceType}>Aktualisieren</button></div></div>
               <div className="month-card-field" style={{ marginTop: 10 }}><label className="hbz-label">Manuell ändern</label><select className="hbz-input" value={weatherManual || "Automatisch"} disabled={!!absenceType} onChange={(e) => { const value = e.target.value; setWeatherManual(value === "Automatisch" ? "" : value); }}>{WEATHER_MANUAL_OPTIONS.map((opt) => <option key={opt} value={opt}>{opt}</option>)}</select></div>
@@ -1661,6 +1709,16 @@ onClick={applyUrlaubDefaults}
                 🏗 Kran verwendet
               </button>
 
+              <button
+                type="button"
+                className={`hbz-chip ${privatePkwUsed ? "active" : ""}`}
+                onClick={togglePrivatePkw}
+                disabled={!!absenceType}
+                title="Gefahrene Kilometer mit privatem PKW erfassen"
+              >
+                🚗 Privat-PKW
+              </button>
+
               {craneUsed && (
                 <div className="month-card-field" style={{ minWidth: 180, margin: 0 }}>
                   <label className="hbz-label">Kranstunden</label>
@@ -1678,9 +1736,25 @@ onClick={applyUrlaubDefaults}
                   </select>
                 </div>
               )}
+
+              {privatePkwUsed && (
+                <div className="month-card-field" style={{ minWidth: 180, margin: 0 }}>
+                  <label className="hbz-label">Gefahrene KM</label>
+                  <input
+                    className="hbz-input"
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    value={privatePkwKm}
+                    onChange={(e) => setPrivatePkwKm(e.target.value)}
+                    disabled={!!absenceType}
+                    placeholder="z. B. 24"
+                  />
+                </div>
+              )}
             </div>
             <div className="help" style={{ marginTop: 8 }}>
-              Wird als <b>Kranzeit</b> zum Eintrag gespeichert und kann später in der Nachkalkulation ausgewertet werden.
+              Wird als <b>Kranzeit</b> bzw. <b>Privat-PKW km</b> zum Eintrag gespeichert und kann später ausgewertet werden.
             </div>
           </div>
 
@@ -1818,6 +1892,7 @@ onClick={applyUrlaubDefaults}
                       <th className="num">Pause</th>
                       <th className="num">Fahrzeit</th>
                       <th className="num">Kran</th>
+                      <th className="num">Privat-PKW</th>
                       <th className="num">Stunden</th>
                       <th className="num">Überstunden</th>
                       <th>Wetter</th>
@@ -1848,6 +1923,7 @@ onClick={applyUrlaubDefaults}
                             <td className="num">{breakM} min</td>
                             <td className="num">{travelM} min</td>
                             <td className="num">{r.crane_hours ? `${r.crane_hours} h` : "—"}</td>
+                            <td className="num">{formatPrivatePkwKm(r.private_pkw_km)}</td>
                             <td className="num">{hrs.toFixed(2)}</td>
                             <td className="num">{ot.toFixed(2)}</td>
                             <td>{getWeatherFinalLabel(r) || "—"}</td>
@@ -1980,6 +2056,21 @@ onClick={applyUrlaubDefaults}
                             </select>
                           </td>
                           <td className="num">
+                            <input
+                              type="number"
+                              min={0}
+                              step={0.1}
+                              className="hbz-input"
+                              value={editState.private_pkw_km ?? 0}
+                              onChange={(e) =>
+                                setEditState((s) => ({
+                                  ...s,
+                                  private_pkw_km: e.target.value,
+                                }))
+                              }
+                            />
+                          </td>
+                          <td className="num">
                             {(() => {
                               const startM = hmToMin(editState.from_hm);
                               const endM = hmToMin(editState.to_hm);
@@ -2110,6 +2201,7 @@ onClick={applyUrlaubDefaults}
                           <span>Pause: {breakM} min</span>
                           <span>Fahrzeit: {travelM} min</span>
                           {r.crane_hours ? <span>Kran: {r.crane_hours} h</span> : null}
+                          {parsePrivatePkwKm(r.private_pkw_km) > 0 ? <span>Privat-PKW: {formatPrivatePkwKm(r.private_pkw_km)}</span> : null}
                         </div>
 
                         <div className="month-card-row">

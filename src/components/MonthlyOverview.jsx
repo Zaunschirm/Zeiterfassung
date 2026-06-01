@@ -32,6 +32,20 @@ const h2 = (m) => Math.round((m / 60) * 100) / 100;
 
 const getTravel = (e) => e.travel_minutes ?? e.travel_min ?? 0;
 
+const parsePrivatePkwKm = (value) => {
+  const normalized = String(value ?? "")
+    .replace(",", ".")
+    .replace(/[^0-9.]/g, "");
+  const parsed = Number.parseFloat(normalized);
+  if (!Number.isFinite(parsed) || parsed < 0) return 0;
+  return Math.round(parsed * 10) / 10;
+};
+
+const formatPrivatePkwKm = (value) => {
+  const km = parsePrivatePkwKm(value);
+  return km > 0 ? `${km.toLocaleString("de-AT")} km` : "—";
+};
+
 const entryMinutes = (e) => {
   const start = e.start_min ?? e.from_min ?? 0;
   const end = e.end_min ?? e.to_min ?? 0;
@@ -560,15 +574,18 @@ export default function MonthlyOverview() {
   const monthTotals = useMemo(() => {
     let workPlusTravel = 0;
     let travel = 0;
+    let privatePkwKm = 0;
 
     for (const r of grouped) {
       workPlusTravel += r._mins;
       travel += r._travel;
+      privatePkwKm += parsePrivatePkwKm(r.private_pkw_km);
     }
 
     return {
       totalHrs: h2(workPlusTravel),
       travelHrs: h2(travel),
+      privatePkwKm: Math.round(privatePkwKm * 10) / 10,
     };
   }, [grouped]);
 
@@ -606,6 +623,7 @@ export default function MonthlyOverview() {
       break_min: row.break_min ?? 0,
       note: row.note ?? "",
       travel_minutes: getTravel(row) || 0,
+      private_pkw_km: row.private_pkw_km ?? 0,
     });
   }
 
@@ -632,6 +650,10 @@ export default function MonthlyOverview() {
 
     if (typeof editState.travel_minutes !== "undefined") {
       update.travel_minutes = parseInt(editState.travel_minutes || "0", 10);
+    }
+
+    if (typeof editState.private_pkw_km !== "undefined") {
+      update.private_pkw_km = parsePrivatePkwKm(editState.private_pkw_km);
     }
 
     const { error } = await supabase
@@ -673,6 +695,7 @@ export default function MonthlyOverview() {
       "Ende",
       "Pause (min)",
       "Fahrzeit (min)",
+      "Privat-PKW (km)",
       "Schlechtwetter",
       "Stunden (inkl. Fahrzeit)",
       "Überstunden",
@@ -696,6 +719,7 @@ export default function MonthlyOverview() {
           toHM(end),
           r.break_min ?? 0,
           r._travel ?? 0,
+          parsePrivatePkwKm(r.private_pkw_km).toString().replace(".", ","),
           isBadWeatherRow(r) ? "Ja" : "",
           hrs.toFixed(2),
           ot.toFixed(2),
@@ -1354,6 +1378,7 @@ export default function MonthlyOverview() {
             name,
             work: 0,
             travel: 0,
+            privatePkwKm: 0,
             total: 0,
             days: new Set(),
           };
@@ -1361,6 +1386,7 @@ export default function MonthlyOverview() {
         const workMinutes = getPureWorkMinutes(r);
         current.work += workMinutes;
         current.travel += r._travel || 0;
+        current.privatePkwKm += parsePrivatePkwKm(r.private_pkw_km);
         current.total += r._mins || 0;
         if (r.work_date) current.days.add(r.work_date);
 
@@ -1373,6 +1399,7 @@ export default function MonthlyOverview() {
           p.name,
           h2(p.work).toFixed(2),
           h2(p.travel).toFixed(2),
+          p.privatePkwKm.toLocaleString("de-AT"),
           h2(p.total).toFixed(2),
           String(p.days.size),
         ]);
@@ -1384,7 +1411,7 @@ export default function MonthlyOverview() {
       doc.text("Zuerst Projekt-Gesamtsumme, danach tägliche Auflistung je Mitarbeiter", 40, 58);
 
       autoTable(doc, {
-        head: [["Projekt", "Arbeitszeit", "Fahrzeit", "Gesamtstunden", "Arbeitstage"]],
+        head: [["Projekt", "Arbeitszeit", "Fahrzeit", "Privat-PKW km", "Gesamtstunden", "Arbeitstage"]],
         body: projectBody,
         startY: 80,
         styles: { fontSize: 10, cellPadding: 4, overflow: "linebreak" },
@@ -1409,12 +1436,13 @@ export default function MonthlyOverview() {
           r.project_name || "—",
           pureWorkHours.toFixed(2),
           travelHours.toFixed(2),
+          formatPrivatePkwKm(r.private_pkw_km),
           totalHours.toFixed(2),
         ];
       });
 
       autoTable(doc, {
-        head: [["Datum", "Mitarbeiter", "Projekt", "Arbeitszeit", "Fahrzeit", "Gesamtstunden"]],
+        head: [["Datum", "Mitarbeiter", "Projekt", "Arbeitszeit", "Fahrzeit", "Privat-PKW", "Gesamtstunden"]],
         body,
         startY: currentY,
         styles: { fontSize: 9, cellPadding: 3, overflow: "linebreak" },
@@ -1440,6 +1468,7 @@ export default function MonthlyOverview() {
       const totalTravelMinutes = rowsForExport.reduce((sum, r) => sum + (r._travel || 0), 0);
       const totalAllMinutes = rowsForExport.reduce((sum, r) => sum + (r._mins || 0), 0);
       const totalWorkMinutes = Math.max(totalAllMinutes - totalTravelMinutes, 0);
+      const totalPrivatePkwKm = rowsForExport.reduce((sum, r) => sum + parsePrivatePkwKm(r.private_pkw_km), 0);
 
       const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
       doc.setFontSize(16);
@@ -1452,6 +1481,7 @@ export default function MonthlyOverview() {
         body: [
           ["Gesamtstunden Arbeit", h2(totalWorkMinutes).toFixed(2)],
           ["Fahrzeit", h2(totalTravelMinutes).toFixed(2)],
+          ["Privat-PKW km", totalPrivatePkwKm.toLocaleString("de-AT")],
           ["Gesamtstunden inkl. Fahrzeit", h2(totalAllMinutes).toFixed(2)],
         ],
         startY: 80,
@@ -1463,8 +1493,9 @@ export default function MonthlyOverview() {
       const perProject = {};
       rowsForExport.forEach((r) => {
         const key = r.project_name || "Ohne Projekt";
-        if (!perProject[key]) perProject[key] = { work: 0, travel: 0, total: 0 };
+        if (!perProject[key]) perProject[key] = { work: 0, travel: 0, privatePkwKm: 0, total: 0 };
         perProject[key].travel += r._travel || 0;
+        perProject[key].privatePkwKm += parsePrivatePkwKm(r.private_pkw_km);
         perProject[key].total += r._mins || 0;
         perProject[key].work += getPureWorkMinutes(r);
       });
@@ -1475,12 +1506,13 @@ export default function MonthlyOverview() {
           project,
           h2(vals.work).toFixed(2),
           h2(vals.travel).toFixed(2),
+          vals.privatePkwKm.toLocaleString("de-AT"),
           h2(vals.total).toFixed(2),
         ]);
 
       if (projectBody.length) {
         autoTable(doc, {
-          head: [["Projekt", "Arbeitszeit", "Fahrzeit", "Gesamt"]],
+          head: [["Projekt", "Arbeitszeit", "Fahrzeit", "Privat-PKW km", "Gesamt"]],
           body: projectBody,
           startY: (doc.lastAutoTable?.finalY || 100) + 18,
           styles: { fontSize: 10, cellPadding: 4, overflow: "linebreak" },
@@ -1735,6 +1767,7 @@ export default function MonthlyOverview() {
                         <th className="num">Ende</th>
                         <th className="num">Pause</th>
                         <th className="num">Fahrzeit</th>
+                        <th className="num">Privat-PKW</th>
                         <th className="num">Schlechtwetter</th>
                         <th className="num">Stunden</th>
                         <th className="num">Überstunden</th>
@@ -1760,6 +1793,7 @@ export default function MonthlyOverview() {
                               <td className="num">{toHM(end)}</td>
                               <td className="num">{r.break_min ?? 0} min</td>
                               <td className="num">{r._travel ?? 0} min</td>
+                              <td className="num">{formatPrivatePkwKm(r.private_pkw_km)}</td>
                               <td className="num">{isBadWeatherRow(r) ? "Ja" : "—"}</td>
                               <td className="num">{hrs.toFixed(2)}</td>
                               <td className="num">{ot.toFixed(2)}</td>
@@ -1869,6 +1903,22 @@ export default function MonthlyOverview() {
                                 }
                               />
                             </td>
+                            <td className="num">
+                              <input
+                                type="number"
+                                min={0}
+                                step={0.1}
+                                className="hbz-input"
+                                value={editState.private_pkw_km ?? 0}
+                                onChange={(e) =>
+                                  setEditState((s) => ({
+                                    ...s,
+                                    private_pkw_km: e.target.value,
+                                  }))
+                                }
+                              />
+                            </td>
+                            <td className="num">—</td>
                             <td className="num">
                               {(() => {
                                 const minsLive =
@@ -1982,6 +2032,7 @@ export default function MonthlyOverview() {
                             <span>Ende: {toHM(end)}</span>
                             <span>Pause: {r.break_min ?? 0} min</span>
                             <span>Fahrzeit: {r._travel ?? 0} min</span>
+                            {parsePrivatePkwKm(r.private_pkw_km) > 0 ? <span>Privat-PKW: {formatPrivatePkwKm(r.private_pkw_km)}</span> : null}
                           </div>
 
                           {r.note && (
@@ -2128,6 +2179,22 @@ export default function MonthlyOverview() {
                                 setEditState((s) => ({
                                   ...s,
                                   travel_minutes: e.target.value,
+                                }))
+                              }
+                            />
+                          </div>
+                          <div className="month-card-field">
+                            <label className="hbz-label">Privat-PKW (km)</label>
+                            <input
+                              type="number"
+                              min={0}
+                              step={0.1}
+                              className="hbz-input"
+                              value={editState.private_pkw_km ?? 0}
+                              onChange={(e) =>
+                                setEditState((s) => ({
+                                  ...s,
+                                  private_pkw_km: e.target.value,
                                 }))
                               }
                             />

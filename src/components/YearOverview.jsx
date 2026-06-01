@@ -15,6 +15,15 @@ import {
 // ---- Helpers ----
 const h2 = (m) => Math.round((m / 60) * 100) / 100;
 
+const parsePrivatePkwKm = (value) => {
+  const normalized = String(value ?? "")
+    .replace(",", ".")
+    .replace(/[^0-9.]/g, "");
+  const parsed = Number.parseFloat(normalized);
+  if (!Number.isFinite(parsed) || parsed < 0) return 0;
+  return Math.round(parsed * 10) / 10;
+};
+
 function splitMinutes(r) {
   let work = r.work_minutes;
   let travel = r.travel_minutes ?? r.travel_min ?? r.travel ?? 0;
@@ -423,6 +432,7 @@ export default function YearOverview() {
           code,
           work: 0,
           travel: 0,
+          privatePkwKm: 0,
           total: 0,
           cnt: 0,
           _days: new Set(),
@@ -430,6 +440,7 @@ export default function YearOverview() {
 
       e.work += work;
       e.travel += travel;
+      e.privatePkwKm += parsePrivatePkwKm(r.private_pkw_km);
       e.total += total;
       e.cnt += 1;
       if (r.work_date) e._days.add(r.work_date);
@@ -457,6 +468,7 @@ export default function YearOverview() {
           name: key,
           work: 0,
           travel: 0,
+          privatePkwKm: 0,
           total: 0,
           cnt: 0,
           _days: new Set(),
@@ -464,6 +476,7 @@ export default function YearOverview() {
 
       e.work += work;
       e.travel += travel;
+      e.privatePkwKm += parsePrivatePkwKm(r.private_pkw_km);
       e.total += total;
       e.cnt += 1;
 
@@ -497,6 +510,7 @@ export default function YearOverview() {
           prj,
           work: 0,
           travel: 0,
+          privatePkwKm: 0,
           total: 0,
           cnt: 0,
           _days: new Set(),
@@ -504,6 +518,7 @@ export default function YearOverview() {
 
       e.work += work;
       e.travel += travel;
+      e.privatePkwKm += parsePrivatePkwKm(r.private_pkw_km);
       e.total += total;
       e.cnt += 1;
       if (r.work_date) e._days.add(r.work_date);
@@ -522,16 +537,18 @@ export default function YearOverview() {
   const totals = useMemo(() => {
     let work = 0,
       travel = 0,
+      privatePkwKm = 0,
       total = 0;
 
     for (const r of rows) {
       const m = splitMinutes(r);
       work += m.work;
       travel += m.travel;
+      privatePkwKm += parsePrivatePkwKm(r.private_pkw_km);
       total += m.total;
     }
 
-    return { workH: h2(work), travelH: h2(travel), totalH: h2(total) };
+    return { workH: h2(work), travelH: h2(travel), privatePkwKm: Math.round(privatePkwKm * 10) / 10, totalH: h2(total) };
   }, [rows]);
 
   const buakSoll = useMemo(() => {
@@ -560,6 +577,7 @@ export default function YearOverview() {
         "Projekt",
         "Arbeitsstunden",
         "Fahrzeit (h)",
+        "Privat-PKW (km)",
         "Gesamt (h)",
         "Anzahl Tage",
         "Einträge",
@@ -573,6 +591,7 @@ export default function YearOverview() {
           label,
           h2(p.work).toFixed(2),
           h2(p.travel).toFixed(2),
+          (p.privatePkwKm || 0).toLocaleString("de-AT"),
           h2(p.total).toFixed(2),
           p.days ?? 0,
           p.cnt,
@@ -587,6 +606,7 @@ export default function YearOverview() {
         "Mitarbeiter",
         "Arbeitsstunden",
         "Fahrzeit (h)",
+        "Privat-PKW (km)",
         "Gesamt (h)",
         "Anzahl Tage",
         "Einträge",
@@ -599,6 +619,7 @@ export default function YearOverview() {
           e.name,
           h2(e.work).toFixed(2),
           h2(e.travel).toFixed(2),
+          (e.privatePkwKm || 0).toLocaleString("de-AT"),
           h2(e.total).toFixed(2),
           e.days ?? 0,
           e.cnt,
@@ -611,6 +632,7 @@ export default function YearOverview() {
         "GESAMT",
         totals.workH.toFixed(2),
         totals.travelH.toFixed(2),
+        totals.privatePkwKm.toLocaleString("de-AT"),
         totals.totalH.toFixed(2),
         "",
         "",
@@ -625,6 +647,7 @@ export default function YearOverview() {
         "Projekt",
         "Arbeitsstunden",
         "Fahrzeit (h)",
+        "Privat-PKW (km)",
         "Gesamt (h)",
         "Anzahl Tage",
         "Einträge",
@@ -638,6 +661,7 @@ export default function YearOverview() {
           r.prj,
           h2(r.work).toFixed(2),
           h2(r.travel).toFixed(2),
+          (r.privatePkwKm || 0).toLocaleString("de-AT"),
           h2(r.total).toFixed(2),
           r.days ?? 0,
           r.cnt,
@@ -1609,7 +1633,7 @@ export default function YearOverview() {
                 </div>
                 <div style={{ fontSize: "14px", marginTop: "4px" }}>
                   Arbeitszeit: {h2(p.work).toFixed(2)} h &nbsp;|&nbsp;
-                  Fahrzeit: {h2(p.travel).toFixed(2)} h &nbsp;|&nbsp;
+                  Fahrzeit: {h2(p.travel).toFixed(2)} h &nbsp;|&nbsp; Privat-PKW: {(p.privatePkwKm || 0).toLocaleString("de-AT")} km &nbsp;|&nbsp;
                   <strong>Gesamt: {h2(p.total).toFixed(2)} h</strong> &nbsp;|&nbsp;
                   Tage: {p.days ?? 0}
                 </div>
@@ -1697,6 +1721,7 @@ export default function YearOverview() {
                       <th>Projekt</th>
                       <th className="num">Arbeitsstunden</th>
                       <th className="num">Fahrzeit (h)</th>
+                      <th className="num">Privat-PKW (km)</th>
                       <th className="num">Gesamt (h)</th>
                       <th className="num">Anzahl Tage</th>
                       <th className="num">Einträge</th>
@@ -1708,6 +1733,7 @@ export default function YearOverview() {
                         <td>{p.code ? `${p.code} · ${p.name}` : p.name}</td>
                         <td className="num">{h2(p.work).toFixed(2)}</td>
                         <td className="num">{h2(p.travel).toFixed(2)}</td>
+                        <td className="num">{(p.privatePkwKm || 0).toLocaleString("de-AT")}</td>
                         <td className="num">{h2(p.total).toFixed(2)}</td>
                         <td className="num">{p.days ?? 0}</td>
                         <td className="num">{p.cnt}</td>
@@ -1731,6 +1757,7 @@ export default function YearOverview() {
                       <th>Mitarbeiter</th>
                       <th className="num">Arbeitsstunden</th>
                       <th className="num">Fahrzeit (h)</th>
+                      <th className="num">Privat-PKW (km)</th>
                       <th className="num">Gesamt (h)</th>
                       <th className="num">Anzahl Tage</th>
                       <th className="num">Einträge</th>
@@ -1742,6 +1769,7 @@ export default function YearOverview() {
                         <td>{e.name}</td>
                         <td className="num">{h2(e.work).toFixed(2)}</td>
                         <td className="num">{h2(e.travel).toFixed(2)}</td>
+                        <td className="num">{(e.privatePkwKm || 0).toLocaleString("de-AT")}</td>
                         <td className="num">{h2(e.total).toFixed(2)}</td>
                         <td className="num">{e.days ?? 0}</td>
                         <td className="num">{e.cnt}</td>
@@ -1768,6 +1796,7 @@ export default function YearOverview() {
                       <th>Projekt</th>
                       <th className="num">Arbeitsstunden</th>
                       <th className="num">Fahrzeit (h)</th>
+                      <th className="num">Privat-PKW (km)</th>
                       <th className="num">Gesamt (h)</th>
                       <th className="num">Anzahl Tage</th>
                       <th className="num">Einträge</th>
@@ -1780,6 +1809,7 @@ export default function YearOverview() {
                         <td>{r.prj}</td>
                         <td className="num">{h2(r.work).toFixed(2)}</td>
                         <td className="num">{h2(r.travel).toFixed(2)}</td>
+                        <td className="num">{(r.privatePkwKm || 0).toLocaleString("de-AT")}</td>
                         <td className="num">{h2(r.total).toFixed(2)}</td>
                         <td className="num">{r.days ?? 0}</td>
                         <td className="num">{r.cnt}</td>
