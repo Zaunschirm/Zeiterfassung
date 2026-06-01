@@ -24,6 +24,15 @@ const parsePrivatePkwKm = (value) => {
   return Math.round(parsed * 10) / 10;
 };
 
+const parseZaHours = (value) => {
+  const normalized = String(value ?? "")
+    .replace(",", ".")
+    .replace(/[^0-9.-]/g, "");
+  const parsed = Number.parseFloat(normalized);
+  if (!Number.isFinite(parsed) || parsed < 0) return 0;
+  return Math.round(parsed * 100) / 100;
+};
+
 function splitMinutes(r) {
   let work = r.work_minutes;
   let travel = r.travel_minutes ?? r.travel_min ?? r.travel ?? 0;
@@ -117,8 +126,13 @@ function isSickRow(r) {
   return note.includes("[Krank]");
 }
 
+function isTimeCompRow(r) {
+  const note = (r?.note || "").toString();
+  return note.includes("[Zeitausgleich]");
+}
+
 function isAbsenceRow(r) {
-  return isVacationRow(r) || isSickRow(r);
+  return isVacationRow(r) || isSickRow(r) || isTimeCompRow(r);
 }
 
 function formatDateAT(value) {
@@ -150,7 +164,7 @@ function buildPayrollMonthlySummary(sourceRows, monthList, selectedEmployees = [
       const employee = employeeInfo.name || employeeInfo.code || "—";
       const key = `${employee}||${ym}`;
       if (!employeeMonthMap.has(key)) {
-        employeeMonthMap.set(key, { key, employee, month: ym, totalMinutes: 0, workDays: new Set(), entryDates: new Set(), vacationDates: [], sickDates: [], holidayRows: [], holidayExtraHours: 0 });
+        employeeMonthMap.set(key, { key, employee, month: ym, totalMinutes: 0, workDays: new Set(), entryDates: new Set(), vacationDates: [], sickDates: [], timeCompDates: [], timeCompHours: 0, holidayRows: [], holidayExtraHours: 0 });
       }
     }
 
@@ -160,7 +174,7 @@ function buildPayrollMonthlySummary(sourceRows, monthList, selectedEmployees = [
       if (!date || !String(date).startsWith(`${ym}-`)) continue;
 
       const key = `${employee}||${ym}`;
-      const current = employeeMonthMap.get(key) || { key, employee, month: ym, totalMinutes: 0, workDays: new Set(), entryDates: new Set(), vacationDates: [], sickDates: [], holidayRows: [], holidayExtraHours: 0 };
+      const current = employeeMonthMap.get(key) || { key, employee, month: ym, totalMinutes: 0, workDays: new Set(), entryDates: new Set(), vacationDates: [], sickDates: [], timeCompDates: [], timeCompHours: 0, holidayRows: [], holidayExtraHours: 0 };
 
       const { total } = splitMinutes(r);
       current.totalMinutes += total || 0;
@@ -168,6 +182,11 @@ function buildPayrollMonthlySummary(sourceRows, monthList, selectedEmployees = [
 
       if (isVacationRow(r)) current.vacationDates.push(date);
       else if (isSickRow(r)) current.sickDates.push(date);
+      else if (isTimeCompRow(r)) {
+        current.timeCompDates.push(date);
+        const empInfo = (selectedEmployees || []).find((e) => (e.name || e.code || "—") === employee) || {};
+        current.timeCompHours += parseZaHours(r.za_hours) || (getEmployeeSollHoursForDay(empInfo, date) || 0);
+      }
       else if ((total || 0) > 0) current.workDays.add(date);
 
       employeeMonthMap.set(key, current);
@@ -196,7 +215,8 @@ function buildPayrollMonthlySummary(sourceRows, monthList, selectedEmployees = [
     const empInfo = (selectedEmployees || []).find((e) => (e.name || e.code || "—") === item.employee) || {};
     const sollHours = range ? calcEmployeeSollHoursForRange(empInfo, range.from, range.to, true) : 0;
     const payrollHours = totalHours + (item.holidayExtraHours || 0);
-    const overtime = payrollHours - sollHours;
+    const timeCompHours = item.timeCompHours || 0;
+    const overtime = payrollHours - sollHours - timeCompHours;
     return {
       key: item.key,
       employee: item.employee,
@@ -204,12 +224,14 @@ function buildPayrollMonthlySummary(sourceRows, monthList, selectedEmployees = [
       totalHours,
       holidayExtraHours: item.holidayExtraHours || 0,
       payrollHours,
+      timeCompHours,
       workDays: item.workDays.size,
       sollHours,
       overtime,
       holidayRows: item.holidayRows || [],
       vacationDates: item.vacationDates.sort((a, b) => a.localeCompare(b)).map(formatDateAT),
       sickDates: item.sickDates.sort((a, b) => a.localeCompare(b)).map(formatDateAT),
+      timeCompDates: item.timeCompDates.sort((a, b) => a.localeCompare(b)).map(formatDateAT),
     };
   }).sort((a, b) => a.employee.localeCompare(b.employee) || a.month.localeCompare(b.month));
 }
@@ -433,6 +455,7 @@ export default function YearOverview() {
           work: 0,
           travel: 0,
           privatePkwKm: 0,
+          zaHours: 0,
           total: 0,
           cnt: 0,
           _days: new Set(),
@@ -441,6 +464,7 @@ export default function YearOverview() {
       e.work += work;
       e.travel += travel;
       e.privatePkwKm += parsePrivatePkwKm(r.private_pkw_km);
+      e.zaHours += isTimeCompRow(r) ? parseZaHours(r.za_hours) : 0;
       e.total += total;
       e.cnt += 1;
       if (r.work_date) e._days.add(r.work_date);
@@ -469,6 +493,7 @@ export default function YearOverview() {
           work: 0,
           travel: 0,
           privatePkwKm: 0,
+          zaHours: 0,
           total: 0,
           cnt: 0,
           _days: new Set(),
@@ -477,6 +502,7 @@ export default function YearOverview() {
       e.work += work;
       e.travel += travel;
       e.privatePkwKm += parsePrivatePkwKm(r.private_pkw_km);
+      e.zaHours += isTimeCompRow(r) ? parseZaHours(r.za_hours) : 0;
       e.total += total;
       e.cnt += 1;
 
@@ -511,6 +537,7 @@ export default function YearOverview() {
           work: 0,
           travel: 0,
           privatePkwKm: 0,
+          zaHours: 0,
           total: 0,
           cnt: 0,
           _days: new Set(),
@@ -519,6 +546,7 @@ export default function YearOverview() {
       e.work += work;
       e.travel += travel;
       e.privatePkwKm += parsePrivatePkwKm(r.private_pkw_km);
+      e.zaHours += isTimeCompRow(r) ? parseZaHours(r.za_hours) : 0;
       e.total += total;
       e.cnt += 1;
       if (r.work_date) e._days.add(r.work_date);
@@ -538,6 +566,7 @@ export default function YearOverview() {
     let work = 0,
       travel = 0,
       privatePkwKm = 0,
+      zaHours = 0,
       total = 0;
 
     for (const r of rows) {
@@ -545,10 +574,11 @@ export default function YearOverview() {
       work += m.work;
       travel += m.travel;
       privatePkwKm += parsePrivatePkwKm(r.private_pkw_km);
+      zaHours += isTimeCompRow(r) ? parseZaHours(r.za_hours) : 0;
       total += m.total;
     }
 
-    return { workH: h2(work), travelH: h2(travel), privatePkwKm: Math.round(privatePkwKm * 10) / 10, totalH: h2(total) };
+    return { workH: h2(work), travelH: h2(travel), privatePkwKm: Math.round(privatePkwKm * 10) / 10, zaHours: Math.round(zaHours * 100) / 100, totalH: h2(total) };
   }, [rows]);
 
   const buakSoll = useMemo(() => {
@@ -578,6 +608,7 @@ export default function YearOverview() {
         "Arbeitsstunden",
         "Fahrzeit (h)",
         "Privat-PKW (km)",
+        "Zeitausgleich (h)",
         "Gesamt (h)",
         "Anzahl Tage",
         "Einträge",
@@ -592,6 +623,7 @@ export default function YearOverview() {
           h2(p.work).toFixed(2),
           h2(p.travel).toFixed(2),
           (p.privatePkwKm || 0).toLocaleString("de-AT"),
+          (p.zaHours || 0).toFixed(2),
           h2(p.total).toFixed(2),
           p.days ?? 0,
           p.cnt,
@@ -607,6 +639,7 @@ export default function YearOverview() {
         "Arbeitsstunden",
         "Fahrzeit (h)",
         "Privat-PKW (km)",
+        "Zeitausgleich (h)",
         "Gesamt (h)",
         "Anzahl Tage",
         "Einträge",
@@ -620,6 +653,7 @@ export default function YearOverview() {
           h2(e.work).toFixed(2),
           h2(e.travel).toFixed(2),
           (e.privatePkwKm || 0).toLocaleString("de-AT"),
+          (e.zaHours || 0).toFixed(2),
           h2(e.total).toFixed(2),
           e.days ?? 0,
           e.cnt,
@@ -633,6 +667,7 @@ export default function YearOverview() {
         totals.workH.toFixed(2),
         totals.travelH.toFixed(2),
         totals.privatePkwKm.toLocaleString("de-AT"),
+        (totals.zaHours || 0).toFixed(2),
         totals.totalH.toFixed(2),
         "",
         "",
@@ -648,6 +683,7 @@ export default function YearOverview() {
         "Arbeitsstunden",
         "Fahrzeit (h)",
         "Privat-PKW (km)",
+        "Zeitausgleich (h)",
         "Gesamt (h)",
         "Anzahl Tage",
         "Einträge",
@@ -662,6 +698,7 @@ export default function YearOverview() {
           h2(r.work).toFixed(2),
           h2(r.travel).toFixed(2),
           (r.privatePkwKm || 0).toLocaleString("de-AT"),
+          (r.zaHours || 0).toFixed(2),
           h2(r.total).toFixed(2),
           r.days ?? 0,
           r.cnt,
@@ -995,6 +1032,7 @@ export default function YearOverview() {
         sumParts.push(`Arbeit: ${exportTotals.workH.toFixed(2)} h`);
       if (pdfOptions.includeTravel)
         sumParts.push(`Fahrzeit: ${exportTotals.travelH.toFixed(2)} h`);
+      sumParts.push(`Zeitausgleich: ${(payrollSummary.reduce((s, r) => s + (r.timeCompHours || 0), 0)).toFixed(2)} h`);
       if (pdfOptions.includeDays) {
         const totalDays = new Set(
           selectedRows
@@ -1187,7 +1225,7 @@ export default function YearOverview() {
 
         doc.setFontSize(10);
         doc.text(
-          "Hinweis: Gesamtstunden inkl. Fahrzeit. Feiertage, die auf einen BUAK-Arbeitstag fallen, werden bezahlt. In der Spalte „Lohnstunden gesamt“ sind Feiertagsstunden bereits inbegriffen. Urlaubstage sind mit 0,00 Stunden berücksichtigt. Krankenstandstage werden gemäß hinterlegter Sollzeit automatisch berücksichtigt.",
+          "Hinweis: Gesamtstunden inkl. Fahrzeit. Feiertage, die auf einen BUAK-Arbeitstag fallen, werden bezahlt. In der Spalte „Lohnstunden gesamt“ sind Feiertagsstunden bereits inbegriffen. Urlaubstage sind mit 0,00 Stunden berücksichtigt. Zeitausgleich wird separat als Verbrauch vom ZA-Konto abgezogen. Krankenstandstage werden gemäß hinterlegter Sollzeit automatisch berücksichtigt.",
           40,
           54,
           { maxWidth: 760 }
@@ -1202,8 +1240,10 @@ export default function YearOverview() {
             "Lohnstunden gesamt (Feiertage inbegriffen)",
             "Arbeitstage",
             "Sollstunden",
-            "Überstunden",
+            "Zeitausgleich (h)",
+            "Überstunden nach ZA",
             "Urlaub (Datum)",
+            "Zeitausgleich (Datum)",
             "Krankenstand (Datum)",
           ]],
           body: payrollSummary.map((row) => [
@@ -1214,8 +1254,10 @@ export default function YearOverview() {
             (row.payrollHours || row.totalHours).toFixed(2),
             row.workDays,
             row.sollHours.toFixed(2),
+            (row.timeCompHours || 0).toFixed(2),
             row.overtime.toFixed(2),
             row.vacationDates.length ? row.vacationDates.join(", ") : "—",
+            row.timeCompDates.length ? row.timeCompDates.join(", ") : "—",
             row.sickDates.length ? row.sickDates.join(", ") : "—",
           ]),
           startY: 82,
@@ -2208,7 +2250,7 @@ export default function YearOverview() {
                           Lohnverrechnung
                         </span>
                         <span className="export-option-example">
-                          Beispiel: Monat · Gesamtstunden inkl. Fahrzeit · Arbeitstage · Sollstunden · Überstunden · Urlaub/Krank mit Datum
+                          Beispiel: Monat · Gesamtstunden inkl. Fahrzeit · Arbeitstage · Sollstunden · Überstunden · Urlaub/Krank/Zeitausgleich mit Datum
                         </span>
                       </div>
                     </label>

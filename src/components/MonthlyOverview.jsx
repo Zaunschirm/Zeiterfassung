@@ -46,6 +46,20 @@ const formatPrivatePkwKm = (value) => {
   return km > 0 ? `${km.toLocaleString("de-AT")} km` : "—";
 };
 
+const parseZaHours = (value) => {
+  const normalized = String(value ?? "")
+    .replace(",", ".")
+    .replace(/[^0-9.-]/g, "");
+  const parsed = Number.parseFloat(normalized);
+  if (!Number.isFinite(parsed) || parsed < 0) return 0;
+  return Math.round(parsed * 100) / 100;
+};
+
+const formatZaHours = (value) => {
+  const hrs = parseZaHours(value);
+  return hrs > 0 ? `${hrs.toFixed(2).replace(".", ",")} h` : "—";
+};
+
 const entryMinutes = (e) => {
   const start = e.start_min ?? e.from_min ?? 0;
   const end = e.end_min ?? e.to_min ?? 0;
@@ -202,7 +216,7 @@ function uniqueSortedDates(arr) {
 
 const isAbsenceRow = (r) => {
   const note = (r?.note || "").toString();
-  return note.includes("[Urlaub]") || note.includes("[Krank]");
+  return note.includes("[Urlaub]") || note.includes("[Krank]") || note.includes("[Zeitausgleich]");
 };
 
 const isBadWeatherRow = (r) => r?.bad_weather === true || r?.bad_weather === "true";
@@ -214,6 +228,7 @@ const getProjectAddress = (r, projects = []) => {
 
 const isVacationRow = (r) => (r?.note || "").toString().includes("[Urlaub]");
 const isSickRow = (r) => (r?.note || "").toString().includes("[Krank]");
+const isTimeCompRow = (r) => (r?.note || "").toString().includes("[Zeitausgleich]");
 
 const getPureWorkMinutes = (r) => {
   const total = r?._mins ?? entryMinutes(r);
@@ -494,12 +509,14 @@ export default function MonthlyOverview() {
           ...r,
           _mins: 0,
           _travel: 0,
+          _zaHours: 0,
           items: [],
         };
       }
 
       g[key]._mins += mins;
       g[key]._travel += travel || 0;
+      g[key]._zaHours += parseZaHours(r.za_hours);
       g[key].items.push(r);
     }
 
@@ -624,6 +641,7 @@ export default function MonthlyOverview() {
       note: row.note ?? "",
       travel_minutes: getTravel(row) || 0,
       private_pkw_km: row.private_pkw_km ?? 0,
+      za_hours: row.za_hours ?? 0,
     });
   }
 
@@ -654,6 +672,10 @@ export default function MonthlyOverview() {
 
     if (typeof editState.private_pkw_km !== "undefined") {
       update.private_pkw_km = parsePrivatePkwKm(editState.private_pkw_km);
+    }
+
+    if (typeof editState.za_hours !== "undefined") {
+      update.za_hours = parseZaHours(editState.za_hours);
     }
 
     const { error } = await supabase
@@ -834,7 +856,7 @@ export default function MonthlyOverview() {
 
       doc.setFontSize(10);
       doc.text(
-        "Geprüft werden aktive Mitarbeiter und BUAK-Arbeitstage. Urlaub/Krankenstand zählen als erfasst, wenn ein Eintrag vorhanden ist.",
+        "Geprüft werden aktive Mitarbeiter und BUAK-Arbeitstage. Urlaub/Krankenstand/Zeitausgleich zählen als erfasst, wenn ein Eintrag vorhanden ist.",
         40,
         60
       );
@@ -1012,6 +1034,8 @@ export default function MonthlyOverview() {
           workDays: new Set(),
           vacationDates: [],
           sickDates: [],
+          timeCompDates: [],
+          timeCompHours: 0,
           sickHours: 0,
           holidayRows: [],
           holidayHours: 0,
@@ -1027,6 +1051,7 @@ export default function MonthlyOverview() {
         const note = (r.note || "").toString();
         const isVacation = isVacationRow(r);
         const isSick = isSickRow(r);
+        const isTimeComp = isTimeCompRow(r);
         const mins = entryMinutes(r);
         const travel = getTravel(r) || 0;
 
@@ -1044,6 +1069,15 @@ export default function MonthlyOverview() {
           return;
         }
 
+        if (isTimeComp) {
+          if (!d.timeCompDates.includes(r.work_date)) {
+            d.timeCompDates.push(r.work_date);
+          }
+          const za = parseZaHours(r.za_hours) || (Number(getEmployeeSollHoursForDay(d.emp, r.work_date)) || 0);
+          d.timeCompHours += za;
+          return;
+        }
+
         d.recordedMinutes += mins;
         d.travelMinutes += travel;
         d.datesWithWorkEntry.add(r.work_date);
@@ -1056,6 +1090,7 @@ export default function MonthlyOverview() {
       Object.values(payrollByEmployee).forEach((d) => {
         d.vacationDates = uniqueSortedDates(d.vacationDates);
         d.sickDates = uniqueSortedDates(d.sickDates);
+        d.timeCompDates = uniqueSortedDates(d.timeCompDates);
 
         d.sickHours = d.sickDates.reduce(
           (sum, date) => sum + (Number(getEmployeeSollHoursForDay(d.emp, date)) || 0),
@@ -1068,10 +1103,11 @@ export default function MonthlyOverview() {
           const hasWorkEntry = d.datesWithWorkEntry.has(h.date);
           const isVacation = d.vacationDates.includes(h.date);
           const isSick = d.sickDates.includes(h.date);
+          const isTimeComp = d.timeCompDates.includes(h.date);
 
           // Feiertag wird bezahlt, wenn er auf einen Arbeitstag laut Arbeitszeitmodell fällt
-          // und für diesen Tag keine echte Arbeitsbuchung, kein Urlaub und kein Krankenstand eingetragen ist.
-          if (!hasWorkEntry && !isVacation && !isSick) {
+          // und für diesen Tag keine echte Arbeitsbuchung, kein Urlaub, kein Krankenstand und kein Zeitausgleich eingetragen ist.
+          if (!hasWorkEntry && !isVacation && !isSick && !isTimeComp) {
             d.holidayRows.push({ ...h, soll });
             d.holidayHours += soll;
           }
@@ -1097,7 +1133,7 @@ export default function MonthlyOverview() {
           doc.setPage(i);
           doc.setFontSize(7.5);
           doc.text(
-            "Berechnung: Lohnstunden = Einträge inkl. Fahrzeit + Feiertag + Krankenstand lt. Sollzeit; Urlaub = 0,00 h.",
+            "Berechnung: Lohnstunden = Einträge inkl. Fahrzeit + Feiertag + Krankenstand lt. Sollzeit; Urlaub/Zeitausgleich = 0,00 h.",
             marginX,
             pageHeight - 18
           );
@@ -1114,8 +1150,8 @@ export default function MonthlyOverview() {
       const hintLines = [
         "Hinweis zur Berechnung:",
         "Lohnstunden gesamt enthalten Arbeitszeit laut Einträgen inklusive Fahrzeit sowie bezahlte Feiertage und Krankenstandstage gemäß hinterlegter BUAK-/Sollzeit.",
-        "Urlaubstage werden in dieser Auswertung mit 0,00 Stunden berücksichtigt.",
-        "Überstunden werden als Differenz aus Lohnstunden gesamt minus Sollstunden berechnet.",
+        "Urlaubstage und Zeitausgleich werden in dieser Auswertung mit 0,00 Stunden berücksichtigt.",
+        "Überstunden/ZA-Stand werden als Lohnstunden gesamt minus Sollstunden minus genommenem Zeitausgleich berechnet.",
       ];
 
       let hintY = 56;
@@ -1148,7 +1184,7 @@ export default function MonthlyOverview() {
         const recordedHours = h2(d.recordedMinutes);
         const paidHours = recordedHours + d.holidayHours + d.sickHours;
         const sollHoursInRange = calcEmployeeSollHoursForRange(d.emp, activeRange.from, activeRange.to, true);
-        const overtime = paidHours - sollHoursInRange;
+        const overtime = paidHours - sollHoursInRange - (d.timeCompHours || 0);
 
         summaryRows.push([
           safePdfText(d.name),
@@ -1156,6 +1192,8 @@ export default function MonthlyOverview() {
           d.sickHours.toFixed(2),
           "0.00",
           `${d.vacationDates.length}`,
+          (d.timeCompHours || 0).toFixed(2),
+          `${d.timeCompDates.length}`,
           `${d.sickDates.length}`,
         ]);
 
@@ -1177,6 +1215,15 @@ export default function MonthlyOverview() {
           ]);
         }
 
+        if (d.timeCompDates.length) {
+          detailRows.push([
+            safePdfText(d.name),
+            "Zeitausgleich",
+            d.timeCompDates.map(formatDateAT).join(", "),
+            `${(d.timeCompHours || 0).toFixed(2)} h vom ZA-Konto`,
+          ]);
+        }
+
         if (d.holidayRows.length) {
           detailRows.push([
             safePdfText(d.name),
@@ -1195,6 +1242,7 @@ export default function MonthlyOverview() {
           d.holidayHours.toFixed(2),
           String(d.workDays.size),
           sollHoursInRange.toFixed(2),
+          (d.timeCompHours || 0).toFixed(2),
           overtime.toFixed(2),
         ];
       });
@@ -1207,7 +1255,8 @@ export default function MonthlyOverview() {
           "Feiertag bezahlt",
           "Arbeitstage",
           "Sollstunden",
-          "Überstunden",
+          "Zeitausgleich",
+          "Überstunden nach ZA",
         ]],
         body: employeeBody,
         startY,
@@ -1257,6 +1306,8 @@ export default function MonthlyOverview() {
           "Krankenstand bezahlt",
           "Urlaub Stunden",
           "Urlaub Tage",
+          "Zeitausgleich Stunden",
+          "Zeitausgleich Tage",
           "Krankenstand Tage",
         ]],
         body: summaryRows,
@@ -1282,7 +1333,8 @@ export default function MonthlyOverview() {
           2: { cellWidth: 125, halign: "right" },
           3: { cellWidth: 105, halign: "right" },
           4: { cellWidth: 90, halign: "right" },
-          5: { cellWidth: 110, halign: "right" },
+          5: { cellWidth: 115, halign: "right" },
+          6: { cellWidth: 110, halign: "right" },
         },
         margin: { left: marginX, right: marginX },
       });
@@ -1341,7 +1393,7 @@ export default function MonthlyOverview() {
 
       doc.setFontSize(8.5);
       const calcText =
-        "Berechnung: Lohnstunden gesamt = Arbeitszeit laut Einträgen inkl. Fahrzeit + bezahlte Feiertage + bezahlte Krankenstandstage laut Sollzeit. Urlaub = 0,00 h. Überstunden = Lohnstunden gesamt - Sollstunden.";
+        "Berechnung: Lohnstunden gesamt = Arbeitszeit laut Einträgen inkl. Fahrzeit + bezahlte Feiertage + bezahlte Krankenstandstage laut Sollzeit. Urlaub/Zeitausgleich = 0,00 h. Überstunden = Lohnstunden gesamt - Sollstunden - Zeitausgleich.";
       doc.text(doc.splitTextToSize(calcText, pageWidth - marginX * 2), marginX, currentY);
 
       addFooter();
