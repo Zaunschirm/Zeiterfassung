@@ -171,7 +171,7 @@ export default function EmployeeList() {
       const summary = map.get(day.employeeId);
       if (!summary) continue;
       const emp = summary.employee;
-      const soll = Number(getEmployeeSollHoursForDay(day.date, emp)) || 0;
+      const soll = Number(getEmployeeSollHoursForDay(emp, day.date)) || 0;
       const zaFallback = day.hasZa && day.usedZa <= 0 ? soll : day.usedZa;
 
       summary.worked += day.worked;
