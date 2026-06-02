@@ -162,6 +162,28 @@ function weekRangeLabel(from, to) {
   return 'gemischt';
 }
 
+function buildPreviewHint(group, entryType) {
+  const days = Array.isArray(group?.rows) ? group.rows : [];
+  const holidayNames = days.map((r) => r.holidayName).filter(Boolean);
+  const autoShortFridayCount = days.filter((r) => r.autoShortFriday).length;
+  const parts = [];
+
+  if (entryType === "za") {
+    parts.push(`[Zeitausgleich] ${fmtHours(Number(group?.requiredMinutes || 0) / 60)} werden vom ZA-Konto abgezogen`);
+  } else {
+    parts.push(`[Urlaub] ${days.length} Tag${days.length === 1 ? "" : "e"} / 0,00 h Arbeitszeit`);
+  }
+
+  if (autoShortFridayCount > 0) {
+    parts.push(`${autoShortFridayCount} kurzer Freitag automatisch mit eingetragen`);
+  }
+  if (holidayNames.length > 0) {
+    parts.push(`Feiertag: ${Array.from(new Set(holidayNames)).join(", ")}`);
+  }
+
+  return parts.join(" · ");
+}
+
 export default function VacationEntry({ currentUser = null } = {}) {
   const storedSession = getSession()?.user || {};
   const session = currentUser || storedSession || {};
@@ -181,7 +203,6 @@ export default function VacationEntry({ currentUser = null } = {}) {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const [previewRows, setPreviewRows] = useState([]);
   const [timeOffRows, setTimeOffRows] = useState([]);
 
   const calendarFrom = useMemo(() => monthStart(fromDate), [fromDate]);
@@ -322,8 +343,40 @@ export default function VacationEntry({ currentUser = null } = {}) {
     return rows;
   }, [fromDate, toDate, onlyWorkdays, targetEmployee, entryType]);
 
-  useEffect(() => {
-    setPreviewRows(preview.slice(0, 120));
+  const previewDisplayRows = useMemo(() => {
+    const sorted = [...preview].sort((a, b) =>
+      String(a.employee?.name || "").localeCompare(String(b.employee?.name || ""), "de") ||
+      String(a.date).localeCompare(String(b.date))
+    );
+
+    const groups = [];
+    for (const row of sorted) {
+      const last = groups[groups.length - 1];
+      const sameGroup =
+        last &&
+        String(last.employee?.id) === String(row.employee?.id) &&
+        isNextIsoDate(last.to_date, row.date);
+
+      if (sameGroup) {
+        last.to_date = row.date;
+        last.rows.push(row);
+        last.requiredMinutes += Number(row.requiredMinutes || 0);
+        last.hasHoliday = last.hasHoliday || !!row.holidayName;
+        last.hasAutoShortFriday = last.hasAutoShortFriday || !!row.autoShortFriday;
+      } else {
+        groups.push({
+          ...row,
+          from_date: row.date,
+          to_date: row.date,
+          rows: [row],
+          requiredMinutes: Number(row.requiredMinutes || 0),
+          hasHoliday: !!row.holidayName,
+          hasAutoShortFriday: !!row.autoShortFriday,
+        });
+      }
+    }
+
+    return groups.slice(0, 80);
   }, [preview]);
 
   const buakCalendarWeeks = useMemo(() => {
@@ -643,42 +696,40 @@ export default function VacationEntry({ currentUser = null } = {}) {
             <thead>
               <tr>
                 <th>Mitarbeiter</th>
-                <th>Datum</th>
+                <th>Zeitraum</th>
                 <th>Art</th>
                 <th>Woche</th>
-                <th>Soll laut Modell</th>
+                <th>Tage</th>
+                <th>Soll gesamt</th>
                 <th>Hinweis</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={6}>Lade Mitarbeiter…</td></tr>
-              ) : previewRows.length === 0 ? (
-                <tr><td colSpan={6}>Keine Tage in der Vorschau.</td></tr>
+                <tr><td colSpan={7}>Lade Mitarbeiter…</td></tr>
+              ) : previewDisplayRows.length === 0 ? (
+                <tr><td colSpan={7}>Keine Tage in der Vorschau.</td></tr>
               ) : (
-                previewRows.map((row, idx) => (
-                  <tr key={`${row.employee.id}-${row.date}-${idx}`}>
-                    <td>{row.employee.name}</td>
-                    <td>{formatDateAT(row.date)}</td>
-                    <td><span className={`vac-pill ${entryType === "za" ? "za" : "vac"}`}>{entryType === "za" ? "Zeitausgleich" : "Urlaub"}</span></td>
-                    <td><span className={`vac-pill ${row.weekType === "kurz" ? "short" : "long"}`}>{row.weekType === "kurz" ? "Kurzwoche" : "Langwoche"}</span></td>
-                    <td>{fmtHours(row.requiredMinutes / 60)}</td>
-                    <td>
-                      {row.autoShortFriday
-                        ? "[Urlaub] kurzer Freitag automatisch mit eingetragen / 0,00 h Arbeitszeit"
-                        : row.holidayName
-                          ? `Feiertag: ${row.holidayName}`
-                          : entryType === "za"
-                            ? `[Zeitausgleich] ${fmtHours(row.requiredMinutes / 60)} werden vom ZA-Konto abgezogen`
-                            : `[Urlaub] ganzer Arbeitstag / 0,00 h Arbeitszeit`}
-                    </td>
-                  </tr>
-                ))
+                previewDisplayRows.map((row, idx) => {
+                  const weekLabel = weekRangeLabel(row.from_date, row.to_date);
+                  const mixed = weekLabel === "gemischt";
+                  return (
+                    <tr key={`${row.employee.id}-${row.from_date}-${row.to_date}-${idx}`}>
+                      <td>{row.employee.name}</td>
+                      <td>{formatDateRangeAT(row.from_date, row.to_date)}</td>
+                      <td><span className={`vac-pill ${entryType === "za" ? "za" : "vac"}`}>{entryType === "za" ? "Zeitausgleich" : "Urlaub"}</span></td>
+                      <td><span className={`vac-pill ${mixed ? "mixed" : weekLabel === "Kurzwoche" ? "short" : "long"}`}>{weekLabel}</span></td>
+                      <td>{row.rows.length}</td>
+                      <td>{fmtHours(row.requiredMinutes / 60)}</td>
+                      <td>{buildPreviewHint(row, entryType)}</td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
         </div>
-        {preview.length > previewRows.length && <p className="hint">Vorschau gekürzt. Gespeichert werden trotzdem alle vorbereiteten Tage.</p>}
+        {preview.length > previewDisplayRows.reduce((sum, row) => sum + row.rows.length, 0) && <p className="hint">Vorschau gekürzt. Gespeichert werden trotzdem alle vorbereiteten Tage.</p>}
         <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}>
           <button type="button" className="save-btn lg" onClick={saveTimeOff} disabled={saving || preview.length === 0 || !targetEmployee}>
             {saving ? "Speichere…" : entryType === "za" ? "Zeitausgleich eintragen" : "Urlaub eintragen"}
