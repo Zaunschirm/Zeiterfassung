@@ -429,7 +429,7 @@ export default function VacationEntry({ currentUser = null } = {}) {
           }
         }
 
-        const start = Number(item.startMin || 7 * 60);
+        const start = 0;
         const zaHours = entryType === "za" ? Number(item.requiredMinutes || 0) / 60 : 0;
         rowsToInsert.push({
           employee_id: targetEmployee.id,
@@ -437,8 +437,8 @@ export default function VacationEntry({ currentUser = null } = {}) {
           project_id: null,
           project: null,
           start_min: start,
-          end_min: start + 15,
-          break_min: 15,
+          end_min: 0,
+          break_min: 0,
           travel_minutes: 0,
           travel_cost_center: "FAHRZEIT",
           crane_hours: 0,
@@ -633,7 +633,7 @@ export default function VacationEntry({ currentUser = null } = {}) {
                         ? `Feiertag: ${row.holidayName}`
                         : entryType === "za"
                           ? `[Zeitausgleich] ${fmtHours(row.requiredMinutes / 60)} werden vom ZA-Konto abgezogen`
-                          : `[Urlaub] ${toHM(row.startMin)} / 0,00 h`}
+                          : `[Urlaub] ganzer Arbeitstag / 0,00 h Arbeitszeit`}
                     </td>
                   </tr>
                 ))
