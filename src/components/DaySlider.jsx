@@ -277,6 +277,7 @@ export default function DaySlider() {
   const session = getSession()?.user || null;
   const [currentUser, setCurrentUser] = useState(session);
   const role = (currentUser?.role || session?.role || "mitarbeiter").toLowerCase();
+  const canViewAllTeamStatus = role === "admin" || role === "teamleiter";
   const permissions = getUserPermissions(currentUser || session);
   const canWriteOwnTime = !!permissions.writeOwnTime;
   const canWriteAllTime = !!permissions.writeAllTime;
@@ -765,10 +766,9 @@ export default function DaySlider() {
         .order("employee_name", { ascending: true })
         .order("start_min", { ascending: true });
 
-      // Wichtig: Admin/Teamleiter sehen in der unteren Tagesübersicht immer ALLE Einträge
-      // des ausgewählten Tages – unabhängig davon, welche Mitarbeiter oben zum Speichern
-      // ausgewählt sind. Die Mitarbeiter-Auswahl steuert nur, für wen neu gespeichert wird.
-      if (isStaff && employeeRow?.id) {
+      // Datenschutz: Nur Admin und Teamleiter sehen alle Einträge.
+      // Mitarbeiter sehen unten immer nur eigene Einträge, auch wenn sie Sonderrechte haben.
+      if (!canViewAllTeamStatus && employeeRow?.id) {
         query = query.eq("employee_id", employeeRow.id);
       }
 
@@ -785,17 +785,19 @@ export default function DaySlider() {
 
   async function loadDailyCheckEntries() {
     try {
-      if (!isManager) {
-        setDailyCheckEntries([]);
-        return;
-      }
-
       setDailyCheckLoading(true);
 
-      const { data, error } = await supabase
+      let query = supabase
         .from("v_time_entries_expanded")
         .select("*")
         .eq("work_date", date);
+
+      // Datenschutz: Mitarbeiter laden für die Tageskontrolle nur eigene Einträge.
+      if (!canViewAllTeamStatus && employeeRow?.id) {
+        query = query.eq("employee_id", employeeRow.id);
+      }
+
+      const { data, error } = await query;
 
       if (error) throw error;
       setDailyCheckEntries(data || []);
@@ -811,7 +813,7 @@ export default function DaySlider() {
     loadEntries();
     loadDailyCheckEntries();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [date, isManager, selectedCodes, employeeRow?.id]);
+  }, [date, isManager, selectedCodes, employeeRow?.id, canViewAllTeamStatus]);
 
   const shiftDate = (days) => {
     setDate((old) => {
@@ -952,13 +954,13 @@ export default function DaySlider() {
   const holidayNameToday = useMemo(() => getHolidayName(date), [date]);
 
   const dailyCheckRows = useMemo(() => {
-    if (!isManager) return [];
+    const ownId = employeeRow?.id || currentEmployeeId;
 
     const checkEmployees = (employees || [])
       // Deaktiviert = nicht mehr in der Tageskontrolle prüfen.
-      // Wichtig: bestehende Stunden deaktivierter MA bleiben unten trotzdem sichtbar,
-      // weil die Eintragsliste direkt aus v_time_entries_expanded kommt.
+      // Mitarbeiter sehen aus Datenschutzgründen nur ihren eigenen Status.
       .filter((emp) => emp?.active !== false && emp?.disabled !== true)
+      .filter((emp) => canViewAllTeamStatus || String(emp?.id || "") === String(ownId || ""))
       .sort((a, b) => String(a?.name || "").localeCompare(String(b?.name || ""), "de"));
 
     const rowsForDay = (dailyCheckEntries || []).filter(
@@ -1006,7 +1008,7 @@ export default function DaySlider() {
         entryCount: empEntries.length,
       };
     });
-  }, [date, dailyCheckEntries, employees, isManager]);
+  }, [date, dailyCheckEntries, employees, employeeRow?.id, currentEmployeeId, canViewAllTeamStatus]);
 
   const dailyCheckSummary = useMemo(() => {
     const count = (status) => dailyCheckRows.filter((row) => row.status === status).length;
@@ -1376,7 +1378,7 @@ export default function DaySlider() {
         </div>
       </div>
 
-      {isManager && (
+      {dailyCheckRows.length > 0 && (
         <div className="hbz-card month-main-card daily-check-card">
           <div className="month-main-header">
             <div>
@@ -1401,6 +1403,7 @@ export default function DaySlider() {
           </div>
 
 
+          {canViewAllTeamStatus && (
           <div className="daily-check-controls">
             <div className="daily-check-filter-row">
               <button type="button" className={`daily-check-filter-btn ${dailyCheckStatusFilter === "all" ? "active" : ""}`} onClick={() => setDailyCheckStatusFilter("all")}>
@@ -1440,6 +1443,7 @@ export default function DaySlider() {
               </div>
             </div>
           </div>
+          )}
           {dailyCheckRows.length === 0 ? (
             <div className="month-empty-state">
               Keine Mitarbeiter für die Tageskontrolle gefunden.
@@ -1466,8 +1470,9 @@ export default function DaySlider() {
           )}
 
           <div className="help" style={{ marginTop: 10 }}>
-            Geprüft werden nur aktive Mitarbeiter mit „In Tageskontrolle anzeigen“.
-            Freie BUAK-Tage werden nicht als fehlend gewertet.
+            {canViewAllTeamStatus
+              ? "Geprüft werden nur aktive Mitarbeiter mit „In Tageskontrolle anzeigen“. Freie BUAK-Tage werden nicht als fehlend gewertet."
+              : "Aus Datenschutzgründen wird hier nur dein eigener Status angezeigt."}
           </div>
         </div>
       )}
@@ -1844,7 +1849,7 @@ onClick={applyUrlaubDefaults}
           </div>
 
           <div className="year-section">
-            <div className="month-card-title">Kranzeit</div>
+            <div className="month-card-title">Kranzeit / Privat-PKW</div>
             <div className="hbz-chipbar" style={{ alignItems: "center" }}>
               <button
                 type="button"
@@ -1856,32 +1861,6 @@ onClick={applyUrlaubDefaults}
                 🏗 Kran verwendet
               </button>
 
-              {craneUsed && (
-                <div className="month-card-field" style={{ minWidth: 180, margin: 0 }}>
-                  <label className="hbz-label">Kranstunden</label>
-                  <select
-                    className="hbz-input"
-                    value={craneHours}
-                    onChange={(e) => setCraneHours(Number(e.target.value))}
-                    disabled={!!absenceType || zaUsed}
-                  >
-                    {CRANE_HOUR_OPTIONS.map((h) => (
-                      <option key={h} value={h}>
-                        {h} h
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-            </div>
-            <div className="help" style={{ marginTop: 8 }}>
-              Wird als <b>Kranzeit</b> zum Eintrag gespeichert und kann später in der Nachkalkulation ausgewertet werden.
-            </div>
-          </div>
-
-          <div className="year-section">
-            <div className="month-card-title">Privat-PKW</div>
-            <div className="hbz-chipbar" style={{ alignItems: "center" }}>
               <button
                 type="button"
                 className={`hbz-chip ${privatePkwUsed ? "active" : ""}`}
@@ -1907,8 +1886,26 @@ onClick={applyUrlaubDefaults}
                 🚗 Privat-PKW
               </button>
 
+              {craneUsed && (
+                <div className="month-card-field" style={{ minWidth: 160, margin: 0 }}>
+                  <label className="hbz-label">Kranstunden</label>
+                  <select
+                    className="hbz-input"
+                    value={craneHours}
+                    onChange={(e) => setCraneHours(Number(e.target.value))}
+                    disabled={!!absenceType || zaUsed}
+                  >
+                    {CRANE_HOUR_OPTIONS.map((h) => (
+                      <option key={h} value={h}>
+                        {h} h
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               {privatePkwUsed && (
-                <div className="month-card-field" style={{ minWidth: 180, margin: 0 }}>
+                <div className="month-card-field" style={{ minWidth: 160, margin: 0 }}>
                   <label className="hbz-label">Kilometer</label>
                   <input
                     type="number"
@@ -1926,7 +1923,7 @@ onClick={applyUrlaubDefaults}
               )}
             </div>
             <div className="help" style={{ marginTop: 8 }}>
-              Wird als <b>Privat-PKW km</b> zum Eintrag gespeichert.
+              Wird als <b>Kranzeit</b> bzw. <b>Privat-PKW km</b> zum Eintrag gespeichert.
             </div>
           </div>
 
