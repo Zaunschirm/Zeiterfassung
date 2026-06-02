@@ -939,8 +939,8 @@ export default function EmployeeList() {
 
         {overtimeErr && <div className="hbz-section error">{overtimeErr}</div>}
 
-        <div className="employee-table-wrap">
-          <table className="employee-table">
+        <div className="employee-table-wrap" style={{ overflowX: "auto" }}>
+          <table className="employee-table" style={{ minWidth: 980 }}>
             <thead>
               <tr>
                 <th>Mitarbeiter</th>
@@ -978,8 +978,8 @@ export default function EmployeeList() {
 
         <details style={{ marginTop: 14 }}>
           <summary className="hbz-label" style={{ cursor: "pointer" }}>Letzte manuelle Korrekturen anzeigen</summary>
-          <div className="employee-table-wrap" style={{ marginTop: 10 }}>
-            <table className="employee-table">
+          <div className="employee-table-wrap" style={{ marginTop: 10, overflowX: "auto" }}>
+            <table className="employee-table" style={{ minWidth: 720 }}>
               <thead>
                 <tr><th>Datum</th><th>Mitarbeiter</th><th className="num">Stunden</th><th>Notiz</th></tr>
               </thead>
@@ -1017,7 +1017,7 @@ export default function EmployeeList() {
                   <th>Rechte</th>
                   <th>Status</th>
                   <th>Tageskontrolle</th>
-                  <th className="num">Aktionen</th>
+                  <th className="num" style={{ minWidth: 130 }}>Aktionen</th>
                 </tr>
               </thead>
               <tbody>
@@ -1065,8 +1065,8 @@ export default function EmployeeList() {
                         {r.show_in_daily_check === false ? "Ausgeblendet" : "Wird geprüft"}
                       </span>
                     </td>
-                    <td className="num">
-                      <div className="employee-action-group">
+                    <td className="num" style={{ minWidth: 130, whiteSpace: "nowrap" }}>
+                      <div className="employee-action-group" style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end", minWidth: 118 }}>
                         <button
                           type="button"
                           className="hbz-btn btn-small"
@@ -1088,7 +1088,7 @@ export default function EmployeeList() {
                           className="hbz-btn btn-small"
                           onClick={() => toggleZaAccount(r)}
                         >
-                          {isZaAccountEnabled(r) ? "ZA nicht prüfen" : "ZA prüfen"}
+                          {isZaAccountEnabled(r) ? "ZA aus" : "ZA an"}
                         </button>
 
                         <button
@@ -1096,7 +1096,7 @@ export default function EmployeeList() {
                           className="hbz-btn btn-small"
                           onClick={() => resetPin(r)}
                         >
-                          PIN zurücksetzen
+                          PIN
                         </button>
 
                         <button
