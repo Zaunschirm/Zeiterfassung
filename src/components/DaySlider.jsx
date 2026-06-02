@@ -1220,6 +1220,8 @@ export default function DaySlider() {
       break_min: row.break_min ?? 0,
       travel_minutes: row.travel_minutes ?? row.travel_min ?? 0,
       crane_hours: row.crane_hours ?? 0,
+      private_pkw_km: row.private_pkw_km ?? 0,
+      za_hours: row.za_hours ?? 0,
       bad_weather: !!row.bad_weather,
       weather_manual: row.weather_manual || "",
       weather_auto: row.weather_auto || "",
@@ -1253,6 +1255,8 @@ export default function DaySlider() {
       break_min: parseInt(editState.break_min || "0", 10) || 0,
       travel_minutes: parseInt(editState.travel_minutes || "0", 10) || 0,
       crane_hours: parseInt(editState.crane_hours || "0", 10) || 0,
+      private_pkw_km: Number(String(editState.private_pkw_km ?? 0).replace(",", ".")) || 0,
+      za_hours: Number(String(editState.za_hours ?? 0).replace(",", ".")) || 0,
       bad_weather: !!editState.bad_weather,
       bad_weather_minutes: editState.bad_weather ? Math.max(to_m - from_m - (parseInt(editState.break_min || "0", 10) || 0), 0) : 0,
       voice_note: editState.note?.trim() || null,
@@ -2061,6 +2065,8 @@ onClick={applyUrlaubDefaults}
                       <th className="num">Pause</th>
                       <th className="num">Fahrzeit</th>
                       <th className="num">Kran</th>
+                      <th className="num">Privat-PKW</th>
+                      <th className="num">ZA</th>
                       <th className="num">Stunden</th>
                       <th className="num">Überstunden</th>
                       <th>Wetter</th>
@@ -2091,6 +2097,8 @@ onClick={applyUrlaubDefaults}
                             <td className="num">{breakM} min</td>
                             <td className="num">{travelM} min</td>
                             <td className="num">{r.crane_hours ? `${r.crane_hours} h` : "—"}</td>
+                            <td className="num">{Number(r.private_pkw_km || 0) > 0 ? `${Number(r.private_pkw_km || 0).toLocaleString("de-AT")} km` : "—"}</td>
+                            <td className="num">{Number(r.za_hours || 0) > 0 ? `${Number(r.za_hours || 0).toLocaleString("de-AT")} h` : "—"}</td>
                             <td className="num">{hrs.toFixed(2)}</td>
                             <td className="num">{ot.toFixed(2)}</td>
                             <td>{getWeatherFinalLabel(r) || "—"}</td>
@@ -2223,6 +2231,36 @@ onClick={applyUrlaubDefaults}
                             </select>
                           </td>
                           <td className="num">
+                            <input
+                              type="number"
+                              min={0}
+                              step={0.5}
+                              className="hbz-input"
+                              value={editState.private_pkw_km ?? 0}
+                              onChange={(e) =>
+                                setEditState((s) => ({
+                                  ...s,
+                                  private_pkw_km: e.target.value,
+                                }))
+                              }
+                            />
+                          </td>
+                          <td className="num">
+                            <input
+                              type="number"
+                              min={0}
+                              step={0.25}
+                              className="hbz-input"
+                              value={editState.za_hours ?? 0}
+                              onChange={(e) =>
+                                setEditState((s) => ({
+                                  ...s,
+                                  za_hours: e.target.value,
+                                }))
+                              }
+                            />
+                          </td>
+                          <td className="num">
                             {(() => {
                               const startM = hmToMin(editState.from_hm);
                               const endM = hmToMin(editState.to_hm);
@@ -2353,6 +2391,8 @@ onClick={applyUrlaubDefaults}
                           <span>Pause: {breakM} min</span>
                           <span>Fahrzeit: {travelM} min</span>
                           {r.crane_hours ? <span>Kran: {r.crane_hours} h</span> : null}
+                          {Number(r.private_pkw_km || 0) > 0 ? <span>Privat-PKW: {Number(r.private_pkw_km || 0).toLocaleString("de-AT")} km</span> : null}
+                          {Number(r.za_hours || 0) > 0 ? <span>ZA: {Number(r.za_hours || 0).toLocaleString("de-AT")} h</span> : null}
                         </div>
 
                         <div className="month-card-row">
@@ -2509,6 +2549,63 @@ onClick={applyUrlaubDefaults}
                               }))
                             }
                           />
+                        </div>
+                      </div>
+
+                      <div className="month-card-edit-grid">
+                        <div className="month-card-field">
+                          <label className="hbz-label">Kran (h)</label>
+                          <select
+                            className="hbz-input"
+                            value={editState.crane_hours ?? 0}
+                            onChange={(e) =>
+                              setEditState((s) => ({ ...s, crane_hours: e.target.value }))
+                            }
+                          >
+                            <option value={0}>—</option>
+                            {CRANE_HOUR_OPTIONS.map((h) => (
+                              <option key={h} value={h}>{h} h</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="month-card-field">
+                          <label className="hbz-label">Privat-PKW (km)</label>
+                          <input
+                            type="number"
+                            min={0}
+                            step={0.5}
+                            className="hbz-input"
+                            value={editState.private_pkw_km ?? 0}
+                            onChange={(e) =>
+                              setEditState((s) => ({ ...s, private_pkw_km: e.target.value }))
+                            }
+                          />
+                        </div>
+                      </div>
+
+                      <div className="month-card-edit-grid">
+                        <div className="month-card-field">
+                          <label className="hbz-label">ZA-Stunden</label>
+                          <input
+                            type="number"
+                            min={0}
+                            step={0.25}
+                            className="hbz-input"
+                            value={editState.za_hours ?? 0}
+                            onChange={(e) =>
+                              setEditState((s) => ({ ...s, za_hours: e.target.value }))
+                            }
+                          />
+                        </div>
+                        <div className="month-card-field">
+                          <label className="hbz-label">Schlechtwetter</label>
+                          <button
+                            type="button"
+                            className={`hbz-chip ${editState.bad_weather ? "active" : ""}`}
+                            onClick={() => setEditState((s) => ({ ...s, bad_weather: !s.bad_weather }))}
+                          >
+                            {editState.bad_weather ? "Schlechtwetter aktiv" : "Schlechtwetter"}
+                          </button>
                         </div>
                       </div>
 
