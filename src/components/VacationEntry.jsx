@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { getSession } from "../lib/session";
 import { getEmployeeWorkDay, getBuakWeekType, getHolidayName, hmToMinutes } from "../utils/time";
@@ -148,6 +148,50 @@ function fmtDays(value) {
   return `${Number(value || 0).toFixed(2).replace(".", ",")} Tage`;
 }
 
+const VACATION_ANNUAL_DAYS = 25;
+const VACATION_MONTHLY_DAYS = VACATION_ANNUAL_DAYS / 12;
+// Deine übergebenen Urlaubsstände sind Stand 31.03.2026.
+// Der Anspruch für einen Monat wird immer erst am folgenden 01. gutgeschrieben.
+// Daher wird April 2026 am 01.05.2026 gebucht, Mai am 01.06.2026 usw.
+const VACATION_ACCRUAL_FIRST_EARNED_MONTH = "2026-04-01";
+
+function monthKeyISO(dateStr = todayISO()) {
+  return `${String(dateStr || todayISO()).slice(0, 7)}-01`;
+}
+
+function addMonthsISO(monthStartIso, months) {
+  const d = parseDateLocal(monthStartIso);
+  if (!d) return monthStartIso;
+  return formatISODate(new Date(d.getFullYear(), d.getMonth() + months, 1, 12));
+}
+
+function monthStartNumber(monthStartIso) {
+  const d = parseDateLocal(monthStartIso);
+  if (!d) return 0;
+  return d.getFullYear() * 12 + d.getMonth();
+}
+
+function listMonthStarts(fromMonthIso, toMonthIso) {
+  const start = monthKeyISO(fromMonthIso);
+  const end = monthKeyISO(toMonthIso);
+  if (monthStartNumber(end) < monthStartNumber(start)) return [];
+  const months = [];
+  for (let cur = start; monthStartNumber(cur) <= monthStartNumber(end); cur = addMonthsISO(cur, 1)) {
+    months.push(cur);
+  }
+  return months;
+}
+
+function monthLabelAT(monthStartIso) {
+  const d = parseDateLocal(monthStartIso);
+  if (!d) return String(monthStartIso || "");
+  return d.toLocaleDateString("de-AT", { month: "long", year: "numeric" });
+}
+
+function roundVacationDays(value) {
+  return Math.round(Number(value || 0) * 10000) / 10000;
+}
+
 function vacationEntitlementDays(emp) {
   const raw = emp?.vacation_entitlement_days ?? emp?.urlaub_anspruch_tage ?? emp?.vacation_days;
   const n = Number(String(raw ?? "").replace(",", "."));
@@ -231,6 +275,7 @@ export default function VacationEntry({ currentUser = null } = {}) {
   const [vacationAdjustDays, setVacationAdjustDays] = useState("");
   const [vacationAdjustNote, setVacationAdjustNote] = useState("");
   const [vacationAdjustSaving, setVacationAdjustSaving] = useState(false);
+  const monthlyAccrualDoneRef = useRef(false);
 
   const calendarAnchorDate = useMemo(() => `${calendarMonth || todayISO().slice(0, 7)}-01`, [calendarMonth]);
   const calendarFrom = useMemo(() => monthStart(calendarAnchorDate), [calendarAnchorDate]);
@@ -394,10 +439,77 @@ export default function VacationEntry({ currentUser = null } = {}) {
     );
   }
 
+  async function ensureMonthlyVacationAccrual() {
+    if (monthlyAccrualDoneRef.current || employees.length === 0) return;
+    monthlyAccrualDoneRef.current = true;
+
+    // Monatsanspruch wird immer erst am folgenden 01. gutgeschrieben.
+    // Beispiel: Stand per 31.03.2026 -> April wird am 01.05.2026 gutgeschrieben,
+    // Mai am 01.06.2026. Der laufende Monat wird noch nicht vorab gebucht.
+    const currentMonth = monthKeyISO(todayISO());
+    const latestEarnedMonth = addMonthsISO(currentMonth, -1);
+    const earnedMonthsToBook = listMonthStarts(VACATION_ACCRUAL_FIRST_EARNED_MONTH, latestEarnedMonth);
+    if (earnedMonthsToBook.length === 0) return;
+
+    const activeEmployees = (employees || []).filter((emp) => emp?.active !== false && emp?.disabled !== true);
+    if (activeEmployees.length === 0) return;
+
+    try {
+      const { data: existingRows, error: existingError } = await supabase
+        .from("vacation_monthly_accruals")
+        .select("employee_id, accrual_month")
+        .in("accrual_month", earnedMonthsToBook);
+      if (existingError) throw existingError;
+
+      const alreadyBooked = new Set(
+        (existingRows || []).map((row) => `${String(row.employee_id)}|${String(row.accrual_month).slice(0, 10)}`)
+      );
+
+      for (const emp of activeEmployees) {
+        const missingMonths = earnedMonthsToBook.filter((m) => !alreadyBooked.has(`${String(emp.id)}|${m}`));
+        if (missingMonths.length === 0) continue;
+
+        const before = vacationEntitlementDays(emp);
+        const deltaDays = roundVacationDays(VACATION_MONTHLY_DAYS * missingMonths.length);
+        const nextDays = roundVacationDays(before + deltaDays);
+
+        const { error: updateError } = await supabase
+          .from("employees")
+          .update({ vacation_entitlement_days: nextDays })
+          .eq("id", emp.id);
+        if (updateError) throw updateError;
+
+        const rowsToInsert = missingMonths.map((earnedMonth) => ({
+          employee_id: String(emp.id),
+          accrual_month: earnedMonth,
+          days: VACATION_MONTHLY_DAYS,
+          note: `Automatischer Monatsanspruch Urlaub für ${monthLabelAT(earnedMonth)}; Gutschrift am 01. des Folgemonats`,
+        }));
+
+        const { error: accrualError } = await supabase
+          .from("vacation_monthly_accruals")
+          .insert(rowsToInsert);
+        if (accrualError) throw accrualError;
+
+        updateEmployeeVacationInState(emp.id, nextDays);
+      }
+    } catch (e) {
+      // Nicht blockierend: Urlaub/ZA soll trotzdem bedienbar bleiben.
+      monthlyAccrualDoneRef.current = false;
+      console.warn("[VacationEntry] Monatsanspruch Urlaub konnte nicht automatisch gebucht werden", e);
+      setError(e?.message || "Monatlicher Urlaubsanspruch konnte nicht automatisch hinzugefügt werden.");
+    }
+  }
+
+  useEffect(() => {
+    if (employees.length > 0) ensureMonthlyVacationAccrual();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [employees.length]);
+
   async function changeVacationCurrentDays(employee, deltaDays, auditNote = "Urlaubskorrektur") {
     if (!employee?.id || !Number.isFinite(Number(deltaDays)) || Number(deltaDays) === 0) return;
     const current = vacationEntitlementDays(employee);
-    const nextDays = Number((current + Number(deltaDays)).toFixed(2));
+    const nextDays = roundVacationDays(current + Number(deltaDays));
 
     const { error: updateError } = await supabase
       .from("employees")
@@ -884,10 +996,11 @@ export default function VacationEntry({ currentUser = null } = {}) {
       {targetEmployee && vacationAccount && (
         <section className="month-card" style={{ marginTop: 18 }}>
           <div className="month-card-title">Urlaubsstand {vacationAccountYear}</div>
-          <p className="hint">Urlaub wird hier als aktueller Reststand in Tagen geführt. Beim Eintragen von Urlaub wird der Stand automatisch reduziert.</p>
+          <p className="hint">Urlaub wird hier als aktueller Reststand in Tagen geführt. Jeden Monat werden automatisch 25/12 Tage gutgeschrieben; beim Eintragen von Urlaub wird der Stand reduziert.</p>
           <div className="vac-account-grid simple" style={{ marginTop: 10 }}>
             <div className="vac-account-box"><span>Mitarbeiter</span><b>{getEmployeeLabel(targetEmployee)}</b></div>
             <div className="vac-account-box strong"><span>Urlaubsanspruch aktuell</span><b>{vacationAccountLoading ? "lädt…" : fmtDays(vacationAccount.currentDays)}</b></div>
+            <div className="vac-account-box"><span>Automatischer Zugang</span><b>{fmtDays(VACATION_MONTHLY_DAYS)} / Monat</b></div>
           </div>
           {isAdmin && (
             <details className="vac-admin-details" style={{ marginTop: 12 }}>
