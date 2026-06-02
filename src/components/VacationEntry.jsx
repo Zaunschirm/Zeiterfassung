@@ -134,6 +134,34 @@ function fmtHours(value) {
   return `${Number(value || 0).toFixed(2).replace(".", ",")} h`;
 }
 
+function isNextIsoDate(prev, next) {
+  const p = parseDateLocal(prev);
+  const n = parseDateLocal(next);
+  if (!p || !n) return false;
+  return formatISODate(addDays(p, 1)) === String(next || '').slice(0, 10);
+}
+
+function formatDateRangeAT(from, to) {
+  if (!from) return '—';
+  if (!to || String(from).slice(0,10) === String(to).slice(0,10)) return formatDateAT(from);
+  const a = parseDateLocal(from);
+  const b = parseDateLocal(to);
+  if (!a || !b) return `${from} - ${to}`;
+  const sameYear = a.getFullYear() === b.getFullYear();
+  const sameMonth = sameYear && a.getMonth() === b.getMonth();
+  if (sameMonth) {
+    return `${String(a.getDate()).padStart(2, '0')}. - ${String(b.getDate()).padStart(2, '0')}.${String(b.getMonth() + 1).padStart(2, '0')}.${b.getFullYear()}`;
+  }
+  return `${formatDateAT(from)} - ${formatDateAT(to)}`;
+}
+
+function weekRangeLabel(from, to) {
+  const days = dateRange(from, to);
+  const types = Array.from(new Set(days.map((d) => getBuakWeekType(d))));
+  if (types.length === 1) return types[0] === 'kurz' ? 'Kurzwoche' : 'Langwoche';
+  return 'gemischt';
+}
+
 export default function VacationEntry({ currentUser = null } = {}) {
   const storedSession = getSession()?.user || {};
   const session = currentUser || storedSession || {};
@@ -290,13 +318,52 @@ export default function VacationEntry({ currentUser = null } = {}) {
   }, [calendarFrom, calendarTo]);
 
   const timeOffDisplayRows = useMemo(() => {
-    return timeOffRows
+    const rows = timeOffRows
       .map((row) => ({
         ...row,
         employee: employeeById.get(String(row.employee_id)) || null,
+        kind: getEntryKind(row),
+        cleanNote: stripTimeOffNote(row.note),
       }))
       .filter((row) => row.employee)
-      .sort((a, b) => String(a.work_date).localeCompare(String(b.work_date)) || String(a.employee?.name || "").localeCompare(String(b.employee?.name || ""), "de"));
+      .sort((a, b) =>
+        String(a.employee?.name || "").localeCompare(String(b.employee?.name || ""), "de") ||
+        String(a.kind || "").localeCompare(String(b.kind || "")) ||
+        String(a.cleanNote || "").localeCompare(String(b.cleanNote || ""), "de") ||
+        String(a.work_date).localeCompare(String(b.work_date))
+      );
+
+    const groups = [];
+    for (const row of rows) {
+      const last = groups[groups.length - 1];
+      const sameGroup =
+        last &&
+        String(last.employee_id) === String(row.employee_id) &&
+        last.kind === row.kind &&
+        String(last.cleanNote || "") === String(row.cleanNote || "") &&
+        isNextIsoDate(last.to_date, row.work_date);
+
+      if (sameGroup) {
+        last.to_date = String(row.work_date).slice(0, 10);
+        last.ids.push(row.id);
+        last.rows.push(row);
+        last.za_hours = Number(last.za_hours || 0) + Number(row.za_hours || 0);
+      } else {
+        groups.push({
+          ...row,
+          from_date: String(row.work_date).slice(0, 10),
+          to_date: String(row.work_date).slice(0, 10),
+          ids: [row.id],
+          rows: [row],
+          za_hours: Number(row.za_hours || 0),
+        });
+      }
+    }
+
+    return groups.sort((a, b) =>
+      String(a.from_date).localeCompare(String(b.from_date)) ||
+      String(a.employee?.name || "").localeCompare(String(b.employee?.name || ""), "de")
+    );
   }, [timeOffRows, employeeById]);
 
   async function saveTimeOff() {
@@ -416,12 +483,14 @@ export default function VacationEntry({ currentUser = null } = {}) {
     const allowed = isAdmin || sameEmployee(emp, session);
     if (!allowed) return;
     const kind = getEntryKind(row) === "za" ? "Zeitausgleich" : "Urlaub";
-    const ok = window.confirm(`${isAdmin ? "Diesen" : "Eigenen"} ${kind}-Eintrag wirklich löschen?`);
+    const ids = Array.isArray(row.ids) && row.ids.length ? row.ids : [row.id];
+    const rangeText = row.from_date && row.to_date ? formatDateRangeAT(row.from_date, row.to_date) : formatDateAT(row.work_date);
+    const ok = window.confirm(`${isAdmin ? "Diesen" : "Eigenen"} ${kind}-Eintrag für ${rangeText} wirklich löschen?`);
     if (!ok) return;
     setError("");
     setMessage("");
     try {
-      const { error } = await supabase.from("time_entries").delete().eq("id", row.id);
+      const { error } = await supabase.from("time_entries").delete().in("id", ids);
       if (error) throw error;
       setMessage(`${kind}-Eintrag gelöscht.`);
       await loadTimeOff();
@@ -587,7 +656,7 @@ export default function VacationEntry({ currentUser = null } = {}) {
           <table className="hbz-table compact">
             <thead>
               <tr>
-                <th>Datum</th>
+                <th>Zeitraum</th>
                 <th>Mitarbeiter</th>
                 <th>Art</th>
                 <th>Woche</th>
@@ -605,16 +674,17 @@ export default function VacationEntry({ currentUser = null } = {}) {
                 timeOffDisplayRows.map((row) => {
                   const own = sameEmployee(row.employee, session);
                   const allowed = isAdmin || own;
-                  const weekType = getBuakWeekType(row.work_date);
-                  const kind = getEntryKind(row);
+                  const kind = row.kind || getEntryKind(row);
+                  const weekLabel = weekRangeLabel(row.from_date || row.work_date, row.to_date || row.work_date);
+                  const mixed = weekLabel === "gemischt";
                   return (
-                    <tr key={row.id} className={own ? "vac-own-row" : ""}>
-                      <td>{formatDateAT(row.work_date)}</td>
+                    <tr key={`${row.employee_id}-${kind}-${row.from_date}-${row.to_date}-${row.cleanNote || ""}`} className={own ? "vac-own-row" : ""}>
+                      <td>{formatDateRangeAT(row.from_date || row.work_date, row.to_date || row.work_date)}</td>
                       <td>{row.employee?.name || "—"}</td>
                       <td><span className={`vac-pill ${kind === "za" ? "za" : "vac"}`}>{kind === "za" ? "Zeitausgleich" : "Urlaub"}</span></td>
-                      <td><span className={`vac-pill ${weekType === "kurz" ? "short" : "long"}`}>{weekType === "kurz" ? "Kurzwoche" : "Langwoche"}</span></td>
+                      <td><span className={`vac-pill ${mixed ? "mixed" : weekLabel === "Kurzwoche" ? "short" : "long"}`}>{weekLabel}</span></td>
                       <td>{kind === "za" ? fmtHours(row.za_hours) : "—"}</td>
-                      <td>{stripTimeOffNote(row.note) || "—"}</td>
+                      <td>{row.cleanNote || "—"}</td>
                       <td>
                         {allowed ? (
                           <button type="button" className="hbz-mini-danger" onClick={() => deleteTimeOff(row)}>{isAdmin && !own ? "Eintrag löschen" : "Eigenen Eintrag löschen"}</button>
@@ -655,6 +725,7 @@ export default function VacationEntry({ currentUser = null } = {}) {
         .vac-pill.long { background: #fff0e3; color: #85460a; }
         .vac-pill.vac { background: #eaf0ff; color: #223d8f; }
         .vac-pill.za { background: #fff2cc; color: #795100; }
+        .vac-pill.mixed { background: #f1edf8; color: #573a7d; }
         .vac-own-row { background: rgba(222, 242, 232, 0.62); }
         .hbz-mini-danger { border: 1px solid #d88; background: #fff4f4; color: #8a1f1f; border-radius: 999px; padding: 6px 10px; font-weight: 800; cursor: pointer; }
         .hbz-mini-danger:hover { background: #ffe8e8; }
