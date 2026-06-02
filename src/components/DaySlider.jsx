@@ -756,14 +756,72 @@ export default function DaySlider() {
     };
   }, [date, isManager, selectedCodes, employeeRow?.id, employees, projects, absenceType]);
 
+  async function enrichTimeEntryRows(rows) {
+    const list = rows || [];
+    if (!list.length) return [];
+
+    const employeeIds = [...new Set(list.map((r) => r.employee_id).filter(Boolean))];
+    const projectIds = [...new Set(list.map((r) => r.project_id).filter(Boolean))];
+
+    let empMap = new Map();
+    let projectMap = new Map();
+
+    try {
+      if (employeeIds.length) {
+        const { data: empRows, error: empError } = await supabase
+          .from("employees")
+          .select("id,name,code,role")
+          .in("id", employeeIds);
+        if (!empError) {
+          empMap = new Map((empRows || []).map((e) => [String(e.id), e]));
+        }
+      }
+    } catch (e) {
+      logSbError("[DaySlider] employee enrichment error:", e);
+    }
+
+    try {
+      if (projectIds.length) {
+        const { data: projectRows, error: projectError } = await supabase
+          .from("projects")
+          .select("id,name,code")
+          .in("id", projectIds);
+        if (!projectError) {
+          projectMap = new Map((projectRows || []).map((p) => [String(p.id), p]));
+        }
+      }
+    } catch (e) {
+      logSbError("[DaySlider] project enrichment error:", e);
+    }
+
+    return list
+      .map((r) => {
+        const emp = empMap.get(String(r.employee_id));
+        const project = projectMap.get(String(r.project_id));
+        return {
+          ...r,
+          employee_name: r.employee_name || emp?.name || r.employee_id,
+          employee_code: r.employee_code || emp?.code || "",
+          employee_role: r.employee_role || emp?.role || "",
+          project_name: r.project_name || project?.name || r.project || "—",
+          project_code: r.project_code || project?.code || "",
+        };
+      })
+      .sort((a, b) => {
+        const an = String(a.employee_name || "");
+        const bn = String(b.employee_name || "");
+        if (an !== bn) return an.localeCompare(bn, "de");
+        return Number(a.start_min || 0) - Number(b.start_min || 0);
+      });
+  }
+
   async function loadEntries() {
     try {
       setLoading(true);
       let query = supabase
-        .from("v_time_entries_expanded")
+        .from("time_entries")
         .select("*")
         .eq("work_date", date)
-        .order("employee_name", { ascending: true })
         .order("start_min", { ascending: true });
 
       // Datenschutz: Nur Admin und Teamleiter sehen alle Einträge.
@@ -774,7 +832,7 @@ export default function DaySlider() {
 
       const { data, error } = await query;
       if (error) throw error;
-      setEntries(data || []);
+      setEntries(await enrichTimeEntryRows(data || []));
     } catch (e) {
       logSbError("[DaySlider] entries load error:", e);
       setEntries([]);
@@ -788,7 +846,7 @@ export default function DaySlider() {
       setDailyCheckLoading(true);
 
       let query = supabase
-        .from("v_time_entries_expanded")
+        .from("time_entries")
         .select("*")
         .eq("work_date", date);
 
@@ -800,7 +858,7 @@ export default function DaySlider() {
       const { data, error } = await query;
 
       if (error) throw error;
-      setDailyCheckEntries(data || []);
+      setDailyCheckEntries(await enrichTimeEntryRows(data || []));
     } catch (e) {
       logSbError("[DaySlider] daily check entries load error:", e);
       setDailyCheckEntries([]);
