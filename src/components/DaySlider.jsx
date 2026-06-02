@@ -31,6 +31,17 @@ const formatTravelLabel = (m) => {
   return `${m} min`;
 };
 
+const parsePrivatePkwKm = (value) => {
+  if (value === null || value === undefined || value === "") return 0;
+  const n = Number(String(value).replace(",", "."));
+  return Number.isFinite(n) && n > 0 ? Math.round(n * 10) / 10 : 0;
+};
+
+const formatPrivatePkwKm = (value) => {
+  const km = parsePrivatePkwKm(value);
+  return km > 0 ? `${km.toLocaleString("de-AT")} km` : "—";
+};
+
 const formatTemp = (value) =>
   typeof value === "number" && !Number.isNaN(value) ? `${value.toFixed(1)} °C` : "—";
 
@@ -41,20 +52,6 @@ const formatPrecip = (value) =>
 const PAUSE_OPTIONS = [0, 15, 30, 45, 60, 75, 90];
 const TRAVEL_OPTIONS = [0, 15, 30, 45, 60, 75, 90, 105, 120, 135, 150];
 const CRANE_HOUR_OPTIONS = Array.from({ length: 15 }, (_, i) => i + 1);
-
-const parsePrivatePkwKm = (value) => {
-  const normalized = String(value ?? "")
-    .replace(",", ".")
-    .replace(/[^0-9.]/g, "");
-  const parsed = Number.parseFloat(normalized);
-  if (!Number.isFinite(parsed) || parsed < 0) return 0;
-  return Math.round(parsed * 10) / 10;
-};
-
-const formatPrivatePkwKm = (value) => {
-  const km = parsePrivatePkwKm(value);
-  return km > 0 ? `${km.toLocaleString("de-AT")} km` : "—";
-};
 
 const BUAK_WEEK_TYPES_2026 = {
   1: "K",
@@ -252,23 +249,22 @@ function isAbsenceEntry(row, type) {
   if (type === "zeitausgleich") {
     return (
       absenceType === "zeitausgleich" ||
-      absenceType === "za" ||
       note.includes("[zeitausgleich]") ||
-      note.includes("zeitausgleich")
+      note.includes("zeitausgleich") ||
+      Number(row?.za_hours || 0) > 0
+    );
+  }
+
+  if (type === "schlechtwetter") {
+    return (
+      row?.bad_weather === true ||
+      note.includes("[schlechtwetter]") ||
+      note.includes("schlechtwetter")
     );
   }
 
   return false;
 }
-
-const isAbsenceType = (type) => ["krank", "urlaub", "zeitausgleich"].includes(String(type || "").toLowerCase());
-
-const getAbsenceLabel = (type) => {
-  if (type === "krank") return "Krank";
-  if (type === "urlaub") return "Urlaub";
-  if (type === "zeitausgleich") return "Zeitausgleich";
-  return "";
-};
 
 const logSbError = (prefix, error) =>
   console.error(prefix, error?.message || error);
@@ -304,6 +300,7 @@ export default function DaySlider() {
   const canSelectEmployees = canWriteAllTime || canEditAllTime || canDeleteAllTime;
   const canSeeAllEntries = canSelectEmployees;
   const isStaff = !canSelectEmployees;
+  const canSeeAllDailyCheck = role === "admin" || role === "teamleiter";
   const isManager = canSelectEmployees;
 
   const [date, setDate] = useState(() =>
@@ -594,39 +591,48 @@ export default function DaySlider() {
 
   function applyZeitausgleichDefaults() {
     const d = getEmployeeWorkDay(defaultTimeEmployee, date);
-    const defaultHours = Number(d?.requiredHours || 0);
     const start = d?.active ? hmToMinutes(d.start) : 7 * 60;
-
-    const input = window.prompt(
-      "Zeitausgleich Stunden eingeben (leer = ganzer Tag laut Soll):",
-      defaultHours ? String(defaultHours).replace(".", ",") : ""
-    );
-    if (input === null) return;
-
-    const cleaned = String(input || "").trim();
-    const parsed = cleaned === "" ? defaultHours : Number(cleaned.replace(",", "."));
-    if (!Number.isFinite(parsed) || parsed < 0) {
-      alert("Bitte gültige Stunden eingeben, z. B. 9 oder 4,5.");
-      return;
-    }
-
+    const soll = d?.requiredHours || getBuakSollHoursForDay(date) || 0;
     setBadWeather(false);
     setAbsenceType("zeitausgleich");
-    setZaHours(Math.round(parsed * 100) / 100);
     setProjectId(null);
-    setFromMin(start);
-    setToMin(start + 15);
-    setBreakMin(15);
     setTravelMin(0);
+    setBreakMin(0);
     setCraneUsed(false);
-    setCraneHours(1);
     setPrivatePkwUsed(false);
     setPrivatePkwKm("");
+    const input = window.prompt("Zeitausgleich Stunden eingeben (leer = ganzer Tag laut Soll):", soll ? String(soll).replace(".", ",") : "");
+    if (input === null) {
+      setAbsenceType(null);
+      setZaHours(0);
+      return;
+    }
+    const hours = input.trim() === "" ? soll : parsePrivatePkwKm(input);
+    setZaHours(hours);
+    setFromMin(start);
+    setToMin(start + Math.max(Math.round(hours * 60), 15));
+  }
+
+  function togglePrivatePkw() {
+    if (privatePkwUsed) {
+      setPrivatePkwUsed(false);
+      setPrivatePkwKm("");
+      return;
+    }
+    const input = window.prompt("Gefahrene Kilometer mit privatem PKW:", privatePkwKm || "");
+    if (input === null) return;
+    const km = parsePrivatePkwKm(input);
+    if (km <= 0) {
+      alert("Bitte Kilometer größer 0 eingeben.");
+      return;
+    }
+    setPrivatePkwKm(String(km));
+    setPrivatePkwUsed(true);
   }
 
 
   async function loadWeatherForCurrentBooking(force = false) {
-    if (isAbsenceType(absenceType)) {
+    if (absenceType === "krank" || absenceType === "urlaub" || absenceType === "zeitausgleich") {
       setWeatherAuto("");
       setWeatherCode(null);
       setTemperature(null);
@@ -803,17 +809,25 @@ export default function DaySlider() {
 
   async function loadDailyCheckEntries() {
     try {
-      if (!isManager) {
-        setDailyCheckEntries([]);
-        return;
-      }
-
       setDailyCheckLoading(true);
 
-      const { data, error } = await supabase
+      let query = supabase
         .from("v_time_entries_expanded")
         .select("*")
         .eq("work_date", date);
+
+      // Normale Mitarbeiter sehen in der Tageskontrolle nur den eigenen Status.
+      // Admin/Teamleiter sehen die komplette Kontrolle.
+      if (!canSeeAllDailyCheck) {
+        const ownId = employeeRow?.id || employees.find((e) => e.code === session?.code)?.id || null;
+        if (!ownId) {
+          setDailyCheckEntries([]);
+          return;
+        }
+        query = query.eq("employee_id", ownId);
+      }
+
+      const { data, error } = await query;
 
       if (error) throw error;
       setDailyCheckEntries(data || []);
@@ -829,7 +843,7 @@ export default function DaySlider() {
     loadEntries();
     loadDailyCheckEntries();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [date, isManager, selectedCodes, employeeRow?.id]);
+  }, [date, canSeeAllDailyCheck, selectedCodes, employeeRow?.id, employees, session?.code]);
 
   const shiftDate = (days) => {
     setDate((old) => {
@@ -867,14 +881,19 @@ export default function DaySlider() {
   const holidayNameToday = useMemo(() => getHolidayName(date), [date]);
 
   const dailyCheckRows = useMemo(() => {
-    if (!isManager) return [];
+    const ownId = employeeRow?.id || employees.find((e) => e.code === session?.code)?.id || null;
 
-    const checkEmployees = (employees || [])
+    let checkEmployees = (employees || [])
       // Deaktiviert = nicht mehr in der Tageskontrolle prüfen.
       // Wichtig: bestehende Stunden deaktivierter MA bleiben unten trotzdem sichtbar,
       // weil die Eintragsliste direkt aus v_time_entries_expanded kommt.
-      .filter((emp) => emp?.active !== false && emp?.disabled !== true)
-      .sort((a, b) => String(a?.name || "").localeCompare(String(b?.name || ""), "de"));
+      .filter((emp) => emp?.active !== false && emp?.disabled !== true);
+
+    if (!canSeeAllDailyCheck) {
+      checkEmployees = checkEmployees.filter((emp) => String(emp?.id || "") === String(ownId || ""));
+    }
+
+    checkEmployees = checkEmployees.sort((a, b) => String(a?.name || "").localeCompare(String(b?.name || ""), "de"));
 
     const rowsForDay = (dailyCheckEntries || []).filter(
       (row) => String(row?.work_date || row?.date || "").slice(0, 10) === date
@@ -887,7 +906,8 @@ export default function DaySlider() {
 
       const hasUrlaub = empEntries.some((row) => isAbsenceEntry(row, "urlaub"));
       const hasKrank = empEntries.some((row) => isAbsenceEntry(row, "krank"));
-      const hasZeitausgleich = empEntries.some((row) => isAbsenceEntry(row, "zeitausgleich"));
+      const hasZa = empEntries.some((row) => isAbsenceEntry(row, "zeitausgleich"));
+      const hasBadWeather = empEntries.some((row) => isAbsenceEntry(row, "schlechtwetter"));
       const hasEntry = empEntries.length > 0;
 
       let status = "missing";
@@ -908,10 +928,14 @@ export default function DaySlider() {
         status = "krank";
         label = "Krank";
         icon = "🔵";
-      } else if (hasZeitausgleich) {
+      } else if (hasZa) {
         status = "zeitausgleich";
         label = "Zeitausgleich";
         icon = "🟣";
+      } else if (hasBadWeather) {
+        status = "schlechtwetter";
+        label = "Schlechtwetter";
+        icon = "🌧️";
       } else if (hasEntry) {
         status = "ok";
         label = "Eingetragen";
@@ -926,7 +950,7 @@ export default function DaySlider() {
         entryCount: empEntries.length,
       };
     });
-  }, [date, dailyCheckEntries, employees, isManager]);
+  }, [date, dailyCheckEntries, employees, canSeeAllDailyCheck, employeeRow?.id, session?.code]);
 
   const dailyCheckSummary = useMemo(() => {
     const count = (status) => dailyCheckRows.filter((row) => row.status === status).length;
@@ -936,6 +960,7 @@ export default function DaySlider() {
       urlaub: count("urlaub"),
       krank: count("krank"),
       zeitausgleich: count("zeitausgleich"),
+      schlechtwetter: count("schlechtwetter"),
       notRequired: count("not_required"),
       total: dailyCheckRows.length,
     };
@@ -949,7 +974,7 @@ export default function DaySlider() {
     } else if (dailyCheckStatusFilter === "ok") {
       rows = rows.filter((row) => row.status === "ok");
     } else if (dailyCheckStatusFilter === "absence") {
-      rows = rows.filter((row) => row.status === "urlaub" || row.status === "krank" || row.status === "zeitausgleich");
+      rows = rows.filter((row) => ["urlaub", "krank", "zeitausgleich", "schlechtwetter"].includes(row.status));
     } else if (dailyCheckStatusFilter === "not_required") {
       rows = rows.filter((row) => row.status === "not_required");
     }
@@ -1015,36 +1040,10 @@ export default function DaySlider() {
     }
   }
 
-  function togglePrivatePkw() {
-    if (absenceType) return;
-
-    if (privatePkwUsed) {
-      setPrivatePkwUsed(false);
-      setPrivatePkwKm("");
-      return;
-    }
-
-    const input = window.prompt(
-      "Wie viele Kilometer wurden mit dem privaten PKW gefahren?",
-      privatePkwKm || ""
-    );
-
-    if (input === null) return;
-
-    const km = parsePrivatePkwKm(input);
-    if (km <= 0) {
-      alert("Bitte eine KM-Zahl größer als 0 eingeben.");
-      return;
-    }
-
-    setPrivatePkwKm(String(km));
-    setPrivatePkwUsed(true);
-  }
-
   async function handleSave() {
     setError("");
 
-    const isAbsence = isAbsenceType(absenceType);
+    const isAbsence = absenceType === "krank" || absenceType === "urlaub" || absenceType === "zeitausgleich";
 
     if (!isAbsence && !projectId) {
       setError("Bitte Projekt auswählen.");
@@ -1073,6 +1072,8 @@ export default function DaySlider() {
       break_min: breakMin,
       travel_minutes: travelMin,
       travel_cost_center: "FAHRZEIT",
+      private_pkw_km: privatePkwUsed ? parsePrivatePkwKm(privatePkwKm) : 0,
+      za_hours: absenceType === "zeitausgleich" ? Number(zaHours || 0) : 0,
       weather_auto: weatherAuto || null,
       weather_manual: weatherManual || null,
       weather_final: finalWeather || null,
@@ -1082,8 +1083,6 @@ export default function DaySlider() {
       weather_source: weatherSource || null,
       weather_fetched_at: weatherFetchedAt || null,
       crane_hours: craneUsed ? Number(craneHours || 0) : 0,
-      private_pkw_km: privatePkwUsed ? parsePrivatePkwKm(privatePkwKm) : 0,
-      za_hours: absenceType === "zeitausgleich" ? Number(zaHours || 0) : 0,
       bad_weather: !!badWeather,
       bad_weather_minutes: badWeather ? Math.max(toMin - fromMin - breakMin, 0) : 0,
       voice_note: (note || "").trim() || null,
@@ -1135,7 +1134,6 @@ export default function DaySlider() {
 
       setNote("");
       setAbsenceType(null);
-      setZaHours(0);
       setBadWeather(false);
       setBreakMin(30);
       setTravelMin(0);
@@ -1143,6 +1141,7 @@ export default function DaySlider() {
       setCraneHours(1);
       setPrivatePkwUsed(false);
       setPrivatePkwKm("");
+      setZaHours(0);
       setWeatherManual("");
       await loadEntries();
       await loadDailyCheckEntries();
@@ -1248,10 +1247,10 @@ export default function DaySlider() {
     { label: "Ende", value: toHM(toMin) },
     { label: "Pause", value: `${breakMin} min` },
     { label: "Fahrzeit", value: formatTravelLabel(travelMin) },
-    { label: "Kran", value: craneUsed ? `${craneHours} h` : "—" },
-    { label: "Privat-PKW", value: privatePkwUsed ? formatPrivatePkwKm(privatePkwKm) : "—" },
-    { label: "Zeitausgleich", value: absenceType === "zeitausgleich" ? `${zaHours} h` : "—" },
-    { label: "Schlechtwetter", value: badWeather ? "Ja" : "—" },
+    ...(craneUsed ? [{ label: "Kran", value: `${craneHours} h` }] : []),
+    ...(privatePkwUsed && parsePrivatePkwKm(privatePkwKm) > 0 ? [{ label: "Privat-PKW", value: formatPrivatePkwKm(privatePkwKm) }] : []),
+    ...(absenceType === "zeitausgleich" && Number(zaHours || 0) > 0 ? [{ label: "Zeitausgleich", value: `${Number(zaHours || 0).toLocaleString("de-AT")} h` }] : []),
+    ...(badWeather ? [{ label: "Schlechtwetter", value: "Ja" }] : []),
     { label: "Wetter", value: finalWeather || "—" },
   ];
 
@@ -1322,7 +1321,7 @@ export default function DaySlider() {
         </div>
       </div>
 
-      {isManager && (
+      {dailyCheckRows.length > 0 && (
         <div className="hbz-card month-main-card daily-check-card">
           <div className="month-main-header">
             <div>
@@ -1344,10 +1343,12 @@ export default function DaySlider() {
               <span className="badge-soft">🟡 {dailyCheckSummary.urlaub}</span>
               <span className="badge-soft">🔵 {dailyCheckSummary.krank}</span>
               <span className="badge-soft">🟣 {dailyCheckSummary.zeitausgleich}</span>
+              <span className="badge-soft">🌧️ {dailyCheckSummary.schlechtwetter}</span>
             </div>
           </div>
 
 
+          {canSeeAllDailyCheck && (
           <div className="daily-check-controls">
             <div className="daily-check-filter-row">
               <button type="button" className={`daily-check-filter-btn ${dailyCheckStatusFilter === "all" ? "active" : ""}`} onClick={() => setDailyCheckStatusFilter("all")}>
@@ -1360,7 +1361,7 @@ export default function DaySlider() {
                 ✅ Eingetragen ({dailyCheckSummary.ok})
               </button>
               <button type="button" className={`daily-check-filter-btn ${dailyCheckStatusFilter === "absence" ? "active" : ""}`} onClick={() => setDailyCheckStatusFilter("absence")}>
-                🟡/🔵/🟣 Urlaub/Krank/ZA ({dailyCheckSummary.urlaub + dailyCheckSummary.krank + (dailyCheckSummary.zeitausgleich || 0)})
+                🟡/🔵/🟣/🌧️ Urlaub/Krank/ZA/SW ({dailyCheckSummary.urlaub + dailyCheckSummary.krank + dailyCheckSummary.zeitausgleich + dailyCheckSummary.schlechtwetter})
               </button>
               {dailyCheckSummary.notRequired > 0 && (
                 <button type="button" className={`daily-check-filter-btn ${dailyCheckStatusFilter === "not_required" ? "active" : ""}`} onClick={() => setDailyCheckStatusFilter("not_required")}>
@@ -1387,6 +1388,7 @@ export default function DaySlider() {
               </div>
             </div>
           </div>
+          )}
           {dailyCheckRows.length === 0 ? (
             <div className="month-empty-state">
               Keine Mitarbeiter für die Tageskontrolle gefunden.
@@ -1438,7 +1440,7 @@ export default function DaySlider() {
             <select
               className="hbz-select"
               value={projectId ?? ""}
-              disabled={isAbsenceType(absenceType)}
+              disabled={absenceType === "krank" || absenceType === "urlaub"}
               onChange={(e) => setProjectId(e.target.value || null)}
             >
               <option value="">— ohne Projekt —</option>
@@ -1451,7 +1453,7 @@ export default function DaySlider() {
           </div>
         </div>
 
-        {assignmentSuggestions.length > 0 && !isAbsenceType(absenceType) && (
+        {assignmentSuggestions.length > 0 && absenceType !== "krank" && absenceType !== "urlaub" && (
           <div className="assignment-prefill-box">
             <div className="assignment-prefill-head">
               <strong>Arbeitseinteilung</strong>
@@ -1480,7 +1482,7 @@ export default function DaySlider() {
           </div>
         )}
 
-        {projectAddress && !isAbsenceType(absenceType) && (
+        {projectAddress && absenceType !== "krank" && absenceType !== "urlaub" && (
           <div
             className="help"
             style={{
@@ -1527,9 +1529,9 @@ export default function DaySlider() {
           </div>
         )}
 
-        {isAbsenceType(absenceType) && (
+        {(absenceType === "krank" || absenceType === "urlaub") && (
           <div className="help" style={{ marginTop: 8 }}>
-            Bei Krank/Urlaub/Zeitausgleich ist kein Projekt nötig.
+            Bei Krank/Urlaub ist kein Projekt nötig.
           </div>
         )}
 
@@ -1566,7 +1568,7 @@ export default function DaySlider() {
               </div>
               <div className="mobile-chip-section"><div className="month-card-title">Pause</div><div className="hbz-chipbar">{PAUSE_OPTIONS.map((m) => (<button key={m} type="button" className={`hbz-chip ${breakMin === m ? "active" : ""}`} onClick={() => { if (absenceType) setAbsenceType(null); setBreakMin(m); }}>{formatTravelLabel(m)}</button>))}</div></div>
             </details>
-            <details className="mobile-accordion"><summary>👷 Abwesenheit <span>{absenceType ? getAbsenceLabel(absenceType) : badWeather ? "Schlechtwetter" : "Normal"}</span></summary>
+            <details className="mobile-accordion"><summary>👷 Abwesenheit <span>{absenceType ? (absenceType === "krank" ? "Krank" : absenceType === "urlaub" ? "Urlaub" : "Zeitausgleich") : badWeather ? "Schlechtwetter" : "Normal"}</span></summary>
               <div className="hbz-chipbar">
                 <button type="button" className={`hbz-chip ${absenceType === "krank" ? "active" : ""}`} onClick={applyKrankDefaults}>Krank</button>
                 <button type="button" className={`hbz-chip ${absenceType === "urlaub" ? "active" : ""}`} onClick={applyUrlaubDefaults}>Urlaub</button>
@@ -1576,7 +1578,7 @@ export default function DaySlider() {
               </div>
             </details>
             <details className="mobile-accordion"><summary>🚙 Fahrzeit <span>{formatTravelLabel(travelMin)}</span></summary><div className="hbz-chipbar">{TRAVEL_OPTIONS.map((m) => (<button key={m} type="button" className={`hbz-chip ${travelMin === m ? "active" : ""}`} onClick={() => { if (absenceType) setAbsenceType(null); setTravelMin(m); }}>{formatTravelLabel(m)}</button>))}</div></details>
-            <details className="mobile-accordion"><summary>🏗 Kran / Privat-PKW <span>{craneUsed ? `${craneHours} h` : privatePkwUsed ? formatPrivatePkwKm(privatePkwKm) : "—"}</span></summary><div className="hbz-chipbar" style={{ alignItems: "center" }}><button type="button" className={`hbz-chip ${craneUsed ? "active" : ""}`} onClick={() => setCraneUsed((v) => !v)} disabled={!!absenceType}>🏗 Kran verwendet</button><button type="button" className={`hbz-chip ${privatePkwUsed ? "active" : ""}`} onClick={togglePrivatePkw} disabled={!!absenceType} title="Gefahrene Kilometer mit privatem PKW erfassen">🚗 Privat-PKW</button>{craneUsed && (<select className="hbz-input" value={craneHours} onChange={(e) => setCraneHours(Number(e.target.value))} disabled={!!absenceType} style={{ maxWidth: 140 }}>{CRANE_HOUR_OPTIONS.map((h) => <option key={h} value={h}>{h} h</option>)}</select>)}{privatePkwUsed && (<input className="hbz-input" type="number" min="0" step="0.1" value={privatePkwKm} onChange={(e) => setPrivatePkwKm(e.target.value)} disabled={!!absenceType} style={{ maxWidth: 140 }} placeholder="KM" />)}</div></details>
+            <details className="mobile-accordion"><summary>🏗 Kran / Privat-PKW <span>{craneUsed ? `${craneHours} h` : privatePkwUsed ? formatPrivatePkwKm(privatePkwKm) : "—"}</span></summary><div className="hbz-chipbar" style={{ alignItems: "center" }}><button type="button" className={`hbz-chip ${craneUsed ? "active" : ""}`} onClick={() => setCraneUsed((v) => !v)} disabled={!!absenceType}>🏗 Kran verwendet</button><button type="button" className={`hbz-chip ${privatePkwUsed ? "active" : ""}`} onClick={togglePrivatePkw} disabled={!!absenceType}>🚗 Privat-PKW</button>{craneUsed && (<select className="hbz-input" value={craneHours} onChange={(e) => setCraneHours(Number(e.target.value))} disabled={!!absenceType} style={{ maxWidth: 140 }}>{CRANE_HOUR_OPTIONS.map((h) => <option key={h} value={h}>{h} h</option>)}</select>)}{privatePkwUsed && (<input className="hbz-input" type="number" min="0" step="0.1" value={privatePkwKm} onChange={(e) => setPrivatePkwKm(e.target.value)} disabled={!!absenceType} style={{ maxWidth: 140 }} placeholder="KM" />)}</div></details>
             <details className="mobile-accordion"><summary>☁ Wetter <span>{finalWeather || "—"}</span></summary>
               <div className="month-card-field"><label className="hbz-label">Automatisch von Baustelle + Buchung</label><div className="hbz-input" style={{ display: "flex", alignItems: "center", gap: 8 }}><span>{weatherLoading ? "Lade Wetter…" : weatherAuto || "—"}</span><button type="button" className="hbz-btn btn-small" onClick={() => loadWeatherForCurrentBooking(true)} disabled={weatherLoading || !projectAddress || !!absenceType}>Aktualisieren</button></div></div>
               <div className="month-card-field" style={{ marginTop: 10 }}><label className="hbz-label">Manuell ändern</label><select className="hbz-input" value={weatherManual || "Automatisch"} disabled={!!absenceType} onChange={(e) => { const value = e.target.value; setWeatherManual(value === "Automatisch" ? "" : value); }}>{WEATHER_MANUAL_OPTIONS.map((opt) => <option key={opt} value={opt}>{opt}</option>)}</select></div>
@@ -1718,13 +1720,7 @@ onClick={applyUrlaubDefaults}
                 Urlaub
               </button>
 
-              <button
-                type="button"
-                className={`hbz-chip ${
-                  absenceType === "zeitausgleich" ? "active" : ""
-                }`}
-onClick={applyZeitausgleichDefaults}
-              >
+              <button type="button" className={`hbz-chip ${absenceType === "zeitausgleich" ? "active" : ""}`} onClick={applyZeitausgleichDefaults}>
                 Zeitausgleich
               </button>
 
@@ -1815,7 +1811,7 @@ onClick={applyZeitausgleichDefaults}
 
               {privatePkwUsed && (
                 <div className="month-card-field" style={{ minWidth: 180, margin: 0 }}>
-                  <label className="hbz-label">Gefahrene KM</label>
+                  <label className="hbz-label">Privat-PKW km</label>
                   <input
                     className="hbz-input"
                     type="number"
@@ -1824,7 +1820,6 @@ onClick={applyZeitausgleichDefaults}
                     value={privatePkwKm}
                     onChange={(e) => setPrivatePkwKm(e.target.value)}
                     disabled={!!absenceType}
-                    placeholder="z. B. 24"
                   />
                 </div>
               )}
@@ -1969,6 +1964,7 @@ onClick={applyZeitausgleichDefaults}
                       <th className="num">Fahrzeit</th>
                       <th className="num">Kran</th>
                       <th className="num">Privat-PKW</th>
+                      <th className="num">ZA</th>
                       <th className="num">Stunden</th>
                       <th className="num">Überstunden</th>
                       <th>Wetter</th>
@@ -2000,6 +1996,7 @@ onClick={applyZeitausgleichDefaults}
                             <td className="num">{travelM} min</td>
                             <td className="num">{r.crane_hours ? `${r.crane_hours} h` : "—"}</td>
                             <td className="num">{formatPrivatePkwKm(r.private_pkw_km)}</td>
+                            <td className="num">{Number(r.za_hours || 0) > 0 ? `${Number(r.za_hours).toLocaleString("de-AT")} h` : "—"}</td>
                             <td className="num">{hrs.toFixed(2)}</td>
                             <td className="num">{ot.toFixed(2)}</td>
                             <td>{getWeatherFinalLabel(r) || "—"}</td>
@@ -2130,21 +2127,6 @@ onClick={applyZeitausgleichDefaults}
                                 </option>
                               ))}
                             </select>
-                          </td>
-                          <td className="num">
-                            <input
-                              type="number"
-                              min={0}
-                              step={0.1}
-                              className="hbz-input"
-                              value={editState.private_pkw_km ?? 0}
-                              onChange={(e) =>
-                                setEditState((s) => ({
-                                  ...s,
-                                  private_pkw_km: e.target.value,
-                                }))
-                              }
-                            />
                           </td>
                           <td className="num">
                             {(() => {
@@ -2278,6 +2260,8 @@ onClick={applyZeitausgleichDefaults}
                           <span>Fahrzeit: {travelM} min</span>
                           {r.crane_hours ? <span>Kran: {r.crane_hours} h</span> : null}
                           {parsePrivatePkwKm(r.private_pkw_km) > 0 ? <span>Privat-PKW: {formatPrivatePkwKm(r.private_pkw_km)}</span> : null}
+                          {Number(r.za_hours || 0) > 0 ? <span>ZA: {Number(r.za_hours).toLocaleString("de-AT")} h</span> : null}
+                          {r.bad_weather ? <span>Schlechtwetter</span> : null}
                         </div>
 
                         <div className="month-card-row">
