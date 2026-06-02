@@ -144,6 +144,16 @@ function fmtHours(value) {
   return `${Number(value || 0).toFixed(2).replace(".", ",")} h`;
 }
 
+function fmtDays(value) {
+  return `${Number(value || 0).toFixed(2).replace(".", ",")} Tage`;
+}
+
+function vacationEntitlementDays(emp) {
+  const raw = emp?.vacation_entitlement_days ?? emp?.urlaub_anspruch_tage ?? emp?.vacation_days;
+  const n = Number(String(raw ?? "").replace(",", "."));
+  return Number.isFinite(n) && n >= 0 ? n : 25;
+}
+
 function isNextIsoDate(prev, next) {
   const p = parseDateLocal(prev);
   const n = parseDateLocal(next);
@@ -215,6 +225,12 @@ export default function VacationEntry({ currentUser = null } = {}) {
   const [error, setError] = useState("");
   const [timeOffRows, setTimeOffRows] = useState([]);
   const [calendarMonth, setCalendarMonth] = useState(todayISO().slice(0, 7));
+  const [vacationAccountRows, setVacationAccountRows] = useState([]);
+  const [vacationAdjustments, setVacationAdjustments] = useState([]);
+  const [vacationAccountLoading, setVacationAccountLoading] = useState(false);
+  const [vacationAdjustDays, setVacationAdjustDays] = useState("");
+  const [vacationAdjustNote, setVacationAdjustNote] = useState("");
+  const [vacationAdjustSaving, setVacationAdjustSaving] = useState(false);
 
   const calendarAnchorDate = useMemo(() => `${calendarMonth || todayISO().slice(0, 7)}-01`, [calendarMonth]);
   const calendarFrom = useMemo(() => monthStart(calendarAnchorDate), [calendarAnchorDate]);
@@ -301,6 +317,97 @@ export default function VacationEntry({ currentUser = null } = {}) {
     loadTimeOff();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [calendarFrom, calendarTo, employees.length]);
+
+  const vacationAccountYear = useMemo(() => Number(String(fromDate || todayISO()).slice(0, 4)) || new Date().getFullYear(), [fromDate]);
+
+  async function loadVacationAccount() {
+    if (!targetEmployee?.id) {
+      setVacationAccountRows([]);
+      setVacationAdjustments([]);
+      return;
+    }
+    const y = vacationAccountYear;
+    const from = `${y}-01-01`;
+    const to = `${y}-12-31`;
+
+    try {
+      setVacationAccountLoading(true);
+      const { data: vacRows, error: vacErr } = await supabase
+        .from("time_entries")
+        .select("id, employee_id, work_date, note")
+        .eq("employee_id", targetEmployee.id)
+        .gte("work_date", from)
+        .lte("work_date", to);
+      if (vacErr) throw vacErr;
+      setVacationAccountRows((vacRows || []).filter(isVacationEntry));
+
+      try {
+        const { data: adjRows, error: adjErr } = await supabase
+          .from("vacation_adjustments")
+          .select("id, employee_id, adjustment_date, days, note, created_at")
+          .eq("employee_id", String(targetEmployee.id))
+          .gte("adjustment_date", from)
+          .lte("adjustment_date", to)
+          .order("adjustment_date", { ascending: false });
+        if (adjErr) throw adjErr;
+        setVacationAdjustments(adjRows || []);
+      } catch (adjErr) {
+        console.warn("[VacationEntry] Urlaubskorrekturen konnten nicht geladen werden", adjErr);
+        setVacationAdjustments([]);
+      }
+    } catch (e) {
+      console.error("[VacationEntry] Urlaubskonto konnte nicht geladen werden", e);
+      setVacationAccountRows([]);
+      setVacationAdjustments([]);
+    } finally {
+      setVacationAccountLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadVacationAccount();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [targetEmployee?.id, vacationAccountYear]);
+
+  const vacationAccount = useMemo(() => {
+    if (!targetEmployee) return null;
+    const entitlement = vacationEntitlementDays(targetEmployee);
+    const used = vacationAccountRows.length;
+    const corrections = (vacationAdjustments || []).reduce((sum, row) => {
+      const n = Number(String(row?.days ?? 0).replace(",", "."));
+      return sum + (Number.isFinite(n) ? n : 0);
+    }, 0);
+    return { entitlement, used, corrections, remaining: entitlement + corrections - used };
+  }, [targetEmployee, vacationAccountRows, vacationAdjustments]);
+
+  async function saveVacationAdjustment() {
+    if (!isAdmin || !targetEmployee?.id) return;
+    const days = Number(String(vacationAdjustDays).replace(",", "."));
+    if (!Number.isFinite(days) || days === 0) {
+      setError("Bitte Urlaubskorrektur in Tagen eingeben, z. B. +2 oder -1.");
+      return;
+    }
+    try {
+      setVacationAdjustSaving(true);
+      setError("");
+      const { error: insertError } = await supabase.from("vacation_adjustments").insert({
+        employee_id: String(targetEmployee.id),
+        adjustment_date: todayISO(),
+        days,
+        note: vacationAdjustNote.trim() || "Urlaubskorrektur",
+      });
+      if (insertError) throw insertError;
+      setVacationAdjustDays("");
+      setVacationAdjustNote("");
+      setMessage("Urlaubskorrektur gespeichert.");
+      await loadVacationAccount();
+    } catch (e) {
+      console.error("[VacationEntry] Urlaubskorrektur speichern fehlgeschlagen", e);
+      setError(e?.message || "Urlaubskorrektur konnte nicht gespeichert werden.");
+    } finally {
+      setVacationAdjustSaving(false);
+    }
+  }
 
   const preview = useMemo(() => {
     if (!targetEmployee) return [];
@@ -625,6 +732,7 @@ export default function VacationEntry({ currentUser = null } = {}) {
             : "")
       );
       await loadTimeOff();
+      await loadVacationAccount();
     } catch (e) {
       console.error("[VacationEntry] save error", e);
       setError(e?.message || "Urlaub/ZA konnte nicht gespeichert werden.");
@@ -649,6 +757,7 @@ export default function VacationEntry({ currentUser = null } = {}) {
       if (error) throw error;
       setMessage(`${kind}-Eintrag gelöscht.`);
       await loadTimeOff();
+      await loadVacationAccount();
     } catch (e) {
       console.error("[VacationEntry] delete error", e);
       setError(e?.message || "Eintrag konnte nicht gelöscht werden.");
@@ -728,6 +837,37 @@ export default function VacationEntry({ currentUser = null } = {}) {
           </button>
         </div>
       </section>
+
+      {targetEmployee && vacationAccount && (
+        <section className="month-card" style={{ marginTop: 18 }}>
+          <div className="month-card-title">Urlaubskonto {vacationAccountYear}</div>
+          <p className="hint">Urlaub wird hier in Tagen geführt. Zeitausgleich bleibt ein Stundenkonto und wird in der Zeiterfassung angezeigt.</p>
+          <div className="vac-account-grid" style={{ marginTop: 10 }}>
+            <div className="vac-account-box"><span>Mitarbeiter</span><b>{getEmployeeLabel(targetEmployee)}</b></div>
+            <div className="vac-account-box"><span>Jahresanspruch</span><b>{fmtDays(vacationAccount.entitlement)}</b></div>
+            <div className="vac-account-box"><span>Korrekturen</span><b>{fmtDays(vacationAccount.corrections)}</b></div>
+            <div className="vac-account-box"><span>Verbraucht</span><b>{vacationAccountLoading ? "lädt…" : fmtDays(vacationAccount.used)}</b></div>
+            <div className="vac-account-box strong"><span>Resturlaub</span><b>{vacationAccountLoading ? "lädt…" : fmtDays(vacationAccount.remaining)}</b></div>
+          </div>
+          {isAdmin && (
+            <div className="hbz-grid-2" style={{ marginTop: 12 }}>
+              <label className="hbz-field">
+                <span className="hbz-label">Urlaubskorrektur Tage</span>
+                <input className="hbz-input" value={vacationAdjustDays} onChange={(e) => setVacationAdjustDays(e.target.value)} placeholder="z. B. +2 oder -1" />
+              </label>
+              <label className="hbz-field">
+                <span className="hbz-label">Notiz</span>
+                <input className="hbz-input" value={vacationAdjustNote} onChange={(e) => setVacationAdjustNote(e.target.value)} placeholder="z. B. Resturlaub Vorjahr" />
+              </label>
+              <div style={{ gridColumn: "1 / -1", display: "flex", justifyContent: "flex-end" }}>
+                <button type="button" className="hbz-chip active" onClick={saveVacationAdjustment} disabled={vacationAdjustSaving}>
+                  {vacationAdjustSaving ? "Speichere…" : "Urlaubskorrektur speichern"}
+                </button>
+              </div>
+            </div>
+          )}
+        </section>
+      )}
 
       <section className="month-card" style={{ marginTop: 18 }}>
         <div className="month-card-title">BUAK Kalender</div>
@@ -955,6 +1095,11 @@ export default function VacationEntry({ currentUser = null } = {}) {
         .vac-month-line { display: flex; gap: 7px; align-items: flex-start; margin-bottom: 6px; flex-wrap: wrap; }
         .vac-month-line strong { color: #2f2118; font-size: 12px; line-height: 1.35; }
         .vac-empty { color: #b3a394; font-weight: 800; }
+        .vac-account-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+        .vac-account-box { border: 1px solid rgba(92, 68, 45, 0.14); border-radius: 14px; background: rgba(255,255,255,0.72); padding: 10px 12px; }
+        .vac-account-box span { display: block; color: #7d6756; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .02em; }
+        .vac-account-box b { display: block; margin-top: 4px; color: #2f2118; font-size: 16px; }
+        .vac-account-box.strong { background: #f2fff5; border-color: #9bd3a6; }
         @media (max-width: 720px) {
           .vac-month-day { grid-template-columns: 1fr; }
         }
