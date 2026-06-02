@@ -106,14 +106,21 @@ function dateOnly(value) {
   return String(value).slice(0, 10);
 }
 
-function addDays(dateString, days) {
-  const d = new Date(`${dateString}T00:00:00`);
-  d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
+function dateToDayNumber(value) {
+  const d = dateOnly(value);
+  const parts = d.split("-").map((v) => Number(v));
+  if (parts.length !== 3 || parts.some((v) => !Number.isFinite(v))) return NaN;
+  const [year, month, day] = parts;
+  return Math.floor(Date.UTC(year, month - 1, day) / 86400000);
+}
+
+function dayNumberToDate(dayNumber) {
+  return new Date(dayNumber * 86400000).toISOString().slice(0, 10);
 }
 
 function getTodayDateString() {
-  return new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())).toISOString().slice(0, 10);
 }
 
 function minDate(a, b) {
@@ -235,9 +242,15 @@ export default function EmployeeList() {
       summary.startDate = startDate;
       summary.endDate = endDate;
 
-      let date = startDate;
-      let guard = 0;
-      while (date && date <= endDate && guard < 5000) {
+      const startDay = dateToDayNumber(startDate);
+      const endDay = dateToDayNumber(endDate);
+      if (!Number.isFinite(startDay) || !Number.isFinite(endDay) || endDay < startDay) continue;
+
+      // Fix: nicht mit String-Datum + addDays loopen. Auf manchen Builds blieb das Datum stehen
+      // und der Guard lief bis 5000 Tage, dadurch entstanden Fantasiewerte wie 45.000 h Soll.
+      const maxDays = Math.min(endDay - startDay, 5000);
+      for (let offset = 0; offset <= maxDays; offset += 1) {
+        const date = dayNumberToDate(startDay + offset);
         const key = `${String(emp.id)}__${date}`;
         const day = dayMap.get(key) || {
           employeeId: String(emp.id),
@@ -271,8 +284,6 @@ export default function EmployeeList() {
         }
 
         summary.generated += dailyChange;
-        date = addDays(date, 1);
-        guard += 1;
       }
     }
 
