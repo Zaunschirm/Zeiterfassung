@@ -204,9 +204,11 @@ export default function VacationEntry({ currentUser = null } = {}) {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [timeOffRows, setTimeOffRows] = useState([]);
+  const [calendarMonth, setCalendarMonth] = useState(todayISO().slice(0, 7));
 
-  const calendarFrom = useMemo(() => monthStart(fromDate), [fromDate]);
-  const calendarTo = useMemo(() => monthEnd(toDate || fromDate), [fromDate, toDate]);
+  const calendarAnchorDate = useMemo(() => `${calendarMonth || todayISO().slice(0, 7)}-01`, [calendarMonth]);
+  const calendarFrom = useMemo(() => monthStart(calendarAnchorDate), [calendarAnchorDate]);
+  const calendarTo = useMemo(() => monthEnd(calendarAnchorDate), [calendarAnchorDate]);
 
   useEffect(() => {
     let cancelled = false;
@@ -449,6 +451,48 @@ export default function VacationEntry({ currentUser = null } = {}) {
       String(a.employee?.name || "").localeCompare(String(b.employee?.name || ""), "de")
     );
   }, [timeOffRows, employeeById]);
+
+
+  const monthOverviewRows = useMemo(() => {
+    const days = dateRange(calendarFrom, calendarTo);
+    const byDate = new Map();
+
+    for (const row of timeOffRows || []) {
+      const date = String(row.work_date || "").slice(0, 10);
+      const emp = employeeById.get(String(row.employee_id));
+      if (!date || !emp) continue;
+      if (!byDate.has(date)) byDate.set(date, []);
+      byDate.get(date).push({
+        ...row,
+        employee: emp,
+        kind: getEntryKind(row),
+        cleanNote: stripTimeOffNote(row.note),
+      });
+    }
+
+    return days.map((date) => {
+      const entries = (byDate.get(date) || []).sort((a, b) =>
+        String(a.employee?.name || "").localeCompare(String(b.employee?.name || ""), "de")
+      );
+      const vacation = entries.filter((r) => r.kind === "urlaub");
+      const za = entries.filter((r) => r.kind === "za");
+      return {
+        date,
+        kw: getWeekNumber(date),
+        weekType: getBuakWeekType(date),
+        holidayName: getHolidayName(date),
+        entries,
+        vacation,
+        za,
+      };
+    });
+  }, [calendarFrom, calendarTo, timeOffRows, employeeById]);
+
+  function shiftCalendarMonth(delta) {
+    const base = parseDateLocal(`${calendarMonth || todayISO().slice(0, 7)}-01`) || new Date();
+    base.setMonth(base.getMonth() + delta);
+    setCalendarMonth(formatISODate(base).slice(0, 7));
+  }
 
   async function saveTimeOff() {
     setError("");
@@ -738,6 +782,63 @@ export default function VacationEntry({ currentUser = null } = {}) {
       </section>
 
       <section className="month-card" style={{ marginTop: 18 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+          <div>
+            <div className="month-card-title">Monatsübersicht Urlaub / ZA</div>
+            <p className="hint" style={{ marginTop: 4 }}>
+              Monatsvorschau für alle Mitarbeiter. Urlaub und Zeitausgleich werden pro Tag zusammengefasst angezeigt.
+            </p>
+          </div>
+          <div className="vac-month-controls">
+            <button type="button" className="hbz-chip" onClick={() => shiftCalendarMonth(-1)}>← Monat</button>
+            <input
+              className="hbz-input vac-month-input"
+              type="month"
+              value={calendarMonth}
+              onChange={(e) => setCalendarMonth(e.target.value)}
+            />
+            <button type="button" className="hbz-chip" onClick={() => shiftCalendarMonth(1)}>Monat →</button>
+          </div>
+        </div>
+
+        <div className="vac-month-overview" style={{ marginTop: 12 }}>
+          {calendarLoading ? (
+            <div className="hbz-info-line">Lade Monatsübersicht…</div>
+          ) : monthOverviewRows.length === 0 ? (
+            <div className="hbz-info-line">Keine Tage im Monat gefunden.</div>
+          ) : (
+            monthOverviewRows.map((day) => {
+              const hasEntries = day.entries.length > 0;
+              return (
+                <div key={day.date} className={`vac-month-day ${day.weekType === "kurz" ? "short" : "long"} ${day.holidayName ? "holiday" : ""} ${hasEntries ? "hasEntries" : ""}`}>
+                  <div className="vac-month-date">
+                    <b>{formatDateAT(day.date)}</b>
+                    <span>KW {day.kw} · {day.weekType === "kurz" ? "kurz" : "lang"}</span>
+                    {day.holidayName && <em>{day.holidayName}</em>}
+                  </div>
+                  <div className="vac-month-entries">
+                    {day.vacation.length > 0 && (
+                      <div className="vac-month-line">
+                        <span className="vac-pill vac">Urlaub</span>
+                        <strong>{day.vacation.map((r) => r.employee?.name).filter(Boolean).join(", ")}</strong>
+                      </div>
+                    )}
+                    {day.za.length > 0 && (
+                      <div className="vac-month-line">
+                        <span className="vac-pill za">ZA</span>
+                        <strong>{day.za.map((r) => `${r.employee?.name}${Number(r.za_hours || 0) > 0 ? ` (${fmtHours(r.za_hours)})` : ""}`).filter(Boolean).join(", ")}</strong>
+                      </div>
+                    )}
+                    {!hasEntries && <span className="vac-empty">—</span>}
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </section>
+
+      <section className="month-card" style={{ marginTop: 18 }}>
         <div className="month-card-title">Urlaub-/ZA-Kalender alle Mitarbeiter</div>
         <p className="hint">Alle dürfen sehen, wann Urlaub oder Zeitausgleich eingetragen ist. Löschen ist nur beim eigenen Eintrag möglich; Admin kann alle Einträge löschen.</p>
         <div className="table-scroll" style={{ marginTop: 10 }}>
@@ -816,6 +917,25 @@ export default function VacationEntry({ currentUser = null } = {}) {
         .vac-pill.mixed { background: #f1edf8; color: #573a7d; }
         .vac-own-row { background: rgba(222, 242, 232, 0.62); }
         .hbz-mini-danger { border: 1px solid #d88; background: #fff4f4; color: #8a1f1f; border-radius: 999px; padding: 6px 10px; font-weight: 800; cursor: pointer; }
+        .vac-month-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .vac-month-input { min-width: 150px; }
+        .vac-month-overview { display: grid; grid-template-columns: repeat(auto-fit, minmax(310px, 1fr)); gap: 8px; }
+        .vac-month-day { border: 1px solid rgba(92, 68, 45, 0.12); border-radius: 14px; padding: 10px; background: rgba(255,255,255,0.72); display: grid; grid-template-columns: 130px 1fr; gap: 10px; align-items: start; }
+        .vac-month-day.short { background: #f6fff8; }
+        .vac-month-day.long { background: #fff8f2; }
+        .vac-month-day.holiday { border-color: #e3a0a0; background: #fff1f1; }
+        .vac-month-day.hasEntries { box-shadow: 0 0 0 1px rgba(151, 104, 64, 0.16) inset; }
+        .vac-month-date b { display: block; color: #3d2a1b; }
+        .vac-month-date span { display: block; margin-top: 3px; color: #7d6756; font-size: 11px; font-weight: 800; }
+        .vac-month-date em { display: block; margin-top: 3px; color: #9b2b2b; font-size: 11px; font-style: normal; font-weight: 900; }
+        .vac-month-entries { min-width: 0; }
+        .vac-month-line { display: flex; gap: 7px; align-items: flex-start; margin-bottom: 6px; flex-wrap: wrap; }
+        .vac-month-line strong { color: #2f2118; font-size: 12px; line-height: 1.35; }
+        .vac-empty { color: #b3a394; font-weight: 800; }
+        @media (max-width: 720px) {
+          .vac-month-day { grid-template-columns: 1fr; }
+        }
+
         .hbz-mini-danger:hover { background: #ffe8e8; }
       `}</style>
     </div>
