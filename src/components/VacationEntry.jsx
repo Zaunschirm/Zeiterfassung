@@ -85,6 +85,22 @@ function isVacationEntry(row) {
   return absence === "urlaub" || note.includes("[urlaub]") || note.includes("urlaub");
 }
 
+function isZaEntry(row) {
+  const note = String(row?.note || "").toLowerCase();
+  const absence = String(row?.absence_type || row?.absenceType || "").toLowerCase();
+  return absence === "zeitausgleich" || absence === "za" || Number(row?.za_hours || 0) > 0 || note.includes("[zeitausgleich]") || note.includes("zeitausgleich");
+}
+
+function isTimeOffEntry(row) {
+  return isVacationEntry(row) || isZaEntry(row);
+}
+
+function getEntryKind(row) {
+  if (isZaEntry(row)) return "za";
+  if (isVacationEntry(row)) return "urlaub";
+  return "sonstiges";
+}
+
 function getEmployeeLabel(emp) {
   return [emp?.name, emp?.code ? `(${emp.code})` : ""].filter(Boolean).join(" ");
 }
@@ -107,28 +123,38 @@ function sameEmployee(emp, session) {
   return false;
 }
 
-function stripVacationNote(note) {
-  return String(note || "").replace(/^\s*\[Urlaub\]\s*/i, "").trim();
+function stripTimeOffNote(note) {
+  return String(note || "")
+    .replace(/^\s*\[Urlaub\]\s*/i, "")
+    .replace(/^\s*\[Zeitausgleich\]\s*/i, "")
+    .trim();
+}
+
+function fmtHours(value) {
+  return `${Number(value || 0).toFixed(2).replace(".", ",")} h`;
 }
 
 export default function VacationEntry({ currentUser = null } = {}) {
   const storedSession = getSession()?.user || {};
   const session = currentUser || storedSession || {};
+  const isAdmin = String(session?.role || "").toLowerCase() === "admin";
 
   const [employees, setEmployees] = useState([]);
   const [ownEmployee, setOwnEmployee] = useState(null);
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState("");
+  const [entryType, setEntryType] = useState("urlaub");
   const [fromDate, setFromDate] = useState(todayISO());
   const [toDate, setToDate] = useState(todayISO());
   const [note, setNote] = useState("");
   const [onlyWorkdays, setOnlyWorkdays] = useState(true);
-  const [replaceExistingVacation, setReplaceExistingVacation] = useState(false);
+  const [replaceExistingTimeOff, setReplaceExistingTimeOff] = useState(false);
   const [loading, setLoading] = useState(false);
   const [calendarLoading, setCalendarLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [previewRows, setPreviewRows] = useState([]);
-  const [vacationRows, setVacationRows] = useState([]);
+  const [timeOffRows, setTimeOffRows] = useState([]);
 
   const calendarFrom = useMemo(() => monthStart(fromDate), [fromDate]);
   const calendarTo = useMemo(() => monthEnd(toDate || fromDate), [fromDate, toDate]);
@@ -148,8 +174,6 @@ export default function VacationEntry({ currentUser = null } = {}) {
         const rows = (data || []).filter((e) => e?.active !== false && e?.disabled !== true);
         let own = rows.find((e) => sameEmployee(e, session)) || null;
 
-        // Fallback: Falls der gespeicherte Login-Datensatz anders aufgebaut ist,
-        // noch einmal gezielt mit ID oder Code in der geladenen Liste suchen.
         if (!own && session?.id != null) {
           own = rows.find((e) => String(e.id) === String(session.id)) || null;
         }
@@ -161,7 +185,12 @@ export default function VacationEntry({ currentUser = null } = {}) {
         if (!cancelled) {
           setEmployees(rows);
           setOwnEmployee(own);
-          if (!own) setError("Dein Mitarbeiter-Datensatz wurde nicht gefunden. Urlaub kann nicht eingetragen werden.");
+          if (isAdmin) {
+            setSelectedEmployeeId(String(own?.id || rows[0]?.id || ""));
+          } else {
+            setSelectedEmployeeId(String(own?.id || ""));
+            if (!own) setError("Dein Mitarbeiter-Datensatz wurde nicht gefunden. Urlaub/ZA kann nicht eingetragen werden.");
+          }
         }
       } catch (e) {
         console.error("[VacationEntry] employees load error", e);
@@ -174,7 +203,7 @@ export default function VacationEntry({ currentUser = null } = {}) {
     return () => {
       cancelled = true;
     };
-  }, [session?.code, session?.id, session?.name]);
+  }, [session?.code, session?.id, session?.name, session?.role, isAdmin]);
 
   const employeeById = useMemo(() => {
     const map = new Map();
@@ -182,20 +211,25 @@ export default function VacationEntry({ currentUser = null } = {}) {
     return map;
   }, [employees]);
 
-  async function loadVacations() {
+  const targetEmployee = useMemo(() => {
+    if (isAdmin) return employeeById.get(String(selectedEmployeeId)) || null;
+    return ownEmployee;
+  }, [employeeById, isAdmin, ownEmployee, selectedEmployeeId]);
+
+  async function loadTimeOff() {
     setCalendarLoading(true);
     try {
       const { data, error } = await supabase
         .from("time_entries")
-        .select("id, employee_id, work_date, note")
+        .select("id, employee_id, work_date, note, za_hours")
         .gte("work_date", calendarFrom)
         .lte("work_date", calendarTo)
         .order("work_date", { ascending: true });
       if (error) throw error;
-      setVacationRows((data || []).filter(isVacationEntry));
+      setTimeOffRows((data || []).filter(isTimeOffEntry));
     } catch (e) {
-      console.error("[VacationEntry] vacation load error", e);
-      setError(e?.message || "Urlaubskalender konnte nicht geladen werden.");
+      console.error("[VacationEntry] time off load error", e);
+      setError(e?.message || "Urlaub-/ZA-Kalender konnte nicht geladen werden.");
     } finally {
       setCalendarLoading(false);
     }
@@ -203,21 +237,22 @@ export default function VacationEntry({ currentUser = null } = {}) {
 
   useEffect(() => {
     if (employees.length === 0) return;
-    loadVacations();
+    loadTimeOff();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [calendarFrom, calendarTo, employees.length]);
 
   const preview = useMemo(() => {
-    if (!ownEmployee) return [];
+    if (!targetEmployee) return [];
     const days = dateRange(fromDate, toDate);
     const rows = [];
     for (const day of days) {
-      const workDay = getEmployeeWorkDay(ownEmployee, day);
+      const workDay = getEmployeeWorkDay(targetEmployee, day);
       const requiredMinutes = Number(workDay?.requiredMinutes || 0);
       const isActiveDay = !!workDay?.active && requiredMinutes > 0;
       if (onlyWorkdays && !isActiveDay) continue;
+      if (entryType === "za" && requiredMinutes <= 0) continue;
       rows.push({
-        employee: ownEmployee,
+        employee: targetEmployee,
         date: day,
         requiredMinutes,
         startMin: workDay?.active ? hmToMinutes(workDay.start) : 7 * 60,
@@ -226,7 +261,7 @@ export default function VacationEntry({ currentUser = null } = {}) {
       });
     }
     return rows;
-  }, [fromDate, toDate, onlyWorkdays, ownEmployee]);
+  }, [fromDate, toDate, onlyWorkdays, targetEmployee, entryType]);
 
   useEffect(() => {
     setPreviewRows(preview.slice(0, 120));
@@ -254,22 +289,26 @@ export default function VacationEntry({ currentUser = null } = {}) {
     return rows;
   }, [calendarFrom, calendarTo]);
 
-  const vacationDisplayRows = useMemo(() => {
-    return vacationRows
+  const timeOffDisplayRows = useMemo(() => {
+    return timeOffRows
       .map((row) => ({
         ...row,
         employee: employeeById.get(String(row.employee_id)) || null,
       }))
       .filter((row) => row.employee)
       .sort((a, b) => String(a.work_date).localeCompare(String(b.work_date)) || String(a.employee?.name || "").localeCompare(String(b.employee?.name || ""), "de"));
-  }, [vacationRows, employeeById]);
+  }, [timeOffRows, employeeById]);
 
-  async function saveVacation() {
+  async function saveTimeOff() {
     setError("");
     setMessage("");
 
-    if (!ownEmployee) {
-      setError("Dein Mitarbeiter-Datensatz wurde nicht gefunden. Urlaub kann nicht eingetragen werden.");
+    if (!targetEmployee) {
+      setError("Kein Mitarbeiter ausgewählt bzw. gefunden. Urlaub/ZA kann nicht eingetragen werden.");
+      return;
+    }
+    if (!isAdmin && !sameEmployee(targetEmployee, session)) {
+      setError("Du kannst nur deinen eigenen Urlaub/ZA eintragen.");
       return;
     }
     if (!fromDate || !toDate) {
@@ -281,7 +320,7 @@ export default function VacationEntry({ currentUser = null } = {}) {
       return;
     }
     if (preview.length === 0) {
-      setError("Für diesen Zeitraum gibt es laut Arbeitszeitmodell keine Urlaubstage zum Eintragen.");
+      setError(`Für diesen Zeitraum gibt es laut Arbeitszeitmodell keine ${entryType === "za" ? "ZA-Tage" : "Urlaubstage"} zum Eintragen.`);
       return;
     }
 
@@ -290,8 +329,8 @@ export default function VacationEntry({ currentUser = null } = {}) {
 
       const { data: existing, error: existingError } = await supabase
         .from("time_entries")
-        .select("id, employee_id, work_date, note")
-        .eq("employee_id", ownEmployee.id)
+        .select("id, employee_id, work_date, note, za_hours")
+        .eq("employee_id", targetEmployee.id)
         .gte("work_date", fromDate)
         .lte("work_date", toDate);
       if (existingError) throw existingError;
@@ -306,13 +345,16 @@ export default function VacationEntry({ currentUser = null } = {}) {
       const deleteIds = [];
       const rowsToInsert = [];
       const skipped = [];
+      const prefix = entryType === "za" ? "[Zeitausgleich]" : "[Urlaub]";
 
       for (const item of preview) {
         const existingRows = existingMap.get(item.date) || [];
+        const existingTimeOffRows = existingRows.filter(isTimeOffEntry);
+        const existingWorkRows = existingRows.filter((row) => !isTimeOffEntry(row));
 
         if (existingRows.length > 0) {
-          const onlyVacationRows = existingRows.every(isVacationEntry);
-          if (replaceExistingVacation && onlyVacationRows) {
+          const mayReplace = replaceExistingTimeOff && existingWorkRows.length === 0 && existingTimeOffRows.length === existingRows.length;
+          if (mayReplace) {
             deleteIds.push(...existingRows.map((r) => r.id));
           } else {
             skipped.push(item.date);
@@ -321,8 +363,9 @@ export default function VacationEntry({ currentUser = null } = {}) {
         }
 
         const start = Number(item.startMin || 7 * 60);
+        const zaHours = entryType === "za" ? Number(item.requiredMinutes || 0) / 60 : 0;
         rowsToInsert.push({
-          employee_id: ownEmployee.id,
+          employee_id: targetEmployee.id,
           work_date: item.date,
           project_id: null,
           project: null,
@@ -333,13 +376,13 @@ export default function VacationEntry({ currentUser = null } = {}) {
           travel_cost_center: "FAHRZEIT",
           crane_hours: 0,
           private_pkw_km: 0,
-          za_hours: 0,
+          za_hours: zaHours,
           bad_weather: false,
           bad_weather_minutes: 0,
           weather_auto: null,
           weather_manual: null,
           weather_final: null,
-          note: `[Urlaub]${note.trim() ? ` ${note.trim()}` : ""}`,
+          note: `${prefix}${note.trim() ? ` ${note.trim()}` : ""}`,
         });
       }
 
@@ -354,48 +397,53 @@ export default function VacationEntry({ currentUser = null } = {}) {
       }
 
       setMessage(
-        `Urlaub eingetragen: ${rowsToInsert.length} Tag${rowsToInsert.length === 1 ? "" : "e"}.` +
+        `${entryType === "za" ? "Zeitausgleich" : "Urlaub"} eingetragen für ${getEmployeeLabel(targetEmployee)}: ${rowsToInsert.length} Tag${rowsToInsert.length === 1 ? "" : "e"}.` +
           (skipped.length > 0
-            ? ` Nicht gespeichert: ${skipped.length} Tag${skipped.length === 1 ? "" : "e"}, weil dort bereits ein eigener Eintrag vorhanden ist.`
+            ? ` Nicht gespeichert: ${skipped.length} Tag${skipped.length === 1 ? "" : "e"}, weil dort bereits ein Eintrag vorhanden ist.`
             : "")
       );
-      await loadVacations();
+      await loadTimeOff();
     } catch (e) {
       console.error("[VacationEntry] save error", e);
-      setError(e?.message || "Urlaub konnte nicht gespeichert werden.");
+      setError(e?.message || "Urlaub/ZA konnte nicht gespeichert werden.");
     } finally {
       setSaving(false);
     }
   }
 
-  async function deleteOwnVacation(row) {
+  async function deleteTimeOff(row) {
     const emp = employeeById.get(String(row.employee_id));
-    if (!sameEmployee(emp, session)) return;
-    const ok = window.confirm("Eigenen Urlaubseintrag wirklich löschen?");
+    const allowed = isAdmin || sameEmployee(emp, session);
+    if (!allowed) return;
+    const kind = getEntryKind(row) === "za" ? "Zeitausgleich" : "Urlaub";
+    const ok = window.confirm(`${isAdmin ? "Diesen" : "Eigenen"} ${kind}-Eintrag wirklich löschen?`);
     if (!ok) return;
     setError("");
     setMessage("");
     try {
       const { error } = await supabase.from("time_entries").delete().eq("id", row.id);
       if (error) throw error;
-      setMessage("Urlaubseintrag gelöscht.");
-      await loadVacations();
+      setMessage(`${kind}-Eintrag gelöscht.`);
+      await loadTimeOff();
     } catch (e) {
       console.error("[VacationEntry] delete error", e);
-      setError(e?.message || "Urlaubseintrag konnte nicht gelöscht werden.");
+      setError(e?.message || "Eintrag konnte nicht gelöscht werden.");
     }
   }
 
   return (
     <div className="page-wrap">
       <section className="hero-card">
-        <div className="eyebrow">Urlaub</div>
-        <h1>Urlaub eintragen</h1>
-        <p>Jeder Mitarbeiter sieht den Urlaubskalender und kann nur den eigenen Urlaub eintragen oder ändern.</p>
+        <div className="eyebrow">Urlaub / Zeitausgleich</div>
+        <h1>Urlaub & ZA eintragen</h1>
+        <p>
+          Jeder Mitarbeiter sieht den Kalender. Mitarbeiter können nur sich selbst eintragen oder ändern.
+          Admins können für alle Mitarbeiter Urlaub oder Zeitausgleich eintragen.
+        </p>
       </section>
 
       <section className="month-card" style={{ marginTop: 18 }}>
-        <div className="month-card-title">Urlaubszeitraum</div>
+        <div className="month-card-title">Zeitraum & Art</div>
 
         {error && <div className="hbz-alert hbz-alert-error">{error}</div>}
         {message && <div className="hbz-alert hbz-alert-ok">{message}</div>}
@@ -411,21 +459,48 @@ export default function VacationEntry({ currentUser = null } = {}) {
           </label>
         </div>
 
-        <div className="hbz-info-line" style={{ marginTop: 10 }}>
-          Urlaub wird eingetragen für: <b>{ownEmployee ? getEmployeeLabel(ownEmployee) : "nicht gefunden"}</b>
+        <div className="hbz-grid-2" style={{ marginTop: 12 }}>
+          <label className="hbz-field">
+            <span className="hbz-label">Art</span>
+            <select className="hbz-input" value={entryType} onChange={(e) => setEntryType(e.target.value)}>
+              <option value="urlaub">Urlaub</option>
+              <option value="za">Zeitausgleich</option>
+            </select>
+          </label>
+
+          {isAdmin ? (
+            <label className="hbz-field">
+              <span className="hbz-label">Mitarbeiter</span>
+              <select className="hbz-input" value={selectedEmployeeId} onChange={(e) => setSelectedEmployeeId(e.target.value)}>
+                {employees.map((emp) => (
+                  <option key={emp.id} value={String(emp.id)}>{getEmployeeLabel(emp)}</option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <div className="hbz-info-line">
+              Wird eingetragen für: <b>{ownEmployee ? getEmployeeLabel(ownEmployee) : "nicht gefunden"}</b>
+            </div>
+          )}
         </div>
+
+        {isAdmin && (
+          <div className="hbz-info-line" style={{ marginTop: 10 }}>
+            Admin-Eintragung für: <b>{targetEmployee ? getEmployeeLabel(targetEmployee) : "nicht ausgewählt"}</b>
+          </div>
+        )}
 
         <label className="hbz-field" style={{ marginTop: 12 }}>
           <span className="hbz-label">Notiz optional</span>
-          <input className="hbz-input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="z. B. Sommerurlaub" />
+          <input className="hbz-input" value={note} onChange={(e) => setNote(e.target.value)} placeholder={entryType === "za" ? "z. B. ZA laut Vereinbarung" : "z. B. Sommerurlaub"} />
         </label>
 
         <div className="hbz-chipbar" style={{ marginTop: 12 }}>
           <button type="button" className={`hbz-chip ${onlyWorkdays ? "active" : ""}`} onClick={() => setOnlyWorkdays((v) => !v)}>
             Nur Arbeitstage laut Modell
           </button>
-          <button type="button" className={`hbz-chip ${replaceExistingVacation ? "active" : ""}`} onClick={() => setReplaceExistingVacation((v) => !v)}>
-            eigenen vorhandenen Urlaub überschreiben
+          <button type="button" className={`hbz-chip ${replaceExistingTimeOff ? "active" : ""}`} onClick={() => setReplaceExistingTimeOff((v) => !v)}>
+            vorhandenen Urlaub/ZA überschreiben
           </button>
         </div>
       </section>
@@ -454,14 +529,18 @@ export default function VacationEntry({ currentUser = null } = {}) {
       </section>
 
       <section className="month-card" style={{ marginTop: 18 }}>
-        <div className="month-card-title">Vorschau eigener Urlaub</div>
-        <p className="hint">Es werden {preview.length} Urlaubstag{preview.length === 1 ? "" : "e"} vorbereitet. Bestehende eigene Einträge werden nicht überschrieben, außer es ist ausdrücklich aktiviert.</p>
+        <div className="month-card-title">Vorschau</div>
+        <p className="hint">
+          Es werden {preview.length} {entryType === "za" ? "ZA-Tag" : "Urlaubstag"}{preview.length === 1 ? "" : "e"} vorbereitet.
+          Bestehende Einträge werden nicht überschrieben, außer es ist ausdrücklich aktiviert.
+        </p>
         <div className="table-scroll" style={{ marginTop: 10 }}>
           <table className="hbz-table compact">
             <thead>
               <tr>
                 <th>Mitarbeiter</th>
                 <th>Datum</th>
+                <th>Art</th>
                 <th>Woche</th>
                 <th>Soll laut Modell</th>
                 <th>Hinweis</th>
@@ -469,17 +548,24 @@ export default function VacationEntry({ currentUser = null } = {}) {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={5}>Lade Mitarbeiter…</td></tr>
+                <tr><td colSpan={6}>Lade Mitarbeiter…</td></tr>
               ) : previewRows.length === 0 ? (
-                <tr><td colSpan={5}>Keine Urlaubstage in der Vorschau.</td></tr>
+                <tr><td colSpan={6}>Keine Tage in der Vorschau.</td></tr>
               ) : (
                 previewRows.map((row, idx) => (
                   <tr key={`${row.employee.id}-${row.date}-${idx}`}>
                     <td>{row.employee.name}</td>
                     <td>{formatDateAT(row.date)}</td>
+                    <td><span className={`vac-pill ${entryType === "za" ? "za" : "vac"}`}>{entryType === "za" ? "Zeitausgleich" : "Urlaub"}</span></td>
                     <td><span className={`vac-pill ${row.weekType === "kurz" ? "short" : "long"}`}>{row.weekType === "kurz" ? "Kurzwoche" : "Langwoche"}</span></td>
-                    <td>{(row.requiredMinutes / 60).toFixed(2).replace(".", ",")} h</td>
-                    <td>{row.holidayName ? `Feiertag: ${row.holidayName}` : `[Urlaub] ${toHM(row.startMin)} / 0,00 h`}</td>
+                    <td>{fmtHours(row.requiredMinutes / 60)}</td>
+                    <td>
+                      {row.holidayName
+                        ? `Feiertag: ${row.holidayName}`
+                        : entryType === "za"
+                          ? `[Zeitausgleich] ${fmtHours(row.requiredMinutes / 60)} werden vom ZA-Konto abgezogen`
+                          : `[Urlaub] ${toHM(row.startMin)} / 0,00 h`}
+                    </td>
                   </tr>
                 ))
               )}
@@ -488,44 +574,50 @@ export default function VacationEntry({ currentUser = null } = {}) {
         </div>
         {preview.length > previewRows.length && <p className="hint">Vorschau gekürzt. Gespeichert werden trotzdem alle vorbereiteten Tage.</p>}
         <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}>
-          <button type="button" className="save-btn lg" onClick={saveVacation} disabled={saving || preview.length === 0 || !ownEmployee}>
-            {saving ? "Speichere…" : "Meinen Urlaub eintragen"}
+          <button type="button" className="save-btn lg" onClick={saveTimeOff} disabled={saving || preview.length === 0 || !targetEmployee}>
+            {saving ? "Speichere…" : entryType === "za" ? "Zeitausgleich eintragen" : "Urlaub eintragen"}
           </button>
         </div>
       </section>
 
       <section className="month-card" style={{ marginTop: 18 }}>
-        <div className="month-card-title">Urlaubskalender alle Mitarbeiter</div>
-        <p className="hint">Alle dürfen sehen, wann Urlaub eingetragen ist. Löschen/Ändern ist nur beim eigenen Urlaub möglich.</p>
+        <div className="month-card-title">Urlaub-/ZA-Kalender alle Mitarbeiter</div>
+        <p className="hint">Alle dürfen sehen, wann Urlaub oder Zeitausgleich eingetragen ist. Löschen ist nur beim eigenen Eintrag möglich; Admin kann alle Einträge löschen.</p>
         <div className="table-scroll" style={{ marginTop: 10 }}>
           <table className="hbz-table compact">
             <thead>
               <tr>
                 <th>Datum</th>
                 <th>Mitarbeiter</th>
+                <th>Art</th>
                 <th>Woche</th>
+                <th>ZA-Stunden</th>
                 <th>Notiz</th>
                 <th>Aktion</th>
               </tr>
             </thead>
             <tbody>
               {calendarLoading ? (
-                <tr><td colSpan={5}>Lade Urlaubskalender…</td></tr>
-              ) : vacationDisplayRows.length === 0 ? (
-                <tr><td colSpan={5}>In diesem Zeitraum ist kein Urlaub eingetragen.</td></tr>
+                <tr><td colSpan={7}>Lade Kalender…</td></tr>
+              ) : timeOffDisplayRows.length === 0 ? (
+                <tr><td colSpan={7}>In diesem Zeitraum ist kein Urlaub/ZA eingetragen.</td></tr>
               ) : (
-                vacationDisplayRows.map((row) => {
+                timeOffDisplayRows.map((row) => {
                   const own = sameEmployee(row.employee, session);
+                  const allowed = isAdmin || own;
                   const weekType = getBuakWeekType(row.work_date);
+                  const kind = getEntryKind(row);
                   return (
                     <tr key={row.id} className={own ? "vac-own-row" : ""}>
                       <td>{formatDateAT(row.work_date)}</td>
                       <td>{row.employee?.name || "—"}</td>
+                      <td><span className={`vac-pill ${kind === "za" ? "za" : "vac"}`}>{kind === "za" ? "Zeitausgleich" : "Urlaub"}</span></td>
                       <td><span className={`vac-pill ${weekType === "kurz" ? "short" : "long"}`}>{weekType === "kurz" ? "Kurzwoche" : "Langwoche"}</span></td>
-                      <td>{stripVacationNote(row.note) || "—"}</td>
+                      <td>{kind === "za" ? fmtHours(row.za_hours) : "—"}</td>
+                      <td>{stripTimeOffNote(row.note) || "—"}</td>
                       <td>
-                        {own ? (
-                          <button type="button" className="hbz-mini-danger" onClick={() => deleteOwnVacation(row)}>Eigenen Eintrag löschen</button>
+                        {allowed ? (
+                          <button type="button" className="hbz-mini-danger" onClick={() => deleteTimeOff(row)}>{isAdmin && !own ? "Eintrag löschen" : "Eigenen Eintrag löschen"}</button>
                         ) : (
                           <span className="hint">nur Anzeige</span>
                         )}
@@ -561,6 +653,8 @@ export default function VacationEntry({ currentUser = null } = {}) {
         .vac-pill { display: inline-flex; align-items: center; border-radius: 999px; padding: 4px 8px; font-size: 12px; font-weight: 900; }
         .vac-pill.short { background: #e7f7ed; color: #1d6a30; }
         .vac-pill.long { background: #fff0e3; color: #85460a; }
+        .vac-pill.vac { background: #eaf0ff; color: #223d8f; }
+        .vac-pill.za { background: #fff2cc; color: #795100; }
         .vac-own-row { background: rgba(222, 242, 232, 0.62); }
         .hbz-mini-danger { border: 1px solid #d88; background: #fff4f4; color: #8a1f1f; border-radius: 999px; padding: 6px 10px; font-weight: 800; cursor: pointer; }
         .hbz-mini-danger:hover { background: #ffe8e8; }

@@ -21,7 +21,7 @@ export default function NavBar({ onLogout, currentUser, role }) {
     { to: "/zeiterfassung", label: "Zeiterfassung" },
     { to: "/arbeitseinteilung", label: "Arbeitseinteilung" },
     { to: "/projektfotos", label: "Projektfotos" },
-    { to: "/urlaub", label: "Urlaub" },
+    { to: "/urlaub", label: "Urlaub/ZA" },
     { to: "/monatsuebersicht", label: "Monatsübersicht" },
   ];
 
