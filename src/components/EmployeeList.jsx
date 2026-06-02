@@ -123,6 +123,11 @@ function getTodayDateString() {
   return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())).toISOString().slice(0, 10);
 }
 
+function getYesterdayDateString() {
+  const now = new Date();
+  return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate() - 1)).toISOString().slice(0, 10);
+}
+
 function minDate(a, b) {
   if (!a) return b || "";
   if (!b) return a || "";
@@ -227,6 +232,7 @@ export default function EmployeeList() {
     }
 
     const today = getTodayDateString();
+    const yesterday = getYesterdayDateString();
 
     for (const summary of map.values()) {
       const emp = summary.employee;
@@ -236,9 +242,11 @@ export default function EmployeeList() {
       const startDate = emp.za_start_date || bounds.first;
       if (!startDate) continue;
 
-      // Aktive Mitarbeiter werden bis heute gerechnet. Deaktivierte nur bis zum letzten vorhandenen Eintrag,
+      // Aktive Mitarbeiter werden nur bis gestern gerechnet.
+      // Der heutige Tag soll im ZA-Konto noch nicht als Minus auftauchen, solange noch nicht gebucht wurde.
+      // Deaktivierte Mitarbeiter werden nur bis zum letzten vorhandenen Eintrag gerechnet,
       // damit alte Mitarbeiter nicht jeden Tag weiter Minus aufbauen.
-      const endDate = emp.disabled ? (bounds.last || today) : today;
+      const endDate = emp.disabled ? minDate(bounds.last || yesterday, yesterday) : yesterday;
       summary.startDate = startDate;
       summary.endDate = endDate;
 
