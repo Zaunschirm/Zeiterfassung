@@ -610,7 +610,7 @@ export default function EmployeeList() {
           </div>
 
           <div>
-            <label className="hbz-label">ZA-Berechnung ab</label>
+            <label className="hbz-label">Eintrittsdatum / Anmeldedatum</label>
             <input
               type="date"
               className="hbz-input"
@@ -618,7 +618,7 @@ export default function EmployeeList() {
               onChange={(e) => setZaStartDate(e.target.value)}
             />
             <div className="help" style={{ marginTop: 4 }}>
-              Leere Eingabe = alle vorhandenen Einträge rechnen.
+              Ab diesem Datum wird das ZA-/Überstundenkonto berechnet. Leere Eingabe = alle vorhandenen Einträge rechnen.
             </div>
           </div>
 
@@ -823,7 +823,7 @@ export default function EmployeeList() {
             <thead>
               <tr>
                 <th>Mitarbeiter</th>
-                <th>Berechnung ab</th>
+                <th>Eintrittsdatum</th>
                 <th className="num">Arbeitsstunden</th>
                 <th className="num">Soll</th>
                 <th className="num">ZA genommen</th>
@@ -888,7 +888,7 @@ export default function EmployeeList() {
                   <th>Code</th>
                   <th>Rolle</th>
                   <th>Arbeitszeitmodell</th>
-                  <th>ZA ab</th>
+                  <th>Eintritt</th>
                   <th>Rechte</th>
                   <th>Status</th>
                   <th>Tageskontrolle</th>
