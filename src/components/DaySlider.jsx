@@ -1303,12 +1303,10 @@ export default function DaySlider() {
                 Feiertag: <b>{holidayNameToday}</b> · Soll bleibt <b>{buakSollHoursToday} h</b>
               </div>
             )}
-            {!isManager && (
-              <div className="month-overview-subtitle" style={{ marginTop: 6 }}>
-                ZA-Konto: <b>{ownZaLoading ? "lädt…" : ownZaBalance == null ? "—" : formatSignedHours(ownZaBalance)}</b>
-                <span style={{ opacity: 0.75 }}> · Stand bis gestern</span>
-              </div>
-            )}
+            <div className="month-overview-subtitle" style={{ marginTop: 6 }}>
+              ZA-Konto: <b>{ownZaLoading ? "lädt…" : ownZaBalance == null ? "—" : formatSignedHours(ownZaBalance)}</b>
+              <span style={{ opacity: 0.75 }}> · Stand bis gestern</span>
+            </div>
           </div>
 
           <div className="month-overview-actions">
