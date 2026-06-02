@@ -192,7 +192,7 @@ export default function App() {
                 <Route path="/jahresuebersicht" element={canViewYearOverview ? <YearOverview /> : <Navigate to="/zeiterfassung" replace />} />
                 <Route path="/monatsuebersicht" element={canViewMonthlyOverview ? <MonthlyOverview /> : <Navigate to="/zeiterfassung" replace />} />
                 <Route path="/projektfotos" element={<ProjectPhotos />} />
-                <Route path="/urlaub" element={<VacationEntry />} />
+                <Route path="/urlaub" element={<VacationEntry currentUser={currentUser} />} />
                 <Route path="/mitarbeiter" element={canManageEmployees ? <EmployeeList /> : <Navigate to="/zeiterfassung" replace />} />
                 <Route path="/" element={<Navigate to="/zeiterfassung" replace />} />
                 <Route path="*" element={<Navigate to="/zeiterfassung" replace />} />

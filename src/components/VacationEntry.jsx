@@ -91,8 +91,19 @@ function getEmployeeLabel(emp) {
 
 function sameEmployee(emp, session) {
   if (!emp || !session) return false;
-  if (session?.id && String(emp.id) === String(session.id)) return true;
-  if (session?.code && String(emp.code || "") === String(session.code)) return true;
+
+  const empId = emp?.id != null ? String(emp.id).trim() : "";
+  const sessionId = session?.id != null ? String(session.id).trim() : "";
+  if (empId && sessionId && empId === sessionId) return true;
+
+  const empCode = String(emp?.code || "").trim().toLowerCase();
+  const sessionCode = String(session?.code || "").trim().toLowerCase();
+  if (empCode && sessionCode && empCode === sessionCode) return true;
+
+  const empName = String(emp?.name || "").trim().toLowerCase();
+  const sessionName = String(session?.name || "").trim().toLowerCase();
+  if (empName && sessionName && empName === sessionName) return true;
+
   return false;
 }
 
@@ -100,8 +111,9 @@ function stripVacationNote(note) {
   return String(note || "").replace(/^\s*\[Urlaub\]\s*/i, "").trim();
 }
 
-export default function VacationEntry() {
-  const session = getSession()?.user || {};
+export default function VacationEntry({ currentUser = null } = {}) {
+  const storedSession = getSession()?.user || {};
+  const session = currentUser || storedSession || {};
 
   const [employees, setEmployees] = useState([]);
   const [ownEmployee, setOwnEmployee] = useState(null);
@@ -134,7 +146,17 @@ export default function VacationEntry() {
         if (error) throw error;
 
         const rows = (data || []).filter((e) => e?.active !== false && e?.disabled !== true);
-        const own = rows.find((e) => sameEmployee(e, session)) || null;
+        let own = rows.find((e) => sameEmployee(e, session)) || null;
+
+        // Fallback: Falls der gespeicherte Login-Datensatz anders aufgebaut ist,
+        // noch einmal gezielt mit ID oder Code in der geladenen Liste suchen.
+        if (!own && session?.id != null) {
+          own = rows.find((e) => String(e.id) === String(session.id)) || null;
+        }
+        if (!own && session?.code) {
+          const code = String(session.code).trim().toLowerCase();
+          own = rows.find((e) => String(e.code || "").trim().toLowerCase() === code) || null;
+        }
 
         if (!cancelled) {
           setEmployees(rows);
@@ -152,7 +174,7 @@ export default function VacationEntry() {
     return () => {
       cancelled = true;
     };
-  }, [session?.code, session?.id]);
+  }, [session?.code, session?.id, session?.name]);
 
   const employeeById = useMemo(() => {
     const map = new Map();
