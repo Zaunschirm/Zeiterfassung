@@ -824,28 +824,35 @@ export default function DaySlider() {
         return;
       }
 
-      const endDate = addDaysIso(todayIso(), -1);
-      const startDate = String(emp?.za_start_date || emp?.entry_date || `${endDate.slice(0, 4)}-01-01`).slice(0, 10);
-      if (startDate > endDate) {
-        setOwnZaBalance(0);
-        return;
-      }
+      const today = todayIso();
+      const endDate = addDaysIso(today, -1);
+      const startDate = String(emp?.za_start_date || emp?.entry_date || `${today.slice(0, 4)}-01-01`).slice(0, 10);
+      const hasEntryRange = startDate <= endDate;
 
       setOwnZaLoading(true);
       try {
+        const rowsPromise = hasEntryRange
+          ? supabase
+              .from("time_entries")
+              .select("work_date,start_min,end_min,break_min,travel_minutes,note,za_hours")
+              .eq("employee_id", empId)
+              .gte("work_date", startDate)
+              .lte("work_date", endDate)
+          : Promise.resolve({ data: [], error: null });
+
+        // Korrekturen/Startwerte dürfen bis heute zählen.
+        // Die eigentlichen Tagesstunden werden nur bis gestern gerechnet,
+        // damit der aktuelle Arbeitstag nicht vorzeitig Minus macht.
+        const correctionsPromise = supabase
+          .from("overtime_adjustments")
+          .select("hours,adjustment_date")
+          .eq("employee_id", String(empId))
+          .gte("adjustment_date", startDate)
+          .lte("adjustment_date", today);
+
         const [{ data: rows, error: rowsError }, { data: corrections, error: corrError }] = await Promise.all([
-          supabase
-            .from("time_entries")
-            .select("work_date,start_min,end_min,break_min,travel_minutes,note,za_hours")
-            .eq("employee_id", empId)
-            .gte("work_date", startDate)
-            .lte("work_date", endDate),
-          supabase
-            .from("overtime_adjustments")
-            .select("hours,adjustment_date")
-            .eq("employee_id", String(empId))
-            .gte("adjustment_date", startDate)
-            .lte("adjustment_date", endDate),
+          rowsPromise,
+          correctionsPromise,
         ]);
 
         if (rowsError) throw rowsError;
@@ -863,7 +870,7 @@ export default function DaySlider() {
         let sollHours = 0;
         let zaUsed = 0;
 
-        for (let day = startDate; day <= endDate; day = addDaysIso(day, 1)) {
+        if (hasEntryRange) for (let day = startDate; day <= endDate; day = addDaysIso(day, 1)) {
           const dayRows = rowsByDate.get(day) || [];
           const hasNeutralAbsence = dayRows.some((r) => {
             const n = String(r?.note || "").toLowerCase();
