@@ -301,6 +301,10 @@ export default function DaySlider() {
   const [note, setNote] = useState("");
   const [craneUsed, setCraneUsed] = useState(false);
   const [craneHours, setCraneHours] = useState(1);
+  const [privatePkwUsed, setPrivatePkwUsed] = useState(false);
+  const [privatePkwKm, setPrivatePkwKm] = useState(0);
+  const [zaUsed, setZaUsed] = useState(false);
+  const [zaHours, setZaHours] = useState(0);
   const [voiceListening, setVoiceListening] = useState(false);
   const [voiceSupported, setVoiceSupported] = useState(() => {
     if (typeof window === "undefined") return false;
@@ -567,12 +571,39 @@ export default function DaySlider() {
     const d = getEmployeeWorkDay(defaultTimeEmployee, date);
     const start = d?.active ? hmToMinutes(d.start) : 7 * 60;
     setBadWeather(false);
+    setZaUsed(false);
+    setZaHours(0);
     setAbsenceType("urlaub");
     setProjectId(null);
     setFromMin(start);
     setToMin(start + 15);
     setBreakMin(15);
     setTravelMin(0);
+  }
+
+  function applyZeitausgleichDefaults() {
+    const d = getEmployeeWorkDay(defaultTimeEmployee, date);
+    const start = d?.active ? hmToMinutes(d.start) : 7 * 60;
+    const hours = d?.requiredHours ?? ((d?.requiredMinutes || 0) / 60);
+    setBadWeather(false);
+    setAbsenceType(null);
+    setProjectId(null);
+    setFromMin(start);
+    setToMin(start + 15);
+    setBreakMin(15);
+    setTravelMin(0);
+    setCraneUsed(false);
+    setPrivatePkwUsed(false);
+    setPrivatePkwKm(0);
+    setZaUsed(true);
+    setZaHours(Number(hours || 0));
+  }
+
+  function clearAbsenceAndZa() {
+    setAbsenceType(null);
+    setBadWeather(false);
+    setZaUsed(false);
+    setZaHours(0);
   }
 
 
@@ -1066,7 +1097,7 @@ export default function DaySlider() {
   async function handleSave() {
     setError("");
 
-    const isAbsence = absenceType === "krank" || absenceType === "urlaub";
+    const isAbsence = absenceType === "krank" || absenceType === "urlaub" || zaUsed;
 
     if (!isAbsence && !projectId) {
       setError("Bitte Projekt auswählen.");
@@ -1104,6 +1135,8 @@ export default function DaySlider() {
       weather_source: weatherSource || null,
       weather_fetched_at: weatherFetchedAt || null,
       crane_hours: craneUsed ? Number(craneHours || 0) : 0,
+      private_pkw_km: privatePkwUsed ? Number(privatePkwKm || 0) : 0,
+      za_hours: zaUsed ? Number(zaHours || 0) : 0,
       bad_weather: !!badWeather,
       bad_weather_minutes: badWeather ? Math.max(toMin - fromMin - breakMin, 0) : 0,
       voice_note: (note || "").trim() || null,
@@ -1112,6 +1145,8 @@ export default function DaySlider() {
           ? "[Krank] "
           : absenceType === "urlaub"
           ? "[Urlaub] "
+          : zaUsed
+          ? "[Zeitausgleich] "
           : badWeather
           ? "[Schlechtwetter] "
           : ""
@@ -1158,6 +1193,10 @@ export default function DaySlider() {
       setTravelMin(0);
       setCraneUsed(false);
       setCraneHours(1);
+      setPrivatePkwUsed(false);
+      setPrivatePkwKm(0);
+      setZaUsed(false);
+      setZaHours(0);
       setWeatherManual("");
       await loadEntries();
       await loadDailyCheckEntries();
@@ -1259,8 +1298,10 @@ export default function DaySlider() {
     { label: "Ende", value: toHM(toMin) },
     { label: "Pause", value: `${breakMin} min` },
     { label: "Fahrzeit", value: formatTravelLabel(travelMin) },
-    { label: "Kran", value: craneUsed ? `${craneHours} h` : "—" },
-    { label: "Schlechtwetter", value: badWeather ? "Ja" : "—" },
+    ...(craneUsed ? [{ label: "Kran", value: `${craneHours} h` }] : []),
+    ...(privatePkwUsed && Number(privatePkwKm || 0) > 0 ? [{ label: "Privat-PKW", value: `${Number(privatePkwKm || 0).toLocaleString("de-AT")} km` }] : []),
+    ...(zaUsed ? [{ label: "Zeitausgleich", value: `${Number(zaHours || 0).toFixed(2).replace(".", ",")} h` }] : []),
+    ...(badWeather ? [{ label: "Schlechtwetter", value: "Ja" }] : []),
     { label: "Wetter", value: finalWeather || "—" },
   ];
 
@@ -1578,16 +1619,17 @@ export default function DaySlider() {
               </div>
               <div className="mobile-chip-section"><div className="month-card-title">Pause</div><div className="hbz-chipbar">{PAUSE_OPTIONS.map((m) => (<button key={m} type="button" className={`hbz-chip ${breakMin === m ? "active" : ""}`} onClick={() => { if (absenceType) setAbsenceType(null); setBreakMin(m); }}>{formatTravelLabel(m)}</button>))}</div></div>
             </details>
-            <details className="mobile-accordion"><summary>👷 Abwesenheit <span>{absenceType ? (absenceType === "krank" ? "Krank" : "Urlaub") : badWeather ? "Schlechtwetter" : "Normal"}</span></summary>
+            <details className="mobile-accordion"><summary>👷 Abwesenheit <span>{zaUsed ? "Zeitausgleich" : absenceType ? (absenceType === "krank" ? "Krank" : "Urlaub") : badWeather ? "Schlechtwetter" : "Normal"}</span></summary>
               <div className="hbz-chipbar">
                 <button type="button" className={`hbz-chip ${absenceType === "krank" ? "active" : ""}`} onClick={applyKrankDefaults}>Krank</button>
                 <button type="button" className={`hbz-chip ${absenceType === "urlaub" ? "active" : ""}`} onClick={applyUrlaubDefaults}>Urlaub</button>
-                <button type="button" className={`hbz-chip ${badWeather ? "active" : ""}`} onClick={() => { setAbsenceType(null); setBadWeather((v) => !v); }}>Schlechtwetter</button>
-                {(absenceType || badWeather) && <button type="button" className="hbz-chip" onClick={() => { setAbsenceType(null); setBadWeather(false); }}>Normal</button>}
+                <button type="button" className={`hbz-chip ${zaUsed ? "active" : ""}`} onClick={applyZeitausgleichDefaults}>Zeitausgleich</button>
+                <button type="button" className={`hbz-chip ${badWeather ? "active" : ""}`} onClick={() => { setAbsenceType(null); setZaUsed(false); setZaHours(0); setBadWeather((v) => !v); }}>Schlechtwetter</button>
+                {(absenceType || badWeather || zaUsed) && <button type="button" className="hbz-chip" onClick={clearAbsenceAndZa}>Normal</button>}
               </div>
             </details>
             <details className="mobile-accordion"><summary>🚙 Fahrzeit <span>{formatTravelLabel(travelMin)}</span></summary><div className="hbz-chipbar">{TRAVEL_OPTIONS.map((m) => (<button key={m} type="button" className={`hbz-chip ${travelMin === m ? "active" : ""}`} onClick={() => { if (absenceType) setAbsenceType(null); setTravelMin(m); }}>{formatTravelLabel(m)}</button>))}</div></details>
-            <details className="mobile-accordion"><summary>🏗 Kranzeit <span>{craneUsed ? `${craneHours} h` : "—"}</span></summary><div className="hbz-chipbar" style={{ alignItems: "center" }}><button type="button" className={`hbz-chip ${craneUsed ? "active" : ""}`} onClick={() => setCraneUsed((v) => !v)} disabled={!!absenceType}>🏗 Kran verwendet</button>{craneUsed && (<select className="hbz-input" value={craneHours} onChange={(e) => setCraneHours(Number(e.target.value))} disabled={!!absenceType} style={{ maxWidth: 140 }}>{CRANE_HOUR_OPTIONS.map((h) => <option key={h} value={h}>{h} h</option>)}</select>)}</div></details>
+            <details className="mobile-accordion"><summary>🏗 Kran / Privat-PKW <span>{craneUsed ? `${craneHours} h` : privatePkwUsed ? `${privatePkwKm || 0} km` : "—"}</span></summary><div className="hbz-chipbar" style={{ alignItems: "center" }}><button type="button" className={`hbz-chip ${craneUsed ? "active" : ""}`} onClick={() => setCraneUsed((v) => !v)} disabled={!!absenceType || zaUsed}>🏗 Kran verwendet</button>{craneUsed && (<select className="hbz-input" value={craneHours} onChange={(e) => setCraneHours(Number(e.target.value))} disabled={!!absenceType || zaUsed} style={{ maxWidth: 140 }}>{CRANE_HOUR_OPTIONS.map((h) => <option key={h} value={h}>{h} h</option>)}</select>)}<button type="button" className={`hbz-chip ${privatePkwUsed ? "active" : ""}`} onClick={() => { const value = prompt("Wie viele Kilometer mit Privat-PKW?", String(privatePkwKm || "")); if (value === null) return; const km = Number(String(value).replace(",", ".")); if (!Number.isFinite(km) || km < 0) { alert("Bitte gültige Kilometer eingeben."); return; } setPrivatePkwKm(km); setPrivatePkwUsed(km > 0); }} disabled={!!absenceType || zaUsed}>🚗 Privat-PKW</button>{privatePkwUsed && <button type="button" className="hbz-chip" onClick={() => { setPrivatePkwUsed(false); setPrivatePkwKm(0); }}>PKW löschen</button>}</div></details>
             <details className="mobile-accordion"><summary>☁ Wetter <span>{finalWeather || "—"}</span></summary>
               <div className="month-card-field"><label className="hbz-label">Automatisch von Baustelle + Buchung</label><div className="hbz-input" style={{ display: "flex", alignItems: "center", gap: 8 }}><span>{weatherLoading ? "Lade Wetter…" : weatherAuto || "—"}</span><button type="button" className="hbz-btn btn-small" onClick={() => loadWeatherForCurrentBooking(true)} disabled={weatherLoading || !projectAddress || !!absenceType}>Aktualisieren</button></div></div>
               <div className="month-card-field" style={{ marginTop: 10 }}><label className="hbz-label">Manuell ändern</label><select className="hbz-input" value={weatherManual || "Automatisch"} disabled={!!absenceType} onChange={(e) => { const value = e.target.value; setWeatherManual(value === "Automatisch" ? "" : value); }}>{WEATHER_MANUAL_OPTIONS.map((opt) => <option key={opt} value={opt}>{opt}</option>)}</select></div>
@@ -1729,15 +1771,23 @@ onClick={applyUrlaubDefaults}
                 Urlaub
               </button>
 
-              <button type="button" className={`hbz-chip ${badWeather ? "active" : ""}`} onClick={() => { setAbsenceType(null); setBadWeather((v) => !v); }}>
+              <button
+                type="button"
+                className={`hbz-chip ${zaUsed ? "active" : ""}`}
+                onClick={applyZeitausgleichDefaults}
+              >
+                Zeitausgleich
+              </button>
+
+              <button type="button" className={`hbz-chip ${badWeather ? "active" : ""}`} onClick={() => { setAbsenceType(null); setZaUsed(false); setZaHours(0); setBadWeather((v) => !v); }}>
                 Schlechtwetter
               </button>
 
-              {(absenceType || badWeather) && (
+              {(absenceType || badWeather || zaUsed) && (
                 <button
                   type="button"
                   className="hbz-chip"
-                  onClick={() => { setAbsenceType(null); setBadWeather(false); }}
+                  onClick={clearAbsenceAndZa}
                   title="Abwesenheit zurücksetzen"
                 >
                   Normal
@@ -1745,6 +1795,26 @@ onClick={applyUrlaubDefaults}
               )}
             </div>
           </div>
+
+          {zaUsed && (
+            <div className="year-section">
+              <div className="month-card-title">Zeitausgleich</div>
+              <div className="month-card-field" style={{ maxWidth: 220 }}>
+                <label className="hbz-label">ZA-Stunden</label>
+                <input
+                  type="number"
+                  className="hbz-input"
+                  min="0"
+                  step="0.25"
+                  value={zaHours}
+                  onChange={(e) => setZaHours(Number(String(e.target.value).replace(",", ".")) || 0)}
+                />
+              </div>
+              <div className="help" style={{ marginTop: 8 }}>
+                Wird als <b>Zeitausgleich</b> gespeichert und vom ZA-Konto abgezogen.
+              </div>
+            </div>
+          )}
 
           <div className="year-section">
             <div className="month-card-title">Fahrzeit</div>
@@ -1780,7 +1850,7 @@ onClick={applyUrlaubDefaults}
                 type="button"
                 className={`hbz-chip ${craneUsed ? "active" : ""}`}
                 onClick={() => setCraneUsed((v) => !v)}
-                disabled={!!absenceType}
+                disabled={!!absenceType || zaUsed}
                 title="Kranzeit zu diesem Zeiteintrag speichern"
               >
                 🏗 Kran verwendet
@@ -1793,7 +1863,7 @@ onClick={applyUrlaubDefaults}
                     className="hbz-input"
                     value={craneHours}
                     onChange={(e) => setCraneHours(Number(e.target.value))}
-                    disabled={!!absenceType}
+                    disabled={!!absenceType || zaUsed}
                   >
                     {CRANE_HOUR_OPTIONS.map((h) => (
                       <option key={h} value={h}>
@@ -1806,6 +1876,57 @@ onClick={applyUrlaubDefaults}
             </div>
             <div className="help" style={{ marginTop: 8 }}>
               Wird als <b>Kranzeit</b> zum Eintrag gespeichert und kann später in der Nachkalkulation ausgewertet werden.
+            </div>
+          </div>
+
+          <div className="year-section">
+            <div className="month-card-title">Privat-PKW</div>
+            <div className="hbz-chipbar" style={{ alignItems: "center" }}>
+              <button
+                type="button"
+                className={`hbz-chip ${privatePkwUsed ? "active" : ""}`}
+                onClick={() => {
+                  if (privatePkwUsed) {
+                    setPrivatePkwUsed(false);
+                    setPrivatePkwKm(0);
+                    return;
+                  }
+                  const value = prompt("Wie viele Kilometer mit Privat-PKW?", String(privatePkwKm || ""));
+                  if (value === null) return;
+                  const km = Number(String(value).replace(",", "."));
+                  if (!Number.isFinite(km) || km < 0) {
+                    alert("Bitte gültige Kilometer eingeben.");
+                    return;
+                  }
+                  setPrivatePkwKm(km);
+                  setPrivatePkwUsed(km > 0);
+                }}
+                disabled={!!absenceType || zaUsed}
+                title="Private PKW-Kilometer zu diesem Eintrag speichern"
+              >
+                🚗 Privat-PKW
+              </button>
+
+              {privatePkwUsed && (
+                <div className="month-card-field" style={{ minWidth: 180, margin: 0 }}>
+                  <label className="hbz-label">Kilometer</label>
+                  <input
+                    type="number"
+                    className="hbz-input"
+                    min="0"
+                    step="0.5"
+                    value={privatePkwKm}
+                    onChange={(e) => {
+                      const km = Number(String(e.target.value).replace(",", "."));
+                      setPrivatePkwKm(Number.isFinite(km) ? km : 0);
+                    }}
+                    disabled={!!absenceType || zaUsed}
+                  />
+                </div>
+              )}
+            </div>
+            <div className="help" style={{ marginTop: 8 }}>
+              Wird als <b>Privat-PKW km</b> zum Eintrag gespeichert.
             </div>
           </div>
 
