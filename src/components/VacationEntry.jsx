@@ -58,6 +58,16 @@ function isFriday(dateStr) {
   return d?.getDay() === 5;
 }
 
+function isShortFridayInShortWeek(dateStr) {
+  return isFriday(dateStr) && getBuakWeekType(dateStr) === "kurz";
+}
+
+function previousIsoDate(dateStr) {
+  const d = parseDateLocal(dateStr);
+  if (!d) return "";
+  return formatISODate(addDays(d, -1));
+}
+
 function monthStart(dateStr) {
   const d = parseDateLocal(dateStr) || new Date();
   return formatISODate(new Date(d.getFullYear(), d.getMonth(), 1, 12));
@@ -295,27 +305,40 @@ export default function VacationEntry({ currentUser = null } = {}) {
   const preview = useMemo(() => {
     if (!targetEmployee) return [];
 
-    // Urlaub-Sonderregel: In einer Kurzwoche soll ein am Donnerstag eingetragener Urlaub
-    // automatisch den folgenden kurzen Freitag mit anzeigen/speichern. Der Freitag hat 0 h,
-    // bleibt aber als Urlaubstag im Kalender sichtbar, damit der Zeitraum geschlossen ist.
+    // Urlaub-Sonderregel:
+    // 1) Wird in einer Kurzwoche ein Donnerstag als Urlaub gewählt, kommt der kurze Freitag automatisch mit.
+    // 2) Wird der kurze Freitag später separat gewählt und der Donnerstag ist bereits als Urlaub vorhanden,
+    //    darf der Freitag ebenfalls als Urlaub mit 0 h gespeichert werden.
+    const existingVacationByDate = new Set(
+      (timeOffRows || [])
+        .filter((row) => String(row?.employee_id) === String(targetEmployee.id) && isVacationEntry(row))
+        .map((row) => String(row.work_date || "").slice(0, 10))
+        .filter(Boolean)
+    );
+
     const baseDays = dateRange(fromDate, toDate);
     const dayItems = [];
     const seen = new Set();
 
-    function addDay(day, autoShortFriday = false) {
+    function addDay(day, autoShortFriday = false, shortFridayAfterExistingThursday = false) {
       const iso = String(day || "").slice(0, 10);
       if (!iso || seen.has(iso)) return;
       seen.add(iso);
-      dayItems.push({ date: iso, autoShortFriday });
+      dayItems.push({ date: iso, autoShortFriday, shortFridayAfterExistingThursday });
     }
 
     for (const day of baseDays) {
-      addDay(day, false);
-
       const d = parseDateLocal(day);
       const isThursday = d?.getDay() === 4;
+      const shortFridayAfterExistingThursday =
+        entryType === "urlaub" &&
+        isShortFridayInShortWeek(day) &&
+        existingVacationByDate.has(previousIsoDate(day));
+
+      addDay(day, false, shortFridayAfterExistingThursday);
+
       if (entryType === "urlaub" && isThursday && getBuakWeekType(day) === "kurz") {
-        addDay(formatISODate(addDays(d, 1)), true);
+        addDay(formatISODate(addDays(d, 1)), true, false);
       }
     }
 
@@ -327,7 +350,7 @@ export default function VacationEntry({ currentUser = null } = {}) {
       const workDay = getEmployeeWorkDay(targetEmployee, day);
       const requiredMinutes = Number(workDay?.requiredMinutes || 0);
       const isActiveDay = !!workDay?.active && requiredMinutes > 0;
-      const isAutoShortFriday = !!item.autoShortFriday;
+      const isAutoShortFriday = !!item.autoShortFriday || !!item.shortFridayAfterExistingThursday;
 
       if (!isAutoShortFriday && onlyWorkdays && !isActiveDay) continue;
       if (entryType === "za" && requiredMinutes <= 0) continue;
@@ -343,7 +366,7 @@ export default function VacationEntry({ currentUser = null } = {}) {
       });
     }
     return rows;
-  }, [fromDate, toDate, onlyWorkdays, targetEmployee, entryType]);
+  }, [fromDate, toDate, onlyWorkdays, targetEmployee, entryType, timeOffRows]);
 
   const previewDisplayRows = useMemo(() => {
     const sorted = [...preview].sort((a, b) =>
