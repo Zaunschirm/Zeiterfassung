@@ -145,7 +145,9 @@ function fmtHours(value) {
 }
 
 function fmtDays(value) {
-  return `${Number(value || 0).toFixed(2).replace(".", ",")} Tage`;
+  const n = Number(value || 0);
+  const whole = n >= 0 ? Math.floor(n + 1e-9) : Math.ceil(n - 1e-9);
+  return `${whole} ${Math.abs(whole) === 1 ? "Tag" : "Tage"}`;
 }
 
 const VACATION_ANNUAL_DAYS = 25;
@@ -996,11 +998,10 @@ export default function VacationEntry({ currentUser = null } = {}) {
       {targetEmployee && vacationAccount && (
         <section className="month-card" style={{ marginTop: 18 }}>
           <div className="month-card-title">Urlaubsstand {vacationAccountYear}</div>
-          <p className="hint">Urlaub wird hier als aktueller Reststand in Tagen geführt. Jeden Monat werden automatisch 25/12 Tage gutgeschrieben; beim Eintragen von Urlaub wird der Stand reduziert.</p>
+          <p className="hint">Urlaub wird hier als aktueller Reststand in ganzen Tagen geführt. Beim Eintragen von Urlaub wird der Stand reduziert.</p>
           <div className="vac-account-grid simple" style={{ marginTop: 10 }}>
             <div className="vac-account-box"><span>Mitarbeiter</span><b>{getEmployeeLabel(targetEmployee)}</b></div>
             <div className="vac-account-box strong"><span>Urlaubsanspruch aktuell</span><b>{vacationAccountLoading ? "lädt…" : fmtDays(vacationAccount.currentDays)}</b></div>
-            <div className="vac-account-box"><span>Automatischer Zugang</span><b>{fmtDays(VACATION_MONTHLY_DAYS)} / Monat</b></div>
           </div>
           {isAdmin && (
             <details className="vac-admin-details" style={{ marginTop: 12 }}>

@@ -31,61 +31,26 @@ const formatTravelLabel = (m) => {
   return `${m} min`;
 };
 
-const parsePrivatePkwKm = (value) => {
-  if (value === null || value === undefined || value === "") return 0;
-  const n = Number(String(value).replace(",", "."));
-  return Number.isFinite(n) && n > 0 ? Math.round(n * 10) / 10 : 0;
-};
-
-const formatPrivatePkwKm = (value) => {
-  const km = parsePrivatePkwKm(value);
-  return km > 0 ? `${km.toLocaleString("de-AT")} km` : "—";
-};
-
-function parseHours(value) {
-  if (value === null || typeof value === "undefined") return 0;
-  const n = Number(String(value).replace(",", "."));
-  return Number.isFinite(n) ? n : 0;
-}
-
-function formatSignedHours(value) {
-  const n = Math.round((Number(value) || 0) * 100) / 100;
-  const sign = n > 0 ? "+" : "";
-  return `${sign}${n.toFixed(2).replace(".", ",")} h`;
-}
-
-function dateRangeInclusive(from, to) {
-  const start = new Date(String(from || "").slice(0, 10) + "T12:00:00");
-  const end = new Date(String(to || "").slice(0, 10) + "T12:00:00");
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) return [];
-  const out = [];
-  for (let d = start; d <= end; d.setDate(d.getDate() + 1)) {
-    out.push(d.toISOString().slice(0, 10));
-  }
-  return out;
-}
-
-function yesterdayISO() {
-  const d = new Date();
-  d.setDate(d.getDate() - 1);
-  return d.toISOString().slice(0, 10);
-}
-
-function rowWorkHoursForZa(row) {
-  const note = String(row?.note || "");
-  if (note.includes("[Urlaub]") || note.includes("[Krank]") || note.includes("[Zeitausgleich]")) return 0;
-  const start = row.start_min ?? row.from_min ?? 0;
-  const end = row.end_min ?? row.to_min ?? 0;
-  const pause = row.break_min ?? 0;
-  const travel = row.travel_minutes ?? row.travel_min ?? 0;
-  return Math.max(Number(end) - Number(start) - Number(pause), 0) / 60 + (Number(travel) || 0) / 60;
-}
-
 const formatTemp = (value) =>
   typeof value === "number" && !Number.isNaN(value) ? `${value.toFixed(1)} °C` : "—";
 
 const formatPrecip = (value) =>
   typeof value === "number" && !Number.isNaN(value) ? `${value.toFixed(1)} mm` : "—";
+
+
+const formatSignedHours = (value) => {
+  const n = Number(value || 0);
+  const sign = n > 0 ? "+" : n < 0 ? "-" : "";
+  return `${sign}${Math.abs(n).toFixed(2).replace(".", ",")} h`;
+};
+
+const addDaysIso = (dateStr, days) => {
+  const d = new Date(`${String(dateStr).slice(0, 10)}T12:00:00`);
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+};
+
+const todayIso = () => new Date().toISOString().slice(0, 10);
 
 
 const PAUSE_OPTIONS = [0, 15, 30, 45, 60, 75, 90];
@@ -285,41 +250,11 @@ function isAbsenceEntry(row, type) {
     );
   }
 
-  if (type === "zeitausgleich") {
-    return (
-      absenceType === "zeitausgleich" ||
-      note.includes("[zeitausgleich]") ||
-      note.includes("zeitausgleich") ||
-      Number(row?.za_hours || 0) > 0
-    );
-  }
-
-  if (type === "schlechtwetter") {
-    return (
-      row?.bad_weather === true ||
-      note.includes("[schlechtwetter]") ||
-      note.includes("schlechtwetter")
-    );
-  }
-
   return false;
 }
 
 const logSbError = (prefix, error) =>
   console.error(prefix, error?.message || error);
-
-
-function hasTimeOverlap(existingRow, nextStartMin, nextEndMin) {
-  const existingStart = Number(existingRow?.start_min);
-  const existingEnd = Number(existingRow?.end_min);
-  if (!Number.isFinite(existingStart) || !Number.isFinite(existingEnd)) return false;
-  // Direkt anschließende Zeiten sind erlaubt. Überschneidung wird blockiert.
-  return existingStart < nextEndMin && existingEnd > nextStartMin;
-}
-
-function employeeDisplayName(employee) {
-  return employee?.name || employee?.employee_name || employee?.code || "Mitarbeiter";
-}
 
 function startOfWeek(dateStr) {
   const d = new Date(`${dateStr}T00:00:00`);
@@ -350,11 +285,8 @@ export default function DaySlider() {
   const canDeleteOwnTime = !!permissions.deleteOwnTime;
   const canDeleteAllTime = !!permissions.deleteAllTime;
   const canSelectEmployees = canWriteAllTime || canEditAllTime || canDeleteAllTime;
-  // Datenschutz: Untere Tagesübersicht und Tageskontrolle nur für Admin/Teamleiter komplett anzeigen.
-  // Normale Mitarbeiter sehen dort unabhängig von Sonderrechten nur eigene Einträge.
-  const canSeeAllEntries = role === "admin" || role === "teamleiter";
-  const isStaff = !canSeeAllEntries;
-  const canSeeAllDailyCheck = canSeeAllEntries;
+  const canSeeAllEntries = canSelectEmployees;
+  const isStaff = !canSelectEmployees;
   const isManager = canSelectEmployees;
 
   const [date, setDate] = useState(() =>
@@ -369,9 +301,6 @@ export default function DaySlider() {
   const [note, setNote] = useState("");
   const [craneUsed, setCraneUsed] = useState(false);
   const [craneHours, setCraneHours] = useState(1);
-  const [privatePkwUsed, setPrivatePkwUsed] = useState(false);
-  const [privatePkwKm, setPrivatePkwKm] = useState("");
-  const [zaHours, setZaHours] = useState(0);
   const [voiceListening, setVoiceListening] = useState(false);
   const [voiceSupported, setVoiceSupported] = useState(() => {
     if (typeof window === "undefined") return false;
@@ -414,7 +343,9 @@ export default function DaySlider() {
   const [isMobile, setIsMobile] = useState(false);
 
   const [error, setError] = useState("");
-  const [ownZaInfo, setOwnZaInfo] = useState({ loading: false, balance: null, checked: true, error: "" });
+  const [ownZaBalance, setOwnZaBalance] = useState(null);
+  const [ownZaLoading, setOwnZaLoading] = useState(false);
+
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth <= 768);
@@ -644,50 +575,9 @@ export default function DaySlider() {
     setTravelMin(0);
   }
 
-  function applyZeitausgleichDefaults() {
-    const d = getEmployeeWorkDay(defaultTimeEmployee, date);
-    const start = d?.active ? hmToMinutes(d.start) : 7 * 60;
-    const soll = d?.requiredHours || getBuakSollHoursForDay(date) || 0;
-    setBadWeather(false);
-    setAbsenceType("zeitausgleich");
-    setProjectId(null);
-    setTravelMin(0);
-    setBreakMin(0);
-    setCraneUsed(false);
-    setPrivatePkwUsed(false);
-    setPrivatePkwKm("");
-    const input = window.prompt("Zeitausgleich Stunden eingeben (leer = ganzer Tag laut Soll):", soll ? String(soll).replace(".", ",") : "");
-    if (input === null) {
-      setAbsenceType(null);
-      setZaHours(0);
-      return;
-    }
-    const hours = input.trim() === "" ? soll : parsePrivatePkwKm(input);
-    setZaHours(hours);
-    setFromMin(start);
-    setToMin(start + Math.max(Math.round(hours * 60), 15));
-  }
-
-  function togglePrivatePkw() {
-    if (privatePkwUsed) {
-      setPrivatePkwUsed(false);
-      setPrivatePkwKm("");
-      return;
-    }
-    const input = window.prompt("Gefahrene Kilometer mit privatem PKW:", privatePkwKm || "");
-    if (input === null) return;
-    const km = parsePrivatePkwKm(input);
-    if (km <= 0) {
-      alert("Bitte Kilometer größer 0 eingeben.");
-      return;
-    }
-    setPrivatePkwKm(String(km));
-    setPrivatePkwUsed(true);
-  }
-
 
   async function loadWeatherForCurrentBooking(force = false) {
-    if (absenceType === "krank" || absenceType === "urlaub" || absenceType === "zeitausgleich") {
+    if (absenceType === "krank" || absenceType === "urlaub") {
       setWeatherAuto("");
       setWeatherCode(null);
       setTemperature(null);
@@ -844,15 +734,11 @@ export default function DaySlider() {
         .order("employee_name", { ascending: true })
         .order("start_min", { ascending: true });
 
-      // Datenschutz: Normale Mitarbeiter sehen in der unteren Tagesübersicht nur eigene Einträge.
-      // Admin/Teamleiter sehen alle Einträge des Tages.
-      if (!canSeeAllEntries) {
-        const ownId = employeeRow?.id || employees.find((e) => e.code === session?.code)?.id || null;
-        if (!ownId) {
-          setEntries([]);
-          return;
-        }
-        query = query.eq("employee_id", ownId);
+      // Wichtig: Admin/Teamleiter sehen in der unteren Tagesübersicht immer ALLE Einträge
+      // des ausgewählten Tages – unabhängig davon, welche Mitarbeiter oben zum Speichern
+      // ausgewählt sind. Die Mitarbeiter-Auswahl steuert nur, für wen neu gespeichert wird.
+      if (isStaff && employeeRow?.id) {
+        query = query.eq("employee_id", employeeRow.id);
       }
 
       const { data, error } = await query;
@@ -868,25 +754,17 @@ export default function DaySlider() {
 
   async function loadDailyCheckEntries() {
     try {
+      if (!isManager) {
+        setDailyCheckEntries([]);
+        return;
+      }
+
       setDailyCheckLoading(true);
 
-      let query = supabase
+      const { data, error } = await supabase
         .from("v_time_entries_expanded")
         .select("*")
         .eq("work_date", date);
-
-      // Normale Mitarbeiter sehen in der Tageskontrolle nur den eigenen Status.
-      // Admin/Teamleiter sehen die komplette Kontrolle.
-      if (!canSeeAllDailyCheck) {
-        const ownId = employeeRow?.id || employees.find((e) => e.code === session?.code)?.id || null;
-        if (!ownId) {
-          setDailyCheckEntries([]);
-          return;
-        }
-        query = query.eq("employee_id", ownId);
-      }
-
-      const { data, error } = await query;
 
       if (error) throw error;
       setDailyCheckEntries(data || []);
@@ -902,7 +780,7 @@ export default function DaySlider() {
     loadEntries();
     loadDailyCheckEntries();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [date, canSeeAllDailyCheck, selectedCodes, employeeRow?.id, employees, session?.code]);
+  }, [date, isManager, selectedCodes, employeeRow?.id]);
 
   const shiftDate = (days) => {
     setDate((old) => {
@@ -932,99 +810,101 @@ export default function DaySlider() {
   }, []);
 
   const currentEmployeeId = employeeRow?.id || employees.find((e) => e.code === session?.code)?.id || null;
+  const ownZaEmployee = useMemo(() => {
+    return employeeRow || employees.find((e) => String(e?.code || "") === String(session?.code || "")) || currentUser || session || null;
+  }, [employeeRow, employees, currentUser, session]);
 
   useEffect(() => {
     let cancelled = false;
-
     async function loadOwnZaBalance() {
-      const emp = employeeRow || employees.find((e) => String(e.code || "") === String(session?.code || ""));
-      if (!emp?.id) {
-        setOwnZaInfo({ loading: false, balance: null, checked: true, error: "" });
-        return;
-      }
-      if (emp.include_in_za_account === false) {
-        setOwnZaInfo({ loading: false, balance: null, checked: false, error: "" });
+      const emp = ownZaEmployee;
+      const empId = emp?.id;
+      if (!empId) {
+        setOwnZaBalance(null);
         return;
       }
 
-      const until = yesterdayISO();
-      const startFromEmployee = emp.za_start_date ? String(emp.za_start_date).slice(0, 10) : "";
+      const endDate = addDaysIso(todayIso(), -1);
+      const startDate = String(emp?.za_start_date || emp?.entry_date || `${endDate.slice(0, 4)}-01-01`).slice(0, 10);
+      if (startDate > endDate) {
+        setOwnZaBalance(0);
+        return;
+      }
 
+      setOwnZaLoading(true);
       try {
-        setOwnZaInfo((old) => ({ ...old, loading: true, error: "" }));
-
-        let entryQuery = supabase
-          .from("time_entries")
-          .select("id, employee_id, work_date, start_min, end_min, break_min, travel_minutes, note, za_hours")
-          .eq("employee_id", emp.id)
-          .lte("work_date", until)
-          .order("work_date", { ascending: true });
-
-        if (startFromEmployee) entryQuery = entryQuery.gte("work_date", startFromEmployee);
-
-        const { data: entryRows, error: entryError } = await entryQuery;
-        if (entryError) throw entryError;
-
-        const firstEntryDate = (entryRows || [])[0]?.work_date ? String((entryRows || [])[0].work_date).slice(0, 10) : "";
-        const start = startFromEmployee || firstEntryDate;
-
-        let corrections = 0;
-        try {
-          let adjQuery = supabase
+        const [{ data: rows, error: rowsError }, { data: corrections, error: corrError }] = await Promise.all([
+          supabase
+            .from("time_entries")
+            .select("work_date,start_min,end_min,break_min,travel_minutes,note,za_hours")
+            .eq("employee_id", empId)
+            .gte("work_date", startDate)
+            .lte("work_date", endDate),
+          supabase
             .from("overtime_adjustments")
-            .select("hours, adjustment_date")
-            .eq("employee_id", String(emp.id))
-            .lte("adjustment_date", until);
-          if (start) adjQuery = adjQuery.gte("adjustment_date", start);
-          const { data: adjRows, error: adjError } = await adjQuery;
-          if (adjError) throw adjError;
-          corrections = (adjRows || []).reduce((sum, row) => sum + parseHours(row.hours), 0);
-        } catch (adjErr) {
-          console.warn("[DaySlider] ZA-Korrekturen konnten nicht geladen werden", adjErr);
-        }
+            .select("hours,adjustment_date")
+            .eq("employee_id", String(empId))
+            .gte("adjustment_date", startDate)
+            .lte("adjustment_date", endDate),
+        ]);
 
-        if (!start) {
-          if (!cancelled) setOwnZaInfo({ loading: false, balance: corrections, checked: true, error: "" });
-          return;
-        }
+        if (rowsError) throw rowsError;
+        if (corrError) throw corrError;
 
-        const byDate = new Map();
-        for (const row of entryRows || []) {
-          const key = String(row.work_date || "").slice(0, 10);
-          if (!key) continue;
-          if (!byDate.has(key)) byDate.set(key, { worked: 0, usedZa: 0, hasZa: false, hasPaidAbsence: false });
-          const day = byDate.get(key);
-          const noteText = String(row.note || "");
-          day.worked += rowWorkHoursForZa(row);
-          if (noteText.includes("[Zeitausgleich]") || Number(row.za_hours || 0) > 0) {
-            day.hasZa = true;
-            day.usedZa += parseHours(row.za_hours);
+        const rowsByDate = new Map();
+        (rows || []).forEach((row) => {
+          const day = String(row?.work_date || "").slice(0, 10);
+          if (!day) return;
+          if (!rowsByDate.has(day)) rowsByDate.set(day, []);
+          rowsByDate.get(day).push(row);
+        });
+
+        let workHours = 0;
+        let sollHours = 0;
+        let zaUsed = 0;
+
+        for (let day = startDate; day <= endDate; day = addDaysIso(day, 1)) {
+          const dayRows = rowsByDate.get(day) || [];
+          const hasNeutralAbsence = dayRows.some((r) => {
+            const n = String(r?.note || "").toLowerCase();
+            return n.includes("[urlaub]") || n.includes("[krank]");
+          });
+
+          if (!hasNeutralAbsence) {
+            const wd = getEmployeeWorkDay(emp, day);
+            sollHours += Number(wd?.requiredHours || 0);
           }
-          if (noteText.includes("[Urlaub]") || noteText.includes("[Krank]")) {
-            day.hasPaidAbsence = true;
-          }
+
+          dayRows.forEach((r) => {
+            const noteLower = String(r?.note || "").toLowerCase();
+            const isAbsence = noteLower.includes("[urlaub]") || noteLower.includes("[krank]") || noteLower.includes("[zeitausgleich]");
+            zaUsed += Number(r?.za_hours || 0);
+            if (!isAbsence) {
+              const start = Number(r?.start_min || 0);
+              const end = Number(r?.end_min || 0);
+              const pause = Number(r?.break_min || 0);
+              const travel = Number(r?.travel_minutes || 0);
+              if (end > start) workHours += Math.max(0, end - start - pause + travel) / 60;
+            }
+          });
         }
 
-        let generated = 0;
-        for (const dayIso of dateRangeInclusive(start, until)) {
-          const day = byDate.get(dayIso) || { worked: 0, usedZa: 0, hasZa: false, hasPaidAbsence: false };
-          const soll = day.hasPaidAbsence ? 0 : Number(getEmployeeWorkDay(emp, dayIso)?.requiredHours || 0);
-          const zaFallback = day.hasZa && day.usedZa <= 0 ? soll : day.usedZa;
-          generated += day.worked - soll - zaFallback;
-        }
-
-        if (!cancelled) {
-          setOwnZaInfo({ loading: false, balance: generated + corrections, checked: true, error: "" });
-        }
+        const corrHours = (corrections || []).reduce((sum, row) => sum + Number(row?.hours || 0), 0);
+        const balance = workHours - sollHours - zaUsed + corrHours;
+        if (!cancelled) setOwnZaBalance(Math.round(balance * 100) / 100);
       } catch (e) {
-        console.error("[DaySlider] ZA-Konto laden fehlgeschlagen", e);
-        if (!cancelled) setOwnZaInfo({ loading: false, balance: null, checked: true, error: "ZA-Konto konnte nicht geladen werden." });
+        console.error("[DaySlider] ZA-Konto konnte nicht geladen werden:", e?.message || e);
+        if (!cancelled) setOwnZaBalance(null);
+      } finally {
+        if (!cancelled) setOwnZaLoading(false);
       }
     }
 
     loadOwnZaBalance();
-    return () => { cancelled = true; };
-  }, [employeeRow?.id, employeeRow?.za_start_date, employeeRow?.include_in_za_account, employees, session?.code, date]);
+    return () => {
+      cancelled = true;
+    };
+  }, [ownZaEmployee?.id, ownZaEmployee?.za_start_date, ownZaEmployee?.entry_date]);
 
   const isOwnEntry = (row) => String(row?.employee_id ?? "") === String(currentEmployeeId ?? "");
   const canEditEntry = (row) => !!row && (canEditAllTime || (canEditOwnTime && isOwnEntry(row)));
@@ -1034,19 +914,14 @@ export default function DaySlider() {
   const holidayNameToday = useMemo(() => getHolidayName(date), [date]);
 
   const dailyCheckRows = useMemo(() => {
-    const ownId = employeeRow?.id || employees.find((e) => e.code === session?.code)?.id || null;
+    if (!isManager) return [];
 
-    let checkEmployees = (employees || [])
+    const checkEmployees = (employees || [])
       // Deaktiviert = nicht mehr in der Tageskontrolle prüfen.
       // Wichtig: bestehende Stunden deaktivierter MA bleiben unten trotzdem sichtbar,
       // weil die Eintragsliste direkt aus v_time_entries_expanded kommt.
-      .filter((emp) => emp?.active !== false && emp?.disabled !== true);
-
-    if (!canSeeAllDailyCheck) {
-      checkEmployees = checkEmployees.filter((emp) => String(emp?.id || "") === String(ownId || ""));
-    }
-
-    checkEmployees = checkEmployees.sort((a, b) => String(a?.name || "").localeCompare(String(b?.name || ""), "de"));
+      .filter((emp) => emp?.active !== false && emp?.disabled !== true)
+      .sort((a, b) => String(a?.name || "").localeCompare(String(b?.name || ""), "de"));
 
     const rowsForDay = (dailyCheckEntries || []).filter(
       (row) => String(row?.work_date || row?.date || "").slice(0, 10) === date
@@ -1059,8 +934,6 @@ export default function DaySlider() {
 
       const hasUrlaub = empEntries.some((row) => isAbsenceEntry(row, "urlaub"));
       const hasKrank = empEntries.some((row) => isAbsenceEntry(row, "krank"));
-      const hasZa = empEntries.some((row) => isAbsenceEntry(row, "zeitausgleich"));
-      const hasBadWeather = empEntries.some((row) => isAbsenceEntry(row, "schlechtwetter"));
       const hasEntry = empEntries.length > 0;
 
       let status = "missing";
@@ -1081,14 +954,6 @@ export default function DaySlider() {
         status = "krank";
         label = "Krank";
         icon = "🔵";
-      } else if (hasZa) {
-        status = "zeitausgleich";
-        label = "Zeitausgleich";
-        icon = "🟣";
-      } else if (hasBadWeather) {
-        status = "schlechtwetter";
-        label = "Schlechtwetter";
-        icon = "🌧️";
       } else if (hasEntry) {
         status = "ok";
         label = "Eingetragen";
@@ -1103,7 +968,7 @@ export default function DaySlider() {
         entryCount: empEntries.length,
       };
     });
-  }, [date, dailyCheckEntries, employees, canSeeAllDailyCheck, employeeRow?.id, session?.code]);
+  }, [date, dailyCheckEntries, employees, isManager]);
 
   const dailyCheckSummary = useMemo(() => {
     const count = (status) => dailyCheckRows.filter((row) => row.status === status).length;
@@ -1112,8 +977,6 @@ export default function DaySlider() {
       missing: count("missing"),
       urlaub: count("urlaub"),
       krank: count("krank"),
-      zeitausgleich: count("zeitausgleich"),
-      schlechtwetter: count("schlechtwetter"),
       notRequired: count("not_required"),
       total: dailyCheckRows.length,
     };
@@ -1127,7 +990,7 @@ export default function DaySlider() {
     } else if (dailyCheckStatusFilter === "ok") {
       rows = rows.filter((row) => row.status === "ok");
     } else if (dailyCheckStatusFilter === "absence") {
-      rows = rows.filter((row) => ["urlaub", "krank", "zeitausgleich", "schlechtwetter"].includes(row.status));
+      rows = rows.filter((row) => row.status === "urlaub" || row.status === "krank");
     } else if (dailyCheckStatusFilter === "not_required") {
       rows = rows.filter((row) => row.status === "not_required");
     }
@@ -1196,7 +1059,7 @@ export default function DaySlider() {
   async function handleSave() {
     setError("");
 
-    const isAbsence = absenceType === "krank" || absenceType === "urlaub" || absenceType === "zeitausgleich";
+    const isAbsence = absenceType === "krank" || absenceType === "urlaub";
 
     if (!isAbsence && !projectId) {
       setError("Bitte Projekt auswählen.");
@@ -1225,8 +1088,6 @@ export default function DaySlider() {
       break_min: breakMin,
       travel_minutes: travelMin,
       travel_cost_center: "FAHRZEIT",
-      private_pkw_km: privatePkwUsed ? parsePrivatePkwKm(privatePkwKm) : 0,
-      za_hours: absenceType === "zeitausgleich" ? Number(zaHours || 0) : 0,
       weather_auto: weatherAuto || null,
       weather_manual: weatherManual || null,
       weather_final: finalWeather || null,
@@ -1244,8 +1105,6 @@ export default function DaySlider() {
           ? "[Krank] "
           : absenceType === "urlaub"
           ? "[Urlaub] "
-          : absenceType === "zeitausgleich"
-          ? "[Zeitausgleich] "
           : badWeather
           ? "[Schlechtwetter] "
           : ""
@@ -1261,40 +1120,10 @@ export default function DaySlider() {
           alert("Bitte mindestens einen Mitarbeiter auswählen.");
           return;
         }
-
-        const chosenIds = chosen.map((e) => e.id).filter(Boolean);
-        const { data: existingRows, error: overlapError } = await supabase
-          .from("time_entries")
-          .select("id, employee_id, start_min, end_min")
-          .eq("work_date", date)
-          .in("employee_id", chosenIds);
-        if (overlapError) throw overlapError;
-
-        const conflictingIds = new Set(
-          (existingRows || [])
-            .filter((row) => hasTimeOverlap(row, fromMin, toMin))
-            .map((row) => String(row.employee_id))
-        );
-
-        const allowed = chosen.filter((e) => !conflictingIds.has(String(e.id)));
-        const blocked = chosen.filter((e) => conflictingIds.has(String(e.id)));
-
-        if (allowed.length > 0) {
-          const rows = allowed.map((e) => ({ ...base, employee_id: e.id }));
-          const { error } = await supabase.from("time_entries").insert(rows);
-          if (error) throw error;
-        }
-
-        if (blocked.length > 0) {
-          const blockedNames = blocked.map(employeeDisplayName).join(", ");
-          alert(
-            allowed.length > 0
-              ? `Gespeichert für ${allowed.length} Mitarbeiter. Nicht gespeichert für: ${blockedNames}. Für diesen Zeitraum ist bereits ein Zeiteintrag vorhanden.`
-              : `Nicht gespeichert. Für diesen Zeitraum ist bereits ein Zeiteintrag vorhanden bei: ${blockedNames}.`
-          );
-        } else {
-          alert(`Gespeichert für ${allowed.length} Mitarbeiter.`);
-        }
+        const rows = chosen.map((e) => ({ ...base, employee_id: e.id }));
+        const { error } = await supabase.from("time_entries").insert(rows);
+        if (error) throw error;
+        alert(`Gespeichert für ${rows.length} Mitarbeiter.`);
       } else {
         if (!canWriteOwnTime) {
           alert("Du hast keine Berechtigung zum Schreiben von Stunden.");
@@ -1308,23 +1137,6 @@ export default function DaySlider() {
           alert("Nicht erlaubt: Mitarbeiter dürfen nur für sich buchen.");
           return;
         }
-
-        const { data: existingRows, error: overlapError } = await supabase
-          .from("time_entries")
-          .select("id, employee_id, start_min, end_min")
-          .eq("work_date", date)
-          .eq("employee_id", employeeRow.id);
-        if (overlapError) throw overlapError;
-
-        const hasConflict = (existingRows || []).some((row) =>
-          hasTimeOverlap(row, fromMin, toMin)
-        );
-
-        if (hasConflict) {
-          alert("Für diesen Zeitraum ist bereits ein Zeiteintrag vorhanden. Bitte Zeitraum ändern.");
-          return;
-        }
-
         const { error } = await supabase
           .from("time_entries")
           .insert({ ...base, employee_id: employeeRow.id });
@@ -1339,9 +1151,6 @@ export default function DaySlider() {
       setTravelMin(0);
       setCraneUsed(false);
       setCraneHours(1);
-      setPrivatePkwUsed(false);
-      setPrivatePkwKm("");
-      setZaHours(0);
       setWeatherManual("");
       await loadEntries();
       await loadDailyCheckEntries();
@@ -1363,8 +1172,6 @@ export default function DaySlider() {
       break_min: row.break_min ?? 0,
       travel_minutes: row.travel_minutes ?? row.travel_min ?? 0,
       crane_hours: row.crane_hours ?? 0,
-      private_pkw_km: row.private_pkw_km ?? 0,
-      za_hours: row.za_hours ?? 0,
       bad_weather: !!row.bad_weather,
       weather_manual: row.weather_manual || "",
       weather_auto: row.weather_auto || "",
@@ -1398,8 +1205,6 @@ export default function DaySlider() {
       break_min: parseInt(editState.break_min || "0", 10) || 0,
       travel_minutes: parseInt(editState.travel_minutes || "0", 10) || 0,
       crane_hours: parseInt(editState.crane_hours || "0", 10) || 0,
-      private_pkw_km: parsePrivatePkwKm(editState.private_pkw_km),
-      za_hours: parsePrivatePkwKm(editState.za_hours),
       bad_weather: !!editState.bad_weather,
       bad_weather_minutes: editState.bad_weather ? Math.max(to_m - from_m - (parseInt(editState.break_min || "0", 10) || 0), 0) : 0,
       voice_note: editState.note?.trim() || null,
@@ -1447,10 +1252,8 @@ export default function DaySlider() {
     { label: "Ende", value: toHM(toMin) },
     { label: "Pause", value: `${breakMin} min` },
     { label: "Fahrzeit", value: formatTravelLabel(travelMin) },
-    ...(craneUsed ? [{ label: "Kran", value: `${craneHours} h` }] : []),
-    ...(privatePkwUsed && parsePrivatePkwKm(privatePkwKm) > 0 ? [{ label: "Privat-PKW", value: formatPrivatePkwKm(privatePkwKm) }] : []),
-    ...(absenceType === "zeitausgleich" && Number(zaHours || 0) > 0 ? [{ label: "Zeitausgleich", value: `${Number(zaHours || 0).toLocaleString("de-AT")} h` }] : []),
-    ...(badWeather ? [{ label: "Schlechtwetter", value: "Ja" }] : []),
+    { label: "Kran", value: craneUsed ? `${craneHours} h` : "—" },
+    { label: "Schlechtwetter", value: badWeather ? "Ja" : "—" },
     { label: "Wetter", value: finalWeather || "—" },
   ];
 
@@ -1500,6 +1303,12 @@ export default function DaySlider() {
                 Feiertag: <b>{holidayNameToday}</b> · Soll bleibt <b>{buakSollHoursToday} h</b>
               </div>
             )}
+            {!isManager && (
+              <div className="month-overview-subtitle" style={{ marginTop: 6 }}>
+                ZA-Konto: <b>{ownZaLoading ? "lädt…" : ownZaBalance == null ? "—" : formatSignedHours(ownZaBalance)}</b>
+                <span style={{ opacity: 0.75 }}> · Stand bis gestern</span>
+              </div>
+            )}
           </div>
 
           <div className="month-overview-actions">
@@ -1521,7 +1330,7 @@ export default function DaySlider() {
         </div>
       </div>
 
-      {dailyCheckRows.length > 0 && (
+      {isManager && (
         <div className="hbz-card month-main-card daily-check-card">
           <div className="month-main-header">
             <div>
@@ -1542,13 +1351,10 @@ export default function DaySlider() {
               <span className="badge-soft">❌ {dailyCheckSummary.missing}</span>
               <span className="badge-soft">🟡 {dailyCheckSummary.urlaub}</span>
               <span className="badge-soft">🔵 {dailyCheckSummary.krank}</span>
-              <span className="badge-soft">🟣 {dailyCheckSummary.zeitausgleich}</span>
-              <span className="badge-soft">🌧️ {dailyCheckSummary.schlechtwetter}</span>
             </div>
           </div>
 
 
-          {canSeeAllDailyCheck && (
           <div className="daily-check-controls">
             <div className="daily-check-filter-row">
               <button type="button" className={`daily-check-filter-btn ${dailyCheckStatusFilter === "all" ? "active" : ""}`} onClick={() => setDailyCheckStatusFilter("all")}>
@@ -1561,7 +1367,7 @@ export default function DaySlider() {
                 ✅ Eingetragen ({dailyCheckSummary.ok})
               </button>
               <button type="button" className={`daily-check-filter-btn ${dailyCheckStatusFilter === "absence" ? "active" : ""}`} onClick={() => setDailyCheckStatusFilter("absence")}>
-                🟡/🔵/🟣/🌧️ Urlaub/Krank/ZA/SW ({dailyCheckSummary.urlaub + dailyCheckSummary.krank + dailyCheckSummary.zeitausgleich + dailyCheckSummary.schlechtwetter})
+                🟡/🔵 Urlaub/Krank ({dailyCheckSummary.urlaub + dailyCheckSummary.krank})
               </button>
               {dailyCheckSummary.notRequired > 0 && (
                 <button type="button" className={`daily-check-filter-btn ${dailyCheckStatusFilter === "not_required" ? "active" : ""}`} onClick={() => setDailyCheckStatusFilter("not_required")}>
@@ -1588,7 +1394,6 @@ export default function DaySlider() {
               </div>
             </div>
           </div>
-          )}
           {dailyCheckRows.length === 0 ? (
             <div className="month-empty-state">
               Keine Mitarbeiter für die Tageskontrolle gefunden.
@@ -1617,15 +1422,6 @@ export default function DaySlider() {
           <div className="help" style={{ marginTop: 10 }}>
             Geprüft werden nur aktive Mitarbeiter mit „In Tageskontrolle anzeigen“.
             Freie BUAK-Tage werden nicht als fehlend gewertet.
-          </div>
-        </div>
-      )}
-
-      {ownZaInfo.checked !== false && (ownZaInfo.loading || ownZaInfo.balance !== null || ownZaInfo.error) && (
-        <div className="hbz-card month-main-card" style={{ padding: "10px 14px" }}>
-          <div className="hbz-info-line" style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-            <span><b>ZA-Konto:</b> {ownZaInfo.loading ? "wird geladen…" : ownZaInfo.error ? ownZaInfo.error : formatSignedHours(ownZaInfo.balance)}</span>
-            <span className="help">Stand bis gestern</span>
           </div>
         </div>
       )}
@@ -1777,17 +1573,16 @@ export default function DaySlider() {
               </div>
               <div className="mobile-chip-section"><div className="month-card-title">Pause</div><div className="hbz-chipbar">{PAUSE_OPTIONS.map((m) => (<button key={m} type="button" className={`hbz-chip ${breakMin === m ? "active" : ""}`} onClick={() => { if (absenceType) setAbsenceType(null); setBreakMin(m); }}>{formatTravelLabel(m)}</button>))}</div></div>
             </details>
-            <details className="mobile-accordion"><summary>👷 Abwesenheit <span>{absenceType ? (absenceType === "krank" ? "Krank" : absenceType === "urlaub" ? "Urlaub" : "Zeitausgleich") : badWeather ? "Schlechtwetter" : "Normal"}</span></summary>
+            <details className="mobile-accordion"><summary>👷 Abwesenheit <span>{absenceType ? (absenceType === "krank" ? "Krank" : "Urlaub") : badWeather ? "Schlechtwetter" : "Normal"}</span></summary>
               <div className="hbz-chipbar">
                 <button type="button" className={`hbz-chip ${absenceType === "krank" ? "active" : ""}`} onClick={applyKrankDefaults}>Krank</button>
                 <button type="button" className={`hbz-chip ${absenceType === "urlaub" ? "active" : ""}`} onClick={applyUrlaubDefaults}>Urlaub</button>
-                <button type="button" className={`hbz-chip ${absenceType === "zeitausgleich" ? "active" : ""}`} onClick={applyZeitausgleichDefaults}>Zeitausgleich</button>
                 <button type="button" className={`hbz-chip ${badWeather ? "active" : ""}`} onClick={() => { setAbsenceType(null); setBadWeather((v) => !v); }}>Schlechtwetter</button>
                 {(absenceType || badWeather) && <button type="button" className="hbz-chip" onClick={() => { setAbsenceType(null); setBadWeather(false); }}>Normal</button>}
               </div>
             </details>
             <details className="mobile-accordion"><summary>🚙 Fahrzeit <span>{formatTravelLabel(travelMin)}</span></summary><div className="hbz-chipbar">{TRAVEL_OPTIONS.map((m) => (<button key={m} type="button" className={`hbz-chip ${travelMin === m ? "active" : ""}`} onClick={() => { if (absenceType) setAbsenceType(null); setTravelMin(m); }}>{formatTravelLabel(m)}</button>))}</div></details>
-            <details className="mobile-accordion"><summary>🏗 Kran / Privat-PKW <span>{craneUsed ? `${craneHours} h` : privatePkwUsed ? formatPrivatePkwKm(privatePkwKm) : "—"}</span></summary><div className="hbz-chipbar" style={{ alignItems: "center" }}><button type="button" className={`hbz-chip ${craneUsed ? "active" : ""}`} onClick={() => setCraneUsed((v) => !v)} disabled={!!absenceType}>🏗 Kran verwendet</button><button type="button" className={`hbz-chip ${privatePkwUsed ? "active" : ""}`} onClick={togglePrivatePkw} disabled={!!absenceType}>🚗 Privat-PKW</button>{craneUsed && (<select className="hbz-input" value={craneHours} onChange={(e) => setCraneHours(Number(e.target.value))} disabled={!!absenceType} style={{ maxWidth: 140 }}>{CRANE_HOUR_OPTIONS.map((h) => <option key={h} value={h}>{h} h</option>)}</select>)}{privatePkwUsed && (<input className="hbz-input" type="number" min="0" step="0.1" value={privatePkwKm} onChange={(e) => setPrivatePkwKm(e.target.value)} disabled={!!absenceType} style={{ maxWidth: 140 }} placeholder="KM" />)}</div></details>
+            <details className="mobile-accordion"><summary>🏗 Kranzeit <span>{craneUsed ? `${craneHours} h` : "—"}</span></summary><div className="hbz-chipbar" style={{ alignItems: "center" }}><button type="button" className={`hbz-chip ${craneUsed ? "active" : ""}`} onClick={() => setCraneUsed((v) => !v)} disabled={!!absenceType}>🏗 Kran verwendet</button>{craneUsed && (<select className="hbz-input" value={craneHours} onChange={(e) => setCraneHours(Number(e.target.value))} disabled={!!absenceType} style={{ maxWidth: 140 }}>{CRANE_HOUR_OPTIONS.map((h) => <option key={h} value={h}>{h} h</option>)}</select>)}</div></details>
             <details className="mobile-accordion"><summary>☁ Wetter <span>{finalWeather || "—"}</span></summary>
               <div className="month-card-field"><label className="hbz-label">Automatisch von Baustelle + Buchung</label><div className="hbz-input" style={{ display: "flex", alignItems: "center", gap: 8 }}><span>{weatherLoading ? "Lade Wetter…" : weatherAuto || "—"}</span><button type="button" className="hbz-btn btn-small" onClick={() => loadWeatherForCurrentBooking(true)} disabled={weatherLoading || !projectAddress || !!absenceType}>Aktualisieren</button></div></div>
               <div className="month-card-field" style={{ marginTop: 10 }}><label className="hbz-label">Manuell ändern</label><select className="hbz-input" value={weatherManual || "Automatisch"} disabled={!!absenceType} onChange={(e) => { const value = e.target.value; setWeatherManual(value === "Automatisch" ? "" : value); }}>{WEATHER_MANUAL_OPTIONS.map((opt) => <option key={opt} value={opt}>{opt}</option>)}</select></div>
@@ -1929,10 +1724,6 @@ onClick={applyUrlaubDefaults}
                 Urlaub
               </button>
 
-              <button type="button" className={`hbz-chip ${absenceType === "zeitausgleich" ? "active" : ""}`} onClick={applyZeitausgleichDefaults}>
-                Zeitausgleich
-              </button>
-
               <button type="button" className={`hbz-chip ${badWeather ? "active" : ""}`} onClick={() => { setAbsenceType(null); setBadWeather((v) => !v); }}>
                 Schlechtwetter
               </button>
@@ -1990,16 +1781,6 @@ onClick={applyUrlaubDefaults}
                 🏗 Kran verwendet
               </button>
 
-              <button
-                type="button"
-                className={`hbz-chip ${privatePkwUsed ? "active" : ""}`}
-                onClick={togglePrivatePkw}
-                disabled={!!absenceType}
-                title="Gefahrene Kilometer mit privatem PKW erfassen"
-              >
-                🚗 Privat-PKW
-              </button>
-
               {craneUsed && (
                 <div className="month-card-field" style={{ minWidth: 180, margin: 0 }}>
                   <label className="hbz-label">Kranstunden</label>
@@ -2017,24 +1798,9 @@ onClick={applyUrlaubDefaults}
                   </select>
                 </div>
               )}
-
-              {privatePkwUsed && (
-                <div className="month-card-field" style={{ minWidth: 180, margin: 0 }}>
-                  <label className="hbz-label">Privat-PKW km</label>
-                  <input
-                    className="hbz-input"
-                    type="number"
-                    min="0"
-                    step="0.1"
-                    value={privatePkwKm}
-                    onChange={(e) => setPrivatePkwKm(e.target.value)}
-                    disabled={!!absenceType}
-                  />
-                </div>
-              )}
             </div>
             <div className="help" style={{ marginTop: 8 }}>
-              Wird als <b>Kranzeit</b> bzw. <b>Privat-PKW km</b> zum Eintrag gespeichert und kann später ausgewertet werden.
+              Wird als <b>Kranzeit</b> zum Eintrag gespeichert und kann später in der Nachkalkulation ausgewertet werden.
             </div>
           </div>
 
@@ -2172,8 +1938,6 @@ onClick={applyUrlaubDefaults}
                       <th className="num">Pause</th>
                       <th className="num">Fahrzeit</th>
                       <th className="num">Kran</th>
-                      <th className="num">Privat-PKW</th>
-                      <th className="num">ZA</th>
                       <th className="num">Stunden</th>
                       <th className="num">Überstunden</th>
                       <th>Wetter</th>
@@ -2204,8 +1968,6 @@ onClick={applyUrlaubDefaults}
                             <td className="num">{breakM} min</td>
                             <td className="num">{travelM} min</td>
                             <td className="num">{r.crane_hours ? `${r.crane_hours} h` : "—"}</td>
-                            <td className="num">{formatPrivatePkwKm(r.private_pkw_km)}</td>
-                            <td className="num">{Number(r.za_hours || 0) > 0 ? `${Number(r.za_hours).toLocaleString("de-AT")} h` : "—"}</td>
                             <td className="num">{hrs.toFixed(2)}</td>
                             <td className="num">{ot.toFixed(2)}</td>
                             <td>{getWeatherFinalLabel(r) || "—"}</td>
@@ -2468,9 +2230,6 @@ onClick={applyUrlaubDefaults}
                           <span>Pause: {breakM} min</span>
                           <span>Fahrzeit: {travelM} min</span>
                           {r.crane_hours ? <span>Kran: {r.crane_hours} h</span> : null}
-                          {parsePrivatePkwKm(r.private_pkw_km) > 0 ? <span>Privat-PKW: {formatPrivatePkwKm(r.private_pkw_km)}</span> : null}
-                          {Number(r.za_hours || 0) > 0 ? <span>ZA: {Number(r.za_hours).toLocaleString("de-AT")} h</span> : null}
-                          {r.bad_weather ? <span>Schlechtwetter</span> : null}
                         </div>
 
                         <div className="month-card-row">
