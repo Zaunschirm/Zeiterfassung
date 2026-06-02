@@ -1005,31 +1005,30 @@ export default function EmployeeList() {
           <div className="text-sm opacity-70">Lade Mitarbeiter…</div>
         ) : (
           <div className="employee-table-wrap">
-            <table className="employee-table">
+            <table className="employee-table" style={{ tableLayout: "fixed", width: "100%" }}>
               <thead>
                 <tr>
-                  <th>Name</th>
-                  <th>Code</th>
-                  <th>Rolle</th>
-                  <th>Arbeitszeitmodell</th>
-                  <th>Eintritt</th>
-                  <th>ZA-Konto</th>
-                  <th>Rechte</th>
-                  <th>Status</th>
-                  <th>Tageskontrolle</th>
-                  <th className="num" style={{ minWidth: 130 }}>Aktionen</th>
+                  <th style={{ width: "18%" }}>Mitarbeiter</th>
+                  <th style={{ width: "19%" }}>Rolle / Modell</th>
+                  <th style={{ width: "15%" }}>Eintritt / ZA</th>
+                  <th style={{ width: "16%" }}>Status</th>
+                  <th style={{ width: "17%" }}>Rechte</th>
+                  <th className="num" style={{ width: "15%" }}>Aktionen</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.length === 0 && (
                   <tr>
-                    <td colSpan={10} className="employee-empty">
+                    <td colSpan={6} className="employee-empty">
                       Keine Mitarbeiter gefunden.
                     </td>
                   </tr>
                 )}
 
-                {rows.map((r) => (
+                {rows.map((r) => {
+                  const modelLabel = WORK_TIME_MODEL_OPTIONS.find((m) => m.value === (r.work_time_model || (String(r.role || "").toLowerCase() === "buchhaltung" ? "verwaltung" : "buak")))?.label || "BUAK / Zimmerer";
+                  const zaEnabled = isZaAccountEnabled(r);
+                  return (
                   <tr
                     key={r.id}
                     style={{
@@ -1037,13 +1036,18 @@ export default function EmployeeList() {
                       background: r.disabled ? "#f5f1eb" : "transparent",
                     }}
                   >
-                    <td>{r.name}</td>
-                    <td>{r.code}</td>
-                    <td>{roleLabel(r.role)}</td>
-                    <td>{WORK_TIME_MODEL_OPTIONS.find((m) => m.value === (r.work_time_model || (String(r.role || "").toLowerCase() === "buchhaltung" ? "verwaltung" : "buak")))?.label || "BUAK / Zimmerer"}</td>
-                    <td>{r.za_start_date || "—"}</td>
-                    <td>{isZaAccountEnabled(r) ? "Wird geprüft" : "Nicht geprüft"}</td>
-                    <td style={{ minWidth: 240 }}>{permissionSummary(r.permissions)}</td>
+                    <td>
+                      <strong>{r.name}</strong>
+                      <div className="help" style={{ marginTop: 3 }}>Code: {r.code || "—"}</div>
+                    </td>
+                    <td>
+                      <strong>{roleLabel(r.role)}</strong>
+                      <div className="help" style={{ marginTop: 3 }}>{modelLabel}</div>
+                    </td>
+                    <td>
+                      <strong>{r.za_start_date || "—"}</strong>
+                      <div className="help" style={{ marginTop: 3 }}>{zaEnabled ? "ZA geprüft" : "ZA nicht geprüft"}</div>
+                    </td>
                     <td>
                       <span
                         style={{
@@ -1059,57 +1063,26 @@ export default function EmployeeList() {
                       >
                         {r.disabled ? "deaktiviert" : "aktiv"}
                       </span>
+                      <div style={{ marginTop: 6 }}>
+                        <span className={`daily-check-table-pill ${r.show_in_daily_check === false ? "off" : "on"}`}>
+                          {r.show_in_daily_check === false ? "Tageskontrolle aus" : "Tageskontrolle an"}
+                        </span>
+                      </div>
                     </td>
-                    <td>
-                      <span className={`daily-check-table-pill ${r.show_in_daily_check === false ? "off" : "on"}`}>
-                        {r.show_in_daily_check === false ? "Ausgeblendet" : "Wird geprüft"}
-                      </span>
+                    <td style={{ fontSize: 12, lineHeight: 1.25 }}>
+                      {permissionSummary(r.permissions)}
                     </td>
-                    <td className="num" style={{ minWidth: 130, whiteSpace: "nowrap" }}>
-                      <div className="employee-action-group" style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end", minWidth: 118 }}>
-                        <button
-                          type="button"
-                          className="hbz-btn btn-small"
-                          onClick={() => editEmployee(r)}
-                        >
-                          Bearbeiten
-                        </button>
-
-                        <button
-                          type="button"
-                          className="hbz-btn btn-small"
-                          onClick={() => toggleActive(r)}
-                        >
-                          {r.disabled ? "Aktivieren" : "Deaktivieren"}
-                        </button>
-
-                        <button
-                          type="button"
-                          className="hbz-btn btn-small"
-                          onClick={() => toggleZaAccount(r)}
-                        >
-                          {isZaAccountEnabled(r) ? "ZA aus" : "ZA an"}
-                        </button>
-
-                        <button
-                          type="button"
-                          className="hbz-btn btn-small"
-                          onClick={() => resetPin(r)}
-                        >
-                          PIN
-                        </button>
-
-                        <button
-                          type="button"
-                          className="hbz-btn btn-small"
-                          onClick={() => remove(r)}
-                        >
-                          Löschen
-                        </button>
+                    <td className="num" style={{ whiteSpace: "normal" }}>
+                      <div className="employee-action-group" style={{ display: "flex", flexWrap: "wrap", gap: 5, justifyContent: "flex-end" }}>
+                        <button type="button" className="hbz-btn btn-small" onClick={() => editEmployee(r)}>Edit</button>
+                        <button type="button" className="hbz-btn btn-small" onClick={() => toggleActive(r)}>{r.disabled ? "Aktiv" : "Deaktiv"}</button>
+                        <button type="button" className="hbz-btn btn-small" onClick={() => toggleZaAccount(r)}>{zaEnabled ? "ZA aus" : "ZA an"}</button>
+                        <button type="button" className="hbz-btn btn-small" onClick={() => resetPin(r)}>PIN</button>
+                        <button type="button" className="hbz-btn btn-small" onClick={() => remove(r)}>Löschen</button>
                       </div>
                     </td>
                   </tr>
-                ))}
+                );})}
               </tbody>
             </table>
           </div>
