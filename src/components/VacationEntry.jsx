@@ -271,21 +271,52 @@ export default function VacationEntry({ currentUser = null } = {}) {
 
   const preview = useMemo(() => {
     if (!targetEmployee) return [];
-    const days = dateRange(fromDate, toDate);
+
+    // Urlaub-Sonderregel: In einer Kurzwoche soll ein am Donnerstag eingetragener Urlaub
+    // automatisch den folgenden kurzen Freitag mit anzeigen/speichern. Der Freitag hat 0 h,
+    // bleibt aber als Urlaubstag im Kalender sichtbar, damit der Zeitraum geschlossen ist.
+    const baseDays = dateRange(fromDate, toDate);
+    const dayItems = [];
+    const seen = new Set();
+
+    function addDay(day, autoShortFriday = false) {
+      const iso = String(day || "").slice(0, 10);
+      if (!iso || seen.has(iso)) return;
+      seen.add(iso);
+      dayItems.push({ date: iso, autoShortFriday });
+    }
+
+    for (const day of baseDays) {
+      addDay(day, false);
+
+      const d = parseDateLocal(day);
+      const isThursday = d?.getDay() === 4;
+      if (entryType === "urlaub" && isThursday && getBuakWeekType(day) === "kurz") {
+        addDay(formatISODate(addDays(d, 1)), true);
+      }
+    }
+
+    dayItems.sort((a, b) => String(a.date).localeCompare(String(b.date)));
+
     const rows = [];
-    for (const day of days) {
+    for (const item of dayItems) {
+      const day = item.date;
       const workDay = getEmployeeWorkDay(targetEmployee, day);
       const requiredMinutes = Number(workDay?.requiredMinutes || 0);
       const isActiveDay = !!workDay?.active && requiredMinutes > 0;
-      if (onlyWorkdays && !isActiveDay) continue;
+      const isAutoShortFriday = !!item.autoShortFriday;
+
+      if (!isAutoShortFriday && onlyWorkdays && !isActiveDay) continue;
       if (entryType === "za" && requiredMinutes <= 0) continue;
+
       rows.push({
         employee: targetEmployee,
         date: day,
         requiredMinutes,
-        startMin: workDay?.active ? hmToMinutes(workDay.start) : 7 * 60,
+        startMin: workDay?.active ? hmToMinutes(workDay.start) : 0,
         weekType: getBuakWeekType(day),
         holidayName: getHolidayName(day),
+        autoShortFriday: isAutoShortFriday,
       });
     }
     return rows;
@@ -394,12 +425,16 @@ export default function VacationEntry({ currentUser = null } = {}) {
     try {
       setSaving(true);
 
+      const previewDates = preview.map((item) => item.date).sort();
+      const existingFrom = previewDates[0] || fromDate;
+      const existingTo = previewDates[previewDates.length - 1] || toDate;
+
       const { data: existing, error: existingError } = await supabase
         .from("time_entries")
         .select("id, employee_id, work_date, note, za_hours")
         .eq("employee_id", targetEmployee.id)
-        .gte("work_date", fromDate)
-        .lte("work_date", toDate);
+        .gte("work_date", existingFrom)
+        .lte("work_date", existingTo);
       if (existingError) throw existingError;
 
       const existingMap = new Map();
@@ -629,11 +664,13 @@ export default function VacationEntry({ currentUser = null } = {}) {
                     <td><span className={`vac-pill ${row.weekType === "kurz" ? "short" : "long"}`}>{row.weekType === "kurz" ? "Kurzwoche" : "Langwoche"}</span></td>
                     <td>{fmtHours(row.requiredMinutes / 60)}</td>
                     <td>
-                      {row.holidayName
-                        ? `Feiertag: ${row.holidayName}`
-                        : entryType === "za"
-                          ? `[Zeitausgleich] ${fmtHours(row.requiredMinutes / 60)} werden vom ZA-Konto abgezogen`
-                          : `[Urlaub] ganzer Arbeitstag / 0,00 h Arbeitszeit`}
+                      {row.autoShortFriday
+                        ? "[Urlaub] kurzer Freitag automatisch mit eingetragen / 0,00 h Arbeitszeit"
+                        : row.holidayName
+                          ? `Feiertag: ${row.holidayName}`
+                          : entryType === "za"
+                            ? `[Zeitausgleich] ${fmtHours(row.requiredMinutes / 60)} werden vom ZA-Konto abgezogen`
+                            : `[Urlaub] ganzer Arbeitstag / 0,00 h Arbeitszeit`}
                     </td>
                   </tr>
                 ))
