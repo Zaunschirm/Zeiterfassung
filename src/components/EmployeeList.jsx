@@ -95,6 +95,12 @@ function sortByDateDesc(a, b) {
   return String(b.adjustment_date || "").localeCompare(String(a.adjustment_date || ""));
 }
 
+function isOnOrAfterStartDate(dateValue, startDate) {
+  if (!startDate) return true;
+  if (!dateValue) return true;
+  return String(dateValue).slice(0, 10) >= String(startDate).slice(0, 10);
+}
+
 export default function EmployeeList() {
   const [rows, setRows] = useState([]);
   const [entries, setEntries] = useState([]);
@@ -111,6 +117,7 @@ export default function EmployeeList() {
   const [showInDailyCheck, setShowInDailyCheck] = useState(true);
   const [workTimeModel, setWorkTimeModel] = useState("buak");
   const [workTimeSettings, setWorkTimeSettings] = useState(() => normalizeWorkTimeSettings(DEFAULT_OFFICE_WORK_TIME_SETTINGS));
+  const [zaStartDate, setZaStartDate] = useState("");
   const [saving, setSaving] = useState(false);
   const [adjustEmployeeId, setAdjustEmployeeId] = useState("");
   const [adjustHours, setAdjustHours] = useState("");
@@ -171,6 +178,7 @@ export default function EmployeeList() {
       const summary = map.get(day.employeeId);
       if (!summary) continue;
       const emp = summary.employee;
+      if (!isOnOrAfterStartDate(day.date, emp.za_start_date)) continue;
       const soll = Number(getEmployeeSollHoursForDay(emp, day.date)) || 0;
       const zaFallback = day.hasZa && day.usedZa <= 0 ? soll : day.usedZa;
 
@@ -197,6 +205,7 @@ export default function EmployeeList() {
       const empId = String(adj.employee_id || "");
       const summary = map.get(empId);
       if (!summary) continue;
+      if (!isOnOrAfterStartDate(adj.adjustment_date, summary.employee?.za_start_date)) continue;
       summary.corrections += parseHours(adj.hours);
     }
 
@@ -447,6 +456,7 @@ export default function EmployeeList() {
     setShowInDailyCheck(row.show_in_daily_check !== false);
     setWorkTimeModel(nextModel);
     setWorkTimeSettings(normalizeWorkTimeSettings(row.work_time_settings, nextModel));
+    setZaStartDate(row.za_start_date || "");
   }
 
   function clearForm() {
@@ -458,6 +468,7 @@ export default function EmployeeList() {
     setShowInDailyCheck(true);
     setWorkTimeModel("buak");
     setWorkTimeSettings(normalizeWorkTimeSettings(DEFAULT_OFFICE_WORK_TIME_SETTINGS, "verwaltung"));
+    setZaStartDate("");
   }
 
   function updateWorkTimeDay(day, patch) {
@@ -502,6 +513,7 @@ export default function EmployeeList() {
         show_in_daily_check: role === "buchhaltung" ? false : showInDailyCheck,
         work_time_model: role === "buchhaltung" && workTimeModel === "buak" ? "verwaltung" : workTimeModel,
         work_time_settings: workTimeModel === "buak" ? null : workTimeSettings,
+        za_start_date: zaStartDate || null,
       };
 
       if (editId) {
@@ -594,6 +606,19 @@ export default function EmployeeList() {
             </select>
             <div className="help" style={{ marginTop: 4 }}>
               BUAK bleibt wie bisher. Verwaltung/Individuell verwendet fixe Start-, Pausen- und Endzeiten.
+            </div>
+          </div>
+
+          <div>
+            <label className="hbz-label">ZA-Berechnung ab</label>
+            <input
+              type="date"
+              className="hbz-input"
+              value={zaStartDate}
+              onChange={(e) => setZaStartDate(e.target.value)}
+            />
+            <div className="help" style={{ marginTop: 4 }}>
+              Leere Eingabe = alle vorhandenen Einträge rechnen.
             </div>
           </div>
 
@@ -798,6 +823,7 @@ export default function EmployeeList() {
             <thead>
               <tr>
                 <th>Mitarbeiter</th>
+                <th>Berechnung ab</th>
                 <th className="num">Arbeitsstunden</th>
                 <th className="num">Soll</th>
                 <th className="num">ZA genommen</th>
@@ -812,6 +838,7 @@ export default function EmployeeList() {
                 return (
                   <tr key={`za-${r.id}`} style={{ opacity: r.disabled ? 0.5 : 1 }}>
                     <td>{r.name}</td>
+                    <td>{r.za_start_date || "—"}</td>
                     <td className="num">{formatHours(balance?.worked || 0)}</td>
                     <td className="num">{formatHours(balance?.soll || 0)}</td>
                     <td className="num">{formatHours(-(balance?.usedZa || 0))}</td>
@@ -861,6 +888,7 @@ export default function EmployeeList() {
                   <th>Code</th>
                   <th>Rolle</th>
                   <th>Arbeitszeitmodell</th>
+                  <th>ZA ab</th>
                   <th>Rechte</th>
                   <th>Status</th>
                   <th>Tageskontrolle</th>
@@ -870,7 +898,7 @@ export default function EmployeeList() {
               <tbody>
                 {rows.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="employee-empty">
+                    <td colSpan={9} className="employee-empty">
                       Keine Mitarbeiter gefunden.
                     </td>
                   </tr>
@@ -888,6 +916,7 @@ export default function EmployeeList() {
                     <td>{r.code}</td>
                     <td>{roleLabel(r.role)}</td>
                     <td>{WORK_TIME_MODEL_OPTIONS.find((m) => m.value === (r.work_time_model || (String(r.role || "").toLowerCase() === "buchhaltung" ? "verwaltung" : "buak")))?.label || "BUAK / Zimmerer"}</td>
+                    <td>{r.za_start_date || "—"}</td>
                     <td style={{ minWidth: 240 }}>{permissionSummary(r.permissions)}</td>
                     <td>
                       <span
