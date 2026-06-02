@@ -269,6 +269,19 @@ function isAbsenceEntry(row, type) {
 const logSbError = (prefix, error) =>
   console.error(prefix, error?.message || error);
 
+
+function hasTimeOverlap(existingRow, nextStartMin, nextEndMin) {
+  const existingStart = Number(existingRow?.start_min);
+  const existingEnd = Number(existingRow?.end_min);
+  if (!Number.isFinite(existingStart) || !Number.isFinite(existingEnd)) return false;
+  // Direkt anschließende Zeiten sind erlaubt. Überschneidung wird blockiert.
+  return existingStart < nextEndMin && existingEnd > nextStartMin;
+}
+
+function employeeDisplayName(employee) {
+  return employee?.name || employee?.employee_name || employee?.code || "Mitarbeiter";
+}
+
 function startOfWeek(dateStr) {
   const d = new Date(`${dateStr}T00:00:00`);
   const day = d.getDay();
@@ -298,9 +311,11 @@ export default function DaySlider() {
   const canDeleteOwnTime = !!permissions.deleteOwnTime;
   const canDeleteAllTime = !!permissions.deleteAllTime;
   const canSelectEmployees = canWriteAllTime || canEditAllTime || canDeleteAllTime;
-  const canSeeAllEntries = canSelectEmployees;
-  const isStaff = !canSelectEmployees;
-  const canSeeAllDailyCheck = role === "admin" || role === "teamleiter";
+  // Datenschutz: Untere Tagesübersicht und Tageskontrolle nur für Admin/Teamleiter komplett anzeigen.
+  // Normale Mitarbeiter sehen dort unabhängig von Sonderrechten nur eigene Einträge.
+  const canSeeAllEntries = role === "admin" || role === "teamleiter";
+  const isStaff = !canSeeAllEntries;
+  const canSeeAllDailyCheck = canSeeAllEntries;
   const isManager = canSelectEmployees;
 
   const [date, setDate] = useState(() =>
@@ -789,11 +804,15 @@ export default function DaySlider() {
         .order("employee_name", { ascending: true })
         .order("start_min", { ascending: true });
 
-      // Wichtig: Admin/Teamleiter sehen in der unteren Tagesübersicht immer ALLE Einträge
-      // des ausgewählten Tages – unabhängig davon, welche Mitarbeiter oben zum Speichern
-      // ausgewählt sind. Die Mitarbeiter-Auswahl steuert nur, für wen neu gespeichert wird.
-      if (isStaff && employeeRow?.id) {
-        query = query.eq("employee_id", employeeRow.id);
+      // Datenschutz: Normale Mitarbeiter sehen in der unteren Tagesübersicht nur eigene Einträge.
+      // Admin/Teamleiter sehen alle Einträge des Tages.
+      if (!canSeeAllEntries) {
+        const ownId = employeeRow?.id || employees.find((e) => e.code === session?.code)?.id || null;
+        if (!ownId) {
+          setEntries([]);
+          return;
+        }
+        query = query.eq("employee_id", ownId);
       }
 
       const { data, error } = await query;
@@ -1108,10 +1127,40 @@ export default function DaySlider() {
           alert("Bitte mindestens einen Mitarbeiter auswählen.");
           return;
         }
-        const rows = chosen.map((e) => ({ ...base, employee_id: e.id }));
-        const { error } = await supabase.from("time_entries").insert(rows);
-        if (error) throw error;
-        alert(`Gespeichert für ${rows.length} Mitarbeiter.`);
+
+        const chosenIds = chosen.map((e) => e.id).filter(Boolean);
+        const { data: existingRows, error: overlapError } = await supabase
+          .from("time_entries")
+          .select("id, employee_id, start_min, end_min")
+          .eq("work_date", date)
+          .in("employee_id", chosenIds);
+        if (overlapError) throw overlapError;
+
+        const conflictingIds = new Set(
+          (existingRows || [])
+            .filter((row) => hasTimeOverlap(row, fromMin, toMin))
+            .map((row) => String(row.employee_id))
+        );
+
+        const allowed = chosen.filter((e) => !conflictingIds.has(String(e.id)));
+        const blocked = chosen.filter((e) => conflictingIds.has(String(e.id)));
+
+        if (allowed.length > 0) {
+          const rows = allowed.map((e) => ({ ...base, employee_id: e.id }));
+          const { error } = await supabase.from("time_entries").insert(rows);
+          if (error) throw error;
+        }
+
+        if (blocked.length > 0) {
+          const blockedNames = blocked.map(employeeDisplayName).join(", ");
+          alert(
+            allowed.length > 0
+              ? `Gespeichert für ${allowed.length} Mitarbeiter. Nicht gespeichert für: ${blockedNames}. Für diesen Zeitraum ist bereits ein Zeiteintrag vorhanden.`
+              : `Nicht gespeichert. Für diesen Zeitraum ist bereits ein Zeiteintrag vorhanden bei: ${blockedNames}.`
+          );
+        } else {
+          alert(`Gespeichert für ${allowed.length} Mitarbeiter.`);
+        }
       } else {
         if (!canWriteOwnTime) {
           alert("Du hast keine Berechtigung zum Schreiben von Stunden.");
@@ -1125,6 +1174,23 @@ export default function DaySlider() {
           alert("Nicht erlaubt: Mitarbeiter dürfen nur für sich buchen.");
           return;
         }
+
+        const { data: existingRows, error: overlapError } = await supabase
+          .from("time_entries")
+          .select("id, employee_id, start_min, end_min")
+          .eq("work_date", date)
+          .eq("employee_id", employeeRow.id);
+        if (overlapError) throw overlapError;
+
+        const hasConflict = (existingRows || []).some((row) =>
+          hasTimeOverlap(row, fromMin, toMin)
+        );
+
+        if (hasConflict) {
+          alert("Für diesen Zeitraum ist bereits ein Zeiteintrag vorhanden. Bitte Zeitraum ändern.");
+          return;
+        }
+
         const { error } = await supabase
           .from("time_entries")
           .insert({ ...base, employee_id: employeeRow.id });
