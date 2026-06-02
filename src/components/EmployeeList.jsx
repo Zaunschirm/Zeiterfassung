@@ -101,6 +101,37 @@ function isOnOrAfterStartDate(dateValue, startDate) {
   return String(dateValue).slice(0, 10) >= String(startDate).slice(0, 10);
 }
 
+function dateOnly(value) {
+  if (!value) return "";
+  return String(value).slice(0, 10);
+}
+
+function addDays(dateString, days) {
+  const d = new Date(`${dateString}T00:00:00`);
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+function getTodayDateString() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function minDate(a, b) {
+  if (!a) return b || "";
+  if (!b) return a || "";
+  return a <= b ? a : b;
+}
+
+function maxDate(a, b) {
+  if (!a) return b || "";
+  if (!b) return a || "";
+  return a >= b ? a : b;
+}
+
+function isZaAccountEnabled(emp) {
+  return emp?.include_in_za_account !== false;
+}
+
 export default function EmployeeList() {
   const [rows, setRows] = useState([]);
   const [entries, setEntries] = useState([]);
@@ -118,6 +149,7 @@ export default function EmployeeList() {
   const [workTimeModel, setWorkTimeModel] = useState("buak");
   const [workTimeSettings, setWorkTimeSettings] = useState(() => normalizeWorkTimeSettings(DEFAULT_OFFICE_WORK_TIME_SETTINGS));
   const [zaStartDate, setZaStartDate] = useState("");
+  const [includeInZaAccount, setIncludeInZaAccount] = useState(true);
   const [saving, setSaving] = useState(false);
   const [adjustEmployeeId, setAdjustEmployeeId] = useState("");
   const [adjustHours, setAdjustHours] = useState("");
@@ -143,18 +175,31 @@ export default function EmployeeList() {
         usedZa: 0,
         corrections: 0,
         balance: 0,
+        included: isZaAccountEnabled(emp),
+        startDate: emp.za_start_date || "",
+        endDate: "",
       });
     }
 
     const dayMap = new Map();
+    const boundsByEmployee = new Map();
+
     for (const row of entries || []) {
       const empId = String(row.employee_id || "");
       if (!empId) continue;
-      const key = `${empId}__${row.work_date}`;
+      const date = dateOnly(row.work_date);
+      if (!date) continue;
+
+      const bounds = boundsByEmployee.get(empId) || { first: "", last: "" };
+      bounds.first = minDate(bounds.first, date);
+      bounds.last = maxDate(bounds.last, date);
+      boundsByEmployee.set(empId, bounds);
+
+      const key = `${empId}__${date}`;
       if (!dayMap.has(key)) {
         dayMap.set(key, {
           employeeId: empId,
-          date: row.work_date,
+          date,
           worked: 0,
           usedZa: 0,
           hasZa: false,
@@ -174,43 +219,73 @@ export default function EmployeeList() {
       }
     }
 
-    for (const day of dayMap.values()) {
-      const summary = map.get(day.employeeId);
-      if (!summary) continue;
+    const today = getTodayDateString();
+
+    for (const summary of map.values()) {
       const emp = summary.employee;
-      if (!isOnOrAfterStartDate(day.date, emp.za_start_date)) continue;
-      const soll = Number(getEmployeeSollHoursForDay(emp, day.date)) || 0;
-      const zaFallback = day.hasZa && day.usedZa <= 0 ? soll : day.usedZa;
+      if (!summary.included) continue;
 
-      summary.worked += day.worked;
-      summary.usedZa += zaFallback;
+      const bounds = boundsByEmployee.get(String(emp.id)) || { first: "", last: "" };
+      const startDate = emp.za_start_date || bounds.first;
+      if (!startDate) continue;
 
-      let dailyChange = 0;
-      if (day.hasPaidAbsence && !day.hasZa && day.worked <= 0) {
-        dailyChange = 0;
-      } else if (day.hasZa && day.worked <= 0) {
-        dailyChange = -zaFallback;
-      } else if (day.hasZa) {
-        dailyChange = day.worked - soll - zaFallback;
+      // Aktive Mitarbeiter werden bis heute gerechnet. Deaktivierte nur bis zum letzten vorhandenen Eintrag,
+      // damit alte Mitarbeiter nicht jeden Tag weiter Minus aufbauen.
+      const endDate = emp.disabled ? (bounds.last || today) : today;
+      summary.startDate = startDate;
+      summary.endDate = endDate;
+
+      let date = startDate;
+      let guard = 0;
+      while (date && date <= endDate && guard < 5000) {
+        const key = `${String(emp.id)}__${date}`;
+        const day = dayMap.get(key) || {
+          employeeId: String(emp.id),
+          date,
+          worked: 0,
+          usedZa: 0,
+          hasZa: false,
+          hasPaidAbsence: false,
+          rows: [],
+        };
+
+        const soll = Number(getEmployeeSollHoursForDay(emp, date)) || 0;
+        const zaFallback = day.hasZa && day.usedZa <= 0 ? soll : day.usedZa;
+
+        summary.worked += day.worked;
+        summary.usedZa += zaFallback;
         summary.soll += soll;
-      } else {
-        dailyChange = day.worked - soll;
-        summary.soll += soll;
+
+        let dailyChange = 0;
+        if (day.hasPaidAbsence && !day.hasZa && day.worked <= 0) {
+          // Urlaub/Krankenstand sind im Soll enthalten, verändern aber das ZA-Konto nicht.
+          dailyChange = 0;
+        } else if (day.hasZa && day.worked <= 0) {
+          // Ganzer Zeitausgleichstag: Soll nicht zusätzlich als Minus rechnen, sondern ZA-Verbrauch abziehen.
+          dailyChange = -zaFallback;
+        } else if (day.hasZa) {
+          // Misch-Tag: Gearbeitetes gegen Soll rechnen und zusätzlich verbrauchten ZA abziehen.
+          dailyChange = day.worked - soll - zaFallback;
+        } else {
+          dailyChange = day.worked - soll;
+        }
+
+        summary.generated += dailyChange;
+        date = addDays(date, 1);
+        guard += 1;
       }
-
-      summary.generated += dailyChange;
     }
 
     for (const adj of overtimeAdjustments || []) {
       const empId = String(adj.employee_id || "");
       const summary = map.get(empId);
-      if (!summary) continue;
+      if (!summary || !summary.included) continue;
       if (!isOnOrAfterStartDate(adj.adjustment_date, summary.employee?.za_start_date)) continue;
       summary.corrections += parseHours(adj.hours);
     }
 
     for (const summary of map.values()) {
-      summary.balance = summary.generated + summary.corrections;
+      summary.balance = summary.included ? summary.generated + summary.corrections : 0;
     }
 
     return map;
@@ -307,6 +382,7 @@ export default function EmployeeList() {
     const nextRows = (data || []).map((row) => ({
       ...row,
       permissions: normalizePermissions(row.permissions),
+      include_in_za_account: row.include_in_za_account !== false,
     }));
     setRows(nextRows);
     await loadOvertimeData(nextRows);
@@ -433,6 +509,22 @@ export default function EmployeeList() {
     load();
   }
 
+  async function toggleZaAccount(row) {
+    const nextValue = row.include_in_za_account === false;
+
+    const { error } = await supabase
+      .from("employees")
+      .update({ include_in_za_account: nextValue })
+      .eq("id", row.id);
+
+    if (error) {
+      alert("ZA-Konto Einstellung konnte nicht geändert werden. Bitte SQL-Spalte include_in_za_account prüfen.");
+      return;
+    }
+
+    load();
+  }
+
   async function remove(row) {
     if (!confirm(`Mitarbeiter „${row.name}“ wirklich löschen?`)) return;
 
@@ -457,6 +549,7 @@ export default function EmployeeList() {
     setWorkTimeModel(nextModel);
     setWorkTimeSettings(normalizeWorkTimeSettings(row.work_time_settings, nextModel));
     setZaStartDate(row.za_start_date || "");
+    setIncludeInZaAccount(row.include_in_za_account !== false);
   }
 
   function clearForm() {
@@ -469,6 +562,7 @@ export default function EmployeeList() {
     setWorkTimeModel("buak");
     setWorkTimeSettings(normalizeWorkTimeSettings(DEFAULT_OFFICE_WORK_TIME_SETTINGS, "verwaltung"));
     setZaStartDate("");
+    setIncludeInZaAccount(true);
   }
 
   function updateWorkTimeDay(day, patch) {
@@ -514,6 +608,7 @@ export default function EmployeeList() {
         work_time_model: role === "buchhaltung" && workTimeModel === "buak" ? "verwaltung" : workTimeModel,
         work_time_settings: workTimeModel === "buak" ? null : workTimeSettings,
         za_start_date: zaStartDate || null,
+        include_in_za_account: includeInZaAccount,
       };
 
       if (editId) {
@@ -618,8 +713,23 @@ export default function EmployeeList() {
               onChange={(e) => setZaStartDate(e.target.value)}
             />
             <div className="help" style={{ marginTop: 4 }}>
-              Ab diesem Datum wird das ZA-/Überstundenkonto berechnet. Leere Eingabe = alle vorhandenen Einträge rechnen.
+              Ab diesem Datum wird das ZA-/Überstundenkonto berechnet. Leere Eingabe = ab erstem vorhandenen Eintrag.
             </div>
+          </div>
+
+          <div>
+            <label className="hbz-label">ZA-Konto</label>
+            <label className="employee-control-check" style={{ marginTop: 6 }}>
+              <input
+                type="checkbox"
+                checked={includeInZaAccount}
+                onChange={(e) => setIncludeInZaAccount(e.target.checked)}
+              />
+              <span>
+                <strong>Im ZA-Konto prüfen</strong>
+                <small>Wenn deaktiviert, wird diese Person im Überstunden-/ZA-Konto nicht berechnet.</small>
+              </span>
+            </label>
           </div>
 
           {workTimeModel !== "buak" && (
@@ -824,6 +934,7 @@ export default function EmployeeList() {
               <tr>
                 <th>Mitarbeiter</th>
                 <th>Eintrittsdatum</th>
+                <th>ZA-Konto</th>
                 <th className="num">Arbeitsstunden</th>
                 <th className="num">Soll</th>
                 <th className="num">ZA genommen</th>
@@ -835,16 +946,18 @@ export default function EmployeeList() {
             <tbody>
               {rows.map((r) => {
                 const balance = overtimeByEmployee.get(String(r.id));
+                const zaEnabled = isZaAccountEnabled(r);
                 return (
-                  <tr key={`za-${r.id}`} style={{ opacity: r.disabled ? 0.5 : 1 }}>
+                  <tr key={`za-${r.id}`} style={{ opacity: r.disabled || !zaEnabled ? 0.5 : 1 }}>
                     <td>{r.name}</td>
                     <td>{r.za_start_date || "—"}</td>
-                    <td className="num">{formatHours(balance?.worked || 0)}</td>
-                    <td className="num">{formatHours(balance?.soll || 0)}</td>
-                    <td className="num">{formatHours(-(balance?.usedZa || 0))}</td>
-                    <td className="num">{formatHours(balance?.generated || 0)}</td>
-                    <td className="num">{formatHours(balance?.corrections || 0)}</td>
-                    <td className="num"><strong>{formatHours(balance?.balance || 0)}</strong></td>
+                    <td>{zaEnabled ? "Wird geprüft" : "Nicht geprüft"}</td>
+                    <td className="num">{zaEnabled ? formatHours(balance?.worked || 0) : "—"}</td>
+                    <td className="num">{zaEnabled ? formatHours(balance?.soll || 0) : "—"}</td>
+                    <td className="num">{zaEnabled ? formatHours(-(balance?.usedZa || 0)) : "—"}</td>
+                    <td className="num">{zaEnabled ? formatHours(balance?.generated || 0) : "—"}</td>
+                    <td className="num">{zaEnabled ? formatHours(balance?.corrections || 0) : "—"}</td>
+                    <td className="num"><strong>{zaEnabled ? formatHours(balance?.balance || 0) : "—"}</strong></td>
                   </tr>
                 );
               })}
@@ -889,6 +1002,7 @@ export default function EmployeeList() {
                   <th>Rolle</th>
                   <th>Arbeitszeitmodell</th>
                   <th>Eintritt</th>
+                  <th>ZA-Konto</th>
                   <th>Rechte</th>
                   <th>Status</th>
                   <th>Tageskontrolle</th>
@@ -898,7 +1012,7 @@ export default function EmployeeList() {
               <tbody>
                 {rows.length === 0 && (
                   <tr>
-                    <td colSpan={9} className="employee-empty">
+                    <td colSpan={10} className="employee-empty">
                       Keine Mitarbeiter gefunden.
                     </td>
                   </tr>
@@ -917,6 +1031,7 @@ export default function EmployeeList() {
                     <td>{roleLabel(r.role)}</td>
                     <td>{WORK_TIME_MODEL_OPTIONS.find((m) => m.value === (r.work_time_model || (String(r.role || "").toLowerCase() === "buchhaltung" ? "verwaltung" : "buak")))?.label || "BUAK / Zimmerer"}</td>
                     <td>{r.za_start_date || "—"}</td>
+                    <td>{isZaAccountEnabled(r) ? "Wird geprüft" : "Nicht geprüft"}</td>
                     <td style={{ minWidth: 240 }}>{permissionSummary(r.permissions)}</td>
                     <td>
                       <span
@@ -955,6 +1070,14 @@ export default function EmployeeList() {
                           onClick={() => toggleActive(r)}
                         >
                           {r.disabled ? "Aktivieren" : "Deaktivieren"}
+                        </button>
+
+                        <button
+                          type="button"
+                          className="hbz-btn btn-small"
+                          onClick={() => toggleZaAccount(r)}
+                        >
+                          {isZaAccountEnabled(r) ? "ZA nicht prüfen" : "ZA prüfen"}
                         </button>
 
                         <button
