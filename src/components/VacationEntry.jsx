@@ -371,39 +371,73 @@ export default function VacationEntry({ currentUser = null } = {}) {
 
   const vacationAccount = useMemo(() => {
     if (!targetEmployee) return null;
-    const entitlement = vacationEntitlementDays(targetEmployee);
-    const used = vacationAccountRows.length;
-    const corrections = (vacationAdjustments || []).reduce((sum, row) => {
-      const n = Number(String(row?.days ?? 0).replace(",", "."));
-      return sum + (Number.isFinite(n) ? n : 0);
-    }, 0);
-    return { entitlement, used, corrections, remaining: entitlement + corrections - used };
-  }, [targetEmployee, vacationAccountRows, vacationAdjustments]);
+
+    // Wichtig: vacation_entitlement_days ist bei uns der aktuelle Urlaubsstand
+    // laut deiner Liste/BUAK, nicht ein theoretischer Jahresanspruch.
+    // Darum werden bereits vorhandene Urlaubseinträge hier nicht nochmals abgezogen.
+    const currentDays = vacationEntitlementDays(targetEmployee);
+    return { currentDays };
+  }, [targetEmployee]);
+
+  function updateEmployeeVacationInState(employeeId, nextDays) {
+    setEmployees((list) =>
+      (list || []).map((emp) =>
+        String(emp.id) === String(employeeId)
+          ? { ...emp, vacation_entitlement_days: nextDays }
+          : emp
+      )
+    );
+    setOwnEmployee((emp) =>
+      emp && String(emp.id) === String(employeeId)
+        ? { ...emp, vacation_entitlement_days: nextDays }
+        : emp
+    );
+  }
+
+  async function changeVacationCurrentDays(employee, deltaDays, auditNote = "Urlaubskorrektur") {
+    if (!employee?.id || !Number.isFinite(Number(deltaDays)) || Number(deltaDays) === 0) return;
+    const current = vacationEntitlementDays(employee);
+    const nextDays = Number((current + Number(deltaDays)).toFixed(2));
+
+    const { error: updateError } = await supabase
+      .from("employees")
+      .update({ vacation_entitlement_days: nextDays })
+      .eq("id", employee.id);
+    if (updateError) throw updateError;
+
+    // Audit/Verlauf bleibt optional erhalten, die Anzeige bleibt aber bewusst einfach.
+    try {
+      await supabase.from("vacation_adjustments").insert({
+        employee_id: String(employee.id),
+        adjustment_date: todayISO(),
+        days: Number(deltaDays),
+        note: auditNote,
+      });
+    } catch (auditError) {
+      console.warn("[VacationEntry] Urlaubskorrektur-Audit konnte nicht gespeichert werden", auditError);
+    }
+
+    updateEmployeeVacationInState(employee.id, nextDays);
+  }
 
   async function saveVacationAdjustment() {
     if (!isAdmin || !targetEmployee?.id) return;
     const days = Number(String(vacationAdjustDays).replace(",", "."));
     if (!Number.isFinite(days) || days === 0) {
-      setError("Bitte Urlaubskorrektur in Tagen eingeben, z. B. +2 oder -1.");
+      setError("Bitte Korrektur in Tagen eingeben, z. B. +2 oder -1.");
       return;
     }
     try {
       setVacationAdjustSaving(true);
       setError("");
-      const { error: insertError } = await supabase.from("vacation_adjustments").insert({
-        employee_id: String(targetEmployee.id),
-        adjustment_date: todayISO(),
-        days,
-        note: vacationAdjustNote.trim() || "Urlaubskorrektur",
-      });
-      if (insertError) throw insertError;
+      await changeVacationCurrentDays(targetEmployee, days, vacationAdjustNote.trim() || "Manuelle Urlaubskorrektur");
       setVacationAdjustDays("");
       setVacationAdjustNote("");
-      setMessage("Urlaubskorrektur gespeichert.");
+      setMessage("Urlaubsstand korrigiert.");
       await loadVacationAccount();
     } catch (e) {
       console.error("[VacationEntry] Urlaubskorrektur speichern fehlgeschlagen", e);
-      setError(e?.message || "Urlaubskorrektur konnte nicht gespeichert werden.");
+      setError(e?.message || "Urlaubsstand konnte nicht korrigiert werden.");
     } finally {
       setVacationAdjustSaving(false);
     }
@@ -723,6 +757,10 @@ export default function VacationEntry({ currentUser = null } = {}) {
       if (rowsToInsert.length > 0) {
         const { error: insertError } = await supabase.from("time_entries").insert(rowsToInsert);
         if (insertError) throw insertError;
+
+        if (entryType === "urlaub") {
+          await changeVacationCurrentDays(targetEmployee, -rowsToInsert.length, `Urlaub eingetragen: ${rowsToInsert.length} Tag${rowsToInsert.length === 1 ? "" : "e"}`);
+        }
       }
 
       setMessage(
@@ -755,6 +793,11 @@ export default function VacationEntry({ currentUser = null } = {}) {
     try {
       const { error } = await supabase.from("time_entries").delete().in("id", ids);
       if (error) throw error;
+
+      if (getEntryKind(row) === "urlaub" && emp) {
+        await changeVacationCurrentDays(emp, ids.length, `Urlaub gelöscht: ${ids.length} Tag${ids.length === 1 ? "" : "e"}`);
+      }
+
       setMessage(`${kind}-Eintrag gelöscht.`);
       await loadTimeOff();
       await loadVacationAccount();
@@ -840,31 +883,31 @@ export default function VacationEntry({ currentUser = null } = {}) {
 
       {targetEmployee && vacationAccount && (
         <section className="month-card" style={{ marginTop: 18 }}>
-          <div className="month-card-title">Urlaubskonto {vacationAccountYear}</div>
-          <p className="hint">Urlaub wird hier in Tagen geführt. Zeitausgleich bleibt ein Stundenkonto und wird in der Zeiterfassung angezeigt.</p>
-          <div className="vac-account-grid" style={{ marginTop: 10 }}>
+          <div className="month-card-title">Urlaubsstand {vacationAccountYear}</div>
+          <p className="hint">Urlaub wird hier als aktueller Reststand in Tagen geführt. Beim Eintragen von Urlaub wird der Stand automatisch reduziert.</p>
+          <div className="vac-account-grid simple" style={{ marginTop: 10 }}>
             <div className="vac-account-box"><span>Mitarbeiter</span><b>{getEmployeeLabel(targetEmployee)}</b></div>
-            <div className="vac-account-box"><span>Jahresanspruch</span><b>{fmtDays(vacationAccount.entitlement)}</b></div>
-            <div className="vac-account-box"><span>Korrekturen</span><b>{fmtDays(vacationAccount.corrections)}</b></div>
-            <div className="vac-account-box"><span>Verbraucht</span><b>{vacationAccountLoading ? "lädt…" : fmtDays(vacationAccount.used)}</b></div>
-            <div className="vac-account-box strong"><span>Resturlaub</span><b>{vacationAccountLoading ? "lädt…" : fmtDays(vacationAccount.remaining)}</b></div>
+            <div className="vac-account-box strong"><span>Urlaubsanspruch aktuell</span><b>{vacationAccountLoading ? "lädt…" : fmtDays(vacationAccount.currentDays)}</b></div>
           </div>
           {isAdmin && (
-            <div className="hbz-grid-2" style={{ marginTop: 12 }}>
-              <label className="hbz-field">
-                <span className="hbz-label">Urlaubskorrektur Tage</span>
-                <input className="hbz-input" value={vacationAdjustDays} onChange={(e) => setVacationAdjustDays(e.target.value)} placeholder="z. B. +2 oder -1" />
-              </label>
-              <label className="hbz-field">
-                <span className="hbz-label">Notiz</span>
-                <input className="hbz-input" value={vacationAdjustNote} onChange={(e) => setVacationAdjustNote(e.target.value)} placeholder="z. B. Resturlaub Vorjahr" />
-              </label>
-              <div style={{ gridColumn: "1 / -1", display: "flex", justifyContent: "flex-end" }}>
-                <button type="button" className="hbz-chip active" onClick={saveVacationAdjustment} disabled={vacationAdjustSaving}>
-                  {vacationAdjustSaving ? "Speichere…" : "Urlaubskorrektur speichern"}
-                </button>
+            <details className="vac-admin-details" style={{ marginTop: 12 }}>
+              <summary>Admin: Urlaubsstand korrigieren</summary>
+              <div className="hbz-grid-2" style={{ marginTop: 12 }}>
+                <label className="hbz-field">
+                  <span className="hbz-label">Korrektur Tage</span>
+                  <input className="hbz-input" value={vacationAdjustDays} onChange={(e) => setVacationAdjustDays(e.target.value)} placeholder="z. B. +2 oder -1" />
+                </label>
+                <label className="hbz-field">
+                  <span className="hbz-label">Notiz</span>
+                  <input className="hbz-input" value={vacationAdjustNote} onChange={(e) => setVacationAdjustNote(e.target.value)} placeholder="z. B. BUAK-Stand korrigiert" />
+                </label>
+                <div style={{ gridColumn: "1 / -1", display: "flex", justifyContent: "flex-end" }}>
+                  <button type="button" className="hbz-chip active" onClick={saveVacationAdjustment} disabled={vacationAdjustSaving}>
+                    {vacationAdjustSaving ? "Speichere…" : "Urlaubsstand korrigieren"}
+                  </button>
+                </div>
               </div>
-            </div>
+            </details>
           )}
         </section>
       )}
@@ -1096,10 +1139,13 @@ export default function VacationEntry({ currentUser = null } = {}) {
         .vac-month-line strong { color: #2f2118; font-size: 12px; line-height: 1.35; }
         .vac-empty { color: #b3a394; font-weight: 800; }
         .vac-account-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+        .vac-account-grid.simple { grid-template-columns: minmax(180px, 1fr) minmax(220px, 1.2fr); }
         .vac-account-box { border: 1px solid rgba(92, 68, 45, 0.14); border-radius: 14px; background: rgba(255,255,255,0.72); padding: 10px 12px; }
         .vac-account-box span { display: block; color: #7d6756; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .02em; }
         .vac-account-box b { display: block; margin-top: 4px; color: #2f2118; font-size: 16px; }
         .vac-account-box.strong { background: #f2fff5; border-color: #9bd3a6; }
+        .vac-admin-details { border: 1px dashed rgba(92, 68, 45, 0.22); border-radius: 12px; padding: 9px 12px; background: rgba(255,255,255,0.45); }
+        .vac-admin-details summary { cursor: pointer; color: #7d4a25; font-weight: 900; }
         @media (max-width: 720px) {
           .vac-month-day { grid-template-columns: 1fr; }
         }
