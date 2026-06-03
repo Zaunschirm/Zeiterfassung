@@ -3,6 +3,7 @@ import { supabase } from "../lib/supabase";
 import { getSession } from "../lib/session";
 import DaySlider from "./DaySlider";
 import EntryTable from "./EntryTable";
+import PushSettings from "./PushSettings";
 import {
   WEATHER_MANUAL_OPTIONS,
   fetchWeatherForBooking,
@@ -23,6 +24,13 @@ const formatTravelLabel = (m) => {
   const mm = (m || 0) % 60;
   if (hh > 0) return `${hh}:${String(mm).padStart(2, "0")} h`;
   return `${m || 0} min`;
+};
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const asUuidOrNull = (value) => {
+  const text = value == null ? "" : String(value);
+  return UUID_RE.test(text) ? text : null;
 };
 
 // Vorhandenes Pausenraster lassen wir wie gehabt – hier als Fallback:
@@ -76,6 +84,7 @@ export default function TimeTracking() {
     : hasAdminOrTeamleiterRole
       ? knownRoles.find((role) => role === "admin" || role === "teamleiter")
       : getRoleValue(currentUser);
+  const isAdmin = currentRole === "admin";
   const isAdminOrTeamleiter = currentRole === "admin" || currentRole === "teamleiter";
   const isStaff = !isAdminOrTeamleiter;
   const canSeeAllEmployees = isAdminOrTeamleiter;
@@ -467,8 +476,34 @@ export default function TimeTracking() {
 
     setSaving(true);
     try {
-      const { error } = await supabase.from("time_entries").insert(rows);
+      const { data: insertedRows, error } = await supabase
+        .from("time_entries")
+        .insert(rows)
+        .select("id, employee_id, work_date, project_id, start_min, end_min, break_min, travel_minutes, absence_type");
       if (error) throw error;
+
+      // Stilles Admin-Audit: keine Benachrichtigung, keine Mitarbeiter-Anzeige.
+      // Dient nur dazu, dass du als Admin später nachvollziehen kannst, wann ein Eintrag neu angelegt wurde.
+      const actorId = asUuidOrNull(currentUser?.id);
+      const auditRows = (insertedRows || [])
+        .filter((row) => asUuidOrNull(row?.id))
+        .map((row) => ({
+          entry_id: asUuidOrNull(row.id),
+          employee_id: asUuidOrNull(row.employee_id),
+          changed_by: actorId,
+          change_type: "create",
+          field_name: "Eintrag",
+          old_value: null,
+          new_value: `Erstellt: ${row.work_date || date}, ${toHM(row.start_min)}–${toHM(row.end_min)}, Pause ${row.break_min || 0} min, Fahrzeit ${row.travel_minutes || 0} min`,
+          source: "manual",
+        }));
+
+      if (auditRows.length) {
+        const { error: auditError } = await supabase
+          .from("time_entry_audit_log")
+          .insert(auditRows);
+        if (auditError) console.warn("[TimeTracking] Audit-Log create:", auditError);
+      }
 
       // Reset nur, was Sinn macht:
       setNote("");
@@ -1001,7 +1036,7 @@ export default function TimeTracking() {
               </div>
             )
           ) : (
-            <EntryTable date={date} />
+            <EntryTable date={date} currentUser={currentUser} isAdmin={isAdmin} />
           )}
         </div>
       </div>

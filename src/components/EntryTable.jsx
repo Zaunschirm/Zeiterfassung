@@ -12,9 +12,54 @@ const formatTemp = (value) =>
     ? `${value.toFixed(1)} °C`
     : "—";
 
-export default function EntryTable({ date }) {
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const asUuidOrNull = (value) => {
+  const text = value == null ? "" : String(value);
+  return UUID_RE.test(text) ? text : null;
+};
+
+const formatDateTimeAT = (value) => {
+  if (!value) return "—";
+  try {
+    return new Date(value).toLocaleString("de-AT", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return String(value);
+  }
+};
+
+const fieldLabel = (field) => {
+  const map = {
+    Eintrag: "Eintrag",
+    project_id: "Projekt",
+    start_min: "Start",
+    end_min: "Ende",
+    break_min: "Pause",
+    travel_minutes: "Fahrzeit",
+    travel_min: "Fahrzeit",
+    private_car_km: "Privat-PKW km",
+    crane_hours: "Kranstunden",
+    absence_type: "Abwesenheit",
+    note: "Notiz",
+    work_date: "Datum",
+    employee_id: "Mitarbeiter",
+  };
+  return map[field] || field || "—";
+};
+
+export default function EntryTable({ date, currentUser = null, isAdmin = false }) {
   const [rows, setRows] = useState([]);
   const [busy, setBusy] = useState(false);
+  const [auditOpen, setAuditOpen] = useState(false);
+  const [auditRows, setAuditRows] = useState([]);
+  const [auditBusy, setAuditBusy] = useState(false);
+  const [auditEntry, setAuditEntry] = useState(null);
 
   const me = (() => {
     try {
@@ -59,9 +104,55 @@ export default function EntryTable({ date }) {
     }
   }
 
+  async function openAuditLog(entry) {
+    if (!isAdmin || !entry?.id) return;
+    setAuditEntry(entry);
+    setAuditRows([]);
+    setAuditOpen(true);
+    setAuditBusy(true);
+
+    try {
+      const { data, error } = await supabase
+        .from("time_entry_audit_log")
+        .select("*")
+        .eq("entry_id", entry.id)
+        .order("changed_at", { ascending: false });
+      if (error) throw error;
+      setAuditRows(data || []);
+    } catch (e) {
+      console.warn("[EntryTable] audit load:", e);
+      setAuditRows([]);
+    } finally {
+      setAuditBusy(false);
+    }
+  }
+
+  async function writeDeleteAudit(entry) {
+    if (!entry?.id) return;
+
+    const auditRow = {
+      entry_id: asUuidOrNull(entry.id),
+      employee_id: asUuidOrNull(entry.employee_id),
+      changed_by: asUuidOrNull(currentUser?.id || me?.id),
+      change_type: "delete",
+      field_name: "Eintrag",
+      old_value: `Gelöscht: ${entry.work_date || date || ""}, ${toHM(entry.start_min)}–${toHM(entry.end_min)}, Pause ${entry.break_min || 0} min, Fahrzeit ${entry.travel_minutes || entry.travel_min || 0} min`,
+      new_value: null,
+      source: "manual",
+    };
+
+    if (!auditRow.entry_id) return;
+
+    const { error } = await supabase.from("time_entry_audit_log").insert([auditRow]);
+    if (error) console.warn("[EntryTable] audit delete:", error);
+  }
+
   async function remove(id) {
     if (!window.confirm("Diesen Eintrag wirklich löschen?")) return;
     try {
+      const entryToDelete = rows.find((x) => String(x.id) === String(id));
+      await writeDeleteAudit(entryToDelete);
+
       const { error } = await supabase
         .from("time_entries")
         .delete()
@@ -134,6 +225,16 @@ export default function EntryTable({ date }) {
                   <td style={{ textAlign: "center" }}>{formatTemp(r.temperature)}</td>
                   <td>{abs.clean || ""}</td>
                   <td style={{ textAlign: "right" }}>
+                    {isAdmin && (
+                      <button
+                        className="hbz-btn btn-small"
+                        onClick={() => openAuditLog(r)}
+                        style={{ marginRight: 6 }}
+                        title="Nur für Admin sichtbar"
+                      >
+                        Verlauf
+                      </button>
+                    )}
                     <button className="hbz-btn btn-small" onClick={() => remove(r.id)}>
                       Löschen
                     </button>
@@ -143,6 +244,58 @@ export default function EntryTable({ date }) {
             })}
           </tbody>
         </table>
+      )}
+
+      {isAdmin && auditOpen && (
+        <div
+          className="hbz-card tight"
+          style={{
+            marginTop: 12,
+            border: "1px solid rgba(0,0,0,0.12)",
+            background: "#fff",
+          }}
+        >
+          <div className="hbz-row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+            <div>
+              <div className="hbz-section-title" style={{ marginBottom: 2 }}>Änderungsverlauf</div>
+              <div className="help">
+                {auditEntry?.employee_name || auditEntry?.employee_id || "Mitarbeiter"} · {auditEntry?.project_name || auditEntry?.project_code || auditEntry?.project_id || "Projekt"}
+              </div>
+            </div>
+            <button type="button" className="hbz-btn btn-small" onClick={() => setAuditOpen(false)}>
+              Schließen
+            </button>
+          </div>
+
+          {auditBusy ? (
+            <div className="help" style={{ marginTop: 8 }}>Lade Verlauf…</div>
+          ) : auditRows.length === 0 ? (
+            <div className="help" style={{ marginTop: 8 }}>Für diesen Eintrag gibt es noch keinen gespeicherten Verlauf.</div>
+          ) : (
+            <table className="nice" style={{ marginTop: 8 }}>
+              <thead>
+                <tr>
+                  <th style={{ width: 150 }}>Zeit</th>
+                  <th style={{ width: 110 }}>Art</th>
+                  <th style={{ width: 140 }}>Feld</th>
+                  <th>Alt</th>
+                  <th>Neu</th>
+                </tr>
+              </thead>
+              <tbody>
+                {auditRows.map((a) => (
+                  <tr key={a.id}>
+                    <td>{formatDateTimeAT(a.changed_at)}</td>
+                    <td>{a.change_type === "create" ? "Erstellt" : a.change_type === "delete" ? "Gelöscht" : "Geändert"}</td>
+                    <td>{fieldLabel(a.field_name)}</td>
+                    <td>{a.old_value || "—"}</td>
+                    <td>{a.new_value || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
       )}
     </div>
   );
