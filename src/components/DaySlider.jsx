@@ -37,6 +37,48 @@ const formatTemp = (value) =>
 const formatPrecip = (value) =>
   typeof value === "number" && !Number.isNaN(value) ? `${value.toFixed(1)} mm` : "—";
 
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+const asUuidOrNull = (value) => {
+  const text = value == null ? "" : String(value);
+  return UUID_RE.test(text) ? text : null;
+};
+
+const formatDateTimeAT = (value) => {
+  if (!value) return "—";
+  try {
+    return new Date(value).toLocaleString("de-AT", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return String(value);
+  }
+};
+
+const auditFieldLabel = (field) => {
+  const map = {
+    Eintrag: "Eintrag",
+    project_id: "Projekt",
+    start_min: "Start",
+    end_min: "Ende",
+    break_min: "Pause",
+    travel_minutes: "Fahrzeit",
+    crane_hours: "Kran",
+    private_pkw_km: "Privat-PKW",
+    za_hours: "Zeitausgleich",
+    bad_weather: "Schlechtwetter",
+    weather_manual: "Wetter manuell",
+    weather_final: "Finales Wetter",
+    note: "Notiz",
+  };
+  return map[field] || field || "—";
+};
+
 
 const formatSignedHours = (value) => {
   const n = Number(value || 0);
@@ -289,6 +331,15 @@ export default function DaySlider() {
   const canSeeAllEntries = canSelectEmployees;
   const isStaff = !canSelectEmployees;
   const isManager = canSelectEmployees;
+  const isAdmin = role === "admin";
+
+  const [auditOpen, setAuditOpen] = useState(false);
+  const [auditRows, setAuditRows] = useState([]);
+  const [auditBusy, setAuditBusy] = useState(false);
+  const [auditEntry, setAuditEntry] = useState(null);
+  const [auditRecentOpen, setAuditRecentOpen] = useState(false);
+  const [auditRecentRows, setAuditRecentRows] = useState([]);
+  const [auditRecentBusy, setAuditRecentBusy] = useState(false);
 
   const [date, setDate] = useState(() =>
     new Date().toISOString().slice(0, 10)
@@ -1154,6 +1205,199 @@ export default function DaySlider() {
     }
   }
 
+  const getActorId = () =>
+    asUuidOrNull(currentUser?.id || employeeRow?.id || session?.id);
+
+  const getEmployeeNameById = (id) =>
+    employees.find((e) => String(e.id) === String(id))?.name ||
+    employees.find((e) => String(e.id) === String(id))?.full_name ||
+    id ||
+    "—";
+
+  const getAuditActorName = (id) => {
+    if (!id) return "—";
+    const found = employees.find((e) => String(e.id) === String(id));
+    if (found) {
+      const code = found.code ? `${found.code} · ` : "";
+      return `${code}${found.name || found.full_name || found.email || id}`;
+    }
+    if (String(currentUser?.id || "") === String(id)) return currentUser?.name || currentUser?.full_name || currentUser?.code || "Admin";
+    if (String(session?.id || "") === String(id)) return session?.name || session?.full_name || session?.code || "Admin";
+    return id;
+  };
+
+  const getProjectNameById = (id) => {
+    if (!id) return "—";
+    const p = projects.find((x) => String(x.id) === String(id));
+    if (!p) return id;
+    return p.code ? `${p.code} · ${p.name}` : p.name || id;
+  };
+
+  const auditEntrySummary = (row) => {
+    if (!row) return "—";
+    const start = row.start_min ?? row.from_min ?? 0;
+    const end = row.end_min ?? row.to_min ?? 0;
+    const travel = row.travel_minutes ?? row.travel_min ?? 0;
+    const emp = row.employee_name || getEmployeeNameById(row.employee_id);
+    const project = row.project_name || getProjectNameById(row.project_id);
+    return `${row.work_date || date || ""} · ${emp} · ${project} · ${toHM(start)}–${toHM(end)} · Pause ${row.break_min ?? 0} min · Fahrzeit ${travel} min · Kran ${Number(row.crane_hours || 0)} h · Privat-PKW ${Number(row.private_pkw_km || 0)} km · ZA ${Number(row.za_hours || 0)} h${row.note ? ` · ${row.note}` : ""}`;
+  };
+
+  const auditDisplayValue = (field, value) => {
+    if (value == null || value === "") return "—";
+    if (field === "project_id") return getProjectNameById(value);
+    if (field === "start_min" || field === "end_min") return toHM(Number(value || 0));
+    if (field === "break_min" || field === "travel_minutes") return `${Number(value || 0)} min`;
+    if (field === "crane_hours" || field === "za_hours") return `${Number(value || 0).toLocaleString("de-AT")} h`;
+    if (field === "private_pkw_km") return `${Number(value || 0).toLocaleString("de-AT")} km`;
+    if (field === "bad_weather") return value ? "Ja" : "Nein";
+    return String(value);
+  };
+
+  async function insertAuditRows(rows) {
+    const cleaned = (rows || []).filter((row) => row?.entry_id && row?.field_name);
+    if (cleaned.length === 0) return;
+
+    const { error } = await supabase.from("time_entry_audit_log").insert(cleaned);
+    if (error) console.warn("[DaySlider] audit log:", error?.message || error);
+  }
+
+  async function writeCreateAudit(savedRows) {
+    const actor = getActorId();
+    const rows = (savedRows || [])
+      .map((row) => ({
+        entry_id: asUuidOrNull(row.id),
+        employee_id: asUuidOrNull(row.employee_id),
+        changed_by: actor,
+        change_type: "create",
+        field_name: "Eintrag",
+        old_value: null,
+        new_value: auditEntrySummary(row),
+        source: "manual",
+      }))
+      .filter((row) => row.entry_id);
+
+    await insertAuditRows(rows);
+  }
+
+  async function writeUpdateAudit(oldRow, upd) {
+    if (!oldRow?.id || !upd) return;
+
+    const fields = [
+      "project_id",
+      "start_min",
+      "end_min",
+      "break_min",
+      "travel_minutes",
+      "crane_hours",
+      "private_pkw_km",
+      "za_hours",
+      "bad_weather",
+      "weather_manual",
+      "weather_final",
+      "note",
+    ];
+
+    const actor = getActorId();
+    const rows = fields
+      .map((field) => {
+        const oldRaw =
+          field === "travel_minutes"
+            ? oldRow.travel_minutes ?? oldRow.travel_min ?? 0
+            : oldRow[field];
+        const newRaw = upd[field];
+
+        const oldCompare = String(oldRaw ?? "");
+        const newCompare = String(newRaw ?? "");
+        if (oldCompare === newCompare) return null;
+
+        return {
+          entry_id: asUuidOrNull(oldRow.id),
+          employee_id: asUuidOrNull(oldRow.employee_id),
+          changed_by: actor,
+          change_type: "update",
+          field_name: field,
+          old_value: auditDisplayValue(field, oldRaw),
+          new_value: auditDisplayValue(field, newRaw),
+          source: "manual",
+        };
+      })
+      .filter(Boolean)
+      .filter((row) => row.entry_id);
+
+    await insertAuditRows(rows);
+  }
+
+  async function writeDeleteAudit(oldRow) {
+    if (!oldRow?.id) return;
+
+    await insertAuditRows([
+      {
+        entry_id: asUuidOrNull(oldRow.id),
+        employee_id: asUuidOrNull(oldRow.employee_id),
+        changed_by: getActorId(),
+        change_type: "delete",
+        field_name: "Eintrag",
+        old_value: auditEntrySummary(oldRow),
+        new_value: null,
+        source: "manual",
+      },
+    ]);
+  }
+
+  async function openAuditLog(row) {
+    if (!isAdmin || !row?.id) return;
+
+    setAuditEntry(row);
+    setAuditRows([]);
+    setAuditOpen(true);
+    setAuditBusy(true);
+
+    try {
+      const { data, error } = await supabase
+        .from("time_entry_audit_log")
+        .select("*")
+        .eq("entry_id", row.id)
+        .order("changed_at", { ascending: false });
+      if (error) throw error;
+      setAuditRows(data || []);
+    } catch (e) {
+      console.warn("[DaySlider] audit load:", e?.message || e);
+      setAuditRows([]);
+    } finally {
+      setAuditBusy(false);
+    }
+  }
+
+  async function openRecentAuditLog() {
+    if (!isAdmin) return;
+
+    setAuditRecentOpen(true);
+    setAuditRecentRows([]);
+    setAuditRecentBusy(true);
+
+    try {
+      const since = new Date();
+      since.setDate(since.getDate() - 45);
+
+      const { data, error } = await supabase
+        .from("time_entry_audit_log")
+        .select("*")
+        .gte("changed_at", since.toISOString())
+        .neq("change_type", "create")
+        .order("changed_at", { ascending: false })
+        .limit(500);
+
+      if (error) throw error;
+      setAuditRecentRows(data || []);
+    } catch (e) {
+      console.warn("[DaySlider] recent audit load:", e?.message || e);
+      setAuditRecentRows([]);
+    } finally {
+      setAuditRecentBusy(false);
+    }
+  }
+
   async function handleSave() {
     setError("");
 
@@ -1223,8 +1467,9 @@ export default function DaySlider() {
           return;
         }
         const rows = chosen.map((e) => ({ ...base, employee_id: e.id }));
-        const { error } = await supabase.from("time_entries").insert(rows);
+        const { data, error } = await supabase.from("time_entries").insert(rows).select("*");
         if (error) throw error;
+        await writeCreateAudit(data || []);
         alert(`Gespeichert für ${rows.length} Mitarbeiter.`);
       } else {
         if (!canWriteOwnTime) {
@@ -1239,10 +1484,12 @@ export default function DaySlider() {
           alert("Nicht erlaubt: Mitarbeiter dürfen nur für sich buchen.");
           return;
         }
-        const { error } = await supabase
+        const { data, error } = await supabase
           .from("time_entries")
-          .insert({ ...base, employee_id: employeeRow.id });
+          .insert({ ...base, employee_id: employeeRow.id })
+          .select("*");
         if (error) throw error;
+        await writeCreateAudit(data || []);
         alert("Gespeichert.");
       }
 
@@ -1330,6 +1577,7 @@ export default function DaySlider() {
         .update(upd)
         .eq("id", editId);
       if (error) throw error;
+      await writeUpdateAudit(targetRow, upd);
       await loadEntries();
       await loadDailyCheckEntries();
       cancelEdit();
@@ -1344,6 +1592,7 @@ export default function DaySlider() {
     if (!canDeleteEntry(targetRow)) return;
     if (!window.confirm("Eintrag wirklich löschen?")) return;
     try {
+      await writeDeleteAudit(targetRow);
       const { error } = await supabase
         .from("time_entries")
         .delete()
@@ -2105,6 +2354,16 @@ onClick={applyUrlaubDefaults}
               {loading ? "Lade Einträge…" : "Tagesübersicht"}
             </div>
           </div>
+          {isAdmin ? (
+            <button
+              type="button"
+              className="hbz-btn btn-small"
+              onClick={openRecentAuditLog}
+              title="Nur für Admin sichtbar"
+            >
+              Änderungen letzte 45 Tage
+            </button>
+          ) : null}
         </div>
 
         {entries.length === 0 ? (
@@ -2162,8 +2421,18 @@ onClick={applyUrlaubDefaults}
                             <td>{getWeatherFinalLabel(r) || "—"}</td>
                             <td>{r.note || ""}</td>
                             <td className="num">
-                              {canEditEntry(r) || canDeleteEntry(r) ? (
+                              {isAdmin || canEditEntry(r) || canDeleteEntry(r) ? (
                                 <div className="month-action-group">
+                                  {isAdmin ? (
+                                    <button
+                                      className="hbz-btn btn-small"
+                                      type="button"
+                                      onClick={() => openAuditLog(r)}
+                                      title="Nur für Admin sichtbar"
+                                    >
+                                      Verlauf
+                                    </button>
+                                  ) : null}
                                   {canEditEntry(r) ? (
                                     <button
                                       className="hbz-btn btn-small"
@@ -2464,8 +2733,18 @@ onClick={applyUrlaubDefaults}
                         )}
 
                         <div className="month-card-actions">
-                          {canEditEntry(r) || canDeleteEntry(r) ? (
+                          {isAdmin || canEditEntry(r) || canDeleteEntry(r) ? (
                             <>
+                              {isAdmin ? (
+                                <button
+                                  className="hbz-btn btn-small"
+                                  type="button"
+                                  onClick={() => openAuditLog(r)}
+                                  title="Nur für Admin sichtbar"
+                                >
+                                  Verlauf
+                                </button>
+                              ) : null}
                               {canEditEntry(r) ? (
                                 <button
                                   className="hbz-btn btn-small"
@@ -2730,6 +3009,150 @@ onClick={applyUrlaubDefaults}
               </div>
             )}
           </>
+        )}
+
+        {isAdmin && auditRecentOpen && (
+          <div
+            className="hbz-card tight"
+            style={{
+              marginTop: 12,
+              border: "1px solid rgba(0,0,0,0.12)",
+              background: "#fff",
+            }}
+          >
+            <div
+              className="hbz-row"
+              style={{ justifyContent: "space-between", alignItems: "center" }}
+            >
+              <div>
+                <div className="hbz-section-title" style={{ marginBottom: 2 }}>
+                  Änderungen der letzten 45 Tage
+                </div>
+                <div className="help">
+                  Nur für Admin sichtbar · erstellt keine Benachrichtigung
+                </div>
+              </div>
+              <button
+                type="button"
+                className="hbz-btn btn-small"
+                onClick={() => setAuditRecentOpen(false)}
+              >
+                Schließen
+              </button>
+            </div>
+
+            {auditRecentBusy ? (
+              <div className="help" style={{ marginTop: 8 }}>Lade Änderungen…</div>
+            ) : auditRecentRows.length === 0 ? (
+              <div className="help" style={{ marginTop: 8 }}>
+                In den letzten 45 Tagen wurden keine Änderungen gespeichert.
+              </div>
+            ) : (
+              <div className="month-table-wrap" style={{ marginTop: 8 }}>
+                <table className="month-table">
+                  <thead>
+                    <tr>
+                      <th>Zeit</th>
+                      <th>Wer</th>
+                      <th>Mitarbeiter</th>
+                      <th>Art</th>
+                      <th>Feld</th>
+                      <th>Alt</th>
+                      <th>Neu</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {auditRecentRows.map((a) => (
+                      <tr key={a.id}>
+                        <td>{formatDateTimeAT(a.changed_at)}</td>
+                        <td>{getAuditActorName(a.changed_by)}</td>
+                        <td>{getEmployeeNameById(a.employee_id)}</td>
+                        <td>
+                          {a.change_type === "delete"
+                            ? "Gelöscht"
+                            : "Geändert"}
+                        </td>
+                        <td>{auditFieldLabel(a.field_name)}</td>
+                        <td>{a.old_value || "—"}</td>
+                        <td>{a.new_value || "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {isAdmin && auditOpen && (
+          <div
+            className="hbz-card tight"
+            style={{
+              marginTop: 12,
+              border: "1px solid rgba(0,0,0,0.12)",
+              background: "#fff",
+            }}
+          >
+            <div
+              className="hbz-row"
+              style={{ justifyContent: "space-between", alignItems: "center" }}
+            >
+              <div>
+                <div className="hbz-section-title" style={{ marginBottom: 2 }}>
+                  Änderungsverlauf
+                </div>
+                <div className="help">
+                  {auditEntry?.employee_name || getEmployeeNameById(auditEntry?.employee_id)} · {auditEntry?.project_name || getProjectNameById(auditEntry?.project_id)}
+                </div>
+              </div>
+              <button
+                type="button"
+                className="hbz-btn btn-small"
+                onClick={() => setAuditOpen(false)}
+              >
+                Schließen
+              </button>
+            </div>
+
+            {auditBusy ? (
+              <div className="help" style={{ marginTop: 8 }}>Lade Verlauf…</div>
+            ) : auditRows.length === 0 ? (
+              <div className="help" style={{ marginTop: 8 }}>
+                Für diesen Eintrag gibt es noch keinen gespeicherten Verlauf.
+              </div>
+            ) : (
+              <div className="month-table-wrap" style={{ marginTop: 8 }}>
+                <table className="month-table">
+                  <thead>
+                    <tr>
+                      <th>Zeit</th>
+                      <th>Art</th>
+                      <th>Feld</th>
+                      <th>Alt</th>
+                      <th>Neu</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {auditRows.map((a) => (
+                      <tr key={a.id}>
+                        <td>{formatDateTimeAT(a.changed_at)}</td>
+                        <td>
+                          {a.change_type === "create"
+                            ? "Erstellt"
+                            : a.change_type === "delete"
+                            ? "Gelöscht"
+                            : "Geändert"}
+                        </td>
+                        <td>{auditFieldLabel(a.field_name)}</td>
+                        <td>{a.old_value || "—"}</td>
+                        <td>{a.new_value || "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         )}
       </div>
     </div>
