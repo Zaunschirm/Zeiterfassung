@@ -284,6 +284,9 @@ export default function MonthlyOverview() {
   const [showMissingDialog, setShowMissingDialog] = useState(false);
   const [missingEntries, setMissingEntries] = useState(null);
   const [missingLoading, setMissingLoading] = useState(false);
+  const [showPayrollCheck, setShowPayrollCheck] = useState(false);
+  const [payrollCheck, setPayrollCheck] = useState(null);
+  const [payrollCheckLoading, setPayrollCheckLoading] = useState(false);
 
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
@@ -891,6 +894,173 @@ export default function MonthlyOverview() {
     } catch (err) {
       console.error("Fehlende Einträge PDF Fehler:", err);
       alert(`Fehlende Einträge PDF Fehler:\n${err?.message || err}`);
+    }
+  }
+
+
+  const getEmployeeNameById = (id) => {
+    if (!id) return "—";
+    const found = employees.find((e) => String(e.id) === String(id));
+    return found?.name || found?.code || String(id).slice(0, 8);
+  };
+
+  const getProjectNameById = (id) => {
+    if (!id) return "—";
+    const found = projects.find((p) => String(p.id) === String(id));
+    return found?.code ? `${found.code} · ${found.name}` : found?.name || String(id).slice(0, 8);
+  };
+
+  const formatAuditValueForCheck = (field, value) => {
+    if (value == null || value === "") return "—";
+    if (["start_min", "end_min", "from_min", "to_min"].includes(field)) return toHM(Number(value) || 0);
+    if (["break_min", "travel_minutes", "travel_min"].includes(field)) return `${Number(value) || 0} min`;
+    if (["private_pkw_km", "private_car_km"].includes(field)) return `${parsePrivatePkwKm(value).toLocaleString("de-AT")} km`;
+    if (["za_hours"].includes(field)) return formatZaHours(value);
+    if (field === "project_id") return getProjectNameById(value);
+    if (field === "employee_id" || field === "changed_by") return getEmployeeNameById(value);
+    return String(value);
+  };
+
+  async function buildPayrollCheck(range) {
+    const employeesForCheck = employees
+      .filter(isActiveEmployee)
+      .sort((a, b) => (a.name || a.code || "").localeCompare(b.name || b.code || ""));
+
+    const employeeIds = employeesForCheck.map((e) => e.id).filter(Boolean);
+    const missingResult = await getMissingEntriesForRange(range);
+
+    let rawRows = [];
+    if (employeeIds.length) {
+      const { data, error } = await supabase
+        .from("v_time_entries_expanded")
+        .select("*")
+        .gte("work_date", range.from)
+        .lte("work_date", range.to)
+        .in("employee_id", employeeIds);
+      if (error) throw error;
+      rawRows = data || [];
+    }
+
+    const dayMap = {};
+    rawRows.forEach((r) => {
+      const key = `${r.employee_id}||${r.work_date}`;
+      if (!dayMap[key]) {
+        dayMap[key] = {
+          employee_id: r.employee_id,
+          employee_name: r.employee_name || getEmployeeNameById(r.employee_id),
+          work_date: r.work_date,
+          minutes: 0,
+          travel: 0,
+          break_min: 0,
+          notes: [],
+          hasWork: false,
+          hasVacation: false,
+          hasSick: false,
+          hasTimeComp: false,
+          privatePkwKm: 0,
+        };
+      }
+      const d = dayMap[key];
+      const note = (r.note || "").toString();
+      const vacation = isVacationRow(r);
+      const sick = isSickRow(r);
+      const timeComp = isTimeCompRow(r);
+      const mins = entryMinutes(r);
+      const pureWork = getPureWorkMinutes(r);
+      d.minutes += mins;
+      d.travel += getTravel(r) || 0;
+      d.break_min += Number(r.break_min || 0);
+      d.privatePkwKm += parsePrivatePkwKm(r.private_pkw_km);
+      if (note) d.notes.push(note);
+      if (vacation) d.hasVacation = true;
+      if (sick) d.hasSick = true;
+      if (timeComp) d.hasTimeComp = true;
+      if (!vacation && !sick && !timeComp && pureWork > 0) d.hasWork = true;
+    });
+
+    const warnings = [];
+    Object.values(dayMap).forEach((d) => {
+      const hours = h2(d.minutes);
+      const pureWorkHours = h2(Math.max(d.minutes - d.travel, 0));
+      if (hours > 10) {
+        warnings.push({ type: "Hohe Stunden", employee: d.employee_name, date: d.work_date, text: `${hours.toFixed(2)} h an einem Tag` });
+      }
+      if (pureWorkHours >= 6 && d.break_min <= 0) {
+        warnings.push({ type: "Pause fehlt", employee: d.employee_name, date: d.work_date, text: `${pureWorkHours.toFixed(2)} h Arbeitszeit ohne Pause` });
+      }
+      if (d.travel > 150) {
+        warnings.push({ type: "Fahrzeit hoch", employee: d.employee_name, date: d.work_date, text: `${d.travel} min Fahrzeit` });
+      }
+      if (d.privatePkwKm > 50) {
+        warnings.push({ type: "Privat-PKW hoch", employee: d.employee_name, date: d.work_date, text: `${d.privatePkwKm.toLocaleString("de-AT")} km` });
+      }
+      if (d.hasWork && (d.hasVacation || d.hasSick || d.hasTimeComp)) {
+        warnings.push({ type: "Misch-Eintrag", employee: d.employee_name, date: d.work_date, text: "Arbeitszeit und Abwesenheit am selben Tag" });
+      }
+    });
+
+    const special = {
+      vacation: rawRows.filter(isVacationRow).length,
+      sick: rawRows.filter(isSickRow).length,
+      timeComp: rawRows.filter(isTimeCompRow).length,
+      privatePkw: rawRows.filter((r) => parsePrivatePkwKm(r.private_pkw_km) > 0).length,
+      travel: rawRows.filter((r) => (getTravel(r) || 0) > 0).length,
+    };
+
+    let auditRows = [];
+    try {
+      const since = new Date();
+      since.setDate(since.getDate() - 45);
+      let q = supabase
+        .from("time_entry_audit_log")
+        .select("*")
+        .gte("changed_at", since.toISOString())
+        .order("changed_at", { ascending: false })
+        .limit(250);
+      if (employeeIds.length) q = q.in("employee_id", employeeIds);
+      const { data, error } = await q;
+      if (!error) auditRows = data || [];
+    } catch (err) {
+      console.warn("Audit-Log für Lohncheck konnte nicht geladen werden:", err);
+    }
+
+    const relevantAuditRows = auditRows.filter((a) => String(a.change_type || "").toLowerCase() !== "create");
+
+    const missingCount = (missingResult.missing || []).reduce((sum, item) => sum + (item.dates?.length || 0), 0);
+    const statusOk = missingCount === 0 && warnings.length === 0 && relevantAuditRows.length === 0;
+
+    return {
+      label: range.label,
+      from: range.from,
+      to: range.to,
+      checkedAt: new Date().toISOString(),
+      employeesCount: employeesForCheck.length,
+      entriesCount: rawRows.length,
+      missingResult,
+      missingCount,
+      warnings,
+      special,
+      auditRows: relevantAuditRows,
+      statusOk,
+    };
+  }
+
+  async function runPayrollCheck() {
+    if (!isAdmin) return;
+    try {
+      setPayrollCheckLoading(true);
+      setShowPayrollCheck(true);
+      const result = await buildPayrollCheck(activeRange);
+      setPayrollCheck(result);
+    } catch (err) {
+      console.error("Lohncheck Fehler:", err);
+      setPayrollCheck({
+        label: activeRange?.label || "Zeitraum",
+        error: err?.message || String(err),
+        statusOk: false,
+      });
+    } finally {
+      setPayrollCheckLoading(false);
     }
   }
 
@@ -1615,6 +1785,11 @@ export default function MonthlyOverview() {
             <button onClick={checkMissingEntriesLastMonth} className="hbz-btn">
               Fehlende Einträge letzter Monat
             </button>
+            {isAdmin && (
+              <button onClick={runPayrollCheck} className="hbz-btn hbz-btn-primary">
+                Lohncheck
+              </button>
+            )}
             <button onClick={exportLohnverrechnungPDF} className="hbz-btn hbz-btn-primary">
               Lohnverrechnung
             </button>
@@ -1791,6 +1966,150 @@ export default function MonthlyOverview() {
           ))}
         </div>
       </div>
+
+      {showPayrollCheck && isAdmin && (
+        <div className="hbz-card" style={{ marginTop: 16, marginBottom: 16 }}>
+          <div className="month-main-header">
+            <div>
+              <div className="month-card-title">Lohncheck</div>
+              <div className="month-main-subtitle">
+                {payrollCheckLoading
+                  ? "Prüfe Daten…"
+                  : payrollCheck?.error
+                    ? "Fehler beim Prüfen"
+                    : `Prüfung für ${payrollCheck?.label || rangeLabel}`}
+              </div>
+            </div>
+            <div className="month-action-group">
+              <button type="button" className="hbz-btn btn-small" onClick={runPayrollCheck} disabled={payrollCheckLoading}>
+                Neu prüfen
+              </button>
+              <button type="button" className="hbz-btn btn-small" onClick={() => setShowPayrollCheck(false)}>
+                Schließen
+              </button>
+            </div>
+          </div>
+
+          {payrollCheckLoading && <div className="month-empty-state">Lohncheck läuft…</div>}
+
+          {!payrollCheckLoading && payrollCheck?.error && (
+            <div className="month-empty-state">{payrollCheck.error}</div>
+          )}
+
+          {!payrollCheckLoading && payrollCheck && !payrollCheck.error && (
+            <>
+              <div className="month-summary-grid" style={{ marginTop: 12 }}>
+                <div className="month-summary-card">
+                  <div className="month-summary-label">Status</div>
+                  <div className="month-summary-value">{payrollCheck.statusOk ? "Bereit" : "Prüfen"}</div>
+                </div>
+                <div className="month-summary-card">
+                  <div className="month-summary-label">Fehlende Tage</div>
+                  <div className="month-summary-value">{payrollCheck.missingCount || 0}</div>
+                </div>
+                <div className="month-summary-card">
+                  <div className="month-summary-label">Auffälligkeiten</div>
+                  <div className="month-summary-value">{payrollCheck.warnings?.length || 0}</div>
+                </div>
+                <div className="month-summary-card">
+                  <div className="month-summary-label">Änderungen 45 Tage</div>
+                  <div className="month-summary-value">{payrollCheck.auditRows?.length || 0}</div>
+                </div>
+              </div>
+
+              <div style={{ marginTop: 12, fontSize: 12 }}>
+                <b>Zusammenfassung:</b> {payrollCheck.entriesCount || 0} Einträge, {payrollCheck.employeesCount || 0} aktive Mitarbeiter, Urlaub {payrollCheck.special?.vacation || 0}, Krank {payrollCheck.special?.sick || 0}, ZA {payrollCheck.special?.timeComp || 0}, Privat-PKW {payrollCheck.special?.privatePkw || 0}, Fahrzeit {payrollCheck.special?.travel || 0}.
+              </div>
+
+              {(payrollCheck.missingResult?.missing || []).length > 0 && (
+                <div className="month-table-wrap" style={{ marginTop: 14 }}>
+                  <div className="month-card-title">Fehlende Einträge</div>
+                  <table className="month-table">
+                    <thead>
+                      <tr>
+                        <th>Mitarbeiter</th>
+                        <th className="num">Tage</th>
+                        <th>Datum</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {payrollCheck.missingResult.missing.map((item) => (
+                        <tr key={`missing-${item.employee}`}>
+                          <td>{item.employee}</td>
+                          <td className="num">{item.dates?.length || 0}</td>
+                          <td>{(item.dates || []).map(formatDateAT).join(", ")}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {(payrollCheck.warnings || []).length > 0 && (
+                <div className="month-table-wrap" style={{ marginTop: 14 }}>
+                  <div className="month-card-title">Auffälligkeiten</div>
+                  <table className="month-table">
+                    <thead>
+                      <tr>
+                        <th>Art</th>
+                        <th>Mitarbeiter</th>
+                        <th>Datum</th>
+                        <th>Hinweis</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {payrollCheck.warnings.map((w, idx) => (
+                        <tr key={`warn-${idx}`}>
+                          <td>{w.type}</td>
+                          <td>{w.employee}</td>
+                          <td>{formatDateAT(w.date)}</td>
+                          <td>{w.text}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {(payrollCheck.auditRows || []).length > 0 && (
+                <div className="month-table-wrap" style={{ marginTop: 14 }}>
+                  <div className="month-card-title">Änderungen der letzten 45 Tage</div>
+                  <table className="month-table">
+                    <thead>
+                      <tr>
+                        <th>Zeitpunkt</th>
+                        <th>Mitarbeiter</th>
+                        <th>Geändert von</th>
+                        <th>Feld</th>
+                        <th>Alt</th>
+                        <th>Neu</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {payrollCheck.auditRows.map((a) => (
+                        <tr key={a.id || `${a.entry_id}-${a.changed_at}-${a.field_name}`}>
+                          <td>{formatDateTimeAT(a.changed_at)}</td>
+                          <td>{getEmployeeNameById(a.employee_id)}</td>
+                          <td>{getEmployeeNameById(a.changed_by)}</td>
+                          <td>{auditFieldLabel(a.field_name || a.change_type)}</td>
+                          <td>{formatAuditValueForCheck(a.field_name, a.old_value)}</td>
+                          <td>{formatAuditValueForCheck(a.field_name, a.new_value)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {payrollCheck.statusOk && (
+                <div className="month-empty-state" style={{ marginTop: 14 }}>
+                  Keine fehlenden Einträge, keine Auffälligkeiten und keine Änderungen der letzten 45 Tage. Der Zeitraum ist für die Lohnverrechnung bereit.
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
 
       <div className="hbz-card month-main-card">
         <div className="month-main-header">
