@@ -219,6 +219,8 @@ const isAbsenceRow = (r) => {
   return note.includes("[Urlaub]") || note.includes("[Krank]") || note.includes("[Zeitausgleich]");
 };
 
+const isPayrollCheckEmployee = () => true;
+
 const isBadWeatherRow = (r) => r?.bad_weather === true || r?.bad_weather === "true";
 const rowWorkMinutes = (r) => Math.max((r.start_min ?? r.from_min ?? 0) - 0, 0) && Math.max((r.end_min ?? r.to_min ?? 0) - (r.start_min ?? r.from_min ?? 0) - (r.break_min || 0), 0);
 const getProjectAddress = (r, projects = []) => {
@@ -287,6 +289,8 @@ export default function MonthlyOverview() {
   const [showPayrollCheck, setShowPayrollCheck] = useState(false);
   const [payrollCheck, setPayrollCheck] = useState(null);
   const [payrollCheckLoading, setPayrollCheckLoading] = useState(false);
+  const [showPayrollEmployeeDialog, setShowPayrollEmployeeDialog] = useState(false);
+  const [payrollCheckEmployeeIds, setPayrollCheckEmployeeIds] = useState([]);
 
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
@@ -310,6 +314,14 @@ export default function MonthlyOverview() {
     });
     return map;
   }, [employees]);
+
+  const payrollCandidateEmployees = useMemo(
+    () =>
+      employees
+        .filter(isActiveEmployee)
+        .sort((a, b) => (a.name || a.code || "").localeCompare(b.name || b.code || "")),
+    [employees]
+  );
 
   useEffect(() => {
     (async () => {
@@ -794,8 +806,8 @@ export default function MonthlyOverview() {
     URL.revokeObjectURL(url);
   }
 
-  async function getMissingEntriesForRange(range) {
-    const activeEmployees = employees
+  async function getMissingEntriesForRange(range, employeesOverride = null) {
+    const activeEmployees = (employeesOverride || employees)
       .filter(isActiveEmployee)
       .sort((a, b) => (a.name || a.code || "").localeCompare(b.name || b.code || ""));
 
@@ -935,13 +947,15 @@ export default function MonthlyOverview() {
     return String(value);
   };
 
-  async function buildPayrollCheck(range) {
+  async function buildPayrollCheck(range, selectedEmployeeIds = []) {
+    const selectedSet = new Set((selectedEmployeeIds || []).map((id) => String(id)));
     const employeesForCheck = employees
       .filter(isActiveEmployee)
+      .filter((emp) => selectedSet.size === 0 || selectedSet.has(String(emp.id)))
       .sort((a, b) => (a.name || a.code || "").localeCompare(b.name || b.code || ""));
 
     const employeeIds = employeesForCheck.map((e) => e.id).filter(Boolean);
-    const missingResult = await getMissingEntriesForRange(range);
+    const missingResult = await getMissingEntriesForRange(range, employeesForCheck);
 
     let rawRows = [];
     if (employeeIds.length) {
@@ -1059,12 +1073,32 @@ export default function MonthlyOverview() {
     };
   }
 
-  async function runPayrollCheck() {
+  function openPayrollCheckDialog() {
     if (!isAdmin) return;
+    setPayrollCheckEmployeeIds(payrollCandidateEmployees.map((e) => e.id).filter(Boolean));
+    setShowPayrollEmployeeDialog(true);
+  }
+
+  function togglePayrollCheckEmployee(employeeId) {
+    setPayrollCheckEmployeeIds((prev) =>
+      prev.some((id) => String(id) === String(employeeId))
+        ? prev.filter((id) => String(id) !== String(employeeId))
+        : [...prev, employeeId]
+    );
+  }
+
+  async function runPayrollCheck(employeeIdsForCheck = payrollCheckEmployeeIds) {
+    if (!isAdmin) return;
+    const cleanedIds = (employeeIdsForCheck || []).filter(Boolean);
+    if (!cleanedIds.length) {
+      alert("Bitte mindestens einen Mitarbeiter für den Lohncheck auswählen.");
+      return;
+    }
     try {
       setPayrollCheckLoading(true);
+      setShowPayrollEmployeeDialog(false);
       setShowPayrollCheck(true);
-      const result = await buildPayrollCheck(payrollCheckRange);
+      const result = await buildPayrollCheck(payrollCheckRange, cleanedIds);
       setPayrollCheck(result);
     } catch (err) {
       console.error("Lohncheck Fehler:", err);
@@ -1800,7 +1834,7 @@ export default function MonthlyOverview() {
               Fehlende Einträge letzter Monat
             </button>
             {isAdmin && (
-              <button onClick={runPayrollCheck} className="hbz-btn hbz-btn-primary">
+              <button onClick={openPayrollCheckDialog} className="hbz-btn hbz-btn-primary">
                 Lohncheck Vormonat
               </button>
             )}
@@ -1981,6 +2015,102 @@ export default function MonthlyOverview() {
         </div>
       </div>
 
+      {showPayrollEmployeeDialog && isAdmin && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.35)",
+            zIndex: 9999,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+          }}
+          onClick={() => setShowPayrollEmployeeDialog(false)}
+        >
+          <div
+            className="hbz-card"
+            style={{ width: "min(720px, 100%)", maxHeight: "85vh", overflow: "auto" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="month-main-header">
+              <div>
+                <div className="month-card-title">Lohncheck Vormonat</div>
+                <div className="month-main-subtitle">
+                  Wähle aus, welche aktiven Mitarbeiter geprüft werden sollen. Standardmäßig sind alle aktiven Mitarbeiter ausgewählt.
+                </div>
+              </div>
+              <button type="button" className="hbz-btn btn-small" onClick={() => setShowPayrollEmployeeDialog(false)}>
+                Schließen
+              </button>
+            </div>
+
+            <div className="month-action-group" style={{ marginTop: 12, marginBottom: 12 }}>
+              <button
+                type="button"
+                className="hbz-btn btn-small"
+                onClick={() => setPayrollCheckEmployeeIds(payrollCandidateEmployees.map((e) => e.id).filter(Boolean))}
+              >
+                Alle auswählen
+              </button>
+              <button
+                type="button"
+                className="hbz-btn btn-small"
+                onClick={() => setPayrollCheckEmployeeIds([])}
+              >
+                Alle abwählen
+              </button>
+            </div>
+
+            <div style={{ display: "grid", gap: 8 }}>
+              {payrollCandidateEmployees.map((emp) => {
+                const checked = payrollCheckEmployeeIds.some((id) => String(id) === String(emp.id));
+                return (
+                  <label
+                    key={emp.id || emp.code}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                      padding: "10px 12px",
+                      border: "1px solid rgba(123,74,45,0.25)",
+                      borderRadius: 12,
+                      background: checked ? "rgba(123,74,45,0.08)" : "#fff",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => togglePayrollCheckEmployee(emp.id)}
+                    />
+                    <span>
+                      <b>{emp.name || emp.code || "Mitarbeiter"}</b>
+                      {emp.role ? <span style={{ opacity: 0.7 }}> · {emp.role}</span> : null}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+
+            <div className="month-action-group" style={{ marginTop: 16, justifyContent: "space-between" }}>
+              <div style={{ fontSize: 12, opacity: 0.75 }}>
+                Ausgewählt: {payrollCheckEmployeeIds.length} von {payrollCandidateEmployees.length}
+              </div>
+              <button
+                type="button"
+                className="hbz-btn hbz-btn-primary"
+                onClick={() => runPayrollCheck(payrollCheckEmployeeIds)}
+                disabled={payrollCheckLoading || payrollCheckEmployeeIds.length === 0}
+              >
+                Lohncheck starten
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showPayrollCheck && isAdmin && (
         <div className="hbz-card" style={{ marginTop: 16, marginBottom: 16 }}>
           <div className="month-main-header">
@@ -1995,7 +2125,7 @@ export default function MonthlyOverview() {
               </div>
             </div>
             <div className="month-action-group">
-              <button type="button" className="hbz-btn btn-small" onClick={runPayrollCheck} disabled={payrollCheckLoading}>
+              <button type="button" className="hbz-btn btn-small" onClick={openPayrollCheckDialog} disabled={payrollCheckLoading}>
                 Neu prüfen
               </button>
               <button type="button" className="hbz-btn btn-small" onClick={() => setShowPayrollCheck(false)}>
@@ -2032,7 +2162,7 @@ export default function MonthlyOverview() {
               </div>
 
               <div style={{ marginTop: 12, fontSize: 12 }}>
-                <b>Zusammenfassung:</b> {payrollCheck.entriesCount || 0} Einträge, {payrollCheck.employeesCount || 0} aktive Mitarbeiter, Urlaub {payrollCheck.special?.vacation || 0}, Krank {payrollCheck.special?.sick || 0}, ZA {payrollCheck.special?.timeComp || 0}, Privat-PKW {payrollCheck.special?.privatePkw || 0}, Fahrzeit {payrollCheck.special?.travel || 0}.
+                <b>Zusammenfassung:</b> {payrollCheck.entriesCount || 0} Einträge, {payrollCheck.employeesCount || 0} geprüfte Mitarbeiter, Urlaub {payrollCheck.special?.vacation || 0}, Krank {payrollCheck.special?.sick || 0}, ZA {payrollCheck.special?.timeComp || 0}, Privat-PKW {payrollCheck.special?.privatePkw || 0}, Fahrzeit {payrollCheck.special?.travel || 0}.
               </div>
 
               {(payrollCheck.missingResult?.missing || []).length > 0 && (
