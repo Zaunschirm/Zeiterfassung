@@ -463,6 +463,20 @@ export default function MonthlyOverview() {
     [year, monthFilter, rangeFromMonth, rangeToMonth]
   );
 
+  const payrollCheckRange = useMemo(() => {
+    const d = new Date(currentYear, currentMonth - 1, 1);
+    d.setMonth(d.getMonth() - 1);
+    const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    const range = getMonthRange(ym);
+    return {
+      ...range,
+      mode: "month",
+      label: `Vormonat ${ym}`,
+      yearForBuak: range?.year || d.getFullYear(),
+      monthList: [ym],
+    };
+  }, [currentYear, currentMonth]);
+
   const rangeLabel = useMemo(() => activeRange.label, [activeRange]);
 
   function handleCurrentMonth() {
@@ -1050,12 +1064,12 @@ export default function MonthlyOverview() {
     try {
       setPayrollCheckLoading(true);
       setShowPayrollCheck(true);
-      const result = await buildPayrollCheck(activeRange);
+      const result = await buildPayrollCheck(payrollCheckRange);
       setPayrollCheck(result);
     } catch (err) {
       console.error("Lohncheck Fehler:", err);
       setPayrollCheck({
-        label: activeRange?.label || "Zeitraum",
+        label: payrollCheckRange?.label || "Vormonat",
         error: err?.message || String(err),
         statusOk: false,
       });
@@ -1787,7 +1801,7 @@ export default function MonthlyOverview() {
             </button>
             {isAdmin && (
               <button onClick={runPayrollCheck} className="hbz-btn hbz-btn-primary">
-                Lohncheck
+                Lohncheck Vormonat
               </button>
             )}
             <button onClick={exportLohnverrechnungPDF} className="hbz-btn hbz-btn-primary">
@@ -1977,7 +1991,7 @@ export default function MonthlyOverview() {
                   ? "Prüfe Daten…"
                   : payrollCheck?.error
                     ? "Fehler beim Prüfen"
-                    : `Prüfung für ${payrollCheck?.label || rangeLabel}`}
+                    : `Prüfung für ${payrollCheck?.label || payrollCheckRange.label}`}
               </div>
             </div>
             <div className="month-action-group">
