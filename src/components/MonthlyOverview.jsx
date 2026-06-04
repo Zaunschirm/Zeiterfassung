@@ -291,6 +291,9 @@ export default function MonthlyOverview() {
   const [payrollCheckLoading, setPayrollCheckLoading] = useState(false);
   const [showPayrollEmployeeDialog, setShowPayrollEmployeeDialog] = useState(false);
   const [payrollCheckEmployeeIds, setPayrollCheckEmployeeIds] = useState([]);
+  const [showPayrollExportDialog, setShowPayrollExportDialog] = useState(false);
+  const [payrollExportEmployeeIds, setPayrollExportEmployeeIds] = useState([]);
+  const [payrollExportLoading, setPayrollExportLoading] = useState(false);
 
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
@@ -1087,6 +1090,44 @@ export default function MonthlyOverview() {
     );
   }
 
+  function openPayrollExportDialog() {
+    const activeIds = payrollCandidateEmployees.map((e) => e.id).filter(Boolean);
+    if (!activeIds.length) {
+      alert("Keine aktiven Mitarbeiter für die Lohnverrechnung vorhanden.");
+      return;
+    }
+    setPayrollExportEmployeeIds(activeIds);
+    setShowPayrollExportDialog(true);
+  }
+
+  function togglePayrollExportEmployee(employeeId) {
+    setPayrollExportEmployeeIds((prev) =>
+      prev.some((id) => String(id) === String(employeeId))
+        ? prev.filter((id) => String(id) !== String(employeeId))
+        : [...prev, employeeId]
+    );
+  }
+
+  async function runPayrollExport(employeeIdsForExport = payrollExportEmployeeIds) {
+    const selectedSet = new Set((employeeIdsForExport || []).map((id) => String(id)));
+    const selectedEmployeesForExport = payrollCandidateEmployees.filter((emp) =>
+      selectedSet.has(String(emp.id))
+    );
+
+    if (!selectedEmployeesForExport.length) {
+      alert("Bitte mindestens einen Mitarbeiter für die Lohnverrechnung auswählen.");
+      return;
+    }
+
+    try {
+      setPayrollExportLoading(true);
+      await exportLohnverrechnungPDF(payrollCheckRange, selectedEmployeesForExport);
+      setShowPayrollExportDialog(false);
+    } finally {
+      setPayrollExportLoading(false);
+    }
+  }
+
   async function runPayrollCheck(employeeIdsForCheck = payrollCheckEmployeeIds) {
     if (!isAdmin) return;
     const cleanedIds = (employeeIdsForCheck || []).filter(Boolean);
@@ -1182,9 +1223,10 @@ export default function MonthlyOverview() {
     }
   }
 
-  async function exportLohnverrechnungPDF() {
+  async function exportLohnverrechnungPDF(exportRange = payrollCheckRange, selectedEmployeesForExport = null) {
     try {
-      const employeesForExport = employees
+      const targetRange = exportRange || payrollCheckRange || activeRange;
+      const employeesForExport = (selectedEmployeesForExport || employees.filter(isActiveEmployee))
         .filter(isActiveEmployee)
         .sort((a, b) => (a.name || a.code || "").localeCompare(b.name || b.code || ""));
 
@@ -1194,10 +1236,10 @@ export default function MonthlyOverview() {
       }
 
       const missingResult = await getMissingEntriesForRange({
-        from: activeRange.from,
-        to: activeRange.to,
-        label: rangeLabel,
-      });
+        from: targetRange.from,
+        to: targetRange.to,
+        label: targetRange.label,
+      }, employeesForExport);
 
       if (missingResult?.missing?.length > 0) {
         const missingDays = missingResult.missing.reduce(
@@ -1229,15 +1271,15 @@ export default function MonthlyOverview() {
       let { data: payrollRawRows, error: payrollError } = await supabase
         .from("v_time_entries_expanded")
         .select("*")
-        .gte("work_date", activeRange.from)
-        .lte("work_date", activeRange.to)
+        .gte("work_date", targetRange.from)
+        .lte("work_date", targetRange.to)
         .in("employee_id", employeeIds);
 
       if (payrollError) throw payrollError;
 
       payrollRawRows = payrollRawRows || [];
 
-      const rangeDates = getDatesBetweenInclusive(activeRange.from, activeRange.to);
+      const rangeDates = getDatesBetweenInclusive(targetRange.from, targetRange.to);
       const holidaysInRange = rangeDates
         .map((date) => ({ date, name: getHolidayName(date) }))
         .filter((h) => !!h.name);
@@ -1362,7 +1404,7 @@ export default function MonthlyOverview() {
       };
 
       doc.setFontSize(17);
-      doc.text(`Lohnverrechnung ${safePdfText(rangeLabel)}`, marginX, 38);
+      doc.text(`Lohnverrechnung ${safePdfText(targetRange.label)}`, marginX, 38);
 
       doc.setFontSize(9);
       const hintLines = [
@@ -1401,7 +1443,7 @@ export default function MonthlyOverview() {
         const d = payrollByEmployee[emp.id];
         const recordedHours = h2(d.recordedMinutes);
         const paidHours = recordedHours + d.holidayHours + d.sickHours;
-        const sollHoursInRange = calcEmployeeSollHoursForRange(d.emp, activeRange.from, activeRange.to, true);
+        const sollHoursInRange = calcEmployeeSollHoursForRange(d.emp, targetRange.from, targetRange.to, true);
         const overtime = paidHours - sollHoursInRange - (d.timeCompHours || 0);
 
         summaryRows.push([
@@ -1473,8 +1515,8 @@ export default function MonthlyOverview() {
           "Feiertag bezahlt",
           "Arbeitstage",
           "Sollstunden",
-          "Zeitausgleich",
-          "Überstunden nach ZA",
+          "ZA",
+          "Saldo",
         ]],
         body: employeeBody,
         startY,
@@ -1495,13 +1537,14 @@ export default function MonthlyOverview() {
         },
         alternateRowStyles: { fillColor: lightGray },
         columnStyles: {
-          0: { cellWidth: 160, halign: "left" },
-          1: { cellWidth: 105, halign: "right" },
-          2: { cellWidth: 125, halign: "right" },
-          3: { cellWidth: 95, halign: "right" },
-          4: { cellWidth: 75, halign: "right" },
-          5: { cellWidth: 85, halign: "right" },
-          6: { cellWidth: 85, halign: "right" },
+          0: { cellWidth: 155, halign: "left" },
+          1: { cellWidth: 90, halign: "right" },
+          2: { cellWidth: 115, halign: "right" },
+          3: { cellWidth: 80, halign: "right" },
+          4: { cellWidth: 65, halign: "right" },
+          5: { cellWidth: 80, halign: "right" },
+          6: { cellWidth: 70, halign: "right" },
+          7: { cellWidth: 80, halign: "right" },
         },
         margin: { left: marginX, right: marginX },
       });
@@ -1524,8 +1567,8 @@ export default function MonthlyOverview() {
           "Krankenstand bezahlt",
           "Urlaub Stunden",
           "Urlaub Tage",
-          "Zeitausgleich Stunden",
-          "Zeitausgleich Tage",
+          "ZA Stunden",
+          "ZA Tage",
           "Krankenstand Tage",
         ]],
         body: summaryRows,
@@ -1546,13 +1589,14 @@ export default function MonthlyOverview() {
         },
         alternateRowStyles: { fillColor: lightGray },
         columnStyles: {
-          0: { cellWidth: 170 },
-          1: { cellWidth: 110, halign: "right" },
-          2: { cellWidth: 125, halign: "right" },
-          3: { cellWidth: 105, halign: "right" },
-          4: { cellWidth: 90, halign: "right" },
-          5: { cellWidth: 115, halign: "right" },
-          6: { cellWidth: 110, halign: "right" },
+          0: { cellWidth: 145 },
+          1: { cellWidth: 80, halign: "right" },
+          2: { cellWidth: 100, halign: "right" },
+          3: { cellWidth: 80, halign: "right" },
+          4: { cellWidth: 70, halign: "right" },
+          5: { cellWidth: 95, halign: "right" },
+          6: { cellWidth: 75, halign: "right" },
+          7: { cellWidth: 90, halign: "right" },
         },
         margin: { left: marginX, right: marginX },
       });
@@ -1616,7 +1660,7 @@ export default function MonthlyOverview() {
 
       addFooter();
 
-      const fileLabel = safePdfText(rangeLabel).replace(/[^\wäöüÄÖÜß-]+/g, "_");
+      const fileLabel = safePdfText(targetRange.label).replace(/[^\wäöüÄÖÜß-]+/g, "_");
       doc.save(`Lohnverrechnung_${fileLabel || "Export"}.pdf`);
     } catch (err) {
       console.error("Lohnverrechnung PDF Fehler:", err);
@@ -1838,8 +1882,8 @@ export default function MonthlyOverview() {
                 Lohncheck Vormonat
               </button>
             )}
-            <button onClick={exportLohnverrechnungPDF} className="hbz-btn hbz-btn-primary">
-              Lohnverrechnung
+            <button onClick={openPayrollExportDialog} className="hbz-btn hbz-btn-primary">
+              Lohnverrechnung Vormonat
             </button>
             <button onClick={exportAbrechnungPDF} className="hbz-btn">
               Abrechnung
@@ -2014,6 +2058,106 @@ export default function MonthlyOverview() {
           ))}
         </div>
       </div>
+
+      {showPayrollExportDialog && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.35)",
+            zIndex: 9999,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+          }}
+          onClick={() => setShowPayrollExportDialog(false)}
+        >
+          <div
+            className="hbz-card"
+            style={{ width: "min(760px, 100%)", maxHeight: "85vh", overflow: "auto" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="month-main-header">
+              <div>
+                <div className="month-card-title">Lohnverrechnung Vormonat</div>
+                <div className="month-main-subtitle">
+                  Zeitraum: <b>{payrollCheckRange.label}</b>. Standardmäßig sind alle aktiven Mitarbeiter ausgewählt.
+                </div>
+              </div>
+              <button type="button" className="hbz-btn btn-small" onClick={() => setShowPayrollExportDialog(false)}>
+                Schließen
+              </button>
+            </div>
+
+            <div className="month-empty-state" style={{ marginTop: 12, marginBottom: 12 }}>
+              Die Lohnverrechnung wird immer für den letzten abgeschlossenen Monat erstellt, nicht für den aktuell eingestellten Filter.
+            </div>
+
+            <div className="month-action-group" style={{ marginTop: 12, marginBottom: 12 }}>
+              <button
+                type="button"
+                className="hbz-btn btn-small"
+                onClick={() => setPayrollExportEmployeeIds(payrollCandidateEmployees.map((e) => e.id).filter(Boolean))}
+              >
+                Alle auswählen
+              </button>
+              <button
+                type="button"
+                className="hbz-btn btn-small"
+                onClick={() => setPayrollExportEmployeeIds([])}
+              >
+                Alle abwählen
+              </button>
+            </div>
+
+            <div style={{ display: "grid", gap: 8 }}>
+              {payrollCandidateEmployees.map((emp) => {
+                const checked = payrollExportEmployeeIds.some((id) => String(id) === String(emp.id));
+                return (
+                  <label
+                    key={emp.id || emp.code}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                      padding: "10px 12px",
+                      border: "1px solid rgba(123,74,45,0.25)",
+                      borderRadius: 12,
+                      background: checked ? "rgba(123,74,45,0.08)" : "#fff",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => togglePayrollExportEmployee(emp.id)}
+                    />
+                    <span>
+                      <b>{emp.name || emp.code || "Mitarbeiter"}</b>
+                      {emp.role ? <span style={{ opacity: 0.7 }}> · {emp.role}</span> : null}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+
+            <div className="month-action-group" style={{ marginTop: 16, justifyContent: "space-between" }}>
+              <div style={{ fontSize: 12, opacity: 0.75 }}>
+                Ausgewählt: {payrollExportEmployeeIds.length} von {payrollCandidateEmployees.length}
+              </div>
+              <button
+                type="button"
+                className="hbz-btn hbz-btn-primary"
+                onClick={() => runPayrollExport(payrollExportEmployeeIds)}
+                disabled={payrollExportLoading || payrollExportEmployeeIds.length === 0}
+              >
+                {payrollExportLoading ? "Erstelle PDF…" : "PDF erstellen"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showPayrollEmployeeDialog && isAdmin && (
         <div
