@@ -272,11 +272,15 @@ export default function MonthlyOverview() {
   const currentYear = now.getFullYear();
   const currentMonth = now.getMonth() + 1;
   const currentMonthStr = `${currentYear}-${String(currentMonth).padStart(2, "0")}`;
+  const previousMonthDate = new Date(currentYear, currentMonth - 1, 1);
+  previousMonthDate.setMonth(previousMonthDate.getMonth() - 1);
+  const previousMonthStr = `${previousMonthDate.getFullYear()}-${String(previousMonthDate.getMonth() + 1).padStart(2, "0")}`;
 
   const [year, setYear] = useState(currentYear);
   const [monthFilter, setMonthFilter] = useState(currentMonthStr);
   const [rangeFromMonth, setRangeFromMonth] = useState("");
   const [rangeToMonth, setRangeToMonth] = useState("");
+  const [monthLockMonth, setMonthLockMonth] = useState(previousMonthStr);
 
   const [employees, setEmployees] = useState([]);
   const [projects, setProjects] = useState([]);
@@ -488,23 +492,28 @@ export default function MonthlyOverview() {
   );
 
   const payrollCheckRange = useMemo(() => {
-    const d = new Date(currentYear, currentMonth - 1, 1);
-    d.setMonth(d.getMonth() - 1);
-    const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    const ym = previousMonthStr;
     const range = getMonthRange(ym);
     return {
       ...range,
       mode: "month",
       label: `Vormonat ${ym}`,
-      yearForBuak: range?.year || d.getFullYear(),
+      yearForBuak: range?.year || currentYear,
       monthList: [ym],
     };
-  }, [currentYear, currentMonth]);
+  }, [previousMonthStr, currentYear]);
+
+  const monthLockRange = useMemo(() => {
+    const range = getMonthRange(monthLockMonth);
+    return range
+      ? { ...range, mode: "month", label: `Monat ${monthLockMonth}`, monthList: [monthLockMonth] }
+      : null;
+  }, [monthLockMonth]);
 
   async function refreshMonthLockInfo() {
     try {
-      if (!payrollCheckRange?.from) return;
-      const info = await getMonthLock(supabase, payrollCheckRange.from);
+      if (!monthLockRange?.from) return;
+      const info = await getMonthLock(supabase, monthLockRange.from);
       setMonthLockInfo(info);
     } catch (err) {
       console.warn("[MonthlyOverview] Monatssperre laden:", err);
@@ -515,13 +524,18 @@ export default function MonthlyOverview() {
   useEffect(() => {
     refreshMonthLockInfo();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [payrollCheckRange?.from]);
+  }, [monthLockRange?.from]);
 
-  async function togglePreviousMonthLock() {
-    if (!isAdmin || !payrollCheckRange?.from) return;
+  function useVisibleMonthForLock() {
+    const ym = monthFilter || activeRange?.from?.slice(0, 7) || previousMonthStr;
+    if (getMonthRange(ym)) setMonthLockMonth(ym);
+  }
+
+  async function toggleMonthLock() {
+    if (!isAdmin || !monthLockRange?.from) return;
 
     const isLocked = !!monthLockInfo?.locked;
-    const ym = payrollCheckRange.from.slice(0, 7);
+    const ym = monthLockRange.from.slice(0, 7);
     const question = isLocked
       ? `Monat ${formatYearMonthAT(ym)} wirklich entsperren? Danach sind Änderungen wieder möglich.`
       : `Monat ${formatYearMonthAT(ym)} wirklich sperren? Danach können Mitarbeiter/Teamleiter keine Einträge mehr ändern.`;
@@ -1938,7 +1952,7 @@ export default function MonthlyOverview() {
               Zeitraum: <b>{rangeLabel}</b>
               {isAdmin && (
                 <span style={{ marginLeft: 12 }}>
-                  Vormonat: <b>{monthLockInfo?.locked ? "gesperrt" : "offen"}</b>
+                  Sperrmonat {formatYearMonthAT(monthLockMonth)}: <b>{monthLockInfo?.locked ? "gesperrt" : "offen"}</b>
                 </span>
               )}
             </div>
@@ -1953,13 +1967,30 @@ export default function MonthlyOverview() {
                 <button onClick={openPayrollCheckDialog} className="hbz-btn hbz-btn-primary">
                   Lohncheck Vormonat
                 </button>
+                <div className="field-inline" style={{ minWidth: 150 }}>
+                  <input
+                    type="month"
+                    value={monthLockMonth}
+                    onChange={(e) => setMonthLockMonth(e.target.value)}
+                    className="hbz-input"
+                    title="Monat für Sperre auswählen"
+                  />
+                </div>
                 <button
-                  onClick={togglePreviousMonthLock}
-                  disabled={monthLockLoading}
-                  className={monthLockInfo?.locked ? "hbz-btn" : "hbz-btn hbz-btn-primary"}
-                  title="Sperrt oder entsperrt den abgeschlossenen Vormonat"
+                  type="button"
+                  onClick={useVisibleMonthForLock}
+                  className="hbz-btn"
+                  title="Aktuell angezeigten Monat für die Sperre übernehmen"
                 >
-                  {monthLockInfo?.locked ? "Vormonat entsperren" : "Vormonat sperren"}
+                  Auswahl übernehmen
+                </button>
+                <button
+                  onClick={toggleMonthLock}
+                  disabled={monthLockLoading || !monthLockRange}
+                  className={monthLockInfo?.locked ? "hbz-btn" : "hbz-btn hbz-btn-primary"}
+                  title="Sperrt oder entsperrt den ausgewählten Monat"
+                >
+                  {monthLockInfo?.locked ? "Monat entsperren" : "Monat sperren"}
                 </button>
               </>
             )}
