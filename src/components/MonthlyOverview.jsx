@@ -52,6 +52,64 @@ const formatPrivatePkwKm = (value) => {
   return km > 0 ? `${km.toLocaleString("de-AT")} km` : "—";
 };
 
+
+function parseHoursValue(value) {
+  if (value === null || typeof value === "undefined") return 0;
+  const n = Number(String(value).replace(",", "."));
+  return Number.isFinite(n) ? n : 0;
+}
+
+function formatSignedHours(value) {
+  const n = Math.round((Number(value) || 0) * 100) / 100;
+  const sign = n > 0 ? "+" : "";
+  return `${sign}${n.toFixed(2)}`;
+}
+
+function dateOnly(value) {
+  if (!value) return "";
+  return String(value).slice(0, 10);
+}
+
+function dateToDayNumber(value) {
+  const d = dateOnly(value);
+  const parts = d.split("-").map((v) => Number(v));
+  if (parts.length !== 3 || parts.some((v) => !Number.isFinite(v))) return NaN;
+  const [year, month, day] = parts;
+  return Math.floor(Date.UTC(year, month - 1, day) / 86400000);
+}
+
+function dayNumberToDate(dayNumber) {
+  return new Date(dayNumber * 86400000).toISOString().slice(0, 10);
+}
+
+function minDate(a, b) {
+  if (!a) return b || "";
+  if (!b) return a || "";
+  return a <= b ? a : b;
+}
+
+function maxDate(a, b) {
+  if (!a) return b || "";
+  if (!b) return a || "";
+  return a >= b ? a : b;
+}
+
+function rowWorkHoursForZa(row) {
+  const note = String(row?.note || "");
+  if (note.includes("[Urlaub]") || note.includes("[Krank]") || note.includes("[Zeitausgleich]")) return 0;
+  const start = row.start_min ?? row.from_min ?? 0;
+  const end = row.end_min ?? row.to_min ?? 0;
+  const pause = row.break_min ?? 0;
+  const travel = row.travel_minutes ?? row.travel_min ?? 0;
+  return Math.max(end - start - pause, 0) / 60 + (Number(travel) || 0) / 60;
+}
+
+function isOnOrAfterStartDate(dateValue, startDate) {
+  if (!startDate) return true;
+  if (!dateValue) return true;
+  return String(dateValue).slice(0, 10) >= String(startDate).slice(0, 10);
+}
+
 const parseZaHours = (value) => {
   const normalized = String(value ?? "")
     .replace(",", ".")
@@ -1309,6 +1367,147 @@ export default function MonthlyOverview() {
     }
   }
 
+  async function getZaBalancesAtMonthEnd(employeesForExport, targetEndDate) {
+    const out = new Map();
+    const employeeIds = (employeesForExport || []).map((e) => e.id).filter(Boolean);
+
+    employeesForExport.forEach((emp) => {
+      out.set(String(emp.id), {
+        balance: 0,
+        endDate: targetEndDate,
+        included: emp?.include_in_za_account !== false,
+      });
+    });
+
+    if (!employeeIds.length || !targetEndDate) return out;
+
+    let { data: zaRows, error: zaError } = await supabase
+      .from("time_entries")
+      .select("id, employee_id, work_date, start_min, end_min, break_min, travel_minutes, note, za_hours")
+      .lte("work_date", targetEndDate)
+      .in("employee_id", employeeIds)
+      .order("work_date", { ascending: true });
+
+    if (zaError) {
+      console.warn("ZA-Stand konnte nicht geladen werden:", zaError);
+      return out;
+    }
+
+    zaRows = zaRows || [];
+
+    let { data: adjustments, error: adjError } = await supabase
+      .from("overtime_adjustments")
+      .select("employee_id, adjustment_date, hours")
+      .lte("adjustment_date", targetEndDate)
+      .in("employee_id", employeeIds);
+
+    if (adjError) {
+      console.warn("ZA-Korrekturen konnten nicht geladen werden:", adjError);
+      adjustments = [];
+    }
+
+    const entriesByEmployee = new Map();
+    const boundsByEmployee = new Map();
+
+    zaRows.forEach((row) => {
+      const empId = String(row.employee_id || "");
+      const date = dateOnly(row.work_date);
+      if (!empId || !date) return;
+      if (!entriesByEmployee.has(empId)) entriesByEmployee.set(empId, []);
+      entriesByEmployee.get(empId).push(row);
+
+      const bounds = boundsByEmployee.get(empId) || { first: "", last: "" };
+      bounds.first = minDate(bounds.first, date);
+      bounds.last = maxDate(bounds.last, date);
+      boundsByEmployee.set(empId, bounds);
+    });
+
+    employeesForExport.forEach((emp) => {
+      const empId = String(emp.id || "");
+      const current = out.get(empId) || { balance: 0, endDate: targetEndDate, included: true };
+      if (emp?.include_in_za_account === false) {
+        out.set(empId, { ...current, balance: 0, included: false });
+        return;
+      }
+
+      const empRows = entriesByEmployee.get(empId) || [];
+      const bounds = boundsByEmployee.get(empId) || { first: "", last: "" };
+      const startDate = emp.za_start_date || emp.entry_date || bounds.first || targetEndDate;
+      const startDay = dateToDayNumber(startDate);
+      const endDay = dateToDayNumber(targetEndDate);
+      if (!Number.isFinite(startDay) || !Number.isFinite(endDay) || endDay < startDay) {
+        out.set(empId, { ...current, balance: 0, included: true });
+        return;
+      }
+
+      const dayMap = new Map();
+      empRows.forEach((row) => {
+        const date = dateOnly(row.work_date);
+        if (!date || date < startDate || date > targetEndDate) return;
+        const key = date;
+        if (!dayMap.has(key)) {
+          dayMap.set(key, {
+            date,
+            worked: 0,
+            usedZa: 0,
+            hasZa: false,
+            hasPaidAbsence: false,
+          });
+        }
+        const day = dayMap.get(key);
+        const note = String(row.note || "");
+        day.worked += rowWorkHoursForZa(row);
+        if (note.includes("[Zeitausgleich]")) {
+          day.hasZa = true;
+          day.usedZa += parseHoursValue(row.za_hours);
+        }
+        if (note.includes("[Urlaub]") || note.includes("[Krank]")) {
+          day.hasPaidAbsence = true;
+        }
+      });
+
+      let generated = 0;
+      const maxDays = Math.min(endDay - startDay, 5000);
+      for (let offset = 0; offset <= maxDays; offset += 1) {
+        const date = dayNumberToDate(startDay + offset);
+        const day = dayMap.get(date) || {
+          date,
+          worked: 0,
+          usedZa: 0,
+          hasZa: false,
+          hasPaidAbsence: false,
+        };
+        const soll = Number(getEmployeeSollHoursForDay(emp, date)) || 0;
+        const isHoliday = !!getHolidayName(date);
+
+        // ZA-Konto:
+        // - Feiertag, Urlaub und Krankenstand verändern den ZA-Stand nicht.
+        // - Zeitausgleich zählt lohntechnisch als abgedeckte Sollzeit,
+        //   am ZA-Konto bleibt als Monatsänderung aber: echte Arbeits-/bezahlte Stunden ohne ZA minus Soll.
+        //   Beispiel: 140,25 Arbeit + 24 Feiertag + 6 ZA = 170,25 abgedeckt,
+        //   ZA-Konto-Änderung bleibt 140,25 + 24 - 162 = +2,25.
+        if (isHoliday || (day.hasPaidAbsence && !day.hasZa && day.worked <= 0)) {
+          generated += 0;
+        } else {
+          generated += day.worked - soll;
+        }
+      }
+
+      const corrections = (adjustments || [])
+        .filter((adj) => String(adj.employee_id || "") === empId)
+        .filter((adj) => isOnOrAfterStartDate(adj.adjustment_date, emp.za_start_date))
+        .reduce((sum, adj) => sum + parseHoursValue(adj.hours), 0);
+
+      out.set(empId, {
+        ...current,
+        balance: Math.round((generated + corrections) * 100) / 100,
+        included: true,
+      });
+    });
+
+    return out;
+  }
+
   async function exportLohnverrechnungPDF(exportRange = payrollCheckRange, selectedEmployeesForExport = null) {
     try {
       const targetRange = exportRange || payrollCheckRange || activeRange;
@@ -1364,6 +1563,12 @@ export default function MonthlyOverview() {
       if (payrollError) throw payrollError;
 
       payrollRawRows = payrollRawRows || [];
+
+      const zaBalancesAtMonthEnd = await getZaBalancesAtMonthEnd(employeesForExport, targetRange.to);
+      const dayBeforeRangeStart = Number.isFinite(dateToDayNumber(targetRange.from))
+        ? dayNumberToDate(dateToDayNumber(targetRange.from) - 1)
+        : "";
+      const zaBalancesBeforeMonth = await getZaBalancesAtMonthEnd(employeesForExport, dayBeforeRangeStart);
 
       const rangeDates = getDatesBetweenInclusive(targetRange.from, targetRange.to);
       const holidaysInRange = rangeDates
@@ -1479,7 +1684,7 @@ export default function MonthlyOverview() {
           doc.setPage(i);
           doc.setFontSize(7.5);
           doc.text(
-            "Berechnung: Lohnstunden = Einträge inkl. Fahrzeit + Feiertag + Krankenstand lt. Sollzeit; Urlaub/Zeitausgleich = 0,00 h.",
+            "Berechnung: Lohnstunden = Einträge inkl. Fahrzeit + Feiertag + Krankenstand + ZA; ZA-Abgleich: Stand vorher + Änderung laut LV = Stand Monatsende.",
             marginX,
             pageHeight - 18
           );
@@ -1495,9 +1700,9 @@ export default function MonthlyOverview() {
       doc.setFontSize(9);
       const hintLines = [
         "Hinweis zur Berechnung:",
-        "Lohnstunden gesamt enthalten Arbeitszeit laut Einträgen inklusive Fahrzeit sowie bezahlte Feiertage und Krankenstandstage gemäß hinterlegter BUAK-/Sollzeit.",
-        "Urlaubstage und Zeitausgleich werden in dieser Auswertung mit 0,00 Stunden berücksichtigt.",
-        "Überstunden/ZA-Stand werden als Lohnstunden gesamt minus Sollstunden minus genommenem Zeitausgleich berechnet.",
+        "Lohnstunden gesamt enthalten Arbeitszeit laut Einträgen inklusive Fahrzeit sowie bezahlte Feiertage, Krankenstandstage und angerechneten Zeitausgleich gemäß hinterlegter BUAK-/Sollzeit.",
+        "Urlaubstage werden mit 0,00 Stunden berücksichtigt. Zeitausgleich zählt als abgedeckte Arbeitszeit und wird zusätzlich als Verbrauch vom ZA-Konto ausgewiesen.",
+        "ZA-Konto Änderung = Lohnstunden gesamt minus Sollstunden minus ZA-Verbrauch. Der ZA-Abgleich zeigt den Stand vor dem Monat, die Änderung laut Lohnverrechnung und den Stand am Monatsende.",
       ];
 
       let hintY = 56;
@@ -1524,20 +1729,36 @@ export default function MonthlyOverview() {
 
       const detailRows = [];
       const summaryRows = [];
+      const zaReconcileRows = [];
 
       const employeeBody = employeesForExport.map((emp) => {
         const d = payrollByEmployee[emp.id];
         const recordedHours = h2(d.recordedMinutes);
-        const paidHours = recordedHours + d.holidayHours + d.sickHours;
+        const zaTaken = d.timeCompHours || 0;
+        const paidHours = recordedHours + d.holidayHours + d.sickHours + zaTaken;
         const sollHoursInRange = calcEmployeeSollHoursForRange(d.emp, targetRange.from, targetRange.to, true);
-        const overtime = paidHours - sollHoursInRange - (d.timeCompHours || 0);
+        const zaKontoChange = paidHours - sollHoursInRange - zaTaken;
+        const zaBalanceBefore = zaBalancesBeforeMonth.get(String(emp.id))?.balance ?? 0;
+        const zaBalanceEnd = zaBalancesAtMonthEnd.get(String(emp.id))?.balance ?? 0;
+        const zaExpectedEnd = Math.round((zaBalanceBefore + zaKontoChange) * 100) / 100;
+        const zaDiff = Math.round((zaBalanceEnd - zaExpectedEnd) * 100) / 100;
+
+        zaReconcileRows.push([
+          safePdfText(d.name),
+          dayBeforeRangeStart ? formatDateAT(dayBeforeRangeStart) : "—",
+          formatSignedHours(zaBalanceBefore),
+          formatSignedHours(zaKontoChange),
+          targetRange.to ? formatDateAT(targetRange.to) : "—",
+          formatSignedHours(zaBalanceEnd),
+          formatSignedHours(zaDiff),
+        ]);
 
         summaryRows.push([
           safePdfText(d.name),
           d.holidayHours.toFixed(2),
           d.sickHours.toFixed(2),
           `${d.vacationDates.length}`,
-          (d.timeCompHours || 0).toFixed(2),
+          zaTaken > 0 ? `-${zaTaken.toFixed(2)}` : "0.00",
           `${d.sickDates.length}`,
         ]);
 
@@ -1584,10 +1805,12 @@ export default function MonthlyOverview() {
           paidHours.toFixed(2),
           recordedHours.toFixed(2),
           d.holidayHours.toFixed(2),
+          zaTaken.toFixed(2),
           String(d.workDays.size),
           sollHoursInRange.toFixed(2),
-          (d.timeCompHours || 0).toFixed(2),
-          overtime.toFixed(2),
+          zaTaken > 0 ? `-${zaTaken.toFixed(2)}` : "0.00",
+          formatSignedHours(zaKontoChange),
+          formatSignedHours(zaBalanceEnd),
         ];
       });
 
@@ -1597,16 +1820,18 @@ export default function MonthlyOverview() {
           "Lohnstunden gesamt",
           "Arbeitszeit laut Einträgen",
           "Feiertag bezahlt",
+          "ZA angerechnet",
           "Gearb. Tage",
           "Sollstunden",
-          "ZA",
-          "Saldo",
+          "ZA Verbrauch",
+          "ZA Konto Änderung",
+          "ZA Stand Monatsende",
         ]],
         body: employeeBody,
         startY,
         theme: "striped",
         styles: {
-          fontSize: 8.7,
+          fontSize: 8.1,
           cellPadding: { top: 5, right: 5, bottom: 5, left: 5 },
           overflow: "linebreak",
           valign: "middle",
@@ -1621,19 +1846,72 @@ export default function MonthlyOverview() {
         },
         alternateRowStyles: { fillColor: lightGray },
         columnStyles: {
-          0: { cellWidth: 155, halign: "left" },
-          1: { cellWidth: 90, halign: "right" },
-          2: { cellWidth: 115, halign: "right" },
-          3: { cellWidth: 80, halign: "right" },
-          4: { cellWidth: 65, halign: "right" },
-          5: { cellWidth: 80, halign: "right" },
-          6: { cellWidth: 70, halign: "right" },
-          7: { cellWidth: 80, halign: "right" },
+          0: { cellWidth: 125, halign: "left" },
+          1: { cellWidth: 76, halign: "right" },
+          2: { cellWidth: 88, halign: "right" },
+          3: { cellWidth: 66, halign: "right" },
+          4: { cellWidth: 70, halign: "right" },
+          5: { cellWidth: 52, halign: "right" },
+          6: { cellWidth: 62, halign: "right" },
+          7: { cellWidth: 65, halign: "right" },
+          8: { cellWidth: 78, halign: "right" },
+          9: { cellWidth: 76, halign: "right" },
         },
         margin: { left: marginX, right: marginX },
       });
 
       let currentY = (doc.lastAutoTable?.finalY || startY) + 18;
+
+      if (currentY > pageHeight - 150) {
+        doc.addPage();
+        currentY = 38;
+      }
+
+      doc.setFontSize(13);
+      doc.text(`ZA-Konto Abgleich bis ${formatDateAT(targetRange.to)}`, marginX, currentY);
+      currentY += 10;
+
+      autoTable(doc, {
+        head: [[
+          "Mitarbeiter",
+          "Stand Datum",
+          "ZA Stand vorher",
+          "Änderung laut LV",
+          "Endstand Datum",
+          "ZA Stand Ende",
+          "Differenz",
+        ]],
+        body: zaReconcileRows,
+        startY: currentY + 6,
+        theme: "striped",
+        styles: {
+          fontSize: 8.4,
+          cellPadding: { top: 4, right: 4, bottom: 4, left: 4 },
+          overflow: "linebreak",
+          valign: "middle",
+          lineColor: [230, 230, 230],
+          lineWidth: 0.2,
+        },
+        headStyles: {
+          fillColor: midGray,
+          textColor: 255,
+          fontStyle: "bold",
+          halign: "center",
+        },
+        alternateRowStyles: { fillColor: lightGray },
+        columnStyles: {
+          0: { cellWidth: 155, halign: "left" },
+          1: { cellWidth: 82, halign: "center" },
+          2: { cellWidth: 100, halign: "right" },
+          3: { cellWidth: 105, halign: "right" },
+          4: { cellWidth: 82, halign: "center" },
+          5: { cellWidth: 100, halign: "right" },
+          6: { cellWidth: 78, halign: "right" },
+        },
+        margin: { left: marginX, right: marginX },
+      });
+
+      currentY = (doc.lastAutoTable?.finalY || currentY) + 18;
 
       if (currentY > pageHeight - 130) {
         doc.addPage();
@@ -1650,7 +1928,7 @@ export default function MonthlyOverview() {
           "Feiertag bezahlt",
           "Krankenstand bezahlt",
           "Urlaub Tage",
-          "ZA Stunden",
+          "ZA genommen",
           "Krankenstand Tage",
         ]],
         body: summaryRows,
@@ -1735,7 +2013,7 @@ export default function MonthlyOverview() {
 
       doc.setFontSize(8.5);
       const calcText =
-        "Berechnung: Lohnstunden gesamt = Arbeitszeit laut Einträgen inkl. Fahrzeit + bezahlte Feiertage + bezahlte Krankenstandstage laut Sollzeit. Urlaub/Zeitausgleich = 0,00 h. Überstunden = Lohnstunden gesamt - Sollstunden - Zeitausgleich.";
+        "Berechnung: Lohnstunden gesamt = Arbeitszeit laut Einträgen inkl. Fahrzeit + bezahlte Feiertage + bezahlte Krankenstandstage + angerechneter Zeitausgleich laut Sollzeit. Urlaub = 0,00 h. ZA-Konto Änderung = Lohnstunden gesamt - Sollstunden - ZA-Verbrauch. ZA-Konto Abgleich = Stand vor Monat + Änderung laut Lohnverrechnung = Stand am Monatsende.";
       doc.text(doc.splitTextToSize(calcText, pageWidth - marginX * 2), marginX, currentY);
 
       addFooter();
@@ -1950,62 +2228,7 @@ export default function MonthlyOverview() {
             <h2 className="month-overview-title">Monatsübersicht</h2>
             <div className="month-overview-subtitle">
               Zeitraum: <b>{rangeLabel}</b>
-              {isAdmin && (
-                <span style={{ marginLeft: 12 }}>
-                  Sperrmonat {formatYearMonthAT(monthLockMonth)}: <b>{monthLockInfo?.locked ? "gesperrt" : "offen"}</b>
-                </span>
-              )}
             </div>
-          </div>
-
-          <div className="month-overview-actions">
-            <button onClick={checkMissingEntriesLastMonth} className="hbz-btn">
-              Fehlende Einträge letzter Monat
-            </button>
-            {isAdmin && (
-              <>
-                <button onClick={openPayrollCheckDialog} className="hbz-btn hbz-btn-primary">
-                  Lohncheck Vormonat
-                </button>
-                <div className="field-inline" style={{ minWidth: 150 }}>
-                  <input
-                    type="month"
-                    value={monthLockMonth}
-                    onChange={(e) => setMonthLockMonth(e.target.value)}
-                    className="hbz-input"
-                    title="Monat für Sperre auswählen"
-                  />
-                </div>
-                <button
-                  type="button"
-                  onClick={useVisibleMonthForLock}
-                  className="hbz-btn"
-                  title="Aktuell angezeigten Monat für die Sperre übernehmen"
-                >
-                  Auswahl übernehmen
-                </button>
-                <button
-                  onClick={toggleMonthLock}
-                  disabled={monthLockLoading || !monthLockRange}
-                  className={monthLockInfo?.locked ? "hbz-btn" : "hbz-btn hbz-btn-primary"}
-                  title="Sperrt oder entsperrt den ausgewählten Monat"
-                >
-                  {monthLockInfo?.locked ? "Monat entsperren" : "Monat sperren"}
-                </button>
-              </>
-            )}
-            <button onClick={openPayrollExportDialog} className="hbz-btn hbz-btn-primary">
-              Lohnverrechnung Vormonat
-            </button>
-            <button onClick={exportAbrechnungPDF} className="hbz-btn">
-              Abrechnung
-            </button>
-            <button onClick={exportNachkalkulationPDF} className="hbz-btn">
-              Nachkalkulation
-            </button>
-            <button onClick={exportCSV} className="hbz-btn">
-              CSV export
-            </button>
           </div>
         </div>
       </div>
@@ -2159,6 +2382,79 @@ export default function MonthlyOverview() {
               </div>
             </div>
           )}
+        </div>
+
+        <div className="hbz-card month-filter-card">
+          <div className="month-card-title">Prüfung</div>
+          <div className="month-main-subtitle">Kontrolle vor der Lohnverrechnung</div>
+          <div className="month-chip-actions" style={{ marginTop: 12 }}>
+            <button onClick={checkMissingEntriesLastMonth} className="hbz-btn">
+              Fehlende Einträge letzter Monat
+            </button>
+            {isAdmin && (
+              <button onClick={openPayrollCheckDialog} className="hbz-btn hbz-btn-primary">
+                Lohncheck Vormonat
+              </button>
+            )}
+          </div>
+        </div>
+
+        {isAdmin && (
+          <div className="hbz-card month-filter-card">
+            <div className="month-card-title">Monatssperre</div>
+            <div className="month-main-subtitle">
+              Sperrmonat {formatYearMonthAT(monthLockMonth)}: <b>{monthLockInfo?.locked ? "gesperrt" : "offen"}</b>
+            </div>
+            <div className="year-range-grid" style={{ marginTop: 12 }}>
+              <div className="field-inline">
+                <label className="hbz-label">Sperrmonat</label>
+                <input
+                  type="month"
+                  value={monthLockMonth}
+                  onChange={(e) => setMonthLockMonth(e.target.value)}
+                  className="hbz-input"
+                  title="Monat für Sperre auswählen"
+                />
+              </div>
+            </div>
+            <div className="month-chip-actions" style={{ marginTop: 12 }}>
+              <button
+                type="button"
+                onClick={useVisibleMonthForLock}
+                className="hbz-btn"
+                title="Aktuell angezeigten Monat für die Sperre übernehmen"
+              >
+                Auswahl übernehmen
+              </button>
+              <button
+                onClick={toggleMonthLock}
+                disabled={monthLockLoading || !monthLockRange}
+                className={monthLockInfo?.locked ? "hbz-btn" : "hbz-btn hbz-btn-primary"}
+                title="Sperrt oder entsperrt den ausgewählten Monat"
+              >
+                {monthLockInfo?.locked ? "Monat entsperren" : "Monat sperren"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div className="hbz-card month-filter-card">
+          <div className="month-card-title">Export</div>
+          <div className="month-main-subtitle">PDF und CSV Ausgaben</div>
+          <div className="month-chip-actions" style={{ marginTop: 12 }}>
+            <button onClick={openPayrollExportDialog} className="hbz-btn hbz-btn-primary">
+              Lohnverrechnung Vormonat
+            </button>
+            <button onClick={exportAbrechnungPDF} className="hbz-btn">
+              Abrechnung
+            </button>
+            <button onClick={exportNachkalkulationPDF} className="hbz-btn">
+              Nachkalkulation
+            </button>
+            <button onClick={exportCSV} className="hbz-btn">
+              CSV export
+            </button>
+          </div>
         </div>
 
         <div className="month-summary-grid">
