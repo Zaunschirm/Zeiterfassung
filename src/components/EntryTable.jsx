@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { getWeatherFinalLabel } from "../utils/weather";
+import { ensureMonthUnlocked } from "../utils/monthLock";
 
 const toHM = (mins = 0) =>
   `${String(Math.floor((mins ?? 0) / 60)).padStart(2, "0")}:${String(
@@ -151,6 +152,7 @@ export default function EntryTable({ date, currentUser = null, isAdmin = false }
     if (!window.confirm("Diesen Eintrag wirklich löschen?")) return;
     try {
       const entryToDelete = rows.find((x) => String(x.id) === String(id));
+      await ensureMonthUnlocked(supabase, entryToDelete?.work_date);
       await writeDeleteAudit(entryToDelete);
 
       const { error } = await supabase
@@ -160,7 +162,7 @@ export default function EntryTable({ date, currentUser = null, isAdmin = false }
       if (error) throw error;
       setRows((r) => r.filter((x) => x.id !== id));
     } catch (e) {
-      alert("Löschen fehlgeschlagen.");
+      alert(e?.message || "Löschen fehlgeschlagen.");
       console.warn("[EntryTable] delete:", e);
     }
   }

@@ -12,6 +12,12 @@ import {
   getEmployeeSollHoursForDay,
   calcEmployeeSollHoursForRange,
 } from "../utils/time";
+import {
+  getMonthLock,
+  setMonthLocked,
+  ensureMonthUnlocked,
+  formatYearMonthAT,
+} from "../utils/monthLock";
 
 // ---------- Utils ----------
 const toHM = (m) =>
@@ -294,6 +300,8 @@ export default function MonthlyOverview() {
   const [showPayrollExportDialog, setShowPayrollExportDialog] = useState(false);
   const [payrollExportEmployeeIds, setPayrollExportEmployeeIds] = useState([]);
   const [payrollExportLoading, setPayrollExportLoading] = useState(false);
+  const [monthLockInfo, setMonthLockInfo] = useState(null);
+  const [monthLockLoading, setMonthLockLoading] = useState(false);
 
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
@@ -325,6 +333,7 @@ export default function MonthlyOverview() {
         .sort((a, b) => (a.name || a.code || "").localeCompare(b.name || b.code || "")),
     [employees]
   );
+
 
   useEffect(() => {
     (async () => {
@@ -491,6 +500,54 @@ export default function MonthlyOverview() {
       monthList: [ym],
     };
   }, [currentYear, currentMonth]);
+
+  async function refreshMonthLockInfo() {
+    try {
+      if (!payrollCheckRange?.from) return;
+      const info = await getMonthLock(supabase, payrollCheckRange.from);
+      setMonthLockInfo(info);
+    } catch (err) {
+      console.warn("[MonthlyOverview] Monatssperre laden:", err);
+      setMonthLockInfo(null);
+    }
+  }
+
+  useEffect(() => {
+    refreshMonthLockInfo();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [payrollCheckRange?.from]);
+
+  async function togglePreviousMonthLock() {
+    if (!isAdmin || !payrollCheckRange?.from) return;
+
+    const isLocked = !!monthLockInfo?.locked;
+    const ym = payrollCheckRange.from.slice(0, 7);
+    const question = isLocked
+      ? `Monat ${formatYearMonthAT(ym)} wirklich entsperren? Danach sind Änderungen wieder möglich.`
+      : `Monat ${formatYearMonthAT(ym)} wirklich sperren? Danach können Mitarbeiter/Teamleiter keine Einträge mehr ändern.`;
+
+    if (!window.confirm(question)) return;
+
+    try {
+      setMonthLockLoading(true);
+      const actorId = typeof session?.id === "string" && session.id.includes("-") ? session.id : null;
+      const info = await setMonthLocked(
+        supabase,
+        ym,
+        !isLocked,
+        actorId,
+        !isLocked ? "Monat durch Admin abgeschlossen" : "Monat durch Admin entsperrt"
+      );
+      setMonthLockInfo(info);
+      alert(!isLocked ? `Monat ${formatYearMonthAT(ym)} wurde gesperrt.` : `Monat ${formatYearMonthAT(ym)} wurde entsperrt.`);
+    } catch (err) {
+      console.error("Monatssperre Fehler:", err);
+      alert(`Monatssperre Fehler:\n${err?.message || err}`);
+    } finally {
+      setMonthLockLoading(false);
+    }
+  }
+
 
   const rangeLabel = useMemo(() => activeRange.label, [activeRange]);
 
@@ -666,6 +723,7 @@ export default function MonthlyOverview() {
     setEditState({
       id: row.id,
       employee_name: row.employee_name,
+      work_date: row.work_date,
       project_id: row.project_id,
       from_hm: toHM(start),
       to_hm: toHM(end),
@@ -710,6 +768,13 @@ export default function MonthlyOverview() {
       update.za_hours = parseZaHours(editState.za_hours);
     }
 
+    try {
+      await ensureMonthUnlocked(supabase, editState?.work_date || activeRange?.from);
+    } catch (lockErr) {
+      alert(lockErr?.message || "Dieser Monat ist gesperrt.");
+      return;
+    }
+
     const { error } = await supabase
       .from("time_entries")
       .update(update)
@@ -727,6 +792,13 @@ export default function MonthlyOverview() {
 
   async function deleteEntry(id) {
     if (!isManager) return;
+    const targetRow = rows.find((r) => String(r.id) === String(id));
+    try {
+      await ensureMonthUnlocked(supabase, targetRow?.work_date || activeRange?.from);
+    } catch (lockErr) {
+      alert(lockErr?.message || "Dieser Monat ist gesperrt.");
+      return;
+    }
     if (!confirm("Eintrag wirklich löschen?")) return;
 
     const { error } = await supabase.from("time_entries").delete().eq("id", id);
@@ -1864,6 +1936,11 @@ export default function MonthlyOverview() {
             <h2 className="month-overview-title">Monatsübersicht</h2>
             <div className="month-overview-subtitle">
               Zeitraum: <b>{rangeLabel}</b>
+              {isAdmin && (
+                <span style={{ marginLeft: 12 }}>
+                  Vormonat: <b>{monthLockInfo?.locked ? "gesperrt" : "offen"}</b>
+                </span>
+              )}
             </div>
           </div>
 
@@ -1872,9 +1949,19 @@ export default function MonthlyOverview() {
               Fehlende Einträge letzter Monat
             </button>
             {isAdmin && (
-              <button onClick={openPayrollCheckDialog} className="hbz-btn hbz-btn-primary">
-                Lohncheck Vormonat
-              </button>
+              <>
+                <button onClick={openPayrollCheckDialog} className="hbz-btn hbz-btn-primary">
+                  Lohncheck Vormonat
+                </button>
+                <button
+                  onClick={togglePreviousMonthLock}
+                  disabled={monthLockLoading}
+                  className={monthLockInfo?.locked ? "hbz-btn" : "hbz-btn hbz-btn-primary"}
+                  title="Sperrt oder entsperrt den abgeschlossenen Vormonat"
+                >
+                  {monthLockInfo?.locked ? "Vormonat entsperren" : "Vormonat sperren"}
+                </button>
+              </>
             )}
             <button onClick={openPayrollExportDialog} className="hbz-btn hbz-btn-primary">
               Lohnverrechnung Vormonat

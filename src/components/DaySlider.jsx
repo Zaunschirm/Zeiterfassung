@@ -10,6 +10,7 @@ import {
   getWeatherFinalLabel,
 } from "../utils/weather";
 import { getEmployeeWorkDay, hmToMinutes } from "../utils/time";
+import { ensureMonthUnlocked } from "../utils/monthLock";
 
 // Utils
 const toHM = (m) =>
@@ -1422,6 +1423,13 @@ export default function DaySlider() {
       return;
     }
 
+    try {
+      await ensureMonthUnlocked(supabase, date);
+    } catch (lockErr) {
+      setError(lockErr?.message || "Dieser Monat ist gesperrt.");
+      return;
+    }
+
     const base = {
       work_date: date,
       project_id: prj ? prj.id : null,
@@ -1553,6 +1561,13 @@ export default function DaySlider() {
       return;
     }
 
+    try {
+      await ensureMonthUnlocked(supabase, targetRow?.work_date || date);
+    } catch (lockErr) {
+      alert(lockErr?.message || "Dieser Monat ist gesperrt.");
+      return;
+    }
+
     const upd = {
       project_id: editState.project_id || null,
       start_min: from_m,
@@ -1583,13 +1598,19 @@ export default function DaySlider() {
       cancelEdit();
     } catch (e) {
       logSbError("saveEdit error:", e);
-      alert("Änderung konnte nicht gespeichert werden.");
+      alert(e?.message || "Änderung konnte nicht gespeichert werden.");
     }
   }
 
   async function deleteEntry(id) {
     const targetRow = entries.find((row) => String(row.id) === String(id));
     if (!canDeleteEntry(targetRow)) return;
+    try {
+      await ensureMonthUnlocked(supabase, targetRow?.work_date || date);
+    } catch (lockErr) {
+      alert(lockErr?.message || "Dieser Monat ist gesperrt.");
+      return;
+    }
     if (!window.confirm("Eintrag wirklich löschen?")) return;
     try {
       await writeDeleteAudit(targetRow);
@@ -1602,7 +1623,7 @@ export default function DaySlider() {
       await loadDailyCheckEntries();
     } catch (e) {
       logSbError("deleteEntry error:", e);
-      alert("Löschen fehlgeschlagen.");
+      alert(e?.message || "Löschen fehlgeschlagen.");
     }
   }
 

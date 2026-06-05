@@ -9,6 +9,7 @@ import {
   fetchWeatherForBooking,
 } from "../utils/weather";
 import { getEmployeeWorkDay, hmToMinutes } from "../utils/time";
+import { ensureMonthUnlocked } from "../utils/monthLock";
 
 // --------------------------------------------------
 // Helfer/Format
@@ -442,6 +443,13 @@ export default function TimeTracking() {
     if (!selectedEmployees.length)
       return setError("Bitte mindestens einen Mitarbeiter auswählen.");
     if (toMin <= fromMin) return setError("Zeitspanne ungültig.");
+
+    try {
+      await ensureMonthUnlocked(supabase, date);
+    } catch (lockErr) {
+      setError(lockErr?.message || "Dieser Monat ist gesperrt.");
+      return;
+    }
 
     const base = {
       work_date: date,

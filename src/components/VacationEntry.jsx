@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { getSession } from "../lib/session";
 import { getEmployeeWorkDay, getBuakWeekType, getHolidayName, hmToMinutes } from "../utils/time";
+import { ensureMonthUnlocked } from "../utils/monthLock";
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
 
@@ -794,6 +795,16 @@ export default function VacationEntry({ currentUser = null } = {}) {
     }
     if (preview.length === 0) {
       setError(`Für diesen Zeitraum gibt es laut Arbeitszeitmodell keine ${entryType === "za" ? "ZA-Tage" : "Urlaubstage"} zum Eintragen.`);
+      return;
+    }
+
+    try {
+      const monthsToCheck = Array.from(new Set(preview.map((item) => String(item.date).slice(0, 7))));
+      for (const ym of monthsToCheck) {
+        await ensureMonthUnlocked(supabase, ym);
+      }
+    } catch (lockErr) {
+      setError(lockErr?.message || "Dieser Monat ist gesperrt.");
       return;
     }
 
