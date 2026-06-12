@@ -139,6 +139,10 @@ export default function TimeTracking() {
   // Einträge für den Tag (Tabelle unten)
   const [entriesToday, setEntriesToday] = useState([]);
 
+  // Admin-Hinweise beim Öffnen der App: fängt verpasste Push-Nachrichten ab.
+  const [adminOpenReminders, setAdminOpenReminders] = useState([]);
+  const [adminOpenRemindersLoading, setAdminOpenRemindersLoading] = useState(false);
+
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -314,6 +318,155 @@ export default function TimeTracking() {
     const own = visibleTrackingEmployees[0];
     if (own) setSelectedEmployees([own]);
   }, [isStaff, visibleTrackingEmployees]);
+
+  const formatIsoLocal = (dateValue) => {
+    const y = dateValue.getFullYear();
+    const m = String(dateValue.getMonth() + 1).padStart(2, "0");
+    const d = String(dateValue.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  };
+
+  const parseIsoLocal = (iso) => {
+    const [y, m, d] = String(iso).split("-").map(Number);
+    return new Date(y, (m || 1) - 1, d || 1, 12, 0, 0);
+  };
+
+  const addDaysIso = (iso, days) => {
+    const dt = parseIsoLocal(iso);
+    dt.setDate(dt.getDate() + days);
+    return formatIsoLocal(dt);
+  };
+
+  const listDaysInclusive = (startIso, endIso) => {
+    const days = [];
+    for (let d = startIso; d <= endIso; d = addDaysIso(d, 1)) days.push(d);
+    return days;
+  };
+
+  const getPreviousWeekRange = () => {
+    const today = parseIsoLocal(todayISO());
+    const day = today.getDay() || 7; // Montag = 1
+    const start = new Date(today);
+    start.setDate(today.getDate() - day - 6);
+    const end = new Date(start);
+    end.setDate(start.getDate() + 6);
+    return { start: formatIsoLocal(start), end: formatIsoLocal(end) };
+  };
+
+  const getPreviousMonthRange = () => {
+    const today = parseIsoLocal(todayISO());
+    const start = new Date(today.getFullYear(), today.getMonth() - 1, 1, 12);
+    const end = new Date(today.getFullYear(), today.getMonth(), 0, 12);
+    return { start: formatIsoLocal(start), end: formatIsoLocal(end) };
+  };
+
+  const buildMissingSummary = async (startIso, endIso) => {
+    const { data, error } = await supabase
+      .from("v_time_entries_expanded")
+      .select("*")
+      .gte("work_date", startIso)
+      .lte("work_date", endIso);
+
+    if (error) throw error;
+
+    const entries = data || [];
+    const employeeMap = new Map();
+
+    for (const day of listDaysInclusive(startIso, endIso)) {
+      for (const emp of employees || []) {
+        const workDay = getEmployeeWorkDay(emp, day);
+        if (!workDay?.active || !(workDay?.requiredHours > 0)) continue;
+
+        const hasEntry = entries.some((entry) =>
+          entry.work_date === day && entryBelongsToEmployee(entry, emp)
+        );
+
+        if (!hasEntry) {
+          const key = getEmployeeKey(emp);
+          if (!employeeMap.has(key)) {
+            employeeMap.set(key, {
+              employee: emp,
+              name: emp.name || emp.code || "Mitarbeiter",
+              days: [],
+            });
+          }
+          employeeMap.get(key).days.push(day);
+        }
+      }
+    }
+
+    return Array.from(employeeMap.values()).filter((item) => item.days.length > 0);
+  };
+
+  const reminderDismissed = (id) => {
+    try {
+      return localStorage.getItem(`hbz_admin_open_reminder_dismissed_${id}`) === "1";
+    } catch {
+      return false;
+    }
+  };
+
+  const dismissAdminOpenReminder = (id) => {
+    try {
+      localStorage.setItem(`hbz_admin_open_reminder_dismissed_${id}`, "1");
+    } catch {}
+    setAdminOpenReminders((items) => items.filter((item) => item.id !== id));
+  };
+
+  const loadAdminOpenReminders = async () => {
+    if (!isAdmin || !employees.length) return;
+    setAdminOpenRemindersLoading(true);
+
+    try {
+      const today = parseIsoLocal(todayISO());
+      const currentDay = today.getDate();
+      const reminders = [];
+
+      // Wochenkontrolle: ab Montag anzeigen, bis sie erledigt/ausgeblendet wird.
+      const prevWeek = getPreviousWeekRange();
+      const weeklyId = `weekly_${prevWeek.start}_${prevWeek.end}`;
+      if (!reminderDismissed(weeklyId)) {
+        const weeklyMissing = await buildMissingSummary(prevWeek.start, prevWeek.end);
+        if (weeklyMissing.length > 0) {
+          reminders.push({
+            id: weeklyId,
+            title: "Wöchentliche Kontrolle: fehlende Einträge",
+            subtitle: `Vorwoche ${prevWeek.start} bis ${prevWeek.end}`,
+            items: weeklyMissing,
+          });
+        }
+      }
+
+      // Monatskontrolle: ab dem 03. anzeigen, falls die Push-Nachricht übersehen wurde.
+      if (currentDay >= 3) {
+        const prevMonth = getPreviousMonthRange();
+        const monthlyId = `monthly_${prevMonth.start}_${prevMonth.end}`;
+        if (!reminderDismissed(monthlyId)) {
+          const monthlyMissing = await buildMissingSummary(prevMonth.start, prevMonth.end);
+          if (monthlyMissing.length > 0) {
+            reminders.push({
+              id: monthlyId,
+              title: "Monatskontrolle: fehlende Einträge für die Lohnverrechnung",
+              subtitle: `Vormonat ${prevMonth.start} bis ${prevMonth.end}`,
+              items: monthlyMissing,
+            });
+          }
+        }
+      }
+
+      setAdminOpenReminders(reminders);
+    } catch (e) {
+      console.warn("[TimeTracking] admin open reminders error:", e);
+    } finally {
+      setAdminOpenRemindersLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!isAdmin || !employees.length) return;
+    loadAdminOpenReminders();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdmin, employees.length]);
 
 
   const loadWeatherForCurrentBooking = async () => {
@@ -581,6 +734,67 @@ export default function TimeTracking() {
 
   return (
     <div className="hbz-container">
+
+      {isAdmin && (adminOpenRemindersLoading || adminOpenReminders.length > 0) && (
+        <div className="hbz-card tight admin-open-reminders-card" style={{ marginBottom: 12, border: "1px solid rgba(128, 64, 28, 0.28)", background: "rgba(255, 248, 238, 0.9)" }}>
+          <div className="hbz-row" style={{ justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+            <div>
+              <div className="hbz-section-title" style={{ marginBottom: 4 }}>🔔 Hinweise beim Öffnen</div>
+              <div className="help">Damit keine Push-Nachricht untergeht, werden fällige Admin-Kontrollen hier beim nächsten Öffnen der App angezeigt.</div>
+            </div>
+            <button type="button" className="hbz-btn btn-small" onClick={loadAdminOpenReminders} disabled={adminOpenRemindersLoading}>
+              {adminOpenRemindersLoading ? "Prüfe…" : "Neu prüfen"}
+            </button>
+          </div>
+
+          {adminOpenRemindersLoading && (
+            <div className="help" style={{ marginTop: 8 }}>Prüfe fehlende Einträge…</div>
+          )}
+
+          {adminOpenReminders.map((reminder) => {
+            const totalMissing = reminder.items.reduce((sum, item) => sum + item.days.length, 0);
+            const firstMissingDay = reminder.items[0]?.days?.[0];
+            return (
+              <div key={reminder.id} style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid rgba(128, 92, 62, 0.16)" }}>
+                <div className="hbz-row" style={{ justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                  <div>
+                    <b>{reminder.title}</b>
+                    <div className="help">{reminder.subtitle} · {totalMissing} fehlende Tage bei {reminder.items.length} MA</div>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    {firstMissingDay && (
+                      <button type="button" className="hbz-btn btn-small" onClick={() => setDate(firstMissingDay)}>
+                        Ersten Tag anzeigen
+                      </button>
+                    )}
+                    <button type="button" className="hbz-btn btn-small" onClick={() => dismissAdminOpenReminder(reminder.id)}>
+                      Erledigt / ausblenden
+                    </button>
+                  </div>
+                </div>
+
+                <div className="daily-control-grid" style={{ marginTop: 8 }}>
+                  {reminder.items.slice(0, 8).map((item) => (
+                    <span key={`${reminder.id}-${item.name}`} className="daily-control-chip daily-control-missing">
+                      <span className="daily-control-name">{item.name}</span>
+                      <span className="daily-control-state">
+                        ❌ {item.days.slice(0, 4).map(formatDateAT).join(", ")}
+                        {item.days.length > 4 ? ` +${item.days.length - 4}` : ""}
+                      </span>
+                    </span>
+                  ))}
+                  {reminder.items.length > 8 && (
+                    <span className="daily-control-chip daily-control-missing">
+                      <span className="daily-control-name">Weitere</span>
+                      <span className="daily-control-state">+{reminder.items.length - 8} MA</span>
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {isStaff && ownDailyStatus && (
         <div className={`hbz-card tight staff-own-status staff-own-status-${ownDailyStatus.status}`}>
