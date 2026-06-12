@@ -46,6 +46,17 @@ export default function PushSettings({ currentUser, employeeId, canEdit = true }
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [prefs, setPrefs] = useState(DEFAULT_PREFS);
+  const [deviceStatus, setDeviceStatus] = useState({
+    checked: false,
+    supported: false,
+    permission: "default",
+    hasServiceWorker: false,
+    hasSubscription: false,
+    label: "Noch nicht geprüft",
+    detail: "",
+  });
+  const [activatingDevice, setActivatingDevice] = useState(false);
+  const [testingDevice, setTestingDevice] = useState(false);
 
   const title = useMemo(() => "⚙️ Meine Einstellungen", []);
   const radioName = useMemo(() => `work_assignment_day_${userId || "me"}`, [userId]);
@@ -138,6 +149,11 @@ export default function PushSettings({ currentUser, employeeId, canEdit = true }
     };
   }, [userId]);
 
+  useEffect(() => {
+    if (open) refreshDeviceStatus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, userId]);
+
   async function upsertPrefs(nextPrefs) {
     if (!userId || !isEditable) return;
 
@@ -174,6 +190,7 @@ export default function PushSettings({ currentUser, employeeId, canEdit = true }
     if (!userId) return null;
     const subscription = await savePushSubscription({ employeeId: userId, employeeName: resolvedEmployee?.name || currentUser?.name });
     setPermission(getNotificationPermission());
+    refreshDeviceStatus();
     return subscription;
   }
 
@@ -204,6 +221,113 @@ export default function PushSettings({ currentUser, employeeId, canEdit = true }
       ["time_tracking_push_enabled", "work_assignment_enabled", "weekly_admin_push", "monthly_admin_push"].includes(key) &&
       !!value;
     savePrefs(nextPrefs, needsPushPermission);
+  }
+
+
+  async function refreshDeviceStatus() {
+    const nextPermission = getNotificationPermission();
+    const nextSupported = arePushNotificationsSupported();
+    setSupported(nextSupported);
+    setPermission(nextPermission);
+
+    const nextStatus = {
+      checked: true,
+      supported: nextSupported,
+      permission: nextPermission,
+      hasServiceWorker: false,
+      hasSubscription: false,
+      label: "Noch nicht aktiviert",
+      detail: "Benachrichtigungen auf diesem Gerät wurden noch nicht aktiviert.",
+    };
+
+    if (!nextSupported) {
+      nextStatus.label = "Nicht unterstützt";
+      nextStatus.detail = "Dieser Browser unterstützt Push nicht. Am iPhone muss die Zeiterfassung als App am Home-Bildschirm geöffnet werden.";
+      setDeviceStatus(nextStatus);
+      return nextStatus;
+    }
+
+    if (nextPermission === "denied") {
+      nextStatus.label = "Im Browser blockiert";
+      nextStatus.detail = "Benachrichtigungen sind für diese Website blockiert. Bitte in den Website-Einstellungen wieder zulassen.";
+      setDeviceStatus(nextStatus);
+      return nextStatus;
+    }
+
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      nextStatus.hasServiceWorker = !!registration;
+
+      const subscription = registration?.pushManager
+        ? await registration.pushManager.getSubscription()
+        : null;
+      nextStatus.hasSubscription = !!subscription;
+
+      if (nextPermission === "granted" && subscription) {
+        nextStatus.label = "Aktiv auf diesem Gerät";
+        nextStatus.detail = "Dieses Gerät ist für Push registriert.";
+      } else if (nextPermission === "granted" && !subscription) {
+        nextStatus.label = "Erlaubt, aber Gerät nicht angemeldet";
+        nextStatus.detail = "Der Browser erlaubt Benachrichtigungen, aber dieses Gerät wurde noch nicht in der App aktiviert.";
+      } else {
+        nextStatus.label = "Noch nicht aktiviert";
+        nextStatus.detail = "Benachrichtigungen sind noch nicht angefragt. Bitte dieses Gerät aktivieren.";
+      }
+    } catch (e) {
+      console.warn("[PushSettings] device status error:", e);
+      nextStatus.label = "Status unklar";
+      nextStatus.detail = "Service Worker/Push-Status konnte nicht geprüft werden.";
+    }
+
+    setDeviceStatus(nextStatus);
+    return nextStatus;
+  }
+
+  async function activateThisDevice() {
+    if (!userId || !isEditable) return;
+    setActivatingDevice(true);
+    setMessage("");
+
+    try {
+      await ensurePushAllowed();
+      const status = await refreshDeviceStatus();
+      if (status.hasSubscription || status.permission === "granted") {
+        setMessage("Benachrichtigungen auf diesem Gerät aktiviert.");
+      } else {
+        setMessage("Benachrichtigungen konnten noch nicht vollständig aktiviert werden.");
+      }
+    } catch (e) {
+      console.error("[PushSettings] device activation error:", e);
+      await refreshDeviceStatus();
+      setMessage(e?.message || "Gerät konnte nicht aktiviert werden. Browser-Berechtigung prüfen.");
+    } finally {
+      setActivatingDevice(false);
+    }
+  }
+
+  async function sendLocalTestNotification() {
+    setTestingDevice(true);
+    setMessage("");
+
+    try {
+      const status = await refreshDeviceStatus();
+      if (!status.supported) throw new Error("Push wird auf diesem Gerät nicht unterstützt.");
+      if (status.permission !== "granted") throw new Error("Benachrichtigungen sind auf diesem Gerät nicht erlaubt.");
+
+      const registration = await navigator.serviceWorker.ready;
+      await registration.showNotification("Zeiterfassung Test", {
+        body: "Benachrichtigung funktioniert auf diesem Gerät.",
+        icon: "/icon-192.png",
+        badge: "/icon-192.png",
+        tag: "hbz-test-push",
+      });
+      setMessage("Test-Benachrichtigung wurde ausgelöst.");
+    } catch (e) {
+      console.error("[PushSettings] test notification error:", e);
+      setMessage(e?.message || "Test-Benachrichtigung konnte nicht gesendet werden.");
+    } finally {
+      setTestingDevice(false);
+    }
   }
 
   if (!currentUser && !employeeId) return null;
@@ -239,6 +363,35 @@ export default function PushSettings({ currentUser, employeeId, canEdit = true }
               Benachrichtigungen sind im Browser blockiert. Erst in den Browser-/Website-Einstellungen erlauben, dann hier aktivieren.
             </div>
           )}
+
+          <div className="device-push-status" style={{ marginTop: 10, padding: "8px 10px", border: "1px solid rgba(128, 92, 62, 0.22)", borderRadius: 10, background: "rgba(255, 248, 238, 0.65)" }}>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <strong>Gerätestatus:</strong>
+              <span className={`badge-soft push-device-${deviceStatus.permission}`}>{deviceStatus.label}</span>
+            </div>
+            <div className="help" style={{ marginTop: 4 }}>{deviceStatus.detail}</div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+              <button
+                type="button"
+                className="mini-btn"
+                disabled={fieldDisabled || activatingDevice || !supported || permission === "denied"}
+                onClick={activateThisDevice}
+              >
+                {activatingDevice ? "Aktiviere…" : "Benachrichtigungen auf diesem Gerät aktivieren"}
+              </button>
+              <button
+                type="button"
+                className="mini-btn"
+                disabled={testingDevice || !supported || permission !== "granted"}
+                onClick={sendLocalTestNotification}
+              >
+                {testingDevice ? "Teste…" : "Test-Benachrichtigung"}
+              </button>
+              <button type="button" className="mini-btn" disabled={loading || saving} onClick={refreshDeviceStatus}>
+                Status prüfen
+              </button>
+            </div>
+          </div>
 
           <div className="push-settings-options">
             {!isAdmin && (
