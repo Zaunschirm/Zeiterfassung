@@ -87,6 +87,14 @@ const formatSignedHours = (value) => {
   return `${sign}${Math.abs(n).toFixed(2).replace(".", ",")} h`;
 };
 
+const isZaAccountEnabled = (emp) => {
+  if (!emp) return false;
+  if (emp.include_in_za_account === false) return false;
+  const role = String(emp.role || emp.rolle || emp.user_role || emp.type || "").trim().toLowerCase();
+  if (["admin", "buchhaltung", "verwaltung", "buchhaltung/verwaltung"].includes(role)) return false;
+  return true;
+};
+
 const addDaysIso = (dateStr, days) => {
   const d = new Date(`${String(dateStr).slice(0, 10)}T12:00:00`);
   d.setDate(d.getDate() + days);
@@ -957,13 +965,16 @@ export default function DaySlider() {
     return employeeRow || employees.find((e) => String(e?.code || "") === String(session?.code || "")) || currentUser || session || null;
   }, [employeeRow, employees, currentUser, session]);
 
+  const ownZaEnabled = useMemo(() => isZaAccountEnabled(ownZaEmployee), [ownZaEmployee]);
+
   useEffect(() => {
     let cancelled = false;
     async function loadOwnZaBalance() {
       const emp = ownZaEmployee;
       const empId = emp?.id;
-      if (!empId) {
+      if (!empId || !isZaAccountEnabled(emp)) {
         setOwnZaBalance(null);
+        setOwnZaLoading(false);
         return;
       }
 
@@ -1054,7 +1065,7 @@ export default function DaySlider() {
     return () => {
       cancelled = true;
     };
-  }, [ownZaEmployee?.id, ownZaEmployee?.za_start_date, ownZaEmployee?.entry_date]);
+  }, [ownZaEmployee?.id, ownZaEmployee?.za_start_date, ownZaEmployee?.entry_date, ownZaEmployee?.include_in_za_account, ownZaEmployee?.role, ownZaEmployee?.rolle]);
 
   const isOwnEntry = (row) => String(row?.employee_id ?? "") === String(currentEmployeeId ?? "");
   const canEditEntry = (row) => !!row && (canEditAllTime || (canEditOwnTime && isOwnEntry(row)));
@@ -1686,8 +1697,14 @@ export default function DaySlider() {
               </div>
             )}
             <div className="month-overview-subtitle" style={{ marginTop: 6 }}>
-              ZA-Konto: <b>{ownZaLoading ? "lädt…" : ownZaBalance == null ? "—" : formatSignedHours(ownZaBalance)}</b>
-              <span style={{ opacity: 0.75 }}> · Stand bis gestern</span>
+              ZA-Konto: {ownZaEnabled ? (
+                <>
+                  <b>{ownZaLoading ? "lädt…" : ownZaBalance == null ? "—" : formatSignedHours(ownZaBalance)}</b>
+                  <span style={{ opacity: 0.75 }}> · Stand bis gestern</span>
+                </>
+              ) : (
+                <b>nicht geführt</b>
+              )}
             </div>
           </div>
 
