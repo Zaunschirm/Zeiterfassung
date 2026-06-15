@@ -528,6 +528,30 @@ export default function EmployeeList() {
 
   const visibleZaMonthEndRows = useMemo(() => zaMonthEndRows.slice(0, 96), [zaMonthEndRows]);
 
+  const officialZaStartByEmployee = useMemo(() => {
+    const map = new Map();
+    for (const adj of overtimeAdjustments || []) {
+      if (!isOfficialZaStartAdjustment(adj)) continue;
+      const empId = String(adj.employee_id || "");
+      if (!empId) continue;
+      map.set(empId, (map.get(empId) || 0) + parseHours(adj.hours));
+    }
+    return map;
+  }, [overtimeAdjustments]);
+
+  const latestZaMonthEndByEmployee = useMemo(() => {
+    const map = new Map();
+    for (const row of zaMonthEndRows || []) {
+      const empId = String(row.employeeId || "");
+      if (!empId) continue;
+      const current = map.get(empId);
+      if (!current || String(row.date) > String(current.date)) {
+        map.set(empId, row);
+      }
+    }
+    return map;
+  }, [zaMonthEndRows]);
+
   async function loadOvertimeData(employeeRows = rows) {
     setOvertimeErr("");
     setOvertimeLoading(true);
@@ -1165,36 +1189,41 @@ export default function EmployeeList() {
 
         {overtimeErr && <div className="hbz-section error">{overtimeErr}</div>}
 
+        <div className="help" style={{ marginBottom: 10 }}>
+          Eine gemeinsame Übersicht: offizieller Startstand laut Lohnverrechnung, Bewegung seit 01.06.2026,
+          aktueller Stand und der letzte Monatsabschluss zur Kontrolle.
+        </div>
+
         <div className="employee-table-wrap" style={{ overflowX: "auto" }}>
-          <table className="employee-table" style={{ minWidth: 980 }}>
+          <table className="employee-table" style={{ minWidth: 900 }}>
             <thead>
               <tr>
                 <th>Mitarbeiter</th>
-                <th>Eintrittsdatum</th>
                 <th>ZA-Konto</th>
-                <th className="num">Arbeitsstunden</th>
-                <th className="num">Soll</th>
-                <th className="num">ZA genommen</th>
-                <th className="num">Automatik</th>
-                <th className="num">Korrekturen</th>
+                <th className="num">Start 31.05.</th>
+                <th className="num">Bewegung seit 01.06.</th>
                 <th className="num">Aktueller Stand</th>
+                <th>Letzter Monatsabschluss</th>
+                <th className="num">Stand Monatsende</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((r) => {
                 const balance = overtimeByEmployee.get(String(r.id));
                 const zaEnabled = isZaAccountEnabled(r);
+                const startBalance = officialZaStartByEmployee.get(String(r.id)) || 0;
+                const currentBalance = balance?.balance || 0;
+                const movementSinceStart = currentBalance - startBalance;
+                const monthEnd = latestZaMonthEndByEmployee.get(String(r.id));
                 return (
                   <tr key={`za-${r.id}`} style={{ opacity: r.disabled || !zaEnabled ? 0.5 : 1 }}>
                     <td>{r.name}</td>
-                    <td>{r.za_start_date || "—"}</td>
                     <td>{zaEnabled ? "Wird geprüft" : "Nicht geprüft"}</td>
-                    <td className="num">{zaEnabled ? formatHours(balance?.worked || 0) : "—"}</td>
-                    <td className="num">{zaEnabled ? formatHours(balance?.soll || 0) : "—"}</td>
-                    <td className="num">{zaEnabled ? formatHours(-(balance?.usedZa || 0)) : "—"}</td>
-                    <td className="num">{zaEnabled ? formatHours(balance?.generated || 0) : "—"}</td>
-                    <td className="num">{zaEnabled ? formatHours(balance?.corrections || 0) : "—"}</td>
-                    <td className="num"><strong>{zaEnabled ? formatHours(balance?.balance || 0) : "—"}</strong></td>
+                    <td className="num">{zaEnabled ? formatHours(startBalance) : "—"}</td>
+                    <td className="num">{zaEnabled ? formatHours(movementSinceStart) : "—"}</td>
+                    <td className="num"><strong>{zaEnabled ? formatHours(currentBalance) : "—"}</strong></td>
+                    <td>{zaEnabled && monthEnd ? `${formatDateAT(monthEnd.date)}${monthEnd.isStartStand ? " · Startstand" : ""}` : "—"}</td>
+                    <td className="num"><strong>{zaEnabled && monthEnd ? formatHours(monthEnd.balance || 0) : "—"}</strong></td>
                   </tr>
                 );
               })}
@@ -1202,42 +1231,42 @@ export default function EmployeeList() {
           </table>
         </div>
 
-        <details open style={{ marginTop: 14 }}>
-          <summary className="hbz-label" style={{ cursor: "pointer" }}>Monatsendstände zur Lohnverrechnung anzeigen</summary>
+        <details style={{ marginTop: 14 }}>
+          <summary className="hbz-label" style={{ cursor: "pointer" }}>Berechnungsdetails anzeigen</summary>
           <div className="help" style={{ marginTop: 6, marginBottom: 10 }}>
-            Zur Kontrolle mit der Lohnverrechnung wird immer der Stand am letzten Tag des Monats angezeigt.
-            Der aktuelle Monat erscheint automatisch, sobald der Monatsletzte erreicht bzw. vorbei ist.
+            Diese Details sind nur zur Fehlersuche gedacht. Die normale Kontrolle erfolgt über die gemeinsame Übersicht oben.
           </div>
-          <div className="employee-table-wrap" style={{ marginTop: 10, overflowX: "auto" }}>
+          <div className="employee-table-wrap" style={{ overflowX: "auto" }}>
             <table className="employee-table" style={{ minWidth: 980 }}>
               <thead>
                 <tr>
-                  <th>Stichtag</th>
                   <th>Mitarbeiter</th>
+                  <th>Startdatum</th>
                   <th className="num">Arbeitsstunden</th>
                   <th className="num">Soll</th>
                   <th className="num">ZA genommen</th>
                   <th className="num">Automatik</th>
                   <th className="num">Korrekturen</th>
-                  <th className="num">Stand Tagesende</th>
+                  <th className="num">Aktueller Stand</th>
                 </tr>
               </thead>
               <tbody>
-                {visibleZaMonthEndRows.map((row) => (
-                  <tr key={`za-month-${row.employeeId}-${row.date}`}>
-                    <td>{formatDateAT(row.date)}{row.isStartStand ? " · Startstand" : ""}</td>
-                    <td>{row.employee?.name || row.employeeId}</td>
-                    <td className="num">{formatHours(row.worked || 0)}</td>
-                    <td className="num">{formatHours(row.soll || 0)}</td>
-                    <td className="num">{formatHours(-(row.usedZa || 0))}</td>
-                    <td className="num">{formatHours(row.generated || 0)}</td>
-                    <td className="num">{formatHours(row.corrections || 0)}</td>
-                    <td className="num"><strong>{formatHours(row.balance || 0)}</strong></td>
-                  </tr>
-                ))}
-                {!visibleZaMonthEndRows.length && (
-                  <tr><td colSpan={8} className="employee-empty">Noch kein Monatsletzter im ZA-Zeitraum vorhanden.</td></tr>
-                )}
+                {rows.map((r) => {
+                  const balance = overtimeByEmployee.get(String(r.id));
+                  const zaEnabled = isZaAccountEnabled(r);
+                  return (
+                    <tr key={`za-detail-${r.id}`} style={{ opacity: r.disabled || !zaEnabled ? 0.5 : 1 }}>
+                      <td>{r.name}</td>
+                      <td>{r.za_start_date || "—"}</td>
+                      <td className="num">{zaEnabled ? formatHours(balance?.worked || 0) : "—"}</td>
+                      <td className="num">{zaEnabled ? formatHours(balance?.soll || 0) : "—"}</td>
+                      <td className="num">{zaEnabled ? formatHours(-(balance?.usedZa || 0)) : "—"}</td>
+                      <td className="num">{zaEnabled ? formatHours(balance?.generated || 0) : "—"}</td>
+                      <td className="num">{zaEnabled ? formatHours(balance?.corrections || 0) : "—"}</td>
+                      <td className="num"><strong>{zaEnabled ? formatHours(balance?.balance || 0) : "—"}</strong></td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
