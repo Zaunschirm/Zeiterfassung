@@ -128,6 +128,26 @@ function getYesterdayDateString() {
   return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate() - 1)).toISOString().slice(0, 10);
 }
 
+function lastDayOfMonthDateString(value) {
+  const d = dateOnly(value);
+  const parts = d.split("-").map((v) => Number(v));
+  if (parts.length !== 3 || parts.some((v) => !Number.isFinite(v))) return "";
+  const [year, month] = parts;
+  return new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
+}
+
+function isLastDayOfMonth(value) {
+  const d = dateOnly(value);
+  return !!d && d === lastDayOfMonthDateString(d);
+}
+
+function formatDateAT(value) {
+  const d = dateOnly(value);
+  if (!d) return "—";
+  const [year, month, day] = d.split("-");
+  return `${day}.${month}.${year}`;
+}
+
 function minDate(a, b) {
   if (!a) return b || "";
   if (!b) return a || "";
@@ -309,6 +329,157 @@ export default function EmployeeList() {
 
     return map;
   }, [rows, entries, overtimeAdjustments]);
+
+  const zaMonthEndRows = useMemo(() => {
+    const dayMap = new Map();
+    const boundsByEmployee = new Map();
+
+    for (const row of entries || []) {
+      const empId = String(row.employee_id || "");
+      if (!empId) continue;
+      const date = dateOnly(row.work_date);
+      if (!date) continue;
+
+      const bounds = boundsByEmployee.get(empId) || { first: "", last: "" };
+      bounds.first = minDate(bounds.first, date);
+      bounds.last = maxDate(bounds.last, date);
+      boundsByEmployee.set(empId, bounds);
+
+      const key = `${empId}__${date}`;
+      if (!dayMap.has(key)) {
+        dayMap.set(key, {
+          employeeId: empId,
+          date,
+          worked: 0,
+          usedZa: 0,
+          hasZa: false,
+          hasPaidAbsence: false,
+        });
+      }
+
+      const day = dayMap.get(key);
+      day.worked += rowWorkHours(row);
+      if (isAbsenceNote(row, "[Zeitausgleich]")) {
+        day.hasZa = true;
+        day.usedZa += parseHours(row.za_hours);
+      }
+      if (isAbsenceNote(row, "[Urlaub]") || isAbsenceNote(row, "[Krank]")) {
+        day.hasPaidAbsence = true;
+      }
+    }
+
+    const adjustmentsByDay = new Map();
+    const startAdjustmentsByDay = new Map();
+    for (const adj of overtimeAdjustments || []) {
+      const empId = String(adj.employee_id || "");
+      const date = dateOnly(adj.adjustment_date);
+      if (!empId || !date) continue;
+      const key = `${empId}__${date}`;
+      const hours = parseHours(adj.hours);
+      adjustmentsByDay.set(key, (adjustmentsByDay.get(key) || 0) + hours);
+      if (String(adj.note || "").toLowerCase().includes("startwert")) {
+        startAdjustmentsByDay.set(key, (startAdjustmentsByDay.get(key) || 0) + hours);
+      }
+    }
+
+    const yesterday = getYesterdayDateString();
+    const result = [];
+
+    for (const emp of rows || []) {
+      if (!isZaAccountEnabled(emp)) continue;
+
+      const empId = String(emp.id);
+      const bounds = boundsByEmployee.get(empId) || { first: "", last: "" };
+      const startDate = emp.za_start_date || bounds.first;
+      if (!startDate) continue;
+
+      const endDate = emp.disabled ? minDate(bounds.last || yesterday, yesterday) : yesterday;
+      const startDay = dateToDayNumber(startDate);
+      const endDay = dateToDayNumber(endDate);
+      if (!Number.isFinite(startDay) || !Number.isFinite(endDay) || endDay < startDay) continue;
+
+      let worked = 0;
+      let soll = 0;
+      let usedZa = 0;
+      let generated = 0;
+      let corrections = 0;
+
+      // Startwert am 01. eines Monats gehört fachlich zum Tagesende des Vormonats.
+      // Beispiel: Korrektur am 01.06.2026 = Stand Tagesende 31.05.2026 laut Lohnverrechnung.
+      const previousDay = dayNumberToDate(startDay - 1);
+      const startKey = `${empId}__${startDate}`;
+      const hasStartStand = startAdjustmentsByDay.has(startKey);
+      const startBalance = startAdjustmentsByDay.get(startKey) || 0;
+      if (hasStartStand && isLastDayOfMonth(previousDay)) {
+        result.push({
+          employeeId: empId,
+          employee: emp,
+          date: previousDay,
+          worked: 0,
+          soll: 0,
+          usedZa: 0,
+          generated: 0,
+          corrections: startBalance,
+          balance: startBalance,
+          isStartStand: true,
+        });
+      }
+
+      const maxDays = Math.min(endDay - startDay, 5000);
+
+      for (let offset = 0; offset <= maxDays; offset += 1) {
+        const date = dayNumberToDate(startDay + offset);
+        const key = `${empId}__${date}`;
+        const day = dayMap.get(key) || {
+          employeeId: empId,
+          date,
+          worked: 0,
+          usedZa: 0,
+          hasZa: false,
+          hasPaidAbsence: false,
+        };
+
+        const daySoll = Number(getEmployeeSollHoursForDay(emp, date)) || 0;
+        const zaFallback = day.hasZa && day.usedZa <= 0 ? daySoll : day.usedZa;
+
+        worked += day.worked;
+        usedZa += zaFallback;
+        soll += daySoll;
+
+        let dailyChange = 0;
+        if (day.hasPaidAbsence && !day.hasZa && day.worked <= 0) {
+          dailyChange = 0;
+        } else if (day.hasZa && day.worked <= 0) {
+          dailyChange = -zaFallback;
+        } else if (day.hasZa) {
+          dailyChange = day.worked - daySoll - zaFallback;
+        } else {
+          dailyChange = day.worked - daySoll;
+        }
+
+        generated += dailyChange;
+        corrections += adjustmentsByDay.get(key) || 0;
+
+        if (isLastDayOfMonth(date)) {
+          result.push({
+            employeeId: empId,
+            employee: emp,
+            date,
+            worked,
+            soll,
+            usedZa,
+            generated,
+            corrections,
+            balance: generated + corrections,
+          });
+        }
+      }
+    }
+
+    return result.sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(a.employee?.name || "").localeCompare(String(b.employee?.name || "")));
+  }, [rows, entries, overtimeAdjustments]);
+
+  const visibleZaMonthEndRows = useMemo(() => zaMonthEndRows.slice(0, 96), [zaMonthEndRows]);
 
   async function loadOvertimeData(employeeRows = rows) {
     setOvertimeErr("");
@@ -983,6 +1154,47 @@ export default function EmployeeList() {
             </tbody>
           </table>
         </div>
+
+        <details open style={{ marginTop: 14 }}>
+          <summary className="hbz-label" style={{ cursor: "pointer" }}>Monatsendstände zur Lohnverrechnung anzeigen</summary>
+          <div className="help" style={{ marginTop: 6, marginBottom: 10 }}>
+            Zur Kontrolle mit der Lohnverrechnung wird immer der Stand am letzten Tag des Monats angezeigt.
+            Der aktuelle Monat erscheint automatisch, sobald der Monatsletzte erreicht bzw. vorbei ist.
+          </div>
+          <div className="employee-table-wrap" style={{ marginTop: 10, overflowX: "auto" }}>
+            <table className="employee-table" style={{ minWidth: 980 }}>
+              <thead>
+                <tr>
+                  <th>Stichtag</th>
+                  <th>Mitarbeiter</th>
+                  <th className="num">Arbeitsstunden</th>
+                  <th className="num">Soll</th>
+                  <th className="num">ZA genommen</th>
+                  <th className="num">Automatik</th>
+                  <th className="num">Korrekturen</th>
+                  <th className="num">Stand Tagesende</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleZaMonthEndRows.map((row) => (
+                  <tr key={`za-month-${row.employeeId}-${row.date}`}>
+                    <td>{formatDateAT(row.date)}{row.isStartStand ? " · Startstand" : ""}</td>
+                    <td>{row.employee?.name || row.employeeId}</td>
+                    <td className="num">{formatHours(row.worked || 0)}</td>
+                    <td className="num">{formatHours(row.soll || 0)}</td>
+                    <td className="num">{formatHours(-(row.usedZa || 0))}</td>
+                    <td className="num">{formatHours(row.generated || 0)}</td>
+                    <td className="num">{formatHours(row.corrections || 0)}</td>
+                    <td className="num"><strong>{formatHours(row.balance || 0)}</strong></td>
+                  </tr>
+                ))}
+                {!visibleZaMonthEndRows.length && (
+                  <tr><td colSpan={8} className="employee-empty">Noch kein Monatsletzter im ZA-Zeitraum vorhanden.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </details>
 
         <details style={{ marginTop: 14 }}>
           <summary className="hbz-label" style={{ cursor: "pointer" }}>Letzte manuelle Korrekturen anzeigen</summary>
