@@ -164,6 +164,50 @@ function isZaAccountEnabled(emp) {
   return emp?.include_in_za_account !== false;
 }
 
+const ZA_OFFICIAL_START_NOTE = "Startwert ZA Tagesende 31.05.2026 lt. Mai-Lohnzettel";
+
+function normalizeText(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function isOfficialZaStartAdjustment(adj) {
+  const note = normalizeText(adj?.note);
+  return note === normalizeText(ZA_OFFICIAL_START_NOTE) || (note.includes("startwert") && note.includes("31.05.2026") && note.includes("lohnzettel"));
+}
+
+function isLegacyPreStartZaCorrection(adj) {
+  const note = normalizeText(adj?.note);
+  return note.includes("startwert")
+    || note.includes("korrektur mai")
+    || note.includes("31.05")
+    || note.includes("01.06")
+    || note.includes("lohnzettel");
+}
+
+function shouldCountZaAdjustment(adj, emp) {
+  const startDate = dateOnly(emp?.za_start_date);
+  const adjustmentDate = dateOnly(adj?.adjustment_date);
+
+  if (!startDate) return true;
+  if (!adjustmentDate) return false;
+
+  // Alles vor dem Startdatum wird fachlich ignoriert.
+  if (adjustmentDate < startDate) return false;
+
+  // Am Startdatum zählt nur der offizielle Lohnverrechnungs-Startstand.
+  // Dadurch bleiben alte Test-/Doppelkorrekturen vom 01.06. draußen.
+  if (adjustmentDate === startDate) {
+    return isOfficialZaStartAdjustment(adj);
+  }
+
+  // Alte Mai-/Startwert-Korrekturen, die irrtümlich später gespeichert wurden,
+  // dürfen den laufenden Juni-Stand nicht verfälschen.
+  if (isLegacyPreStartZaCorrection(adj)) return false;
+
+  // Echte manuelle Korrekturen nach dem Startdatum zählen normal weiter.
+  return true;
+}
+
 export default function EmployeeList() {
   const [rows, setRows] = useState([]);
   const [entries, setEntries] = useState([]);
@@ -319,7 +363,7 @@ export default function EmployeeList() {
       const empId = String(adj.employee_id || "");
       const summary = map.get(empId);
       if (!summary || !summary.included) continue;
-      if (!isOnOrAfterStartDate(adj.adjustment_date, summary.employee?.za_start_date)) continue;
+      if (!shouldCountZaAdjustment(adj, summary.employee)) continue;
       summary.corrections += parseHours(adj.hours);
     }
 
@@ -368,16 +412,19 @@ export default function EmployeeList() {
       }
     }
 
+    const employeeById = new Map((rows || []).map((emp) => [String(emp.id), emp]));
     const adjustmentsByDay = new Map();
     const startAdjustmentsByDay = new Map();
     for (const adj of overtimeAdjustments || []) {
       const empId = String(adj.employee_id || "");
+      const emp = employeeById.get(empId);
       const date = dateOnly(adj.adjustment_date);
-      if (!empId || !date) continue;
+      if (!empId || !date || !emp) continue;
+      if (!shouldCountZaAdjustment(adj, emp)) continue;
       const key = `${empId}__${date}`;
       const hours = parseHours(adj.hours);
       adjustmentsByDay.set(key, (adjustmentsByDay.get(key) || 0) + hours);
-      if (String(adj.note || "").toLowerCase().includes("startwert")) {
+      if (isOfficialZaStartAdjustment(adj)) {
         startAdjustmentsByDay.set(key, (startAdjustmentsByDay.get(key) || 0) + hours);
       }
     }
