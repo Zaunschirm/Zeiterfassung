@@ -346,37 +346,93 @@ export default function WorkAssignments() {
   }, [canEditAssignments, orderedEmployees, currentUser?.id, session?.id]);
 
   useEffect(() => {
+    async function fetchEmployeesForAssignments() {
+      const selectVariants = [
+        "id, name, role, active, disabled, vacation_entitlement_days, urlaub_anspruch_tage, vacation_days",
+        "id, name, role, active, disabled, vacation_entitlement_days",
+        "id, name, role, active, disabled, urlaub_anspruch_tage",
+        "id, name, role, active, disabled, vacation_days",
+        "id, name, role, active, disabled",
+        "id, name, role, active",
+        "id, name, role",
+      ];
+
+      let lastError = null;
+
+      for (const selectText of selectVariants) {
+        try {
+          const { data, error } = await supabase
+            .from("employees")
+            .select(selectText)
+            .order("name", { ascending: true });
+
+          if (error) throw error;
+
+          return (data || []).filter((employee) => {
+            const role = normalizeRole(employee.role);
+            const isOffice = role === "buchhaltung" || role === "verwaltung" || role === "buchhaltung/verwaltung";
+            const isActive = employee.active !== false;
+            const isEnabled = employee.disabled !== true;
+            return !isOffice && isActive && isEnabled;
+          });
+        } catch (e) {
+          lastError = e;
+          console.warn("[WorkAssignments] employee select fallback:", selectText, e);
+        }
+      }
+
+      throw lastError || new Error("Mitarbeiter konnten nicht geladen werden.");
+    }
+
+    async function fetchActiveProjectsForAssignments() {
+      const selectVariants = [
+        { select: "id, name, cost_center, active", filterActive: true },
+        { select: "id, name, cost_center", filterActive: false },
+        { select: "id, name, active", filterActive: true },
+        { select: "id, name", filterActive: false },
+      ];
+
+      let lastError = null;
+
+      for (const variant of selectVariants) {
+        try {
+          let query = supabase
+            .from("projects")
+            .select(variant.select)
+            .order("name", { ascending: true });
+
+          if (variant.filterActive) query = query.eq("active", true);
+
+          const { data, error } = await query;
+          if (error) throw error;
+
+          return (data || []).filter((project) => project.active !== false);
+        } catch (e) {
+          lastError = e;
+          console.warn("[WorkAssignments] project select fallback:", variant.select, e);
+        }
+      }
+
+      throw lastError || new Error("Projekte konnten nicht geladen werden.");
+    }
+
     async function bootstrap() {
       setError("");
 
       try {
-        const [employeesRes, projectsRes] = await Promise.all([
-          supabase
-            .from("employees")
-            .select("id, name, role, active, disabled, vacation_entitlement_days, urlaub_anspruch_tage, vacation_days")
-            .eq("active", true)
-            .eq("disabled", false)
-            .neq("role", "buchhaltung")
-            .order("name", { ascending: true }),
-          supabase
-            .from("projects")
-            .select("id, name, cost_center, active")
-            .eq("active", true)
-            .order("name", { ascending: true }),
+        const [employeeData, projectData] = await Promise.all([
+          fetchEmployeesForAssignments(),
+          fetchActiveProjectsForAssignments(),
         ]);
 
-        if (employeesRes.error) throw employeesRes.error;
-        if (projectsRes.error) throw projectsRes.error;
-
-        const employeeData = (employeesRes.data || []).filter((e) => String(e.role || "").toLowerCase() !== "buchhaltung");
         setEmployees(employeeData);
-        setProjects(projectsRes.data || []);
+        setProjects(projectData);
         setEmployeeOrder(
           employeeData.slice().sort(employeeDefaultSort).map((emp) => String(emp.id))
         );
       } catch (e) {
         console.error("[WorkAssignments] bootstrap error:", e);
-        setError("Mitarbeiter oder Projekte konnten nicht geladen werden.");
+        setError(e?.message || "Mitarbeiter oder Projekte konnten nicht geladen werden.");
       }
     }
 
@@ -402,11 +458,30 @@ export default function WorkAssignments() {
           .order("assignment_date", { ascending: true })
           .order("sort_order", { ascending: true })
           .order("id", { ascending: true }),
-        supabase
-          .from("time_entries")
-          .select("id, employee_id, work_date, note, za_hours, absence_type")
-          .in("work_date", weekDateStrings)
-          .order("work_date", { ascending: true }),
+        (async () => {
+          const selectVariants = [
+            "id, employee_id, work_date, note, za_hours, absence_type",
+            "id, employee_id, work_date, note, za_hours",
+            "id, employee_id, work_date, note",
+          ];
+
+          let lastError = null;
+          for (const selectText of selectVariants) {
+            try {
+              const { data, error } = await supabase
+                .from("time_entries")
+                .select(selectText)
+                .in("work_date", weekDateStrings)
+                .order("work_date", { ascending: true });
+              if (error) throw error;
+              return { data, error: null };
+            } catch (e) {
+              lastError = e;
+              console.warn("[WorkAssignments] time_entries select fallback:", selectText, e);
+            }
+          }
+          return { data: [], error: lastError };
+        })(),
       ]);
 
       if (assignmentsRes.error) throw assignmentsRes.error;
@@ -768,9 +843,17 @@ export default function WorkAssignments() {
     const before = vacationEntitlementDays(employee);
     const nextDays = roundVacationDays(before + Number(deltaDays));
 
+    const vacationColumn = Object.prototype.hasOwnProperty.call(employee, "vacation_entitlement_days")
+      ? "vacation_entitlement_days"
+      : Object.prototype.hasOwnProperty.call(employee, "urlaub_anspruch_tage")
+        ? "urlaub_anspruch_tage"
+        : Object.prototype.hasOwnProperty.call(employee, "vacation_days")
+          ? "vacation_days"
+          : "vacation_entitlement_days";
+
     const { error: updateError } = await supabase
       .from("employees")
-      .update({ vacation_entitlement_days: nextDays })
+      .update({ [vacationColumn]: nextDays })
       .eq("id", employee.id);
     if (updateError) throw updateError;
 
@@ -788,7 +871,7 @@ export default function WorkAssignments() {
     setEmployees((list) =>
       (list || []).map((emp) =>
         String(emp.id) === String(employee.id)
-          ? { ...emp, vacation_entitlement_days: nextDays }
+          ? { ...emp, vacation_entitlement_days: nextDays, urlaub_anspruch_tage: nextDays, vacation_days: nextDays }
           : emp
       )
     );
