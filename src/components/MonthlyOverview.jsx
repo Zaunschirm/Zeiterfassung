@@ -1,8 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { getSession } from "../lib/session";
-import { jsPDF } from "jspdf";
-import autoTable from "jspdf-autotable";
 import {
   getBuakWeekType,
   getBuakSollHoursForWeek,
@@ -18,6 +16,15 @@ import {
   ensureMonthUnlocked,
   formatYearMonthAT,
 } from "../utils/monthLock";
+
+async function loadPdfLibs() {
+  const [{ jsPDF }, autoTableModule] = await Promise.all([
+    import("jspdf"),
+    import("jspdf-autotable"),
+  ]);
+
+  return { jsPDF, autoTable: autoTableModule.default };
+}
 
 // ---------- Utils ----------
 const toHM = (m) =>
@@ -1014,8 +1021,9 @@ export default function MonthlyOverview() {
     };
   }
 
-  function exportMissingEntriesPDF(result) {
+  async function exportMissingEntriesPDF(result) {
     try {
+      const { jsPDF, autoTable } = await loadPdfLibs();
       if (!result) {
         alert("Keine Prüfdaten für fehlende Einträge vorhanden.");
         return;
@@ -1299,6 +1307,7 @@ export default function MonthlyOverview() {
 
   async function exportPayrollCheckPDF() {
     try {
+      const { jsPDF, autoTable } = await loadPdfLibs();
       const now = new Date();
       const lastMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
       const y = lastMonthDate.getFullYear();
@@ -1510,6 +1519,7 @@ export default function MonthlyOverview() {
 
   async function exportLohnverrechnungPDF(exportRange = payrollCheckRange, selectedEmployeesForExport = null) {
     try {
+      const { jsPDF, autoTable } = await loadPdfLibs();
       const targetRange = exportRange || payrollCheckRange || activeRange;
       const employeesForExport = (selectedEmployeesForExport || employees.filter(isActiveEmployee))
         .filter(isActiveEmployee)
@@ -2028,8 +2038,9 @@ export default function MonthlyOverview() {
     }
   }
 
-  function exportAbrechnungPDF() {
+  async function exportAbrechnungPDF() {
     try {
+      const { jsPDF, autoTable } = await loadPdfLibs();
       if (!grouped.length) {
         alert("Keine Daten für den Export vorhanden.");
         return;
@@ -2129,8 +2140,9 @@ export default function MonthlyOverview() {
     }
   }
 
-  function exportNachkalkulationPDF() {
+  async function exportNachkalkulationPDF() {
     try {
+      const { jsPDF, autoTable } = await loadPdfLibs();
       if (!grouped.length) {
         alert("Keine Daten für den Export vorhanden.");
         return;

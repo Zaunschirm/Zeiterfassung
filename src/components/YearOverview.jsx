@@ -1,8 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { getSession } from "../lib/session";
-import { jsPDF } from "jspdf";
-import autoTable from "jspdf-autotable";
 import {
   calcBuakSollHoursForYear,
   calcBuakSollHoursForMonth,
@@ -11,6 +9,15 @@ import {
   getEmployeeSollHoursForDay,
   calcEmployeeSollHoursForRange,
 } from "../utils/time";
+
+async function loadPdfLibs() {
+  const [{ jsPDF }, autoTableModule] = await Promise.all([
+    import("jspdf"),
+    import("jspdf-autotable"),
+  ]);
+
+  return { jsPDF, autoTable: autoTableModule.default };
+}
 
 // ---- Helpers ----
 const h2 = (m) => Math.round((m / 60) * 100) / 100;
@@ -776,7 +783,8 @@ export default function YearOverview() {
       );
   }
 
-  function exportPDF() {
+  async function exportPDF() {
+    const { jsPDF, autoTable } = await loadPdfLibs();
     const selectedRows = rows.filter((r) => {
       const emp = employees.find((e) => e.id === r.employee_id);
       return pdfOptions.selectedEmployeeCodes.includes(emp?.code);
