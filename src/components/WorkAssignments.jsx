@@ -3,6 +3,7 @@ import { supabase } from "../lib/supabase";
 import { getSession } from "../lib/session";
 import { hasPermission } from "../lib/permissions";
 import { getBuakWeekType, getHolidayName, getEmployeeWorkDay, hmToMinutes } from "../utils/time";
+import { ensureMonthUnlocked } from "../utils/monthLock";
 
 function formatLocalDate(date) {
   const y = date.getFullYear();
@@ -72,6 +73,36 @@ function getDayStatus(dateStr) {
   };
 }
 
+
+function getTimeOffKind(row) {
+  const note = String(row?.note || "").toLowerCase();
+  const absence = String(row?.absence_type || row?.absenceType || "").toLowerCase();
+
+  if (absence === "krank" || note.includes("[krank]") || note.includes("krank")) return "krank";
+  if (absence === "urlaub" || note.includes("[urlaub]") || note.includes("urlaub")) return "urlaub";
+  if (absence === "zeitausgleich" || absence === "za" || Number(row?.za_hours || 0) > 0 || note.includes("[zeitausgleich]") || note.includes("zeitausgleich")) return "za";
+  return "";
+}
+
+function isRelevantTimeOff(row) {
+  const kind = getTimeOffKind(row);
+  return kind === "krank" || kind === "urlaub" || kind === "za";
+}
+
+function timeOffLabel(kind) {
+  if (kind === "krank") return "Krank";
+  if (kind === "urlaub") return "Urlaub";
+  if (kind === "za") return "ZA";
+  return "Abwesend";
+}
+
+function timeOffStyle(kind) {
+  if (kind === "krank") return { "--project-bg": "#fff7d8", "--project-border": "#d7b84d", "--project-text": "#66500a" };
+  if (kind === "urlaub") return { "--project-bg": "#e6f2fb", "--project-border": "#78aed2", "--project-text": "#1d526f" };
+  if (kind === "za") return { "--project-bg": "#f1ecff", "--project-border": "#aa95df", "--project-text": "#49327a" };
+  return { "--project-bg": "#f3f0eb", "--project-border": "#c8bbad", "--project-text": "#5f564d" };
+}
+
 function projectLabel(project) {
   if (!project) return "—";
   if (project.cost_center) return `${project.cost_center} · ${project.name}`;
@@ -124,6 +155,7 @@ export default function WorkAssignments() {
   const [projects, setProjects] = useState([]);
   const [projectSearch, setProjectSearch] = useState("");
   const [selectedProjectId, setSelectedProjectId] = useState("");
+  const [selectedPlanMode, setSelectedPlanMode] = useState("project"); // "project" | "krank" | "urlaub"
   const [assignments, setAssignments] = useState([]);
   const [timeOffRows, setTimeOffRows] = useState([]);
   const [employeeOrder, setEmployeeOrder] = useState([]);
@@ -249,40 +281,19 @@ export default function WorkAssignments() {
   }, [assignments]);
 
 
-
   const timeOffMap = useMemo(() => {
     const map = new Map();
 
     for (const row of timeOffRows) {
-      const key = `${row.employee_id}__${String(row.work_date || "").slice(0, 10)}`;
+      const dateStr = String(row.work_date || "").slice(0, 10);
+      if (!dateStr) continue;
+      const key = `${row.employee_id}__${dateStr}`;
       if (!map.has(key)) map.set(key, []);
       map.get(key).push(row);
     }
 
     return map;
   }, [timeOffRows]);
-
-  function normalizeAbsenceType(row) {
-    const absence = String(row?.absence_type || "").toLowerCase();
-    const note = String(row?.note || "").toLowerCase();
-
-    if (absence === "krank" || note.includes("[krank]") || note.includes("krank")) return "krank";
-    if (absence === "urlaub" || note.includes("[urlaub]") || note.includes("urlaub")) return "urlaub";
-    if (absence === "zeitausgleich" || absence === "za" || note.includes("[zeitausgleich]") || Number(row?.za_hours || 0) > 0) return "za";
-
-    return "";
-  }
-
-  function getTimeOffRows(employeeId, dateStr) {
-    return timeOffMap.get(`${employeeId}__${dateStr}`) || [];
-  }
-
-  function hasTimeOff(employeeId, dateStr, type = "") {
-    return getTimeOffRows(employeeId, dateStr).some((row) => {
-      const rowType = normalizeAbsenceType(row);
-      return type ? rowType === type : !!rowType;
-    });
-  }
 
   const weekSortMap = useMemo(() => {
     const map = new Map();
@@ -342,7 +353,7 @@ export default function WorkAssignments() {
         const [employeesRes, projectsRes] = await Promise.all([
           supabase
             .from("employees")
-            .select("*")
+            .select("id, name, role, active, disabled, vacation_entitlement_days, urlaub_anspruch_tage, vacation_days")
             .eq("active", true)
             .eq("disabled", false)
             .neq("role", "buchhaltung")
@@ -393,19 +404,16 @@ export default function WorkAssignments() {
           .order("id", { ascending: true }),
         supabase
           .from("time_entries")
-          .select("id, employee_id, work_date, note, absence_type, za_hours, start_min, end_min, break_min")
+          .select("id, employee_id, work_date, note, za_hours, absence_type")
           .in("work_date", weekDateStrings)
-          .order("work_date", { ascending: true })
-          .order("id", { ascending: true }),
+          .order("work_date", { ascending: true }),
       ]);
 
       if (assignmentsRes.error) throw assignmentsRes.error;
       if (timeOffRes.error) throw timeOffRes.error;
 
       setAssignments(assignmentsRes.data || []);
-      setTimeOffRows(
-        (timeOffRes.data || []).filter((row) => normalizeAbsenceType(row))
-      );
+      setTimeOffRows((timeOffRes.data || []).filter(isRelevantTimeOff));
     } catch (e) {
       console.error("[WorkAssignments] load error:", e);
       setAssignments([]);
@@ -448,6 +456,10 @@ export default function WorkAssignments() {
 
   function getCellRows(employeeId, dateStr) {
     return cellMap.get(`${employeeId}__${dateStr}`) || [];
+  }
+
+  function getTimeOffRows(employeeId, dateStr) {
+    return timeOffMap.get(`${employeeId}__${dateStr}`) || [];
   }
 
   function getNextSortOrderForEmployee(employeeId) {
@@ -525,6 +537,12 @@ export default function WorkAssignments() {
     const status = dayStatusMap.get(dateStr) || getDayStatus(dateStr);
     if (status.isHoliday) {
       alert(`Dieser Tag ist ein Feiertag (${status.holidayName}) und kann in der Arbeitseinteilung nicht überschrieben werden.`);
+      return;
+    }
+
+    const existingTimeOff = getTimeOffRows(employeeId, dateStr);
+    if (existingTimeOff.some((row) => ["urlaub", "krank", "za"].includes(getTimeOffKind(row)))) {
+      alert("An diesem Tag ist bereits Urlaub/Krank/ZA eingetragen. Die Einteilung wird nicht überschrieben.");
       return;
     }
 
@@ -606,102 +624,18 @@ export default function WorkAssignments() {
     }
   }
 
-
-
-  async function markSick(employee, dateStr) {
-    if (!canEditAssignments || !employee?.id || !dateStr) return;
-
-    const status = dayStatusMap.get(dateStr) || getDayStatus(dateStr);
-    if (status.isHoliday) {
-      alert(`Dieser Tag ist ein Feiertag (${status.holidayName}). Krankenstand wird hier nicht automatisch eingetragen.`);
-      return;
-    }
-
-    if (hasTimeOff(employee.id, dateStr, "urlaub")) {
-      alert("Für diesen Tag ist bereits Urlaub eingetragen.");
-      return;
-    }
-
-    if (hasTimeOff(employee.id, dateStr, "krank")) return;
-
-    const workDay = getEmployeeWorkDay(employee, dateStr);
-    const requiredMinutes = Number(workDay?.requiredMinutes || 0);
-    if (!workDay?.active || requiredMinutes <= 0) {
-      alert("Für diesen Tag gibt es laut Arbeitszeitmodell keine Krank-Stunden zum Eintragen.");
-      return;
-    }
-
-    const start = hmToMinutes(workDay.start || "07:00");
-
-    try {
-      setBusyKey(`sick-${employee.id}-${dateStr}`);
-
-      const payload = {
-        employee_id: Number(employee.id),
-        work_date: dateStr,
-        project_id: null,
-        project: null,
-        start_min: start,
-        end_min: start + requiredMinutes,
-        break_min: 0,
-        travel_minutes: 0,
-        travel_cost_center: "FAHRZEIT",
-        crane_hours: 0,
-        private_pkw_km: 0,
-        za_hours: 0,
-        bad_weather: false,
-        bad_weather_minutes: 0,
-        weather_auto: null,
-        weather_manual: null,
-        weather_final: null,
-        absence_type: "krank",
-        note: "[Krank] aus Arbeitseinteilung",
-      };
-
-      const { error } = await supabase.from("time_entries").insert(payload);
-      if (error) throw error;
-
-      await markAssignmentChanged(employee.id, dateStr);
-      await loadAssignments();
-    } catch (e) {
-      console.error("[WorkAssignments] sick insert error:", e);
-      alert(
-        e?.message ||
-          e?.details ||
-          e?.hint ||
-          JSON.stringify(e) ||
-          "Krankenstand konnte nicht gespeichert werden."
-      );
-    } finally {
-      setBusyKey("");
-    }
-  }
-
-  async function removeSick(row) {
-    if (!canEditAssignments || !row?.id) return;
-    if (!window.confirm("Krankenstand aus der Arbeitseinteilung entfernen?")) return;
-
-    try {
-      setBusyKey(`remove-sick-${row.id}`);
-      const { error } = await supabase.from("time_entries").delete().eq("id", row.id);
-      if (error) throw error;
-      await markAssignmentChanged(row.employee_id, row.work_date);
-      await loadAssignments();
-    } catch (e) {
-      console.error("[WorkAssignments] sick delete error:", e);
-      alert(e?.message || "Krankenstand konnte nicht gelöscht werden.");
-    } finally {
-      setBusyKey("");
-    }
-  }
-
   async function onCellClick(employeeId, dateStr) {
     if (!canEditAssignments) return;
+
+    if (selectedPlanMode === "krank" || selectedPlanMode === "urlaub") {
+      await addAbsenceToCell(employeeId, dateStr, selectedPlanMode);
+      return;
+    }
 
     const projectIdValue = selectedProjectId || projectRef.current?.value?.trim();
 
     if (!projectIdValue) {
-      alert("Bitte oben ein Projekt antippen oder direkt in die Zelle ziehen.");
+      alert("Bitte oben ein Projekt oder Krank auswählen und danach in die gewünschte Zelle klicken.");
       return;
     }
 
@@ -710,6 +644,7 @@ export default function WorkAssignments() {
 
   function selectProject(projectId) {
     const value = String(projectId || "").trim();
+    setSelectedPlanMode("project");
     setSelectedProjectId(value);
     if (projectRef.current) projectRef.current.value = value;
   }
@@ -818,18 +753,188 @@ export default function WorkAssignments() {
     await persistEmployeeOrder(nextOrder);
   }
 
+
+  function roundVacationDays(value) {
+    return Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
+  }
+
+  function vacationEntitlementDays(emp) {
+    return Number(emp?.vacation_entitlement_days ?? emp?.urlaub_anspruch_tage ?? emp?.vacation_days ?? 0) || 0;
+  }
+
+  async function changeVacationCurrentDays(employee, deltaDays, auditNote = "Urlaubskorrektur") {
+    if (!employee?.id || !Number.isFinite(Number(deltaDays)) || Number(deltaDays) === 0) return;
+
+    const before = vacationEntitlementDays(employee);
+    const nextDays = roundVacationDays(before + Number(deltaDays));
+
+    const { error: updateError } = await supabase
+      .from("employees")
+      .update({ vacation_entitlement_days: nextDays })
+      .eq("id", employee.id);
+    if (updateError) throw updateError;
+
+    try {
+      await supabase.from("vacation_adjustments").insert({
+        employee_id: String(employee.id),
+        adjustment_date: formatLocalDate(new Date()),
+        days: Number(deltaDays),
+        note: auditNote,
+      });
+    } catch (auditError) {
+      console.warn("[WorkAssignments] vacation audit not saved:", auditError);
+    }
+
+    setEmployees((list) =>
+      (list || []).map((emp) =>
+        String(emp.id) === String(employee.id)
+          ? { ...emp, vacation_entitlement_days: nextDays }
+          : emp
+      )
+    );
+  }
+
+  async function addAbsenceToCell(employeeId, dateStr, kind) {
+    if (!canEditAssignments) return;
+
+    const normalizedKind = kind === "urlaub" ? "urlaub" : "krank";
+    const label = normalizedKind === "urlaub" ? "Urlaub" : "Krank";
+    const status = dayStatusMap.get(dateStr) || getDayStatus(dateStr);
+
+    if (status.isHoliday) {
+      alert(`Dieser Tag ist ein Feiertag (${status.holidayName}) und kann nicht als ${label} eingetragen werden.`);
+      return;
+    }
+
+    const employee = employees.find((emp) => String(emp.id) === String(employeeId));
+    const existingTimeOff = getTimeOffRows(employeeId, dateStr);
+    if (existingTimeOff.length > 0) {
+      alert("An diesem Tag ist bereits Urlaub/Krank/ZA eingetragen.");
+      return;
+    }
+
+    const existingAssignments = getCellRows(employeeId, dateStr);
+    if (existingAssignments.length > 0) {
+      const ok = window.confirm(`${label} eintragen und vorhandene Projekte für diesen Tag entfernen?`);
+      if (!ok) return;
+    }
+
+    let start = 0;
+    let end = 0;
+
+    if (normalizedKind === "krank") {
+      const workDay = getEmployeeWorkDay(employee || null, dateStr);
+      start = workDay?.active ? hmToMinutes(workDay.start) : 7 * 60;
+      const requiredMinutes = Number(workDay?.requiredMinutes || 0);
+
+      if (requiredMinutes <= 0) {
+        alert("Für diesen Tag gibt es laut Arbeitszeitmodell keine Sollzeit. Krank wird daher nicht eingetragen.");
+        return;
+      }
+
+      end = start + requiredMinutes;
+    }
+
+    const assignmentIds = existingAssignments.map((row) => row.id);
+    const payload = {
+      employee_id: Number(employeeId),
+      work_date: dateStr,
+      project_id: null,
+      project: null,
+      start_min: start,
+      end_min: end,
+      break_min: 0,
+      travel_minutes: 0,
+      travel_cost_center: "FAHRZEIT",
+      crane_hours: 0,
+      private_pkw_km: 0,
+      za_hours: 0,
+      bad_weather: false,
+      bad_weather_minutes: 0,
+      weather_auto: null,
+      weather_manual: null,
+      weather_final: null,
+      absence_type: normalizedKind,
+      note: normalizedKind === "urlaub"
+        ? "[Urlaub] aus Arbeitseinteilung eingetragen"
+        : "[Krank] aus Arbeitseinteilung eingetragen",
+    };
+
+    try {
+      await ensureMonthUnlocked(supabase, dateStr);
+      setBusyKey(`${normalizedKind}-${employeeId}-${dateStr}`);
+
+      if (assignmentIds.length > 0) {
+        const { error: deleteAssignmentError } = await supabase
+          .from("work_assignments")
+          .delete()
+          .in("id", assignmentIds);
+        if (deleteAssignmentError) throw deleteAssignmentError;
+      }
+
+      const { error } = await supabase.from("time_entries").insert(payload);
+      if (error) throw error;
+
+      if (normalizedKind === "urlaub" && employee) {
+        await changeVacationCurrentDays(employee, -1, `Urlaub aus Arbeitseinteilung eingetragen: ${dateStr}`);
+      }
+
+      await markAssignmentChanged(employeeId, dateStr);
+      await loadAssignments();
+    } catch (e) {
+      console.error(`[WorkAssignments] ${normalizedKind} insert error:`, e);
+      alert(e?.message || e?.details || e?.hint || JSON.stringify(e) || `${label} konnte nicht eingetragen werden.`);
+    } finally {
+      setBusyKey("");
+    }
+  }
+
+  async function deleteAbsenceEntry(row) {
+    if (!canEditAssignments || !row?.id) return;
+
+    const kind = getTimeOffKind(row);
+    if (kind !== "krank" && kind !== "urlaub") return;
+
+    const label = kind === "urlaub" ? "Urlaub" : "Krankenstand";
+    const dateStr = String(row.work_date || "").slice(0, 10);
+    if (!window.confirm(`${label} aus der Arbeitseinteilung löschen?`)) return;
+
+    try {
+      await ensureMonthUnlocked(supabase, dateStr);
+      setBusyKey(`delete-${kind}-${row.id}`);
+      const { error } = await supabase.from("time_entries").delete().eq("id", row.id);
+      if (error) throw error;
+
+      if (kind === "urlaub") {
+        const employee = employees.find((emp) => String(emp.id) === String(row.employee_id));
+        if (employee) {
+          await changeVacationCurrentDays(employee, 1, `Urlaub aus Arbeitseinteilung gelöscht: ${dateStr}`);
+        }
+      }
+
+      await markAssignmentChanged(row.employee_id, dateStr);
+      await loadAssignments();
+    } catch (e) {
+      console.error(`[WorkAssignments] ${kind} delete error:`, e);
+      alert(e?.message || e?.details || e?.hint || JSON.stringify(e) || `${label} konnte nicht gelöscht werden.`);
+    } finally {
+      setBusyKey("");
+    }
+  }
+
   const compactRowsByDate = useMemo(() => {
     return weekDateStrings.map((dateStr) => {
       const dayRows = visibleAssignmentEmployees
         .map((employee) => ({
           employee,
           rows: getCellRows(employee.id, dateStr),
+          timeOff: getTimeOffRows(employee.id, dateStr),
         }))
-        .filter((entry) => entry.rows.length > 0);
+        .filter((entry) => entry.rows.length > 0 || entry.timeOff.length > 0);
 
       return { dateStr, rows: dayRows };
     });
-  }, [weekDateStrings, visibleAssignmentEmployees, cellMap]);
+  }, [weekDateStrings, visibleAssignmentEmployees, cellMap, timeOffMap]);
 
   return (
     <div className="workassign-dispo-page">
@@ -861,7 +966,7 @@ export default function WorkAssignments() {
         <div className="workassign-dispo-toolbar">
           <div className="help">
             {canEditAssignments
-              ? "Aktive Projekte oben als farbige Chips in die Zelle ziehen oder antippen und danach unten in die gewünschte Zelle klicken. Mitarbeiter können weiter per Ziehen sortiert werden."
+              ? "Projekt, Krank oder Urlaub auswählen und danach in die gewünschte Zelle klicken. Urlaub/ZA aus Urlaub/ZA wird automatisch angezeigt."
               : "Hier siehst du die Arbeitseinteilung der Woche. Änderungen sind mit deinem Benutzer nicht erlaubt."}
           </div>
 
@@ -888,6 +993,44 @@ export default function WorkAssignments() {
       </div>
 
       {canEditAssignments ? (
+      <div className="hbz-card workassign-absence-card" style={{ marginBottom: 12 }}>
+        <div className="workassign-project-palette-head">
+          <div>
+            <div className="month-card-title">Abwesenheit</div>
+            <div className="help">Krank oder Urlaub auswählen und danach unten in die gewünschte Zelle klicken. Urlaub ist mit Urlaub/ZA und der Zeiterfassung verknüpft.</div>
+          </div>
+          {selectedPlanMode === "krank" || selectedPlanMode === "urlaub" ? <span className="badge">{selectedPlanMode === "urlaub" ? "Urlaub aktiv" : "Krank aktiv"}</span> : null}
+        </div>
+
+        <div className="workassign-absence-tools" style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+          <button
+            type="button"
+            className={`hbz-chip ${selectedPlanMode === "krank" ? "active" : ""}`}
+            onClick={() => { setSelectedPlanMode("krank"); setSelectedProjectId(""); if (projectRef.current) projectRef.current.value = ""; }}
+            title="Krank auswählen und danach unten in die Zelle klicken"
+          >
+            Krank
+          </button>
+          <button
+            type="button"
+            className={`hbz-chip ${selectedPlanMode === "urlaub" ? "active" : ""}`}
+            onClick={() => { setSelectedPlanMode("urlaub"); setSelectedProjectId(""); if (projectRef.current) projectRef.current.value = ""; }}
+            title="Urlaub auswählen und danach unten in die Zelle klicken"
+          >
+            Urlaub
+          </button>
+          <button
+            type="button"
+            className="hbz-btn"
+            onClick={() => { setSelectedPlanMode("project"); setSelectedProjectId(""); if (projectRef.current) projectRef.current.value = ""; }}
+          >
+            Abwesenheit aus
+          </button>
+        </div>
+      </div>
+      ) : null}
+
+      {canEditAssignments ? (
       <div className="hbz-card workassign-project-palette-card">
         <div className="workassign-project-palette-head">
           <div>
@@ -911,7 +1054,7 @@ export default function WorkAssignments() {
             <button
               type="button"
               className="hbz-btn"
-              onClick={() => selectProject("")}
+              onClick={() => { setSelectedPlanMode("project"); selectProject(""); }}
             >
               Auswahl löschen
             </button>
@@ -955,6 +1098,7 @@ export default function WorkAssignments() {
             ) : (
               compactRowsByDate.map((day) => {
                 const projectsForDay = day.rows.flatMap((entry) => entry.rows);
+                const timeOffForDay = day.rows.flatMap((entry) => entry.timeOff || []);
                 const status = dayStatusMap.get(day.dateStr) || getDayStatus(day.dateStr);
                 const rowClass = status.isHoliday
                   ? "holiday"
@@ -962,7 +1106,9 @@ export default function WorkAssignments() {
                     ? "short-free"
                     : projectsForDay.length > 0
                       ? "assigned"
-                      : "missing";
+                      : timeOffForDay.length > 0
+                        ? "assigned"
+                        : "missing";
 
                 return (
                   <div className={`workassign-compact-row ${rowClass}`} key={day.dateStr}>
@@ -976,21 +1122,35 @@ export default function WorkAssignments() {
                         <span className="workassign-day-note holiday">Feiertag: {status.holidayName}</span>
                       ) : status.shortWeekFriday && projectsForDay.length === 0 ? (
                         <span className="workassign-day-note short-free">Kurzwoche frei / überschreibbar</span>
-                      ) : projectsForDay.length === 0 ? (
+                      ) : projectsForDay.length === 0 && timeOffForDay.length === 0 ? (
                         <span className="workassign-compact-empty">frei / keine Einteilung</span>
                       ) : (
-                        projectsForDay.map((row) => {
-                          const project = projectMap.get(String(row.project_id));
-                          return (
-                            <span
-                              className="workassign-cell-chip color-token"
-                              style={getProjectColorStyle(row.project_id)}
-                              key={row.id}
-                            >
-                              {projectLabel(project)}
-                            </span>
-                          );
-                        })
+                        <>
+                          {timeOffForDay.map((row) => {
+                            const kind = getTimeOffKind(row);
+                            return (
+                              <span
+                                className="workassign-cell-chip color-token"
+                                style={timeOffStyle(kind)}
+                                key={`off-${row.id}`}
+                              >
+                                {timeOffLabel(kind)}
+                              </span>
+                            );
+                          })}
+                          {projectsForDay.map((row) => {
+                            const project = projectMap.get(String(row.project_id));
+                            return (
+                              <span
+                                className="workassign-cell-chip color-token"
+                                style={getProjectColorStyle(row.project_id)}
+                                key={row.id}
+                              >
+                                {projectLabel(project)}
+                              </span>
+                            );
+                          })}
+                        </>
                       )}
                     </div>
                   </div>
@@ -1062,24 +1222,18 @@ export default function WorkAssignments() {
 
                       {weekDateStrings.map((dateStr) => {
                         const cellRows = getCellRows(employee.id, dateStr);
-                        const timeOffForCell = getTimeOffRows(employee.id, dateStr);
-                        const hasVacation = timeOffForCell.some((row) => normalizeAbsenceType(row) === "urlaub");
-                        const hasSick = timeOffForCell.some((row) => normalizeAbsenceType(row) === "krank");
+                        const absenceRows = getTimeOffRows(employee.id, dateStr);
                         const cellKey = `${employee.id}__${dateStr}`;
                         const status = dayStatusMap.get(dateStr) || getDayStatus(dateStr);
                         const isLocked = status.isHoliday;
-                        const isEmpty = cellRows.length === 0 && timeOffForCell.length === 0;
+                        const isEmpty = cellRows.length === 0 && absenceRows.length === 0;
                         const cellStatusClass = isLocked
                           ? "workassign-cell-holiday"
-                          : hasVacation
-                            ? "workassign-cell-vacation"
-                            : hasSick
-                              ? "workassign-cell-sick"
-                              : status.shortWeekFriday && isEmpty
-                                ? "workassign-cell-shortfree"
-                                : isEmpty
-                                  ? "workassign-cell-open"
-                                  : "workassign-cell-assigned";
+                          : status.shortWeekFriday && isEmpty
+                            ? "workassign-cell-shortfree"
+                            : isEmpty
+                              ? "workassign-cell-open"
+                              : "workassign-cell-assigned";
 
                         return (
                           <td
@@ -1104,27 +1258,31 @@ export default function WorkAssignments() {
                             <div className="workassign-cell-content">
                               {isLocked ? (
                                 <div className="workassign-cell-locked">Feiertag<br /><strong>{status.holidayName}</strong></div>
+                              ) : status.shortWeekFriday && cellRows.length === 0 && absenceRows.length === 0 ? (
+                                <div className="workassign-cell-shortfree-note">Kurzwoche frei<br /><small>überschreibbar</small></div>
+                              ) : cellRows.length === 0 && absenceRows.length === 0 ? (
+                                <div className="workassign-cell-empty">—</div>
                               ) : (
                                 <>
-                                  {timeOffForCell.map((row) => {
-                                    const type = normalizeAbsenceType(row);
-                                    const label = type === "krank" ? "Krank" : type === "urlaub" ? "Urlaub" : "ZA";
+                                  {absenceRows.map((row) => {
+                                    const kind = getTimeOffKind(row);
                                     return (
                                       <span
-                                        className={`workassign-cell-chip workassign-absence-chip workassign-absence-${type}`}
-                                        key={`timeoff-${row.id}`}
-                                        title={String(row.note || "")}
+                                        className="workassign-cell-chip color-token"
+                                        style={timeOffStyle(kind)}
+                                        key={`off-${row.id}`}
+                                        title={row.note || timeOffLabel(kind)}
                                       >
-                                        {label}
-                                        {canEditAssignments && type === "krank" ? (
+                                        {timeOffLabel(kind)}
+                                        {canEditAssignments && (kind === "krank" || kind === "urlaub") ? (
                                           <button
                                             type="button"
                                             className="workassign-cell-chip-remove"
                                             onClick={(ev) => {
                                               ev.stopPropagation();
-                                              removeSick(row);
+                                              deleteAbsenceEntry(row);
                                             }}
-                                            disabled={busyKey === `remove-sick-${row.id}`}
+                                            disabled={busyKey === `delete-${kind}-${row.id}`}
                                           >
                                             ×
                                           </button>
@@ -1132,13 +1290,6 @@ export default function WorkAssignments() {
                                       </span>
                                     );
                                   })}
-
-                                  {status.shortWeekFriday && cellRows.length === 0 && timeOffForCell.length === 0 ? (
-                                    <div className="workassign-cell-shortfree-note">Kurzwoche frei<br /><small>überschreibbar</small></div>
-                                  ) : cellRows.length === 0 && timeOffForCell.length === 0 ? (
-                                    <div className="workassign-cell-empty">—</div>
-                                  ) : null}
-
                                   {cellRows.map((row) => {
                                     const project = projectMap.get(String(row.project_id));
 
@@ -1165,21 +1316,6 @@ export default function WorkAssignments() {
                                       </span>
                                     );
                                   })}
-
-                                  {canEditAssignments && !hasVacation && !hasSick ? (
-                                    <button
-                                      type="button"
-                                      className="hbz-chip workassign-sick-btn"
-                                      onClick={(ev) => {
-                                        ev.stopPropagation();
-                                        markSick(employee, dateStr);
-                                      }}
-                                      disabled={busyKey === `sick-${employee.id}-${dateStr}`}
-                                      title="Krankenstand für diesen Tag eintragen"
-                                    >
-                                      Krank
-                                    </button>
-                                  ) : null}
                                 </>
                               )}
                             </div>
