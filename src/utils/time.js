@@ -213,6 +213,23 @@ export function getBuakSollHoursForWeek(dateStr) {
   return null;
 }
 
+export function getBuakWeekLabel(dateStr) {
+  const iso = normalizeDateStr(dateStr);
+  if (!iso) return "";
+
+  const wk = getISOWeek(iso);
+  if (!wk) return "";
+
+  const year = Number(iso.slice(0, 4));
+  if (year !== 2026) return `KW ${wk}`;
+
+  const t = getBuakWeekType(iso);
+  if (t === "kurz") return `KW ${wk} - Kurze Woche`;
+  if (t === "lang") return `KW ${wk} - Lange Woche`;
+
+  return `KW ${wk}`;
+}
+
 // Sollstunden pro Tag
 export function getBuakSollHoursForDay(dateStr) {
   const iso = normalizeDateStr(dateStr);
