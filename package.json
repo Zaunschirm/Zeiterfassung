@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "vercel-build": "vite build"
+    "vercel-build": "vite build",
+    "test": "vitest run"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.47.6",
@@ -26,6 +27,7 @@
     "baseline-browser-mapping": "^2.9.19",
     "vite": "^5.4.8",
     "vite-plugin-pwa": "^1.1.0",
+    "vitest": "^4.1.9",
     "workbox-window": "^7.3.0"
   }
 }
