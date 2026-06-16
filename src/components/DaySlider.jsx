@@ -577,7 +577,6 @@ export default function DaySlider() {
   );
 
   const totalHours = useMemo(() => h2(totalMinWithTravel), [totalMinWithTravel]);
-  const totalOvertime = useMemo(() => Math.max(totalHours - 9, 0), [totalHours]);
   const selectedProject = useMemo(
     () => projects.find((p) => String(p.id) === String(projectId)) || null,
     [projects, projectId]
@@ -597,6 +596,12 @@ export default function DaySlider() {
     () => getEmployeeWorkDay(defaultTimeEmployee, date),
     [defaultTimeEmployee, date]
   );
+
+  const totalOvertime = useMemo(() => {
+    const requiredHours = Number(selectedWorkDayDefaults?.requiredHours || 0);
+    if (requiredHours <= 0) return totalHours > 0 ? totalHours : 0;
+    return Math.max(totalHours - requiredHours, 0);
+  }, [totalHours, selectedWorkDayDefaults?.requiredHours]);
 
   function applySelectedEmployeeDefaults(force = false) {
     if (absenceType && !force) return;
