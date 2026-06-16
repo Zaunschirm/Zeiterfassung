@@ -10,6 +10,7 @@ import {
   getWeatherFinalLabel,
 } from "../utils/weather";
 import { getBuakWeekLabel, getEmployeeWorkDay, getHolidayName, hmToMinutes } from "../utils/time";
+import { calculateZaBalanceForEmployee } from "../utils/overtime";
 import { ensureMonthUnlocked } from "../utils/monthLock";
 
 // Utils
@@ -842,47 +843,17 @@ export default function DaySlider() {
         if (rowsError) throw rowsError;
         if (corrError) throw corrError;
 
-        const rowsByDate = new Map();
-        (rows || []).forEach((row) => {
-          const day = String(row?.work_date || "").slice(0, 10);
-          if (!day) return;
-          if (!rowsByDate.has(day)) rowsByDate.set(day, []);
-          rowsByDate.get(day).push(row);
-        });
+        const balance = calculateZaBalanceForEmployee({
+          employee: emp,
+          entries: rows || [],
+          adjustments: corrections || [],
+          from: startDate,
+          to: endDate,
+          adjustmentFrom: startDate,
+          adjustmentTo: today,
+        }).balance;
 
-        let workHours = 0;
-        let sollHours = 0;
-        let zaUsed = 0;
-
-        if (hasEntryRange) for (let day = startDate; day <= endDate; day = addDaysIso(day, 1)) {
-          const dayRows = rowsByDate.get(day) || [];
-          const hasNeutralAbsence = dayRows.some((r) => {
-            const n = String(r?.note || "").toLowerCase();
-            return n.includes("[urlaub]") || n.includes("[krank]");
-          });
-
-          if (!hasNeutralAbsence) {
-            const wd = getEmployeeWorkDay(emp, day);
-            sollHours += Number(wd?.requiredHours || 0);
-          }
-
-          dayRows.forEach((r) => {
-            const noteLower = String(r?.note || "").toLowerCase();
-            const isAbsence = noteLower.includes("[urlaub]") || noteLower.includes("[krank]") || noteLower.includes("[zeitausgleich]");
-            zaUsed += Number(r?.za_hours || 0);
-            if (!isAbsence) {
-              const start = Number(r?.start_min || 0);
-              const end = Number(r?.end_min || 0);
-              const pause = Number(r?.break_min || 0);
-              const travel = Number(r?.travel_minutes || 0);
-              if (end > start) workHours += Math.max(0, end - start - pause + travel) / 60;
-            }
-          });
-        }
-
-        const corrHours = (corrections || []).reduce((sum, row) => sum + Number(row?.hours || 0), 0);
-        const balance = workHours - sollHours - zaUsed + corrHours;
-        if (!cancelled) setOwnZaBalance(Math.round(balance * 100) / 100);
+        if (!cancelled) setOwnZaBalance(balance);
       } catch (e) {
         console.error("[DaySlider] ZA-Konto konnte nicht geladen werden:", e?.message || e);
         if (!cancelled) setOwnZaBalance(null);
