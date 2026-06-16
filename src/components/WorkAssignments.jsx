@@ -937,7 +937,6 @@ export default function WorkAssignments() {
       weather_auto: null,
       weather_manual: null,
       weather_final: null,
-      absence_type: normalizedKind,
       note: normalizedKind === "urlaub"
         ? "[Urlaub] aus Arbeitseinteilung eingetragen"
         : "[Krank] aus Arbeitseinteilung eingetragen",
