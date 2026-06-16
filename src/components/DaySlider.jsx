@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { getSession } from "../lib/session";
 import { getUserPermissions } from "../lib/permissions";
@@ -11,6 +11,7 @@ import {
 } from "../utils/weather";
 import { getBuakWeekLabel, getEmployeeWorkDay, getHolidayName, hmToMinutes } from "../utils/time";
 import { calculateZaBalanceForEmployee } from "../utils/overtime";
+import { formatValidationMessages, validateTimeEntry } from "../utils/timeValidation";
 import { ensureMonthUnlocked } from "../utils/monthLock";
 
 // Utils
@@ -236,6 +237,22 @@ export default function DaySlider() {
   const [error, setError] = useState("");
   const [ownZaBalance, setOwnZaBalance] = useState(null);
   const [ownZaLoading, setOwnZaLoading] = useState(false);
+  const validationDialogResolver = useRef(null);
+  const [validationDialog, setValidationDialog] = useState(null);
+
+  function confirmValidationWarnings(warnings) {
+    return new Promise((resolve) => {
+      validationDialogResolver.current = resolve;
+      setValidationDialog({ warnings });
+    });
+  }
+
+  function closeValidationDialog(proceed) {
+    const resolve = validationDialogResolver.current;
+    validationDialogResolver.current = null;
+    setValidationDialog(null);
+    if (resolve) resolve(proceed);
+  }
 
 
   useEffect(() => {
@@ -1277,11 +1294,47 @@ export default function DaySlider() {
       }${(note || "").trim()}`.trim() || null,
     };
 
+    const targetEmployees = canWriteAllTime
+      ? employees.filter((e) => selectedCodes.includes(e.code))
+      : employeeRow
+      ? [employeeRow]
+      : [];
+
+    const validationResults = targetEmployees.map((emp) => ({
+      employee: emp,
+      result: validateTimeEntry({
+        date,
+        employee: emp,
+        entry: { ...base, employee_id: emp.id },
+        existingEntries: entries,
+      }),
+    }));
+
+    const validationErrors = validationResults
+      .filter(({ result }) => result.errors.length > 0)
+      .flatMap(({ employee, result }) =>
+        result.errors.map((message) => `${employee?.name || employee?.code || "Mitarbeiter"}: ${message}`)
+      );
+
+    if (validationErrors.length) {
+      setError(validationErrors.join("\n"));
+      return;
+    }
+
+    const validationWarnings = validationResults
+      .filter(({ result }) => result.warnings.length > 0)
+      .map(({ employee, result }) => `${employee?.name || employee?.code || "Mitarbeiter"}:\n${formatValidationMessages({ warnings: result.warnings })}`);
+
+    if (validationWarnings.length) {
+      const proceed = await confirmValidationWarnings(validationWarnings);
+      if (!proceed) return;
+    }
+
     try {
       setSaving(true);
 
       if (canWriteAllTime) {
-        const chosen = employees.filter((e) => selectedCodes.includes(e.code));
+        const chosen = targetEmployees;
         if (chosen.length === 0) {
           alert("Bitte mindestens einen Mitarbeiter auswählen.");
           return;
@@ -1398,6 +1451,30 @@ export default function DaySlider() {
       note: editState.note?.trim() || null,
     };
 
+    const editEmployee =
+      employees.find((emp) => String(emp.id) === String(targetRow?.employee_id)) ||
+      employeeRow ||
+      null;
+    const editValidation = validateTimeEntry({
+      date: targetRow?.work_date || date,
+      employee: editEmployee,
+      entry: { ...targetRow, ...upd },
+      existingEntries: entries.filter((row) => String(row.id) !== String(editId)),
+    });
+
+    if (editValidation.errors.length) {
+      setError(editValidation.errors.join("\n"));
+      return;
+    }
+
+    if (editValidation.warnings.length) {
+      const label = editEmployee?.name || editEmployee?.code || "Mitarbeiter";
+      const proceed = await confirmValidationWarnings([
+        `${label}:\n${formatValidationMessages({ warnings: editValidation.warnings })}`,
+      ]);
+      if (!proceed) return;
+    }
+
     try {
       const { error } = await supabase
         .from("time_entries")
@@ -1479,6 +1556,41 @@ export default function DaySlider() {
           .mobile-sticky-save .save-btn { width: 100%; min-height: 52px; font-size: 16px; border-radius: 16px; }
         }
       `}</style>
+      {validationDialog && (
+        <div className="month-modal-backdrop" role="presentation">
+          <div className="month-modal" role="dialog" aria-modal="true" aria-labelledby="time-validation-title">
+            <div className="month-modal-head">
+              <div>
+                <div className="eyebrow">Plausibilitätsprüfung</div>
+                <h3 id="time-validation-title">Eintrag prüfen</h3>
+                <div className="month-modal-subtitle">
+                  Bitte kontrolliere die Hinweise, bevor der Eintrag gespeichert wird.
+                </div>
+              </div>
+            </div>
+
+            <div className="month-modal-box">
+              <div className="month-modal-box-title">Hinweise</div>
+              <ul className="month-modal-checklist">
+                {validationDialog.warnings.map((message, index) => (
+                  <li key={`${index}-${message}`}>
+                    <span style={{ whiteSpace: "pre-line" }}>{message}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="month-modal-actions">
+              <button type="button" className="hbz-btn hbz-btn-ghost" onClick={() => closeValidationDialog(false)}>
+                Zurück bearbeiten
+              </button>
+              <button type="button" className="save-btn" onClick={() => closeValidationDialog(true)}>
+                Trotzdem speichern
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="month-overview-hero hbz-card">
         <div className="month-overview-hero__content">
           <div>
