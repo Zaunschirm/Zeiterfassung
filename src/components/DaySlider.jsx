@@ -13,6 +13,14 @@ import {
 import { getBuakWeekLabel, getEmployeeWorkDay, getHolidayName, hmToMinutes } from "../utils/time";
 import { calculateZaBalanceForEmployee } from "../utils/overtime";
 import { formatValidationMessages, validateTimeEntry } from "../utils/timeValidation";
+import {
+  auditDisplayValue,
+  auditFieldLabel,
+  buildAuditEntrySummary,
+  buildCreateAuditRows,
+  buildDeleteAuditRows,
+  buildUpdateAuditRows,
+} from "../utils/timeAudit";
 import { ensureMonthUnlocked } from "../utils/monthLock";
 
 // Utils
@@ -63,26 +71,6 @@ const formatDateTimeAT = (value) => {
     return String(value);
   }
 };
-
-const auditFieldLabel = (field) => {
-  const map = {
-    Eintrag: "Eintrag",
-    project_id: "Projekt",
-    start_min: "Start",
-    end_min: "Ende",
-    break_min: "Pause",
-    travel_minutes: "Fahrzeit",
-    crane_hours: "Kran",
-    private_pkw_km: "Privat-PKW",
-    za_hours: "Zeitausgleich",
-    bad_weather: "Schlechtwetter",
-    weather_manual: "Wetter manuell",
-    weather_final: "Finales Wetter",
-    note: "Notiz",
-  };
-  return map[field] || field || "—";
-};
-
 
 const formatSignedHours = (value) => {
   const n = Number(value || 0);
@@ -1064,26 +1052,19 @@ export default function DaySlider() {
     return p.code ? `${p.code} · ${p.name}` : p.name || id;
   };
 
-  const auditEntrySummary = (row) => {
-    if (!row) return "—";
-    const start = row.start_min ?? row.from_min ?? 0;
-    const end = row.end_min ?? row.to_min ?? 0;
-    const travel = row.travel_minutes ?? row.travel_min ?? 0;
-    const emp = row.employee_name || getEmployeeNameById(row.employee_id);
-    const project = row.project_name || getProjectNameById(row.project_id);
-    return `${row.work_date || date || ""} · ${emp} · ${project} · ${toHM(start)}–${toHM(end)} · Pause ${row.break_min ?? 0} min · Fahrzeit ${travel} min · Kran ${Number(row.crane_hours || 0)} h · Privat-PKW ${Number(row.private_pkw_km || 0)} km · ZA ${Number(row.za_hours || 0)} h${row.note ? ` · ${row.note}` : ""}`;
-  };
+  const auditSummary = (row) =>
+    buildAuditEntrySummary(row, {
+      fallbackDate: date,
+      getEmployeeNameById,
+      getProjectNameById,
+      toHM,
+    });
 
-  const auditDisplayValue = (field, value) => {
-    if (value == null || value === "") return "—";
-    if (field === "project_id") return getProjectNameById(value);
-    if (field === "start_min" || field === "end_min") return toHM(Number(value || 0));
-    if (field === "break_min" || field === "travel_minutes") return `${Number(value || 0)} min`;
-    if (field === "crane_hours" || field === "za_hours") return `${Number(value || 0).toLocaleString("de-AT")} h`;
-    if (field === "private_pkw_km") return `${Number(value || 0).toLocaleString("de-AT")} km`;
-    if (field === "bad_weather") return value ? "Ja" : "Nein";
-    return String(value);
-  };
+  const displayAuditValue = (field, value) =>
+    auditDisplayValue(field, value, {
+      getProjectNameById,
+      toHM,
+    });
 
   async function insertAuditRows(rows) {
     const cleaned = (rows || []).filter((row) => row?.entry_id && row?.field_name);
@@ -1094,86 +1075,31 @@ export default function DaySlider() {
   }
 
   async function writeCreateAudit(savedRows) {
-    const actor = getActorId();
-    const rows = (savedRows || [])
-      .map((row) => ({
-        entry_id: asUuidOrNull(row.id),
-        employee_id: asUuidOrNull(row.employee_id),
-        changed_by: actor,
-        change_type: "create",
-        field_name: "Eintrag",
-        old_value: null,
-        new_value: auditEntrySummary(row),
-        source: "manual",
-      }))
-      .filter((row) => row.entry_id);
+    const rows = buildCreateAuditRows(savedRows, {
+      actor: getActorId(),
+      asUuidOrNull,
+      summary: auditSummary,
+    });
 
     await insertAuditRows(rows);
   }
 
   async function writeUpdateAudit(oldRow, upd) {
-    if (!oldRow?.id || !upd) return;
-
-    const fields = [
-      "project_id",
-      "start_min",
-      "end_min",
-      "break_min",
-      "travel_minutes",
-      "crane_hours",
-      "private_pkw_km",
-      "za_hours",
-      "bad_weather",
-      "weather_manual",
-      "weather_final",
-      "note",
-    ];
-
-    const actor = getActorId();
-    const rows = fields
-      .map((field) => {
-        const oldRaw =
-          field === "travel_minutes"
-            ? oldRow.travel_minutes ?? oldRow.travel_min ?? 0
-            : oldRow[field];
-        const newRaw = upd[field];
-
-        const oldCompare = String(oldRaw ?? "");
-        const newCompare = String(newRaw ?? "");
-        if (oldCompare === newCompare) return null;
-
-        return {
-          entry_id: asUuidOrNull(oldRow.id),
-          employee_id: asUuidOrNull(oldRow.employee_id),
-          changed_by: actor,
-          change_type: "update",
-          field_name: field,
-          old_value: auditDisplayValue(field, oldRaw),
-          new_value: auditDisplayValue(field, newRaw),
-          source: "manual",
-        };
-      })
-      .filter(Boolean)
-      .filter((row) => row.entry_id);
+    const rows = buildUpdateAuditRows(oldRow, upd, {
+      actor: getActorId(),
+      asUuidOrNull,
+      displayValue: displayAuditValue,
+    });
 
     await insertAuditRows(rows);
   }
 
   async function writeDeleteAudit(oldRow) {
-    if (!oldRow?.id) return;
-
-    await insertAuditRows([
-      {
-        entry_id: asUuidOrNull(oldRow.id),
-        employee_id: asUuidOrNull(oldRow.employee_id),
-        changed_by: getActorId(),
-        change_type: "delete",
-        field_name: "Eintrag",
-        old_value: auditEntrySummary(oldRow),
-        new_value: null,
-        source: "manual",
-      },
-    ]);
+    await insertAuditRows(buildDeleteAuditRows(oldRow, {
+      actor: getActorId(),
+      asUuidOrNull,
+      summary: auditSummary,
+    }));
   }
 
   async function openAuditLog(row) {
