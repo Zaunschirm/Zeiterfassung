@@ -21,6 +21,10 @@ import {
   buildDeleteAuditRows,
   buildUpdateAuditRows,
 } from "../utils/timeAudit";
+import {
+  buildEditedTimeEntryPayload,
+  buildNewTimeEntryPayload,
+} from "../utils/timeEntryPayload";
 import { ensureMonthUnlocked } from "../utils/monthLock";
 
 // Utils
@@ -1186,40 +1190,31 @@ export default function DaySlider() {
       return;
     }
 
-    const base = {
-      work_date: date,
-      project_id: prj ? prj.id : null,
-      start_min: fromMin,
-      end_min: toMin,
-      break_min: breakMin,
-      travel_minutes: travelMin,
-      travel_cost_center: "FAHRZEIT",
-      weather_auto: weatherAuto || null,
-      weather_manual: weatherManual || null,
-      weather_final: finalWeather || null,
-      weather_code: weatherCode,
+    const base = buildNewTimeEntryPayload({
+      date,
+      projectId: prj?.id,
+      fromMin,
+      toMin,
+      breakMin,
+      travelMin,
+      weatherAuto,
+      weatherManual,
+      finalWeather,
+      weatherCode,
       temperature,
       precipitation,
-      weather_source: weatherSource || null,
-      weather_fetched_at: weatherFetchedAt || null,
-      crane_hours: craneUsed ? Number(craneHours || 0) : 0,
-      private_pkw_km: privatePkwUsed ? Number(privatePkwKm || 0) : 0,
-      za_hours: zaUsed ? Number(zaHours || 0) : 0,
-      bad_weather: !!badWeather,
-      bad_weather_minutes: badWeather ? Math.max(toMin - fromMin - breakMin, 0) : 0,
-      voice_note: (note || "").trim() || null,
-      note: `${
-        absenceType === "krank"
-          ? "[Krank] "
-          : absenceType === "urlaub"
-          ? "[Urlaub] "
-          : zaUsed
-          ? "[Zeitausgleich] "
-          : badWeather
-          ? "[Schlechtwetter] "
-          : ""
-      }${(note || "").trim()}`.trim() || null,
-    };
+      weatherSource,
+      weatherFetchedAt,
+      craneUsed,
+      craneHours,
+      privatePkwUsed,
+      privatePkwKm,
+      zaUsed,
+      zaHours,
+      badWeather,
+      note,
+      absenceType,
+    });
 
     const targetEmployees = canWriteAllTime
       ? employees.filter((e) => selectedCodes.includes(e.code))
@@ -1360,23 +1355,11 @@ export default function DaySlider() {
       return;
     }
 
-    const upd = {
-      project_id: editState.project_id || null,
-      start_min: from_m,
-      end_min: to_m,
-      break_min: parseInt(editState.break_min || "0", 10) || 0,
-      travel_minutes: parseInt(editState.travel_minutes || "0", 10) || 0,
-      crane_hours: parseInt(editState.crane_hours || "0", 10) || 0,
-      private_pkw_km: Number(String(editState.private_pkw_km ?? 0).replace(",", ".")) || 0,
-      za_hours: Number(String(editState.za_hours ?? 0).replace(",", ".")) || 0,
-      bad_weather: !!editState.bad_weather,
-      bad_weather_minutes: editState.bad_weather ? Math.max(to_m - from_m - (parseInt(editState.break_min || "0", 10) || 0), 0) : 0,
-      voice_note: editState.note?.trim() || null,
-      weather_manual: editState.weather_manual?.trim() || null,
-      weather_final:
-        (editState.weather_manual || "").trim() || editState.weather_auto || null,
-      note: editState.note?.trim() || null,
-    };
+    const upd = buildEditedTimeEntryPayload({
+      editState,
+      fromMin: from_m,
+      toMin: to_m,
+    });
 
     const editEmployee =
       employees.find((emp) => String(emp.id) === String(targetRow?.employee_id)) ||
