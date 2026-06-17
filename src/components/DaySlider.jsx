@@ -4,6 +4,7 @@ import { getSession } from "../lib/session";
 import { getUserPermissions } from "../lib/permissions";
 import EmployeePicker from "./EmployeePicker.jsx";
 import PushSettings from "./PushSettings.jsx";
+import TimeValidationDialog from "./TimeValidationDialog.jsx";
 import {
   WEATHER_MANUAL_OPTIONS,
   fetchWeatherForBooking,
@@ -1556,41 +1557,11 @@ export default function DaySlider() {
           .mobile-sticky-save .save-btn { width: 100%; min-height: 52px; font-size: 16px; border-radius: 16px; }
         }
       `}</style>
-      {validationDialog && (
-        <div className="month-modal-backdrop" role="presentation">
-          <div className="month-modal" role="dialog" aria-modal="true" aria-labelledby="time-validation-title">
-            <div className="month-modal-head">
-              <div>
-                <div className="eyebrow">Plausibilitätsprüfung</div>
-                <h3 id="time-validation-title">Eintrag prüfen</h3>
-                <div className="month-modal-subtitle">
-                  Bitte kontrolliere die Hinweise, bevor der Eintrag gespeichert wird.
-                </div>
-              </div>
-            </div>
-
-            <div className="month-modal-box">
-              <div className="month-modal-box-title">Hinweise</div>
-              <ul className="month-modal-checklist">
-                {validationDialog.warnings.map((message, index) => (
-                  <li key={`${index}-${message}`}>
-                    <span style={{ whiteSpace: "pre-line" }}>{message}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            <div className="month-modal-actions">
-              <button type="button" className="hbz-btn hbz-btn-ghost" onClick={() => closeValidationDialog(false)}>
-                Zurück bearbeiten
-              </button>
-              <button type="button" className="save-btn" onClick={() => closeValidationDialog(true)}>
-                Trotzdem speichern
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <TimeValidationDialog
+        warnings={validationDialog?.warnings || []}
+        onCancel={() => closeValidationDialog(false)}
+        onConfirm={() => closeValidationDialog(true)}
+      />
       <div className="month-overview-hero hbz-card">
         <div className="month-overview-hero__content">
           <div>
