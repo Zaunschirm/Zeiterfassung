@@ -2,6 +2,11 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { getSession } from "../lib/session";
 import { getUserPermissions } from "../lib/permissions";
+import {
+  createTimeEntries,
+  deleteTimeEntry,
+  updateTimeEntry,
+} from "../lib/timeEntries";
 import EmployeePicker from "./EmployeePicker.jsx";
 import PushSettings from "./PushSettings.jsx";
 import TimeValidationDialog from "./TimeValidationDialog.jsx";
@@ -1262,9 +1267,8 @@ export default function DaySlider() {
           return;
         }
         const rows = chosen.map((e) => ({ ...base, employee_id: e.id }));
-        const { data, error } = await supabase.from("time_entries").insert(rows).select("*");
-        if (error) throw error;
-        await writeCreateAudit(data || []);
+        const savedRows = await createTimeEntries(supabase, rows);
+        await writeCreateAudit(savedRows);
         alert(`Gespeichert für ${rows.length} Mitarbeiter.`);
       } else {
         if (!canWriteOwnTime) {
@@ -1279,12 +1283,11 @@ export default function DaySlider() {
           alert("Nicht erlaubt: Mitarbeiter dürfen nur für sich buchen.");
           return;
         }
-        const { data, error } = await supabase
-          .from("time_entries")
-          .insert({ ...base, employee_id: employeeRow.id })
-          .select("*");
-        if (error) throw error;
-        await writeCreateAudit(data || []);
+        const savedRows = await createTimeEntries(supabase, {
+          ...base,
+          employee_id: employeeRow.id,
+        });
+        await writeCreateAudit(savedRows);
         alert("Gespeichert.");
       }
 
@@ -1386,11 +1389,7 @@ export default function DaySlider() {
     }
 
     try {
-      const { error } = await supabase
-        .from("time_entries")
-        .update(upd)
-        .eq("id", editId);
-      if (error) throw error;
+      await updateTimeEntry(supabase, editId, upd);
       await writeUpdateAudit(targetRow, upd);
       await loadEntries();
       await loadDailyCheckEntries();
@@ -1413,11 +1412,7 @@ export default function DaySlider() {
     if (!window.confirm("Eintrag wirklich löschen?")) return;
     try {
       await writeDeleteAudit(targetRow);
-      const { error } = await supabase
-        .from("time_entries")
-        .delete()
-        .eq("id", id);
-      if (error) throw error;
+      await deleteTimeEntry(supabase, id);
       await loadEntries();
       await loadDailyCheckEntries();
     } catch (e) {
