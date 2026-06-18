@@ -7,8 +7,9 @@ import {
   deleteTimeEntry,
   updateTimeEntry,
 } from "../lib/timeEntries";
-import EmployeePicker from "./EmployeePicker.jsx";
 import PushSettings from "./PushSettings.jsx";
+import TimeEntryEditDialog from "./TimeEntryEditDialog.jsx";
+import TimeEntryEmployeePicker from "./TimeEntryEmployeePicker.jsx";
 import TimeValidationDialog from "./TimeValidationDialog.jsx";
 import {
   WEATHER_MANUAL_OPTIONS,
@@ -31,6 +32,10 @@ import {
   buildNewTimeEntryPayload,
 } from "../utils/timeEntryPayload";
 import { ensureMonthUnlocked } from "../utils/monthLock";
+import {
+  getAssignedEmployeeCodes,
+  getAssignmentProjects,
+} from "../utils/timeEntryAssignments";
 
 // Utils
 const toHM = (m) =>
@@ -157,14 +162,8 @@ export default function DaySlider() {
   const permissions = getUserPermissions(currentUser || session);
   const canWriteOwnTime = !!permissions.writeOwnTime;
   const canWriteAllTime = !!permissions.writeAllTime;
-  const canEditOwnTime = !!permissions.editOwnTime;
-  const canEditAllTime = !!permissions.editAllTime;
-  const canDeleteOwnTime = !!permissions.deleteOwnTime;
-  const canDeleteAllTime = !!permissions.deleteAllTime;
-  const canSelectEmployees = canWriteAllTime || canEditAllTime || canDeleteAllTime;
-  const canSeeAllEntries = canSelectEmployees;
-  const isStaff = !canSelectEmployees;
-  const isManager = canSelectEmployees;
+  const canCreateTimeEntries = canWriteOwnTime || canWriteAllTime;
+  const isManager = canViewAllTeamStatus;
   const isAdmin = role === "admin";
 
   const [auditOpen, setAuditOpen] = useState(false);
@@ -214,6 +213,7 @@ export default function DaySlider() {
   const [projectLoadNote, setProjectLoadNote] = useState(null);
   const [assignmentSuggestions, setAssignmentSuggestions] = useState([]);
   const [assignmentInfo, setAssignmentInfo] = useState("");
+  const [assignmentRows, setAssignmentRows] = useState([]);
 
   const [employees, setEmployees] = useState([]);
   const [selectedCodes, setSelectedCodes] = useState(
@@ -236,6 +236,7 @@ export default function DaySlider() {
   const [ownZaBalance, setOwnZaBalance] = useState(null);
   const [ownZaLoading, setOwnZaLoading] = useState(false);
   const validationDialogResolver = useRef(null);
+  const assignmentLoadedDateRef = useRef(null);
   const [validationDialog, setValidationDialog] = useState(null);
 
   function confirmValidationWarnings(warnings) {
@@ -343,43 +344,25 @@ export default function DaySlider() {
   useEffect(() => {
     async function loadEmployees() {
       try {
-        if (isManager) {
-          const { data, error } = await supabase
-            .from("employees")
-            .select("*")
-            .eq("active", true)
-            .eq("disabled", false)
-            .order("name", { ascending: true });
+        const { data, error } = await supabase
+          .from("employees")
+          .select("*")
+          .eq("active", true)
+          .eq("disabled", false)
+          .order("name", { ascending: true });
 
-          if (error) throw error;
-          const list = data || [];
-          setEmployees(list);
+        if (error) throw error;
+        const list = data || [];
+        const me = list.find((employee) => employee.code === session?.code) || null;
+        const validCodes = new Set(list.map((employee) => employee.code));
 
-          if (session?.code) {
-            const me = list.find((e) => e.code === session.code);
-            if (me) {
-              setSelectedCodes([me.code]);
-              setEmployeeRow(me);
-            } else if (!selectedCodes.length) {
-              setSelectedCodes([]);
-            }
-          } else if (!selectedCodes.length) {
-            setSelectedCodes([]);
-          }
-        } else {
-          const { data, error } = await supabase
-            .from("employees")
-            .select("*")
-            .eq("code", session?.code)
-            .limit(1)
-            .maybeSingle();
-          if (error) throw error;
-          if (data) {
-            setEmployees([data]);
-            setSelectedCodes([data.code]);
-            setEmployeeRow(data);
-          }
-        }
+        setEmployees(list);
+        setEmployeeRow(me);
+        setSelectedCodes((current) => {
+          const validSelection = current.filter((code) => validCodes.has(code));
+          if (validSelection.length) return validSelection;
+          return me?.code ? [me.code] : [];
+        });
       } catch (e) {
         logSbError("[DaySlider] employees load error:", e);
       }
@@ -387,25 +370,7 @@ export default function DaySlider() {
 
     loadEmployees();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isManager, session?.code]);
-
-  useEffect(() => {
-    if (!isStaff) return;
-    if (!session?.code) return;
-    (async () => {
-      try {
-        const { data, error } = await supabase
-          .from("employees")
-          .select("*")
-          .eq("code", session.code)
-          .limit(1)
-          .maybeSingle();
-        if (!error && data) setEmployeeRow(data);
-      } catch (e) {
-        logSbError("[DaySlider] employeeRow load error:", e);
-      }
-    })();
-  }, [isStaff, session?.code]);
+  }, [session?.code]);
 
   const totalMin = useMemo(() => {
     const raw = clamp(toMin - fromMin, 0, 24 * 60);
@@ -424,6 +389,19 @@ export default function DaySlider() {
   );
   const projectAddress = selectedProject?.address || "";
   const finalWeather = weatherManual || weatherAuto || "";
+  const assignedEmployeeCodes = useMemo(
+    () =>
+      getAssignedEmployeeCodes({
+        assignments: assignmentRows,
+        date,
+        projectId,
+        employees,
+      }),
+    [assignmentRows, date, projectId, employees]
+  );
+  const assignmentSelectionLabel = assignedEmployeeCodes.length
+    ? `Arbeitseinteilung · ${date}`
+    : "";
   const defaultTimeEmployee = useMemo(() => {
     if (selectedCodes.length === 1) {
       const selected = employees.find((e) => e.code === selectedCodes[0]);
@@ -599,42 +577,29 @@ export default function DaySlider() {
         setAssignmentSuggestions([]);
         setAssignmentInfo("");
 
-        const relevantIds = isManager
-          ? employees
-              .filter((e) => selectedCodes.includes(e.code))
-              .map((e) => e.id)
-          : employeeRow?.id
-          ? [employeeRow.id]
-          : [];
+        const relevantIds = employees.map((employee) => employee.id).filter(Boolean);
 
         if (!date || relevantIds.length === 0) return;
 
         const weekDates = getWeekDays(date);
         const { data, error } = await supabase
           .from("work_assignments")
-          .select("assignment_date, employee_id, project_id, projects(id, name, code)")
+          .select("assignment_date, employee_id, project_id, sort_order, projects(id, name, code)")
           .in("employee_id", relevantIds)
-          .in("assignment_date", weekDates);
+          .in("assignment_date", weekDates)
+          .order("sort_order", { ascending: true });
 
         if (error) throw error;
 
-        const todayRows = (data || []).filter((row) => row.assignment_date === date);
-
-        const uniqueProjects = [];
-        const seen = new Set();
-        for (const row of todayRows) {
-          const prj = row.projects || null;
-          const id = prj?.id || row.project_id;
-          if (!id || seen.has(String(id))) continue;
-          seen.add(String(id));
-          uniqueProjects.push({
-            id,
-            name: prj?.name || projects.find((p) => String(p.id) === String(id))?.name || `Projekt ${id}`,
-            code: prj?.code || projects.find((p) => String(p.id) === String(id))?.code || "",
-          });
-        }
-
         if (cancelled) return;
+        setAssignmentRows(data || []);
+
+        const todayRows = (data || []).filter((row) => row.assignment_date === date);
+        const uniqueProjects = getAssignmentProjects({
+          assignments: data || [],
+          date,
+          projects,
+        });
 
         setAssignmentSuggestions(uniqueProjects);
 
@@ -647,11 +612,16 @@ export default function DaySlider() {
           );
         }
 
-        if (!absenceType && !projectId && uniqueProjects.length > 0) {
-          setProjectId(uniqueProjects[0].id);
+        if (!absenceType && uniqueProjects.length > 0) {
+          const dateChanged = assignmentLoadedDateRef.current !== date;
+          assignmentLoadedDateRef.current = date;
+          setProjectId((current) =>
+            dateChanged || !current ? uniqueProjects[0].id : current
+          );
         }
       } catch (e) {
         logSbError("[DaySlider] work assignments load error:", e);
+        if (!cancelled) setAssignmentRows([]);
       }
     }
 
@@ -660,7 +630,20 @@ export default function DaySlider() {
     return () => {
       cancelled = true;
     };
-  }, [date, isManager, selectedCodes, employeeRow?.id, employees, projects, absenceType]);
+  }, [date, employees, projects, absenceType]);
+
+  useEffect(() => {
+    if (!projectId || absenceType) return;
+
+    const assignedCodes = getAssignedEmployeeCodes({
+      assignments: assignmentRows,
+      date,
+      projectId,
+      employees,
+    });
+
+    setSelectedCodes(assignedCodes.length ? assignedCodes : employeeRow?.code ? [employeeRow.code] : []);
+  }, [assignmentRows, date, projectId, employees, employeeRow?.code, absenceType]);
 
   async function enrichTimeEntryRows(rows) {
     const list = rows || [];
@@ -777,7 +760,7 @@ export default function DaySlider() {
     loadEntries();
     loadDailyCheckEntries();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [date, isManager, selectedCodes, employeeRow?.id, canViewAllTeamStatus]);
+  }, [date, employeeRow?.id, canViewAllTeamStatus]);
 
   const shiftDate = (days) => {
     setDate((old) => {
@@ -883,9 +866,8 @@ export default function DaySlider() {
     };
   }, [ownZaEmployee?.id, ownZaEmployee?.za_start_date, ownZaEmployee?.entry_date, ownZaEmployee?.include_in_za_account, ownZaEmployee?.role, ownZaEmployee?.rolle]);
 
-  const isOwnEntry = (row) => String(row?.employee_id ?? "") === String(currentEmployeeId ?? "");
-  const canEditEntry = (row) => !!row && (canEditAllTime || (canEditOwnTime && isOwnEntry(row)));
-  const canDeleteEntry = (row) => !!row && (canDeleteAllTime || (canDeleteOwnTime && isOwnEntry(row)));
+  const canEditEntry = (row) => !!row && isManager;
+  const canDeleteEntry = (row) => !!row && isManager;
 
   const buakSollHoursToday = selectedWorkDayDefaults?.requiredHours || 0;
   const holidayNameToday = useMemo(() => getHolidayName(date), [date]);
@@ -1221,11 +1203,19 @@ export default function DaySlider() {
       absenceType,
     });
 
-    const targetEmployees = canWriteAllTime
-      ? employees.filter((e) => selectedCodes.includes(e.code))
-      : employeeRow
-      ? [employeeRow]
-      : [];
+    if (!canCreateTimeEntries) {
+      setError("Du hast keine Berechtigung zum Schreiben von Stunden.");
+      return;
+    }
+
+    const targetEmployees = employees.filter((employee) =>
+      selectedCodes.includes(employee.code)
+    );
+
+    if (targetEmployees.length === 0) {
+      setError("Bitte mindestens einen Mitarbeiter auswählen.");
+      return;
+    }
 
     const validationResults = targetEmployees.map((emp) => ({
       employee: emp,
@@ -1260,36 +1250,17 @@ export default function DaySlider() {
     try {
       setSaving(true);
 
-      if (canWriteAllTime) {
-        const chosen = targetEmployees;
-        if (chosen.length === 0) {
-          alert("Bitte mindestens einen Mitarbeiter auswählen.");
-          return;
-        }
-        const rows = chosen.map((e) => ({ ...base, employee_id: e.id }));
-        const savedRows = await createTimeEntries(supabase, rows);
-        await writeCreateAudit(savedRows);
-        alert(`Gespeichert für ${rows.length} Mitarbeiter.`);
-      } else {
-        if (!canWriteOwnTime) {
-          alert("Du hast keine Berechtigung zum Schreiben von Stunden.");
-          return;
-        }
-        if (!employeeRow) {
-          alert("Mitarbeiterdaten konnten nicht geladen werden.");
-          return;
-        }
-        if (employeeRow.code !== session.code) {
-          alert("Nicht erlaubt: Mitarbeiter dürfen nur für sich buchen.");
-          return;
-        }
-        const savedRows = await createTimeEntries(supabase, {
-          ...base,
-          employee_id: employeeRow.id,
-        });
-        await writeCreateAudit(savedRows);
-        alert("Gespeichert.");
-      }
+      const rows = targetEmployees.map((employee) => ({
+        ...base,
+        employee_id: employee.id,
+      }));
+      const savedRows = await createTimeEntries(supabase, rows);
+      await writeCreateAudit(savedRows);
+      alert(
+        rows.length === 1
+          ? "Gespeichert."
+          : `Gespeichert für ${rows.length} Mitarbeiter.`
+      );
 
       setNote("");
       setAbsenceType(null);
@@ -1432,6 +1403,7 @@ export default function DaySlider() {
     ...(badWeather ? [{ label: "Schlechtwetter", value: "Ja" }] : []),
     { label: "Wetter", value: finalWeather || "—" },
   ];
+  const editEntry = entries.find((row) => String(row.id) === String(editId)) || null;
 
   return (
     <div className="month-overview">
@@ -1465,6 +1437,16 @@ export default function DaySlider() {
         warnings={validationDialog?.warnings || []}
         onCancel={() => closeValidationDialog(false)}
         onConfirm={() => closeValidationDialog(true)}
+      />
+      <TimeEntryEditDialog
+        entry={editEntry}
+        editState={editState}
+        setEditState={setEditState}
+        projects={projects}
+        craneHourOptions={CRANE_HOUR_OPTIONS}
+        weatherOptions={WEATHER_MANUAL_OPTIONS}
+        onCancel={cancelEdit}
+        onSave={saveEdit}
       />
       <div className="month-overview-hero hbz-card">
         <div className="month-overview-hero__content">
@@ -1675,6 +1657,16 @@ export default function DaySlider() {
           </div>
         )}
 
+        {canCreateTimeEntries ? (
+          <TimeEntryEmployeePicker
+            employees={employees}
+            selected={selectedCodes}
+            onChange={setSelectedCodes}
+            ownCode={employeeRow?.code || session?.code}
+            assignmentLabel={assignmentSelectionLabel}
+          />
+        ) : null}
+
         {projectAddress && absenceType !== "krank" && absenceType !== "urlaub" && (
           <div
             className="help"
@@ -1736,12 +1728,6 @@ export default function DaySlider() {
 
         {isMobile && (
           <div className="mobile-time-entry">
-            {isManager && (
-              <details className="mobile-accordion" open>
-                <summary>👥 Mitarbeiter <span>{selectedCodes.length} / {employees.length} gewählt</span></summary>
-                <EmployeePicker employees={employees} selected={selectedCodes} onChange={setSelectedCodes} enableMulti={true} />
-              </details>
-            )}
             {selectedWorkDayDefaults?.active && (
             <div className="help" style={{ margin: "8px 0" }}>
               Standard: <b>{selectedWorkDayDefaults.start}–{selectedWorkDayDefaults.end}</b>, Pause <b>{selectedWorkDayDefaults.breakMinutes} min</b>, Soll <b>{selectedWorkDayDefaults.requiredHours} h</b>
@@ -1789,24 +1775,6 @@ export default function DaySlider() {
 
         {!isMobile && (
           <>
-          {isManager && (
-          <div className="month-employee-block">
-            <div className="month-employee-head">
-              <label className="hbz-label">Mitarbeiter</label>
-              <span className="badge-soft">
-                {selectedCodes.length} / {employees.length} gewählt
-              </span>
-            </div>
-
-            <EmployeePicker
-              employees={employees}
-              selected={selectedCodes}
-              onChange={setSelectedCodes}
-              enableMulti={true}
-            />
-          </div>
-          )}
-
         <div className="month-summary-grid" style={{ marginTop: 16 }}>
           {summaryCards.map((card) => (
             <div key={card.label} className="month-summary-card">
@@ -2228,7 +2196,7 @@ onClick={applyUrlaubDefaults}
                       const total = work + (travelM || 0);
                       const hrs = h2(total);
                       const ot = Math.max(hrs - 9, 0);
-                      const isEditing = editId === r.id;
+                      const isEditing = false;
 
                       if (!isEditing) {
                         return (
@@ -2512,7 +2480,7 @@ onClick={applyUrlaubDefaults}
                   const total = work + (travelM || 0);
                   const hrs = h2(total);
                   const ot = Math.max(hrs - 9, 0);
-                  const isEditing = editId === r.id;
+                  const isEditing = false;
 
                   if (!isEditing) {
                     return (

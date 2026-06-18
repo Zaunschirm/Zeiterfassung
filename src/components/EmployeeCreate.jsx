@@ -123,7 +123,6 @@ export default function EmployeeCreate() {
       setPermissions({
         ...EMPTY_PERMISSIONS,
         writeOwnTime: true,
-        editOwnTime: true,
         viewMonthlyOverview: true,
         viewYearOverview: true,
       });
@@ -136,7 +135,6 @@ export default function EmployeeCreate() {
     setPermissions({
       ...EMPTY_PERMISSIONS,
       writeOwnTime: true,
-      editOwnTime: true,
     });
   }
 

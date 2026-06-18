@@ -48,7 +48,7 @@ export function getUserPermissions(user) {
     mitarbeiter: {
       writeOwnTime: true,
       writeAllTime: false,
-      editOwnTime: true,
+      editOwnTime: false,
       editAllTime: false,
       deleteOwnTime: false,
       deleteAllTime: false,
