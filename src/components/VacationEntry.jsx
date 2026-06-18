@@ -441,6 +441,32 @@ export default function VacationEntry({ currentUser = null } = {}) {
     );
   }
 
+  async function refreshEmployeeVacationBalances() {
+    const { data, error: refreshError } = await supabase
+      .from("employees")
+      .select("id, vacation_entitlement_days");
+    if (refreshError) throw refreshError;
+
+    const balanceByEmployee = new Map(
+      (data || []).map((row) => [String(row.id), vacationEntitlementDays(row)])
+    );
+    setEmployees((list) =>
+      (list || []).map((employee) => {
+        const nextDays = balanceByEmployee.get(String(employee.id));
+        return typeof nextDays === "undefined"
+          ? employee
+          : { ...employee, vacation_entitlement_days: nextDays };
+      })
+    );
+    setOwnEmployee((employee) => {
+      if (!employee) return employee;
+      const nextDays = balanceByEmployee.get(String(employee.id));
+      return typeof nextDays === "undefined"
+        ? employee
+        : { ...employee, vacation_entitlement_days: nextDays };
+    });
+  }
+
   async function ensureMonthlyVacationAccrual() {
     if (monthlyAccrualDoneRef.current || employees.length === 0) return;
     monthlyAccrualDoneRef.current = true;
@@ -457,6 +483,20 @@ export default function VacationEntry({ currentUser = null } = {}) {
     if (activeEmployees.length === 0) return;
 
     try {
+      const { error: rpcError } = await supabase.rpc(
+        "apply_monthly_vacation_accruals",
+        { p_as_of: todayISO() }
+      );
+      if (!rpcError) {
+        await refreshEmployeeVacationBalances();
+        return;
+      }
+
+      console.warn(
+        "[VacationEntry] Serverseitige Urlaubsgutschrift nicht verfügbar; verwende kompatiblen Fallback",
+        rpcError
+      );
+
       const { data: existingRows, error: existingError } = await supabase
         .from("vacation_monthly_accruals")
         .select("employee_id, accrual_month")

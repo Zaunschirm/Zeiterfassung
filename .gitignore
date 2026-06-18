@@ -1,0 +1,18 @@
+# Dependencies and tool caches
+node_modules/
+.vite/
+coverage/
+
+# Generated builds
+dist/
+src-tauri/target/
+
+# Local environment files
+.env
+.env.*
+!.env.example
+
+# Local logs and OS files
+*.log
+.DS_Store
+Thumbs.db
