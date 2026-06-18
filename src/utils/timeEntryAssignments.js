@@ -44,3 +44,22 @@ export function getAssignedEmployeeCodes({
     .map((row) => codeByEmployeeId.get(String(row.employee_id)))
     .filter((code, index, codes) => code && codes.indexOf(code) === index);
 }
+
+export function getDefaultAssignmentProjectId({
+  assignments = [],
+  date,
+  currentEmployeeId,
+  isManager,
+}) {
+  const dayAssignments = assignments.filter(
+    (row) => row.assignment_date === date && row.project_id != null
+  );
+  if (isManager) return dayAssignments[0]?.project_id ?? null;
+  if (currentEmployeeId == null) return null;
+
+  return (
+    dayAssignments.find(
+      (row) => String(row.employee_id) === String(currentEmployeeId)
+    )?.project_id ?? null
+  );
+}

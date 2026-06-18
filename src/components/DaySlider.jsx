@@ -35,6 +35,7 @@ import { ensureMonthUnlocked } from "../utils/monthLock";
 import {
   getAssignedEmployeeCodes,
   getAssignmentProjects,
+  getDefaultAssignmentProjectId,
 } from "../utils/timeEntryAssignments";
 
 // Utils
@@ -613,11 +614,17 @@ export default function DaySlider() {
           );
         }
 
-        if (!absenceType && uniqueProjects.length > 0) {
+        if (!absenceType) {
           const dateChanged = assignmentLoadedDateRef.current !== date;
           assignmentLoadedDateRef.current = date;
+          const defaultProjectId = getDefaultAssignmentProjectId({
+            assignments: data || [],
+            date,
+            currentEmployeeId: employeeRow?.id,
+            isManager,
+          });
           setProjectId((current) =>
-            dateChanged || !current ? uniqueProjects[0].id : current
+            dateChanged ? defaultProjectId : current || defaultProjectId
           );
         }
       } catch (e) {
@@ -631,7 +638,11 @@ export default function DaySlider() {
     return () => {
       cancelled = true;
     };
-  }, [date, employees, projects, absenceType]);
+  }, [date, employees, projects, absenceType, employeeRow?.id, isManager]);
+
+  useEffect(() => {
+    if (employeeRow?.code) setSelectedCodes([employeeRow.code]);
+  }, [date, employeeRow?.code]);
 
   useEffect(() => {
     if (!projectId || absenceType) return;

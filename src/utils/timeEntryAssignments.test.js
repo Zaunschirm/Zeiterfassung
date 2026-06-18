@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   getAssignedEmployeeCodes,
   getAssignmentProjects,
+  getDefaultAssignmentProjectId,
 } from "./timeEntryAssignments.js";
 
 const employees = [
@@ -50,5 +51,38 @@ describe("time entry assignment helpers", () => {
     expect(
       getAssignedEmployeeCodes({ assignments, date: "2026-06-18", employees })
     ).toEqual([]);
+  });
+
+  it("defaults employees only to their own assigned project", () => {
+    expect(
+      getDefaultAssignmentProjectId({
+        assignments,
+        date: "2026-06-18",
+        currentEmployeeId: 2,
+        isManager: false,
+      })
+    ).toBe(10);
+  });
+
+  it("does not preselect another project when the employee has no assignment", () => {
+    expect(
+      getDefaultAssignmentProjectId({
+        assignments,
+        date: "2026-06-18",
+        currentEmployeeId: 99,
+        isManager: false,
+      })
+    ).toBeNull();
+  });
+
+  it("defaults managers to the first project of the day", () => {
+    expect(
+      getDefaultAssignmentProjectId({
+        assignments,
+        date: "2026-06-18",
+        currentEmployeeId: 99,
+        isManager: true,
+      })
+    ).toBe(10);
   });
 });
