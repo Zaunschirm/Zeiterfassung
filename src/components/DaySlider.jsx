@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { getSession } from "../lib/session";
-import { getUserPermissions } from "../lib/permissions";
+import { canEditTimeEntry, getUserPermissions } from "../lib/permissions";
 import {
   createTimeEntries,
   deleteTimeEntry,
@@ -162,6 +162,7 @@ export default function DaySlider() {
   const permissions = getUserPermissions(currentUser || session);
   const canWriteOwnTime = !!permissions.writeOwnTime;
   const canWriteAllTime = !!permissions.writeAllTime;
+  const canEditOwnTime = !!permissions.editOwnTime;
   const canCreateTimeEntries = canWriteOwnTime || canWriteAllTime;
   const isManager = canViewAllTeamStatus;
   const isAdmin = role === "admin";
@@ -866,7 +867,13 @@ export default function DaySlider() {
     };
   }, [ownZaEmployee?.id, ownZaEmployee?.za_start_date, ownZaEmployee?.entry_date, ownZaEmployee?.include_in_za_account, ownZaEmployee?.role, ownZaEmployee?.rolle]);
 
-  const canEditEntry = (row) => !!row && isManager;
+  const canEditEntry = (row) =>
+    canEditTimeEntry({
+      entry: row,
+      currentEmployeeId,
+      isManager,
+      canEditOwnTime,
+    });
   const canDeleteEntry = (row) => !!row && isManager;
 
   const buakSollHoursToday = selectedWorkDayDefaults?.requiredHours || 0;

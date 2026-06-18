@@ -135,6 +135,7 @@ export default function EmployeeCreate() {
     setPermissions({
       ...EMPTY_PERMISSIONS,
       writeOwnTime: true,
+      editOwnTime: true,
     });
   }
 

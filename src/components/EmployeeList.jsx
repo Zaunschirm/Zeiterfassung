@@ -723,6 +723,7 @@ export default function EmployeeList() {
     setPermissions({
       ...EMPTY_PERMISSIONS,
       writeOwnTime: true,
+      editOwnTime: true,
     });
   }
 

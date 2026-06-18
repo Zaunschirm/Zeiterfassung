@@ -48,7 +48,7 @@ export function getUserPermissions(user) {
     mitarbeiter: {
       writeOwnTime: true,
       writeAllTime: false,
-      editOwnTime: false,
+      editOwnTime: true,
       editAllTime: false,
       deleteOwnTime: false,
       deleteAllTime: false,
@@ -70,4 +70,16 @@ export function getUserPermissions(user) {
 export function hasPermission(user, permission) {
   const allPermissions = getUserPermissions(user);
   return !!allPermissions?.[permission];
+}
+
+export function canEditTimeEntry({
+  entry,
+  currentEmployeeId,
+  isManager,
+  canEditOwnTime,
+}) {
+  if (!entry) return false;
+  if (isManager) return true;
+  if (!canEditOwnTime || currentEmployeeId == null) return false;
+  return String(entry.employee_id ?? "") === String(currentEmployeeId);
 }
