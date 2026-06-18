@@ -1805,6 +1805,22 @@ export default function DaySlider() {
                 <button type="button" className={`hbz-chip ${badWeather ? "active" : ""}`} onClick={() => { setAbsenceType(null); setZaUsed(false); setZaHours(0); setBadWeather((v) => !v); }}>Schlechtwetter</button>
                 {(absenceType || badWeather || zaUsed) && <button type="button" className="hbz-chip" onClick={clearAbsenceAndZa}>Normal</button>}
               </div>
+              {zaUsed && (
+                <label className="hbz-field" style={{ display: "block", marginTop: 12 }}>
+                  <span className="hbz-label">ZA-Stunden</span>
+                  <input
+                    className="hbz-input"
+                    type="number"
+                    min="0"
+                    step="0.25"
+                    value={zaHours}
+                    onChange={(e) => setZaHours(Math.max(Number(e.target.value) || 0, 0))}
+                  />
+                  <span className="help" style={{ display: "block", marginTop: 6 }}>
+                    Werden vom ZA-Konto abgezogen.
+                  </span>
+                </label>
+              )}
             </details>
             <details className="mobile-accordion"><summary>🚙 Fahrzeit <span>{formatTravelLabel(travelMin)}</span></summary><div className="hbz-chipbar">{TRAVEL_OPTIONS.map((m) => (<button key={m} type="button" className={`hbz-chip ${travelMin === m ? "active" : ""}`} onClick={() => { if (absenceType) setAbsenceType(null); setTravelMin(m); }}>{formatTravelLabel(m)}</button>))}</div></details>
             <details className="mobile-accordion"><summary>🏗 Kran / Privat-PKW <span>{craneUsed ? `${craneHours} h` : privatePkwUsed ? `${privatePkwKm || 0} km` : "—"}</span></summary><div className="hbz-chipbar" style={{ alignItems: "center" }}><button type="button" className={`hbz-chip ${craneUsed ? "active" : ""}`} onClick={() => setCraneUsed((v) => !v)} disabled={!!absenceType || zaUsed}>🏗 Kran verwendet</button>{craneUsed && (<select className="hbz-input" value={craneHours} onChange={(e) => setCraneHours(Number(e.target.value))} disabled={!!absenceType || zaUsed} style={{ maxWidth: 140 }}>{CRANE_HOUR_OPTIONS.map((h) => <option key={h} value={h}>{h} h</option>)}</select>)}<button type="button" className={`hbz-chip ${privatePkwUsed ? "active" : ""}`} onClick={() => { const value = prompt("Wie viele Kilometer mit Privat-PKW?", String(privatePkwKm || "")); if (value === null) return; const km = Number(String(value).replace(",", ".")); if (!Number.isFinite(km) || km < 0) { alert("Bitte gültige Kilometer eingeben."); return; } setPrivatePkwKm(km); setPrivatePkwUsed(km > 0); }} disabled={!!absenceType || zaUsed}>🚗 Privat-PKW</button>{privatePkwUsed && <button type="button" className="hbz-chip" onClick={() => { setPrivatePkwUsed(false); setPrivatePkwKm(0); }}>PKW löschen</button>}</div></details>

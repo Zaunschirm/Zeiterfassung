@@ -3,7 +3,11 @@ import { supabase } from "../lib/supabase";
 import { getSession } from "../lib/session";
 import { getEmployeeWorkDay, getBuakWeekType, getHolidayName, hmToMinutes } from "../utils/time";
 import { ensureMonthUnlocked } from "../utils/monthLock";
-import { createTimeEntries } from "../lib/timeEntries";
+import {
+  calculateVacationBalanceDelta,
+  deleteTimeOffEntriesSafely,
+  replaceTimeOffEntriesSafely,
+} from "../lib/timeOffTransactions";
 import {
   isTimeCompEntry,
   isVacationEntry,
@@ -504,7 +508,26 @@ export default function VacationEntry({ currentUser = null } = {}) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [employees.length]);
 
-  async function changeVacationCurrentDays(employee, deltaDays, auditNote = "Urlaubskorrektur") {
+  async function recordVacationAdjustment(employee, deltaDays, auditNote) {
+    try {
+      const { error: auditError } = await supabase.from("vacation_adjustments").insert({
+        employee_id: String(employee.id),
+        adjustment_date: todayISO(),
+        days: Number(deltaDays),
+        note: auditNote,
+      });
+      if (auditError) throw auditError;
+    } catch (auditError) {
+      console.warn("[VacationEntry] Urlaubskorrektur-Audit konnte nicht gespeichert werden", auditError);
+    }
+  }
+
+  async function changeVacationCurrentDays(
+    employee,
+    deltaDays,
+    auditNote = "Urlaubskorrektur",
+    { recordAudit = true } = {}
+  ) {
     if (!employee?.id || !Number.isFinite(Number(deltaDays)) || Number(deltaDays) === 0) return;
     const current = vacationEntitlementDays(employee);
     const nextDays = roundVacationDays(current + Number(deltaDays));
@@ -515,19 +538,10 @@ export default function VacationEntry({ currentUser = null } = {}) {
       .eq("id", employee.id);
     if (updateError) throw updateError;
 
-    // Audit/Verlauf bleibt optional erhalten, die Anzeige bleibt aber bewusst einfach.
-    try {
-      await supabase.from("vacation_adjustments").insert({
-        employee_id: String(employee.id),
-        adjustment_date: todayISO(),
-        days: Number(deltaDays),
-        note: auditNote,
-      });
-    } catch (auditError) {
-      console.warn("[VacationEntry] Urlaubskorrektur-Audit konnte nicht gespeichert werden", auditError);
-    }
-
     updateEmployeeVacationInState(employee.id, nextDays);
+    if (recordAudit) {
+      await recordVacationAdjustment(employee, deltaDays, auditNote);
+    }
   }
 
   async function saveVacationAdjustment() {
@@ -826,6 +840,7 @@ export default function VacationEntry({ currentUser = null } = {}) {
       }
 
       const deleteIds = [];
+      const replacedRows = [];
       const rowsToInsert = [];
       const skipped = [];
       const prefix = entryType === "za" ? "[Zeitausgleich]" : "[Urlaub]";
@@ -839,6 +854,7 @@ export default function VacationEntry({ currentUser = null } = {}) {
           const mayReplace = replaceExistingTimeOff && existingWorkRows.length === 0 && existingTimeOffRows.length === existingRows.length;
           if (mayReplace) {
             deleteIds.push(...existingRows.map((r) => r.id));
+            replacedRows.push(...existingRows.map((r) => ({ ...r, kind: getEntryKind(r) })));
           } else {
             skipped.push(item.date);
             continue;
@@ -870,16 +886,38 @@ export default function VacationEntry({ currentUser = null } = {}) {
         });
       }
 
-      if (deleteIds.length > 0) {
-        const { error: deleteError } = await supabase.from("time_entries").delete().in("id", deleteIds);
-        if (deleteError) throw deleteError;
-      }
-
       if (rowsToInsert.length > 0) {
-        await createTimeEntries(supabase, rowsToInsert);
+        const vacationDelta = calculateVacationBalanceDelta({
+          entryType,
+          insertedCount: rowsToInsert.length,
+          replacedRows,
+        });
+        let transactionVacationDays = vacationEntitlementDays(targetEmployee);
+        const applyVacationDelta = async (deltaDays) => {
+          const employeeAtCurrentBalance = {
+            ...targetEmployee,
+            vacation_entitlement_days: transactionVacationDays,
+          };
+          await changeVacationCurrentDays(employeeAtCurrentBalance, deltaDays, "", { recordAudit: false });
+          transactionVacationDays = roundVacationDays(transactionVacationDays + deltaDays);
+        };
 
-        if (entryType === "urlaub") {
-          await changeVacationCurrentDays(targetEmployee, -rowsToInsert.length, `Urlaub eingetragen: ${rowsToInsert.length} Tag${rowsToInsert.length === 1 ? "" : "e"}`);
+        await replaceTimeOffEntriesSafely({
+          client: supabase,
+          rowsToInsert,
+          deleteIds,
+          vacationDelta,
+          applyVacationDelta,
+        });
+
+        if (vacationDelta) {
+          const changedDays = Math.abs(vacationDelta);
+          const auditLabel = vacationDelta < 0 ? "Urlaub eingetragen" : "Urlaub ersetzt/gelöscht";
+          await recordVacationAdjustment(
+            targetEmployee,
+            vacationDelta,
+            `${auditLabel}: ${changedDays} Tag${changedDays === 1 ? "" : "e"}`
+          );
         }
       }
 
@@ -911,11 +949,30 @@ export default function VacationEntry({ currentUser = null } = {}) {
     setError("");
     setMessage("");
     try {
-      const { error } = await supabase.from("time_entries").delete().in("id", ids);
-      if (error) throw error;
+      const vacationDelta = getEntryKind(row) === "urlaub" && emp ? ids.length : 0;
+      let transactionVacationDays = emp ? vacationEntitlementDays(emp) : 0;
+      const applyVacationDelta = async (deltaDays) => {
+        const employeeAtCurrentBalance = {
+          ...emp,
+          vacation_entitlement_days: transactionVacationDays,
+        };
+        await changeVacationCurrentDays(employeeAtCurrentBalance, deltaDays, "", { recordAudit: false });
+        transactionVacationDays = roundVacationDays(transactionVacationDays + deltaDays);
+      };
 
-      if (getEntryKind(row) === "urlaub" && emp) {
-        await changeVacationCurrentDays(emp, ids.length, `Urlaub gelöscht: ${ids.length} Tag${ids.length === 1 ? "" : "e"}`);
+      await deleteTimeOffEntriesSafely({
+        client: supabase,
+        ids,
+        vacationDelta,
+        applyVacationDelta,
+      });
+
+      if (vacationDelta) {
+        await recordVacationAdjustment(
+          emp,
+          vacationDelta,
+          `Urlaub gelöscht: ${ids.length} Tag${ids.length === 1 ? "" : "e"}`
+        );
       }
 
       setMessage(`${kind}-Eintrag gelöscht.`);
