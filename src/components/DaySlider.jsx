@@ -237,6 +237,7 @@ export default function DaySlider() {
   const [isMobile, setIsMobile] = useState(false);
 
   const [error, setError] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
   const [ownZaBalance, setOwnZaBalance] = useState(null);
   const [ownZaLoading, setOwnZaLoading] = useState(false);
   const validationDialogResolver = useRef(null);
@@ -264,6 +265,12 @@ export default function DaySlider() {
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, []);
+
+  useEffect(() => {
+    if (!successMessage) return undefined;
+    const timeoutId = window.setTimeout(() => setSuccessMessage(""), 4000);
+    return () => window.clearTimeout(timeoutId);
+  }, [successMessage]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1168,6 +1175,7 @@ export default function DaySlider() {
 
   async function handleSave() {
     setError("");
+    setSuccessMessage("");
 
     const isAbsence = absenceType === "krank" || absenceType === "urlaub" || zaUsed;
 
@@ -1294,7 +1302,7 @@ export default function DaySlider() {
       }));
       const savedRows = await createTimeEntries(supabase, rows);
       await writeCreateAudit(savedRows);
-      alert(
+      setSuccessMessage(
         rows.length === 1
           ? "Gespeichert."
           : `Gespeichert für ${rows.length} Mitarbeiter.`
@@ -1446,6 +1454,10 @@ export default function DaySlider() {
   return (
     <div className="month-overview">
       <style>{`
+        .time-entry-success { position: fixed; z-index: 1400; top: 14px; left: 50%; transform: translateX(-50%); width: min(440px, calc(100vw - 24px)); min-height: 48px; padding: 10px 10px 10px 13px; display: flex; align-items: center; gap: 10px; border: 1px solid #8fbc8f; border-radius: 8px; background: #f1fbf1; color: #225522; box-shadow: 0 12px 30px rgba(34,85,34,.18); font-size: 13px; font-weight: 800; }
+        .time-entry-success-mark { width: 24px; height: 24px; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: #2f7a3b; color: #fff; }
+        .time-entry-success-text { flex: 1; }
+        .time-entry-success-close { width: 32px; height: 32px; flex: 0 0 auto; border: 0; border-radius: 50%; background: transparent; color: #225522; font-size: 20px; cursor: pointer; }
         .mobile-time-entry { display: none; }
         @media (max-width: 768px) {
           .mobile-time-entry { display: block; padding-bottom: 92px; }
@@ -1471,6 +1483,20 @@ export default function DaySlider() {
           .mobile-sticky-save .save-btn { width: 100%; min-height: 52px; font-size: 16px; border-radius: 16px; }
         }
       `}</style>
+      {successMessage ? (
+        <div className="time-entry-success" role="status" aria-live="polite">
+          <span className="time-entry-success-mark" aria-hidden="true">✓</span>
+          <span className="time-entry-success-text">{successMessage}</span>
+          <button
+            type="button"
+            className="time-entry-success-close"
+            aria-label="Meldung schließen"
+            onClick={() => setSuccessMessage("")}
+          >
+            ×
+          </button>
+        </div>
+      ) : null}
       <TimeValidationDialog
         warnings={validationDialog?.warnings || []}
         onCancel={() => closeValidationDialog(false)}
