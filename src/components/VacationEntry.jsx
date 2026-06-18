@@ -3,6 +3,11 @@ import { supabase } from "../lib/supabase";
 import { getSession } from "../lib/session";
 import { getEmployeeWorkDay, getBuakWeekType, getHolidayName, hmToMinutes } from "../utils/time";
 import { ensureMonthUnlocked } from "../utils/monthLock";
+import { createTimeEntries } from "../lib/timeEntries";
+import {
+  isTimeCompEntry,
+  isVacationEntry,
+} from "../utils/timeEntryAbsences";
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
 
@@ -90,17 +95,7 @@ function toHM(min) {
   return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 }
 
-function isVacationEntry(row) {
-  const note = String(row?.note || "").toLowerCase();
-  const absence = String(row?.absence_type || row?.absenceType || "").toLowerCase();
-  return absence === "urlaub" || note.includes("[urlaub]") || note.includes("urlaub");
-}
-
-function isZaEntry(row) {
-  const note = String(row?.note || "").toLowerCase();
-  const absence = String(row?.absence_type || row?.absenceType || "").toLowerCase();
-  return absence === "zeitausgleich" || absence === "za" || Number(row?.za_hours || 0) > 0 || note.includes("[zeitausgleich]") || note.includes("zeitausgleich");
-}
+const isZaEntry = isTimeCompEntry;
 
 function isTimeOffEntry(row) {
   return isVacationEntry(row) || isZaEntry(row);
@@ -346,7 +341,7 @@ export default function VacationEntry({ currentUser = null } = {}) {
     try {
       const { data, error } = await supabase
         .from("time_entries")
-        .select("id, employee_id, work_date, note, za_hours")
+        .select("*")
         .gte("work_date", calendarFrom)
         .lte("work_date", calendarTo)
         .order("work_date", { ascending: true });
@@ -382,7 +377,7 @@ export default function VacationEntry({ currentUser = null } = {}) {
       setVacationAccountLoading(true);
       const { data: vacRows, error: vacErr } = await supabase
         .from("time_entries")
-        .select("id, employee_id, work_date, note")
+        .select("*")
         .eq("employee_id", targetEmployee.id)
         .gte("work_date", from)
         .lte("work_date", to);
@@ -817,7 +812,7 @@ export default function VacationEntry({ currentUser = null } = {}) {
 
       const { data: existing, error: existingError } = await supabase
         .from("time_entries")
-        .select("id, employee_id, work_date, note, za_hours")
+        .select("*")
         .eq("employee_id", targetEmployee.id)
         .gte("work_date", existingFrom)
         .lte("work_date", existingTo);
@@ -864,6 +859,7 @@ export default function VacationEntry({ currentUser = null } = {}) {
           travel_cost_center: "FAHRZEIT",
           crane_hours: 0,
           private_pkw_km: 0,
+          absence_type: entryType === "za" ? "za" : "urlaub",
           za_hours: zaHours,
           bad_weather: false,
           bad_weather_minutes: 0,
@@ -880,8 +876,7 @@ export default function VacationEntry({ currentUser = null } = {}) {
       }
 
       if (rowsToInsert.length > 0) {
-        const { error: insertError } = await supabase.from("time_entries").insert(rowsToInsert);
-        if (insertError) throw insertError;
+        await createTimeEntries(supabase, rowsToInsert);
 
         if (entryType === "urlaub") {
           await changeVacationCurrentDays(targetEmployee, -rowsToInsert.length, `Urlaub eingetragen: ${rowsToInsert.length} Tag${rowsToInsert.length === 1 ? "" : "e"}`);

@@ -1,9 +1,24 @@
 export async function createTimeEntries(client, rows) {
   const payload = Array.isArray(rows) ? rows : [rows];
-  const { data, error } = await client
+  let { data, error } = await client
     .from("time_entries")
     .insert(payload)
     .select("*");
+
+  const absenceTypeUnsupported =
+    error &&
+    payload.some((row) => Object.prototype.hasOwnProperty.call(row || {}, "absence_type")) &&
+    `${error.code || ""} ${error.message || ""} ${error.details || ""}`
+      .toLowerCase()
+      .includes("absence_type");
+
+  if (absenceTypeUnsupported) {
+    const compatiblePayload = payload.map(({ absence_type: _absenceType, ...row }) => row);
+    ({ data, error } = await client
+      .from("time_entries")
+      .insert(compatiblePayload)
+      .select("*"));
+  }
 
   if (error) throw error;
   return data || [];

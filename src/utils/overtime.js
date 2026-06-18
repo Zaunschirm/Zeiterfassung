@@ -1,4 +1,9 @@
 import { getEmployeeSollHoursForDay, getHolidayName } from "./time.js";
+import {
+  isSickEntry as isSickAbsence,
+  isTimeCompEntry as isTimeCompAbsence,
+  isVacationEntry as isVacationAbsence,
+} from "./timeEntryAbsences.js";
 
 export function parseHoursValue(value) {
   if (value === null || typeof value === "undefined") return 0;
@@ -29,33 +34,15 @@ export function dayNumberToDate(dayNumber) {
 }
 
 export function isVacationEntry(row) {
-  const note = String(row?.note || "").toLowerCase();
-  const absenceType = String(row?.absence_type || row?.absenceType || "").toLowerCase();
-  return absenceType === "urlaub" || note.includes("[urlaub]") || note.includes("urlaub");
+  return isVacationAbsence(row);
 }
 
 export function isSickEntry(row) {
-  const note = String(row?.note || "").toLowerCase();
-  const absenceType = String(row?.absence_type || row?.absenceType || "").toLowerCase();
-  return (
-    absenceType === "krank" ||
-    absenceType === "krankenstand" ||
-    note.includes("[krank]") ||
-    note.includes("krank") ||
-    note.includes("krankenstand")
-  );
+  return isSickAbsence(row);
 }
 
 export function isTimeCompEntry(row) {
-  const note = String(row?.note || "").toLowerCase();
-  const absenceType = String(row?.absence_type || row?.absenceType || "").toLowerCase();
-  return (
-    absenceType === "zeitausgleich" ||
-    absenceType === "za" ||
-    Number(row?.za_hours || 0) > 0 ||
-    note.includes("[zeitausgleich]") ||
-    note.includes("zeitausgleich")
-  );
+  return isTimeCompAbsence(row);
 }
 
 export function isZaNeutralAbsence(row) {

@@ -49,6 +49,7 @@ describe("time entry payload helpers", () => {
 
     expect(payload).toMatchObject({
       project_id: null,
+      absence_type: "krank",
       crane_hours: 0,
       private_pkw_km: 0,
       note: "[Krank] Arzttermin",

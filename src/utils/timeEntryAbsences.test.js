@@ -2,6 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   buildTimeEntryAbsenceWarnings,
   getTimeEntryAbsenceKind,
+  getTimeEntryAbsenceType,
+  isAbsenceEntry,
+  isSickEntry,
+  isTimeCompEntry,
+  isVacationEntry,
 } from "./timeEntryAbsences.js";
 
 describe("time entry absence checks", () => {
@@ -10,6 +15,14 @@ describe("time entry absence checks", () => {
     expect(getTimeEntryAbsenceKind({ absence_type: "urlaub" })).toBe("Urlaub");
     expect(getTimeEntryAbsenceKind({ za_hours: 8 })).toBe("ZA");
     expect(getTimeEntryAbsenceKind({ note: "Montage" })).toBe("");
+  });
+
+  it("uses structured absence types and keeps legacy notes compatible", () => {
+    expect(getTimeEntryAbsenceType({ absence_type: "krank" })).toBe("krank");
+    expect(isSickEntry({ absence_type: "krankenstand" })).toBe(true);
+    expect(isVacationEntry({ note: "[Urlaub] Altbestand" })).toBe(true);
+    expect(isTimeCompEntry({ absence_type: "za" })).toBe(true);
+    expect(isAbsenceEntry({ note: "Montage" })).toBe(false);
   });
 
   it("builds one named warning per affected employee", () => {

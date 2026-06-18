@@ -9,6 +9,11 @@ import {
   getEmployeeSollHoursForDay,
   calcEmployeeSollHoursForRange,
 } from "../utils/time";
+import {
+  isSickEntry,
+  isTimeCompEntry,
+  isVacationEntry,
+} from "../utils/timeEntryAbsences";
 
 async function loadPdfLibs() {
   const [{ jsPDF }, autoTableModule] = await Promise.all([
@@ -124,18 +129,15 @@ function uniq(arr) {
 }
 
 function isVacationRow(r) {
-  const note = (r?.note || "").toString();
-  return note.includes("[Urlaub]");
+  return isVacationEntry(r);
 }
 
 function isSickRow(r) {
-  const note = (r?.note || "").toString();
-  return note.includes("[Krank]");
+  return isSickEntry(r);
 }
 
 function isTimeCompRow(r) {
-  const note = (r?.note || "").toString();
-  return note.includes("[Zeitausgleich]");
+  return isTimeCompEntry(r);
 }
 
 function isAbsenceRow(r) {

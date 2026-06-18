@@ -16,6 +16,12 @@ import {
   ensureMonthUnlocked,
   formatYearMonthAT,
 } from "../utils/monthLock";
+import {
+  isAbsenceEntry,
+  isSickEntry,
+  isTimeCompEntry,
+  isVacationEntry,
+} from "../utils/timeEntryAbsences";
 
 async function loadPdfLibs() {
   const [{ jsPDF }, autoTableModule] = await Promise.all([
@@ -102,8 +108,7 @@ function maxDate(a, b) {
 }
 
 function rowWorkHoursForZa(row) {
-  const note = String(row?.note || "");
-  if (note.includes("[Urlaub]") || note.includes("[Krank]") || note.includes("[Zeitausgleich]")) return 0;
+  if (isAbsenceEntry(row)) return 0;
   const start = row.start_min ?? row.from_min ?? 0;
   const end = row.end_min ?? row.to_min ?? 0;
   const pause = row.break_min ?? 0;
@@ -285,10 +290,7 @@ function uniqueSortedDates(arr) {
     .sort();
 }
 
-const isAbsenceRow = (r) => {
-  const note = (r?.note || "").toString();
-  return note.includes("[Urlaub]") || note.includes("[Krank]") || note.includes("[Zeitausgleich]");
-};
+const isAbsenceRow = isAbsenceEntry;
 
 const isPayrollCheckEmployee = () => true;
 
@@ -299,9 +301,9 @@ const getProjectAddress = (r, projects = []) => {
   return r.project_address || r.address || r.project_address_text || prj?.address || prj?.adresse || prj?.site_address || "—";
 };
 
-const isVacationRow = (r) => (r?.note || "").toString().includes("[Urlaub]");
-const isSickRow = (r) => (r?.note || "").toString().includes("[Krank]");
-const isTimeCompRow = (r) => (r?.note || "").toString().includes("[Zeitausgleich]");
+const isVacationRow = isVacationEntry;
+const isSickRow = isSickEntry;
+const isTimeCompRow = isTimeCompEntry;
 
 const getPureWorkMinutes = (r) => {
   const total = r?._mins ?? entryMinutes(r);
@@ -1392,7 +1394,7 @@ export default function MonthlyOverview() {
 
     let { data: zaRows, error: zaError } = await supabase
       .from("time_entries")
-      .select("id, employee_id, work_date, start_min, end_min, break_min, travel_minutes, note, za_hours")
+      .select("*")
       .lte("work_date", targetEndDate)
       .in("employee_id", employeeIds)
       .order("work_date", { ascending: true });
@@ -1464,13 +1466,12 @@ export default function MonthlyOverview() {
           });
         }
         const day = dayMap.get(key);
-        const note = String(row.note || "");
         day.worked += rowWorkHoursForZa(row);
-        if (note.includes("[Zeitausgleich]")) {
+        if (isTimeCompRow(row)) {
           day.hasZa = true;
           day.usedZa += parseHoursValue(row.za_hours);
         }
-        if (note.includes("[Urlaub]") || note.includes("[Krank]")) {
+        if (isVacationRow(row) || isSickRow(row)) {
           day.hasPaidAbsence = true;
         }
       });

@@ -1,6 +1,12 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { DEFAULT_OFFICE_WORK_TIME_SETTINGS, getEmployeeSollHoursForDay, normalizeWorkTimeSettings } from "../utils/time";
+import {
+  isAbsenceEntry,
+  isSickEntry,
+  isTimeCompEntry,
+  isVacationEntry,
+} from "../utils/timeEntryAbsences";
 
 const PERMISSION_OPTIONS = [
   { key: "writeOwnTime", label: "Eigene Stunden schreiben" },
@@ -78,8 +84,7 @@ function formatHours(value) {
 }
 
 function rowWorkHours(row) {
-  const note = String(row?.note || "");
-  if (note.includes("[Urlaub]") || note.includes("[Krank]") || note.includes("[Zeitausgleich]")) return 0;
+  if (isAbsenceEntry(row)) return 0;
   const start = row.start_min ?? row.from_min ?? 0;
   const end = row.end_min ?? row.to_min ?? 0;
   const pause = row.break_min ?? 0;
@@ -88,7 +93,10 @@ function rowWorkHours(row) {
 }
 
 function isAbsenceNote(row, marker) {
-  return String(row?.note || "").includes(marker);
+  if (marker === "[Urlaub]") return isVacationEntry(row);
+  if (marker === "[Krank]") return isSickEntry(row);
+  if (marker === "[Zeitausgleich]") return isTimeCompEntry(row);
+  return false;
 }
 
 function sortByDateDesc(a, b) {
@@ -559,7 +567,7 @@ export default function EmployeeList() {
     try {
       let entriesResponse = await supabase
         .from("time_entries")
-        .select("id, employee_id, work_date, start_min, end_min, break_min, travel_minutes, note, za_hours")
+        .select("*")
         .order("work_date", { ascending: true });
 
       if (entriesResponse.error) throw entriesResponse.error;

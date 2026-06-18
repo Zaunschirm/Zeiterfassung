@@ -34,6 +34,26 @@ describe("time entry persistence", () => {
     expect(eq).toHaveBeenCalledWith("id", "entry-1");
   });
 
+  it("retries without absence_type for older database schemas", async () => {
+    const savedRows = [{ id: "entry-1", note: "[Urlaub]" }];
+    const unsupportedSelect = vi.fn().mockResolvedValue({
+      data: null,
+      error: { code: "PGRST204", message: "Could not find the 'absence_type' column" },
+    });
+    const compatibleSelect = vi.fn().mockResolvedValue({ data: savedRows, error: null });
+    const insert = vi
+      .fn()
+      .mockImplementationOnce(() => ({ select: unsupportedSelect }))
+      .mockImplementationOnce(() => ({ select: compatibleSelect }));
+    const client = { from: vi.fn(() => ({ insert })) };
+
+    await expect(
+      createTimeEntries(client, { absence_type: "urlaub", note: "[Urlaub]" })
+    ).resolves.toEqual(savedRows);
+    expect(insert).toHaveBeenNthCalledWith(1, [{ absence_type: "urlaub", note: "[Urlaub]" }]);
+    expect(insert).toHaveBeenNthCalledWith(2, [{ note: "[Urlaub]" }]);
+  });
+
   it("deletes one entry", async () => {
     const eq = vi.fn().mockResolvedValue({ error: null });
     const remove = vi.fn(() => ({ eq }));

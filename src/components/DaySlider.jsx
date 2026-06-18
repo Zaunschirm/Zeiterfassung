@@ -33,7 +33,10 @@ import {
   buildNewTimeEntryPayload,
 } from "../utils/timeEntryPayload";
 import { ensureMonthUnlocked } from "../utils/monthLock";
-import { buildTimeEntryAbsenceWarnings } from "../utils/timeEntryAbsences";
+import {
+  buildTimeEntryAbsenceWarnings,
+  getTimeEntryAbsenceType,
+} from "../utils/timeEntryAbsences";
 import {
   getAssignedEmployeeCodes,
   getAssignmentProjects,
@@ -117,24 +120,7 @@ const TRAVEL_OPTIONS = [0, 15, 30, 45, 60, 75, 90, 105, 120, 135, 150];
 const CRANE_HOUR_OPTIONS = Array.from({ length: 15 }, (_, i) => i + 1);
 
 function isAbsenceEntry(row, type) {
-  const note = String(row?.note || "").toLowerCase();
-  const absenceType = String(row?.absence_type || row?.absenceType || "").toLowerCase();
-
-  if (type === "urlaub") {
-    return absenceType === "urlaub" || note.includes("[urlaub]") || note.includes("urlaub");
-  }
-
-  if (type === "krank") {
-    return (
-      absenceType === "krank" ||
-      absenceType === "krankenstand" ||
-      note.includes("[krank]") ||
-      note.includes("krank") ||
-      note.includes("krankenstand")
-    );
-  }
-
-  return false;
+  return getTimeEntryAbsenceType(row) === type;
 }
 
 const logSbError = (prefix, error) =>
@@ -838,7 +824,7 @@ export default function DaySlider() {
         const rowsPromise = hasEntryRange
           ? supabase
               .from("time_entries")
-              .select("work_date,start_min,end_min,break_min,travel_minutes,note,za_hours")
+              .select("*")
               .eq("employee_id", empId)
               .gte("work_date", startDate)
               .lte("work_date", endDate)

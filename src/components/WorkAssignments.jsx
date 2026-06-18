@@ -4,6 +4,8 @@ import { getSession } from "../lib/session";
 import { hasPermission } from "../lib/permissions";
 import { getBuakWeekType, getHolidayName, getEmployeeWorkDay, hmToMinutes } from "../utils/time";
 import { ensureMonthUnlocked } from "../utils/monthLock";
+import { createTimeEntries } from "../lib/timeEntries";
+import { getTimeEntryAbsenceType } from "../utils/timeEntryAbsences";
 
 function formatLocalDate(date) {
   const y = date.getFullYear();
@@ -75,13 +77,7 @@ function getDayStatus(dateStr) {
 
 
 function getTimeOffKind(row) {
-  const note = String(row?.note || "").toLowerCase();
-  const absence = String(row?.absence_type || row?.absenceType || "").toLowerCase();
-
-  if (absence === "krank" || note.includes("[krank]") || note.includes("krank")) return "krank";
-  if (absence === "urlaub" || note.includes("[urlaub]") || note.includes("urlaub")) return "urlaub";
-  if (absence === "zeitausgleich" || absence === "za" || Number(row?.za_hours || 0) > 0 || note.includes("[zeitausgleich]") || note.includes("zeitausgleich")) return "za";
-  return "";
+  return getTimeEntryAbsenceType(row);
 }
 
 function isRelevantTimeOff(row) {
@@ -931,6 +927,7 @@ export default function WorkAssignments() {
       travel_cost_center: "FAHRZEIT",
       crane_hours: 0,
       private_pkw_km: 0,
+      absence_type: normalizedKind,
       za_hours: 0,
       bad_weather: false,
       bad_weather_minutes: 0,
@@ -954,8 +951,7 @@ export default function WorkAssignments() {
         if (deleteAssignmentError) throw deleteAssignmentError;
       }
 
-      const { error } = await supabase.from("time_entries").insert(payload);
-      if (error) throw error;
+      await createTimeEntries(supabase, payload);
 
       if (normalizedKind === "urlaub" && employee) {
         await changeVacationCurrentDays(employee, -1, `Urlaub aus Arbeitseinteilung eingetragen: ${dateStr}`);

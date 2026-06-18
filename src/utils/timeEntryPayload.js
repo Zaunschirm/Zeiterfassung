@@ -58,6 +58,9 @@ export function buildNewTimeEntryPayload({
     weather_fetched_at: weatherFetchedAt || null,
     crane_hours: craneUsed ? Number(craneHours || 0) : 0,
     private_pkw_km: privatePkwUsed ? Number(privatePkwKm || 0) : 0,
+    ...(absenceType || zaUsed
+      ? { absence_type: absenceType || "za" }
+      : {}),
     za_hours: zaUsed ? Number(zaHours || 0) : 0,
     bad_weather: !!badWeather,
     bad_weather_minutes: badWeather
