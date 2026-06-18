@@ -5,6 +5,7 @@ import { canEditTimeEntry, getUserPermissions } from "../lib/permissions";
 import {
   createTimeEntries,
   deleteTimeEntry,
+  loadTimeEntryAbsences,
   updateTimeEntry,
 } from "../lib/timeEntries";
 import PushSettings from "./PushSettings.jsx";
@@ -32,6 +33,7 @@ import {
   buildNewTimeEntryPayload,
 } from "../utils/timeEntryPayload";
 import { ensureMonthUnlocked } from "../utils/monthLock";
+import { buildTimeEntryAbsenceWarnings } from "../utils/timeEntryAbsences";
 import {
   getAssignedEmployeeCodes,
   getAssignmentProjects,
@@ -1235,6 +1237,22 @@ export default function DaySlider() {
       return;
     }
 
+    let absenceWarnings = [];
+    try {
+      const existingAbsences = await loadTimeEntryAbsences(supabase, {
+        date,
+        employeeIds: targetEmployees.map((employee) => employee.id),
+      });
+      absenceWarnings = buildTimeEntryAbsenceWarnings({
+        entries: existingAbsences,
+        employees: targetEmployees,
+      });
+    } catch (absenceError) {
+      logSbError("[DaySlider] absence check error:", absenceError);
+      setError("Krank, Urlaub und ZA konnten vor dem Speichern nicht geprüft werden.");
+      return;
+    }
+
     const validationResults = targetEmployees.map((emp) => ({
       employee: emp,
       result: validateTimeEntry({
@@ -1259,6 +1277,8 @@ export default function DaySlider() {
     const validationWarnings = validationResults
       .filter(({ result }) => result.warnings.length > 0)
       .map(({ employee, result }) => `${employee?.name || employee?.code || "Mitarbeiter"}:\n${formatValidationMessages({ warnings: result.warnings })}`);
+
+    validationWarnings.unshift(...absenceWarnings);
 
     if (validationWarnings.length) {
       const proceed = await confirmValidationWarnings(validationWarnings);
