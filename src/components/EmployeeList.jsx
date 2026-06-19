@@ -1,12 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
-import { DEFAULT_OFFICE_WORK_TIME_SETTINGS, getEmployeeSollHoursForDay, normalizeWorkTimeSettings } from "../utils/time";
-import {
-  isAbsenceEntry,
-  isSickEntry,
-  isTimeCompEntry,
-  isVacationEntry,
-} from "../utils/timeEntryAbsences";
+import { DEFAULT_OFFICE_WORK_TIME_SETTINGS, normalizeWorkTimeSettings } from "../utils/time";
+import { calculateZaBalanceForEmployee } from "../utils/overtime";
 
 const PERMISSION_OPTIONS = [
   { key: "writeOwnTime", label: "Eigene Stunden schreiben" },
@@ -83,22 +78,6 @@ function formatHours(value) {
   return `${sign}${n.toFixed(2).replace(".", ",")} h`;
 }
 
-function rowWorkHours(row) {
-  if (isAbsenceEntry(row)) return 0;
-  const start = row.start_min ?? row.from_min ?? 0;
-  const end = row.end_min ?? row.to_min ?? 0;
-  const pause = row.break_min ?? 0;
-  const travel = row.travel_minutes ?? row.travel_min ?? 0;
-  return Math.max(end - start - pause, 0) / 60 + (Number(travel) || 0) / 60;
-}
-
-function isAbsenceNote(row, marker) {
-  if (marker === "[Urlaub]") return isVacationEntry(row);
-  if (marker === "[Krank]") return isSickEntry(row);
-  if (marker === "[Zeitausgleich]") return isTimeCompEntry(row);
-  return false;
-}
-
 function sortByDateDesc(a, b) {
   return String(b.adjustment_date || "").localeCompare(String(a.adjustment_date || ""));
 }
@@ -124,11 +103,6 @@ function dateToDayNumber(value) {
 
 function dayNumberToDate(dayNumber) {
   return new Date(dayNumber * 86400000).toISOString().slice(0, 10);
-}
-
-function getTodayDateString() {
-  const now = new Date();
-  return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())).toISOString().slice(0, 10);
 }
 
 function getYesterdayDateString() {
@@ -160,12 +134,6 @@ function minDate(a, b) {
   if (!a) return b || "";
   if (!b) return a || "";
   return a <= b ? a : b;
-}
-
-function maxDate(a, b) {
-  if (!a) return b || "";
-  if (!b) return a || "";
-  return a >= b ? a : b;
 }
 
 function isZaAccountEnabled(emp) {
@@ -250,276 +218,109 @@ export default function EmployeeList() {
 
   const overtimeByEmployee = useMemo(() => {
     const map = new Map();
+    const accountEndDate = getYesterdayDateString();
     for (const emp of rows) {
-      map.set(String(emp.id), {
+      const empId = String(emp.id);
+      const empEntries = (entries || []).filter((row) => String(row.employee_id || "") === empId);
+      const entryDates = empEntries.map((row) => dateOnly(row.work_date)).filter(Boolean).sort();
+      const firstEntryDate = entryDates[0] || "";
+      const lastEntryDate = entryDates[entryDates.length - 1] || "";
+      const included = isZaAccountEnabled(emp);
+      const startDate = emp.za_start_date || firstEntryDate;
+      const endDate = emp.disabled ? minDate(lastEntryDate || accountEndDate, accountEndDate) : accountEndDate;
+      const countedAdjustments = (overtimeAdjustments || []).filter(
+        (adj) => String(adj.employee_id || "") === empId && shouldCountZaAdjustment(adj, emp)
+      );
+      const balance = included && startDate
+        ? calculateZaBalanceForEmployee({
+            employee: emp,
+            entries: empEntries,
+            adjustments: countedAdjustments,
+            from: startDate,
+            to: endDate,
+            adjustmentFrom: startDate,
+            adjustmentTo: endDate,
+          })
+        : { worked: 0, soll: 0, generated: 0, usedZa: 0, corrections: 0, balance: 0 };
+
+      map.set(empId, {
         employee: emp,
-        worked: 0,
-        soll: 0,
-        generated: 0,
-        usedZa: 0,
-        corrections: 0,
-        balance: 0,
-        included: isZaAccountEnabled(emp),
-        startDate: emp.za_start_date || "",
-        endDate: "",
+        ...balance,
+        included,
+        startDate: startDate || "",
+        endDate: startDate ? endDate : "",
       });
     }
-
-    const dayMap = new Map();
-    const boundsByEmployee = new Map();
-
-    for (const row of entries || []) {
-      const empId = String(row.employee_id || "");
-      if (!empId) continue;
-      const date = dateOnly(row.work_date);
-      if (!date) continue;
-
-      const bounds = boundsByEmployee.get(empId) || { first: "", last: "" };
-      bounds.first = minDate(bounds.first, date);
-      bounds.last = maxDate(bounds.last, date);
-      boundsByEmployee.set(empId, bounds);
-
-      const key = `${empId}__${date}`;
-      if (!dayMap.has(key)) {
-        dayMap.set(key, {
-          employeeId: empId,
-          date,
-          worked: 0,
-          usedZa: 0,
-          hasZa: false,
-          hasPaidAbsence: false,
-          rows: [],
-        });
-      }
-      const day = dayMap.get(key);
-      day.rows.push(row);
-      day.worked += rowWorkHours(row);
-      if (isAbsenceNote(row, "[Zeitausgleich]")) {
-        day.hasZa = true;
-        day.usedZa += parseHours(row.za_hours);
-      }
-      if (isAbsenceNote(row, "[Urlaub]") || isAbsenceNote(row, "[Krank]")) {
-        day.hasPaidAbsence = true;
-      }
-    }
-
-    const today = getTodayDateString();
-    const yesterday = getYesterdayDateString();
-
-    for (const summary of map.values()) {
-      const emp = summary.employee;
-      if (!summary.included) continue;
-
-      const bounds = boundsByEmployee.get(String(emp.id)) || { first: "", last: "" };
-      const startDate = emp.za_start_date || bounds.first;
-      if (!startDate) continue;
-
-      // Aktive Mitarbeiter werden nur bis gestern gerechnet.
-      // Der heutige Tag soll im ZA-Konto noch nicht als Minus auftauchen, solange noch nicht gebucht wurde.
-      // Deaktivierte Mitarbeiter werden nur bis zum letzten vorhandenen Eintrag gerechnet,
-      // damit alte Mitarbeiter nicht jeden Tag weiter Minus aufbauen.
-      const endDate = emp.disabled ? minDate(bounds.last || yesterday, yesterday) : yesterday;
-      summary.startDate = startDate;
-      summary.endDate = endDate;
-
-      const startDay = dateToDayNumber(startDate);
-      const endDay = dateToDayNumber(endDate);
-      if (!Number.isFinite(startDay) || !Number.isFinite(endDay) || endDay < startDay) continue;
-
-      // Fix: nicht mit String-Datum + addDays loopen. Auf manchen Builds blieb das Datum stehen
-      // und der Guard lief bis 5000 Tage, dadurch entstanden Fantasiewerte wie 45.000 h Soll.
-      const maxDays = Math.min(endDay - startDay, 5000);
-      for (let offset = 0; offset <= maxDays; offset += 1) {
-        const date = dayNumberToDate(startDay + offset);
-        const key = `${String(emp.id)}__${date}`;
-        const day = dayMap.get(key) || {
-          employeeId: String(emp.id),
-          date,
-          worked: 0,
-          usedZa: 0,
-          hasZa: false,
-          hasPaidAbsence: false,
-          rows: [],
-        };
-
-        const soll = Number(getEmployeeSollHoursForDay(emp, date)) || 0;
-        const zaFallback = day.hasZa && day.usedZa <= 0 ? soll : day.usedZa;
-
-        summary.worked += day.worked;
-        summary.usedZa += zaFallback;
-        summary.soll += soll;
-
-        let dailyChange = 0;
-        if (day.hasPaidAbsence && !day.hasZa && day.worked <= 0) {
-          // Urlaub/Krankenstand sind im Soll enthalten, verändern aber das ZA-Konto nicht.
-          dailyChange = 0;
-        } else if (day.hasZa && day.worked <= 0) {
-          // Ganzer Zeitausgleichstag: Soll nicht zusätzlich als Minus rechnen, sondern ZA-Verbrauch abziehen.
-          dailyChange = -zaFallback;
-        } else if (day.hasZa) {
-          // Misch-Tag: Gearbeitetes gegen Soll rechnen und zusätzlich verbrauchten ZA abziehen.
-          dailyChange = day.worked - soll - zaFallback;
-        } else {
-          dailyChange = day.worked - soll;
-        }
-
-        summary.generated += dailyChange;
-      }
-    }
-
-    for (const adj of overtimeAdjustments || []) {
-      const empId = String(adj.employee_id || "");
-      const summary = map.get(empId);
-      if (!summary || !summary.included) continue;
-      if (!shouldCountZaAdjustment(adj, summary.employee)) continue;
-      summary.corrections += parseHours(adj.hours);
-    }
-
-    for (const summary of map.values()) {
-      summary.balance = summary.included ? summary.generated + summary.corrections : 0;
-    }
-
     return map;
   }, [rows, entries, overtimeAdjustments]);
 
   const zaMonthEndRows = useMemo(() => {
-    const dayMap = new Map();
-    const boundsByEmployee = new Map();
+    {
+      const accountEndDate = getYesterdayDateString();
+      const monthEndResult = [];
 
-    for (const row of entries || []) {
-      const empId = String(row.employee_id || "");
-      if (!empId) continue;
-      const date = dateOnly(row.work_date);
-      if (!date) continue;
+      for (const emp of rows || []) {
+        if (!isZaAccountEnabled(emp)) continue;
 
-      const bounds = boundsByEmployee.get(empId) || { first: "", last: "" };
-      bounds.first = minDate(bounds.first, date);
-      bounds.last = maxDate(bounds.last, date);
-      boundsByEmployee.set(empId, bounds);
+        const empId = String(emp.id);
+        const empEntries = (entries || []).filter((row) => String(row.employee_id || "") === empId);
+        const entryDates = empEntries.map((row) => dateOnly(row.work_date)).filter(Boolean).sort();
+        const firstEntryDate = entryDates[0] || "";
+        const lastEntryDate = entryDates[entryDates.length - 1] || "";
+        const startDate = emp.za_start_date || firstEntryDate;
+        if (!startDate) continue;
 
-      const key = `${empId}__${date}`;
-      if (!dayMap.has(key)) {
-        dayMap.set(key, {
-          employeeId: empId,
-          date,
-          worked: 0,
-          usedZa: 0,
-          hasZa: false,
-          hasPaidAbsence: false,
-        });
-      }
-
-      const day = dayMap.get(key);
-      day.worked += rowWorkHours(row);
-      if (isAbsenceNote(row, "[Zeitausgleich]")) {
-        day.hasZa = true;
-        day.usedZa += parseHours(row.za_hours);
-      }
-      if (isAbsenceNote(row, "[Urlaub]") || isAbsenceNote(row, "[Krank]")) {
-        day.hasPaidAbsence = true;
-      }
-    }
-
-    const employeeById = new Map((rows || []).map((emp) => [String(emp.id), emp]));
-    const adjustmentsByDay = new Map();
-    const startAdjustmentsByDay = new Map();
-    for (const adj of overtimeAdjustments || []) {
-      const empId = String(adj.employee_id || "");
-      const emp = employeeById.get(empId);
-      const date = dateOnly(adj.adjustment_date);
-      if (!empId || !date || !emp) continue;
-      if (!shouldCountZaAdjustment(adj, emp)) continue;
-      const key = `${empId}__${date}`;
-      const hours = parseHours(adj.hours);
-      adjustmentsByDay.set(key, (adjustmentsByDay.get(key) || 0) + hours);
-      if (isOfficialZaStartAdjustment(adj)) {
-        startAdjustmentsByDay.set(key, (startAdjustmentsByDay.get(key) || 0) + hours);
-      }
-    }
-
-    const yesterday = getYesterdayDateString();
-    const result = [];
-
-    for (const emp of rows || []) {
-      if (!isZaAccountEnabled(emp)) continue;
-
-      const empId = String(emp.id);
-      const bounds = boundsByEmployee.get(empId) || { first: "", last: "" };
-      const startDate = emp.za_start_date || bounds.first;
-      if (!startDate) continue;
-
-      const endDate = emp.disabled ? minDate(bounds.last || yesterday, yesterday) : yesterday;
-      const startDay = dateToDayNumber(startDate);
-      const endDay = dateToDayNumber(endDate);
-      if (!Number.isFinite(startDay) || !Number.isFinite(endDay) || endDay < startDay) continue;
-
-      let worked = 0;
-      let soll = 0;
-      let usedZa = 0;
-      let generated = 0;
-      let corrections = 0;
-
-      // Startwert am 01. eines Monats gehört fachlich zum Tagesende des Vormonats.
-      // Beispiel: Korrektur am 01.06.2026 = Stand Tagesende 31.05.2026 laut Lohnverrechnung.
-      const previousDay = dayNumberToDate(startDay - 1);
-      const startKey = `${empId}__${startDate}`;
-      const hasStartStand = startAdjustmentsByDay.has(startKey);
-      const startBalance = startAdjustmentsByDay.get(startKey) || 0;
-      if (hasStartStand && isLastDayOfMonth(previousDay)) {
-        result.push({
-          employeeId: empId,
+        const endDate = emp.disabled
+          ? minDate(lastEntryDate || accountEndDate, accountEndDate)
+          : accountEndDate;
+        const countedAdjustments = (overtimeAdjustments || []).filter(
+          (adj) => String(adj.employee_id || "") === empId && shouldCountZaAdjustment(adj, emp)
+        );
+        const calculation = calculateZaBalanceForEmployee({
           employee: emp,
-          date: previousDay,
-          worked: 0,
-          soll: 0,
-          usedZa: 0,
-          generated: 0,
-          corrections: startBalance,
-          balance: startBalance,
-          isStartStand: true,
+          entries: empEntries,
+          adjustments: countedAdjustments,
+          from: startDate,
+          to: endDate,
+          adjustmentFrom: startDate,
+          adjustmentTo: endDate,
         });
-      }
 
-      const maxDays = Math.min(endDay - startDay, 5000);
-
-      for (let offset = 0; offset <= maxDays; offset += 1) {
-        const date = dayNumberToDate(startDay + offset);
-        const key = `${empId}__${date}`;
-        const day = dayMap.get(key) || {
-          employeeId: empId,
-          date,
-          worked: 0,
-          usedZa: 0,
-          hasZa: false,
-          hasPaidAbsence: false,
-        };
-
-        const daySoll = Number(getEmployeeSollHoursForDay(emp, date)) || 0;
-        const zaFallback = day.hasZa && day.usedZa <= 0 ? daySoll : day.usedZa;
-
-        worked += day.worked;
-        usedZa += zaFallback;
-        soll += daySoll;
-
-        let dailyChange = 0;
-        if (day.hasPaidAbsence && !day.hasZa && day.worked <= 0) {
-          dailyChange = 0;
-        } else if (day.hasZa && day.worked <= 0) {
-          dailyChange = -zaFallback;
-        } else if (day.hasZa) {
-          dailyChange = day.worked - daySoll - zaFallback;
-        } else {
-          dailyChange = day.worked - daySoll;
-        }
-
-        generated += dailyChange;
-        corrections += adjustmentsByDay.get(key) || 0;
-
-        if (isLastDayOfMonth(date)) {
-          result.push({
+        const startBalance = countedAdjustments
+          .filter(isOfficialZaStartAdjustment)
+          .reduce((sum, adj) => sum + parseHours(adj.hours), 0);
+        const previousDay = dayNumberToDate(dateToDayNumber(startDate) - 1);
+        if (startBalance && isLastDayOfMonth(previousDay)) {
+          monthEndResult.push({
             employeeId: empId,
             employee: emp,
-            date,
+            date: previousDay,
+            worked: 0,
+            soll: 0,
+            usedZa: 0,
+            generated: 0,
+            corrections: startBalance,
+            balance: startBalance,
+            isStartStand: true,
+          });
+        }
+
+        let worked = 0;
+        let soll = 0;
+        let usedZa = 0;
+        let generated = 0;
+        let corrections = 0;
+        for (const day of calculation.days) {
+          worked += day.worked;
+          soll += day.soll;
+          usedZa += day.usedZa;
+          generated += day.generated;
+          corrections += day.corrections || 0;
+          if (!isLastDayOfMonth(day.date)) continue;
+          monthEndResult.push({
+            employeeId: empId,
+            employee: emp,
+            date: day.date,
             worked,
             soll,
             usedZa,
@@ -529,9 +330,9 @@ export default function EmployeeList() {
           });
         }
       }
-    }
 
-    return result.sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(a.employee?.name || "").localeCompare(String(b.employee?.name || "")));
+      return monthEndResult.sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(a.employee?.name || "").localeCompare(String(b.employee?.name || "")));
+    }
   }, [rows, entries, overtimeAdjustments]);
 
   const visibleZaMonthEndRows = useMemo(() => zaMonthEndRows.slice(0, 96), [zaMonthEndRows]);

@@ -144,6 +144,20 @@ export function calculateZaBalanceForEmployee({
   }
 
   const dayMap = buildZaDayMap(entries);
+  const adjFrom = adjustmentFrom ? dateOnly(adjustmentFrom) : "";
+  const adjTo = adjustmentTo ? dateOnly(adjustmentTo) : "";
+  const includedAdjustments = (adjustments || []).filter((adj) => {
+    const date = dateOnly(adj?.adjustment_date || adj?.date);
+    if (adjFrom && date && date < adjFrom) return false;
+    if (adjTo && date && date > adjTo) return false;
+    return true;
+  });
+  const adjustmentsByDate = new Map();
+  for (const adj of includedAdjustments) {
+    const date = dateOnly(adj?.adjustment_date || adj?.date);
+    if (!date) continue;
+    adjustmentsByDate.set(date, (adjustmentsByDate.get(date) || 0) + parseHoursValue(adj?.hours));
+  }
   const days = [];
   const safeMaxDays = Math.min(endDay - startDay, maxDays);
 
@@ -161,21 +175,17 @@ export function calculateZaBalanceForEmployee({
       neutralizeHolidays,
     });
 
-    days.push(daily);
+    days.push({
+      ...daily,
+      corrections: roundHours(adjustmentsByDate.get(date) || 0),
+    });
     worked += daily.worked;
     soll += daily.soll;
     usedZa += daily.usedZa;
     generated += daily.generated;
   }
 
-  const adjFrom = adjustmentFrom ? dateOnly(adjustmentFrom) : "";
-  const adjTo = adjustmentTo ? dateOnly(adjustmentTo) : "";
-  const corrections = (adjustments || []).reduce((sum, adj) => {
-    const date = dateOnly(adj?.adjustment_date || adj?.date);
-    if (adjFrom && date && date < adjFrom) return sum;
-    if (adjTo && date && date > adjTo) return sum;
-    return sum + parseHoursValue(adj?.hours);
-  }, 0);
+  const corrections = includedAdjustments.reduce((sum, adj) => sum + parseHoursValue(adj?.hours), 0);
 
   return {
     worked: roundHours(worked),

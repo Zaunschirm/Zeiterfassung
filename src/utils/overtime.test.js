@@ -35,6 +35,14 @@ describe("overtime / ZA helpers", () => {
     expect(calculateZaDailyChange({ day, employee: buakEmployee, date: "2026-01-05" }).generated).toBe(0);
   });
 
+  it("keeps Austrian holidays neutral when requested by an export", () => {
+    expect(calculateZaDailyChange({
+      employee: buakEmployee,
+      date: "2026-01-01",
+      neutralizeHolidays: true,
+    }).generated).toBe(0);
+  });
+
   it("calculates balances from entries and corrections", () => {
     const result = calculateZaBalanceForEmployee({
       employee: buakEmployee,
@@ -55,5 +63,6 @@ describe("overtime / ZA helpers", () => {
       corrections: 1.5,
       balance: -7.25,
     });
+    expect(result.days[1]).toMatchObject({ corrections: 1.5 });
   });
 });

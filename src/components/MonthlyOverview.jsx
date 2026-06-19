@@ -22,6 +22,7 @@ import {
   isTimeCompEntry,
   isVacationEntry,
 } from "../utils/timeEntryAbsences";
+import { calculateZaBalanceForEmployee } from "../utils/overtime";
 
 async function loadPdfLibs() {
   const [{ jsPDF }, autoTableModule] = await Promise.all([
@@ -93,27 +94,6 @@ function dateToDayNumber(value) {
 
 function dayNumberToDate(dayNumber) {
   return new Date(dayNumber * 86400000).toISOString().slice(0, 10);
-}
-
-function minDate(a, b) {
-  if (!a) return b || "";
-  if (!b) return a || "";
-  return a <= b ? a : b;
-}
-
-function maxDate(a, b) {
-  if (!a) return b || "";
-  if (!b) return a || "";
-  return a >= b ? a : b;
-}
-
-function rowWorkHoursForZa(row) {
-  if (isAbsenceEntry(row)) return 0;
-  const start = row.start_min ?? row.from_min ?? 0;
-  const end = row.end_min ?? row.to_min ?? 0;
-  const pause = row.break_min ?? 0;
-  const travel = row.travel_minutes ?? row.travel_min ?? 0;
-  return Math.max(end - start - pause, 0) / 60 + (Number(travel) || 0) / 60;
 }
 
 function isOnOrAfterStartDate(dateValue, startDate) {
@@ -1417,103 +1397,36 @@ export default function MonthlyOverview() {
       adjustments = [];
     }
 
-    const entriesByEmployee = new Map();
-    const boundsByEmployee = new Map();
-
-    zaRows.forEach((row) => {
-      const empId = String(row.employee_id || "");
-      const date = dateOnly(row.work_date);
-      if (!empId || !date) return;
-      if (!entriesByEmployee.has(empId)) entriesByEmployee.set(empId, []);
-      entriesByEmployee.get(empId).push(row);
-
-      const bounds = boundsByEmployee.get(empId) || { first: "", last: "" };
-      bounds.first = minDate(bounds.first, date);
-      bounds.last = maxDate(bounds.last, date);
-      boundsByEmployee.set(empId, bounds);
-    });
-
-    employeesForExport.forEach((emp) => {
+    for (const emp of employeesForExport || []) {
       const empId = String(emp.id || "");
       const current = out.get(empId) || { balance: 0, endDate: targetEndDate, included: true };
       if (emp?.include_in_za_account === false) {
         out.set(empId, { ...current, balance: 0, included: false });
-        return;
+        continue;
       }
 
-      const empRows = entriesByEmployee.get(empId) || [];
-      const bounds = boundsByEmployee.get(empId) || { first: "", last: "" };
-      const startDate = emp.za_start_date || emp.entry_date || bounds.first || targetEndDate;
-      const startDay = dateToDayNumber(startDate);
-      const endDay = dateToDayNumber(targetEndDate);
-      if (!Number.isFinite(startDay) || !Number.isFinite(endDay) || endDay < startDay) {
-        out.set(empId, { ...current, balance: 0, included: true });
-        return;
-      }
-
-      const dayMap = new Map();
-      empRows.forEach((row) => {
-        const date = dateOnly(row.work_date);
-        if (!date || date < startDate || date > targetEndDate) return;
-        const key = date;
-        if (!dayMap.has(key)) {
-          dayMap.set(key, {
-            date,
-            worked: 0,
-            usedZa: 0,
-            hasZa: false,
-            hasPaidAbsence: false,
-          });
-        }
-        const day = dayMap.get(key);
-        day.worked += rowWorkHoursForZa(row);
-        if (isTimeCompRow(row)) {
-          day.hasZa = true;
-          day.usedZa += parseHoursValue(row.za_hours);
-        }
-        if (isVacationRow(row) || isSickRow(row)) {
-          day.hasPaidAbsence = true;
-        }
+      const empRows = zaRows.filter((row) => String(row.employee_id || "") === empId);
+      const firstEntryDate = empRows
+        .map((row) => dateOnly(row.work_date))
+        .filter(Boolean)
+        .sort()[0] || "";
+      const startDate = emp.za_start_date || emp.entry_date || firstEntryDate || targetEndDate;
+      const empAdjustments = (adjustments || []).filter(
+        (adj) => String(adj.employee_id || "") === empId && isOnOrAfterStartDate(adj.adjustment_date, emp.za_start_date)
+      );
+      const result = calculateZaBalanceForEmployee({
+        employee: emp,
+        entries: empRows,
+        adjustments: empAdjustments,
+        from: startDate,
+        to: targetEndDate,
+        adjustmentFrom: startDate,
+        adjustmentTo: targetEndDate,
+        neutralizeHolidays: true,
       });
 
-      let generated = 0;
-      const maxDays = Math.min(endDay - startDay, 5000);
-      for (let offset = 0; offset <= maxDays; offset += 1) {
-        const date = dayNumberToDate(startDay + offset);
-        const day = dayMap.get(date) || {
-          date,
-          worked: 0,
-          usedZa: 0,
-          hasZa: false,
-          hasPaidAbsence: false,
-        };
-        const soll = Number(getEmployeeSollHoursForDay(emp, date)) || 0;
-        const isHoliday = !!getHolidayName(date);
-
-        // ZA-Konto:
-        // - Feiertag, Urlaub und Krankenstand verändern den ZA-Stand nicht.
-        // - Zeitausgleich zählt lohntechnisch als abgedeckte Sollzeit,
-        //   am ZA-Konto bleibt als Monatsänderung aber: echte Arbeits-/bezahlte Stunden ohne ZA minus Soll.
-        //   Beispiel: 140,25 Arbeit + 24 Feiertag + 6 ZA = 170,25 abgedeckt,
-        //   ZA-Konto-Änderung bleibt 140,25 + 24 - 162 = +2,25.
-        if (isHoliday || (day.hasPaidAbsence && !day.hasZa && day.worked <= 0)) {
-          generated += 0;
-        } else {
-          generated += day.worked - soll;
-        }
-      }
-
-      const corrections = (adjustments || [])
-        .filter((adj) => String(adj.employee_id || "") === empId)
-        .filter((adj) => isOnOrAfterStartDate(adj.adjustment_date, emp.za_start_date))
-        .reduce((sum, adj) => sum + parseHoursValue(adj.hours), 0);
-
-      out.set(empId, {
-        ...current,
-        balance: Math.round((generated + corrections) * 100) / 100,
-        included: true,
-      });
-    });
+      out.set(empId, { ...current, balance: result.balance, included: true });
+    }
 
     return out;
   }
