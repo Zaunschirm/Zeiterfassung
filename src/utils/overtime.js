@@ -16,6 +16,10 @@ export function roundHours(value) {
   return Math.round((Number(value) || 0) * 100) / 100;
 }
 
+export function calculateZaBalanceDelta(before, after) {
+  return roundHours(parseHoursValue(after) - parseHoursValue(before));
+}
+
 export function dateOnly(value) {
   if (!value) return "";
   return String(value).slice(0, 10);

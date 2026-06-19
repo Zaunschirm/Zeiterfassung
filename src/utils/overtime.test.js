@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   calculateZaBalanceForEmployee,
+  calculateZaBalanceDelta,
   calculateZaDailyChange,
   getEntryWorkHoursForZa,
   parseHoursValue,
@@ -13,6 +14,11 @@ describe("overtime / ZA helpers", () => {
     expect(parseHoursValue("1,5 h")).toBe(1.5);
     expect(parseHoursValue("-2.25")).toBe(-2.25);
     expect(parseHoursValue(null)).toBe(0);
+  });
+
+  it("calculates the centrally rounded change between two ZA balances", () => {
+    expect(calculateZaBalanceDelta("38,25", 17)).toBe(-21.25);
+    expect(calculateZaBalanceDelta(50.75, 51.5)).toBe(0.75);
   });
 
   it("calculates worked hours including travel for normal rows only", () => {

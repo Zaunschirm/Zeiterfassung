@@ -22,7 +22,7 @@ import {
   isTimeCompEntry,
   isVacationEntry,
 } from "../utils/timeEntryAbsences";
-import { calculateZaBalanceForEmployee } from "../utils/overtime";
+import { calculateZaBalanceDelta, calculateZaBalanceForEmployee } from "../utils/overtime";
 
 async function loadPdfLibs() {
   const [{ jsPDF }, autoTableModule] = await Promise.all([
@@ -1608,7 +1608,7 @@ export default function MonthlyOverview() {
           doc.setPage(i);
           doc.setFontSize(7.5);
           doc.text(
-            "Berechnung: Lohnstunden = Einträge inkl. Fahrzeit + Feiertag + Krankenstand + ZA; ZA-Abgleich: Stand vorher + Änderung laut LV = Stand Monatsende.",
+            "Berechnung: Lohnstunden = Einträge inkl. Fahrzeit + Feiertag + Krankenstand + ZA; ZA-Abgleich: Stand vorher + zentrale Kontobewegung = Stand Monatsende.",
             marginX,
             pageHeight - 18
           );
@@ -1661,9 +1661,9 @@ export default function MonthlyOverview() {
         const zaTaken = d.timeCompHours || 0;
         const paidHours = recordedHours + d.holidayHours + d.sickHours + zaTaken;
         const sollHoursInRange = calcEmployeeSollHoursForRange(d.emp, targetRange.from, targetRange.to, true);
-        const zaKontoChange = paidHours - sollHoursInRange - zaTaken;
         const zaBalanceBefore = zaBalancesBeforeMonth.get(String(emp.id))?.balance ?? 0;
         const zaBalanceEnd = zaBalancesAtMonthEnd.get(String(emp.id))?.balance ?? 0;
+        const zaKontoChange = calculateZaBalanceDelta(zaBalanceBefore, zaBalanceEnd);
         const zaExpectedEnd = Math.round((zaBalanceBefore + zaKontoChange) * 100) / 100;
         const zaDiff = Math.round((zaBalanceEnd - zaExpectedEnd) * 100) / 100;
 
@@ -1800,7 +1800,7 @@ export default function MonthlyOverview() {
           "Mitarbeiter",
           "Stand Datum",
           "ZA Stand vorher",
-          "Änderung laut LV",
+          "Zentrale Kontobewegung",
           "Endstand Datum",
           "ZA Stand Ende",
           "Differenz",
