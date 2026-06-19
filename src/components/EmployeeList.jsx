@@ -216,22 +216,49 @@ export default function EmployeeList() {
   );
 
 
-  const overtimeByEmployee = useMemo(() => {
-    const map = new Map();
+  const zaCalculationsByEmployee = useMemo(() => {
     const accountEndDate = getYesterdayDateString();
-    for (const emp of rows) {
+    const entriesByEmployee = new Map();
+    const adjustmentsByEmployee = new Map();
+
+    for (const entry of entries || []) {
+      const empId = String(entry.employee_id || "");
+      if (!empId) continue;
+      const group = entriesByEmployee.get(empId) || [];
+      group.push(entry);
+      entriesByEmployee.set(empId, group);
+    }
+
+    for (const adjustment of overtimeAdjustments || []) {
+      const empId = String(adjustment.employee_id || "");
+      if (!empId) continue;
+      const group = adjustmentsByEmployee.get(empId) || [];
+      group.push(adjustment);
+      adjustmentsByEmployee.set(empId, group);
+    }
+
+    const calculations = new Map();
+    for (const emp of rows || []) {
       const empId = String(emp.id);
-      const empEntries = (entries || []).filter((row) => String(row.employee_id || "") === empId);
-      const entryDates = empEntries.map((row) => dateOnly(row.work_date)).filter(Boolean).sort();
-      const firstEntryDate = entryDates[0] || "";
-      const lastEntryDate = entryDates[entryDates.length - 1] || "";
+      const empEntries = entriesByEmployee.get(empId) || [];
+      let firstEntryDate = "";
+      let lastEntryDate = "";
+      for (const entry of empEntries) {
+        const date = dateOnly(entry.work_date);
+        if (!date) continue;
+        if (!firstEntryDate || date < firstEntryDate) firstEntryDate = date;
+        if (!lastEntryDate || date > lastEntryDate) lastEntryDate = date;
+      }
+
       const included = isZaAccountEnabled(emp);
       const startDate = emp.za_start_date || firstEntryDate;
-      const endDate = emp.disabled ? minDate(lastEntryDate || accountEndDate, accountEndDate) : accountEndDate;
-      const countedAdjustments = (overtimeAdjustments || []).filter(
-        (adj) => String(adj.employee_id || "") === empId && shouldCountZaAdjustment(adj, emp)
+      const endDate = emp.disabled
+        ? minDate(lastEntryDate || accountEndDate, accountEndDate)
+        : accountEndDate;
+      const countedAdjustments = (adjustmentsByEmployee.get(empId) || []).filter(
+        (adj) => shouldCountZaAdjustment(adj, emp)
       );
-      const balance = included && startDate
+      const calculation = included && startDate
         ? calculateZaBalanceForEmployee({
             employee: emp,
             entries: empEntries,
@@ -241,100 +268,88 @@ export default function EmployeeList() {
             adjustmentFrom: startDate,
             adjustmentTo: endDate,
           })
-        : { worked: 0, soll: 0, generated: 0, usedZa: 0, corrections: 0, balance: 0 };
+        : { worked: 0, soll: 0, generated: 0, usedZa: 0, corrections: 0, balance: 0, days: [] };
 
-      map.set(empId, {
+      calculations.set(empId, {
         employee: emp,
-        ...balance,
         included,
         startDate: startDate || "",
         endDate: startDate ? endDate : "",
+        countedAdjustments,
+        calculation,
+      });
+    }
+
+    return calculations;
+  }, [rows, entries, overtimeAdjustments]);
+
+  const overtimeByEmployee = useMemo(() => {
+    const map = new Map();
+    for (const [empId, item] of zaCalculationsByEmployee) {
+      map.set(empId, {
+        employee: item.employee,
+        ...item.calculation,
+        included: item.included,
+        startDate: item.startDate,
+        endDate: item.endDate,
       });
     }
     return map;
-  }, [rows, entries, overtimeAdjustments]);
+  }, [zaCalculationsByEmployee]);
 
   const zaMonthEndRows = useMemo(() => {
-    {
-      const accountEndDate = getYesterdayDateString();
-      const monthEndResult = [];
+    const monthEndResult = [];
 
-      for (const emp of rows || []) {
-        if (!isZaAccountEnabled(emp)) continue;
+    for (const [empId, item] of zaCalculationsByEmployee) {
+      const { employee: emp, included, startDate, countedAdjustments, calculation } = item;
+      if (!included || !startDate) continue;
 
-        const empId = String(emp.id);
-        const empEntries = (entries || []).filter((row) => String(row.employee_id || "") === empId);
-        const entryDates = empEntries.map((row) => dateOnly(row.work_date)).filter(Boolean).sort();
-        const firstEntryDate = entryDates[0] || "";
-        const lastEntryDate = entryDates[entryDates.length - 1] || "";
-        const startDate = emp.za_start_date || firstEntryDate;
-        if (!startDate) continue;
-
-        const endDate = emp.disabled
-          ? minDate(lastEntryDate || accountEndDate, accountEndDate)
-          : accountEndDate;
-        const countedAdjustments = (overtimeAdjustments || []).filter(
-          (adj) => String(adj.employee_id || "") === empId && shouldCountZaAdjustment(adj, emp)
-        );
-        const calculation = calculateZaBalanceForEmployee({
+      const officialStartAdjustments = countedAdjustments.filter(isOfficialZaStartAdjustment);
+      const startBalance = officialStartAdjustments.reduce((sum, adj) => sum + parseHours(adj.hours), 0);
+      const previousDay = dayNumberToDate(dateToDayNumber(startDate) - 1);
+      if (officialStartAdjustments.length > 0 && isLastDayOfMonth(previousDay)) {
+        monthEndResult.push({
+          employeeId: empId,
           employee: emp,
-          entries: empEntries,
-          adjustments: countedAdjustments,
-          from: startDate,
-          to: endDate,
-          adjustmentFrom: startDate,
-          adjustmentTo: endDate,
+          date: previousDay,
+          worked: 0,
+          soll: 0,
+          usedZa: 0,
+          generated: 0,
+          corrections: startBalance,
+          balance: startBalance,
+          isStartStand: true,
         });
-
-        const startBalance = countedAdjustments
-          .filter(isOfficialZaStartAdjustment)
-          .reduce((sum, adj) => sum + parseHours(adj.hours), 0);
-        const previousDay = dayNumberToDate(dateToDayNumber(startDate) - 1);
-        if (startBalance && isLastDayOfMonth(previousDay)) {
-          monthEndResult.push({
-            employeeId: empId,
-            employee: emp,
-            date: previousDay,
-            worked: 0,
-            soll: 0,
-            usedZa: 0,
-            generated: 0,
-            corrections: startBalance,
-            balance: startBalance,
-            isStartStand: true,
-          });
-        }
-
-        let worked = 0;
-        let soll = 0;
-        let usedZa = 0;
-        let generated = 0;
-        let corrections = 0;
-        for (const day of calculation.days) {
-          worked += day.worked;
-          soll += day.soll;
-          usedZa += day.usedZa;
-          generated += day.generated;
-          corrections += day.corrections || 0;
-          if (!isLastDayOfMonth(day.date)) continue;
-          monthEndResult.push({
-            employeeId: empId,
-            employee: emp,
-            date: day.date,
-            worked,
-            soll,
-            usedZa,
-            generated,
-            corrections,
-            balance: generated + corrections,
-          });
-        }
       }
 
-      return monthEndResult.sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(a.employee?.name || "").localeCompare(String(b.employee?.name || "")));
+      let worked = 0;
+      let soll = 0;
+      let usedZa = 0;
+      let generated = 0;
+      let corrections = 0;
+      for (const day of calculation.days) {
+        worked += day.worked;
+        soll += day.soll;
+        usedZa += day.usedZa;
+        generated += day.generated;
+        corrections += day.corrections || 0;
+        if (!isLastDayOfMonth(day.date)) continue;
+        monthEndResult.push({
+          employeeId: empId,
+          employee: emp,
+          date: day.date,
+          worked,
+          soll,
+          usedZa,
+          generated,
+          corrections,
+          balance: generated + corrections,
+        });
+      }
     }
-  }, [rows, entries, overtimeAdjustments]);
 
+    return monthEndResult.sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(a.employee?.name || "").localeCompare(String(b.employee?.name || "")));
+  }, [zaCalculationsByEmployee]);
   const visibleZaMonthEndRows = useMemo(() => zaMonthEndRows.slice(0, 96), [zaMonthEndRows]);
 
   const officialZaStartByEmployee = useMemo(() => {
