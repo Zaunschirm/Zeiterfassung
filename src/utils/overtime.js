@@ -100,7 +100,7 @@ export function buildZaDayMap(entries = []) {
   return dayMap;
 }
 
-export function calculateZaDailyChange({ day, employee, date, neutralizeHolidays = false }) {
+export function calculateZaDailyChange({ day, employee, date, neutralizeHolidays = true }) {
   const currentDay = day || { worked: 0, usedZa: 0, hasZa: false, hasPaidAbsence: false };
   const soll = Number(getEmployeeSollHoursForDay(employee, date)) || 0;
   const zaFallback = currentDay.hasZa && currentDay.usedZa <= 0 ? soll : currentDay.usedZa;
@@ -112,7 +112,7 @@ export function calculateZaDailyChange({ day, employee, date, neutralizeHolidays
   } else if (currentDay.hasZa && currentDay.worked <= 0) {
     generated = -zaFallback;
   } else if (currentDay.hasZa) {
-    generated = currentDay.worked - soll - zaFallback;
+    generated = currentDay.worked - soll;
   } else {
     generated = currentDay.worked - soll;
   }
@@ -134,7 +134,7 @@ export function calculateZaBalanceForEmployee({
   to,
   adjustmentFrom = from,
   adjustmentTo = to,
-  neutralizeHolidays = false,
+  neutralizeHolidays = true,
   maxDays = 5000,
 }) {
   if (!employee || !from || !to) {
