@@ -2128,18 +2128,26 @@ export default function MonthlyOverview() {
     {
       label: "Fahrzeit",
       value: `${monthTotals.travelHrs.toFixed(2)} h`,
+      icon: "↗",
+      tone: "travel",
     },
     {
       label: "Gesamtstunden",
       value: `${monthTotals.totalHrs.toFixed(2)} h`,
+      icon: "◷",
+      tone: "hours",
     },
     {
       label: "Mitarbeiter",
       value: `${Object.keys(totalsByEmployee).length}`,
+      icon: "♟",
+      tone: "people",
     },
     {
       label: "Einträge",
       value: `${grouped.length}`,
+      icon: "✓",
+      tone: "entries",
     },
   ];
 
@@ -2154,12 +2162,25 @@ export default function MonthlyOverview() {
               Zeitraum: <b>{rangeLabel}</b>
             </div>
           </div>
+          <div className="month-overview-period" aria-label={`Ausgewählter Zeitraum: ${rangeLabel}`}>
+            <span className="month-overview-period-icon" aria-hidden="true">▦</span>
+            <span>
+              <small>Ausgewählter Zeitraum</small>
+              <strong>{rangeLabel}</strong>
+            </span>
+          </div>
         </div>
       </div>
 
       <div className="month-overview-topgrid">
         <div className="hbz-card month-filter-card">
-          <div className="month-card-title">Filter</div>
+          <div className="month-section-heading">
+            <span className="month-section-icon" aria-hidden="true">⌁</span>
+            <div>
+              <div className="month-card-title">Filter</div>
+              <div className="month-main-subtitle">Zeitraum, Projekt und Mitarbeiter eingrenzen</div>
+            </div>
+          </div>
 
           <div className="month-chip-actions">
             <button type="button" className="hbz-btn btn-small" onClick={handleCurrentMonth}>
@@ -2308,7 +2329,7 @@ export default function MonthlyOverview() {
           )}
         </div>
 
-        <div className="hbz-card month-filter-card">
+        <div className="hbz-card month-filter-card month-tool-card month-tool-card--check">
           <div className="month-card-title">Prüfung</div>
           <div className="month-main-subtitle">Kontrolle vor der Lohnverrechnung</div>
           <div className="month-chip-actions" style={{ marginTop: 12 }}>
@@ -2324,7 +2345,7 @@ export default function MonthlyOverview() {
         </div>
 
         {isAdmin && (
-          <div className="hbz-card month-filter-card">
+          <div className="hbz-card month-filter-card month-tool-card month-tool-card--lock">
             <div className="month-card-title">Monatssperre</div>
             <div className="month-main-subtitle">
               Sperrmonat {formatYearMonthAT(monthLockMonth)}: <b>{monthLockInfo?.locked ? "gesperrt" : "offen"}</b>
@@ -2362,7 +2383,7 @@ export default function MonthlyOverview() {
           </div>
         )}
 
-        <div className="hbz-card month-filter-card">
+        <div className="hbz-card month-filter-card month-tool-card month-tool-card--export">
           <div className="month-card-title">Export</div>
           <div className="month-main-subtitle">PDF und CSV Ausgaben</div>
           <div className="month-chip-actions" style={{ marginTop: 12 }}>
@@ -2383,9 +2404,12 @@ export default function MonthlyOverview() {
 
         <div className="month-summary-grid">
           {summaryCards.map((card) => (
-            <div key={card.label} className="month-summary-card">
-              <div className="month-summary-label">{card.label}</div>
-              <div className="month-summary-value">{card.value}</div>
+            <div key={card.label} className={`month-summary-card month-summary-card--${card.tone}`}>
+              <span className="month-summary-icon" aria-hidden="true">{card.icon}</span>
+              <div>
+                <div className="month-summary-label">{card.label}</div>
+                <div className="month-summary-value">{card.value}</div>
+              </div>
             </div>
           ))}
         </div>

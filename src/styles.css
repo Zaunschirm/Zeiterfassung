@@ -1375,17 +1375,33 @@ body::-webkit-scrollbar-thumb {
 .month-overview {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 18px;
 }
 
 .month-overview-hero {
+  position: relative;
+  overflow: hidden;
   background: linear-gradient(135deg, rgba(123, 74, 45, 0.96), rgba(196, 154, 108, 0.92));
   color: #fff8f1;
   border: none;
   box-shadow: 0 18px 34px rgba(97, 60, 36, 0.22);
 }
 
+.month-overview-hero::after {
+  content: "";
+  position: absolute;
+  width: 260px;
+  height: 260px;
+  right: -70px;
+  top: -150px;
+  border-radius: 50%;
+  border: 45px solid rgba(255, 255, 255, 0.08);
+  pointer-events: none;
+}
+
 .month-overview-hero__content {
+  position: relative;
+  z-index: 1;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -1414,6 +1430,47 @@ body::-webkit-scrollbar-thumb {
   color: rgba(255, 248, 241, 0.9);
 }
 
+.month-overview-period {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 220px;
+  padding: 10px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(8px);
+}
+
+.month-overview-period-icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.18);
+  font-size: 18px;
+}
+
+.month-overview-period small,
+.month-overview-period strong {
+  display: block;
+}
+
+.month-overview-period small {
+  margin-bottom: 2px;
+  color: rgba(255, 248, 241, 0.75);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.month-overview-period strong {
+  font-size: 14px;
+  color: #fff;
+}
+
 .month-overview-actions {
   display: flex;
   gap: 8px;
@@ -1438,8 +1495,23 @@ body::-webkit-scrollbar-thumb {
 
 .month-overview-topgrid {
   display: grid;
-  grid-template-columns: 1.2fr 1fr;
+  grid-template-columns: minmax(0, 1.55fr) minmax(300px, 0.85fr);
   gap: 14px;
+  align-items: start;
+}
+
+.month-overview-topgrid > .month-filter-card:first-child {
+  grid-column: 1;
+  grid-row: 1 / span 3;
+}
+
+.month-overview-topgrid > .month-tool-card {
+  grid-column: 2;
+}
+
+.month-overview-topgrid > .month-summary-grid {
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .month-filter-card,
@@ -1447,6 +1519,52 @@ body::-webkit-scrollbar-thumb {
   position: relative;
   overflow: hidden;
 }
+
+.month-overview .month-filter-card {
+  border: 1px solid rgba(190, 164, 136, 0.36);
+  box-shadow: 0 12px 30px rgba(71, 46, 27, 0.07);
+}
+
+.month-section-heading {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin-bottom: 14px;
+}
+
+.month-section-heading .month-card-title {
+  margin-bottom: 2px;
+}
+
+.month-section-icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  border-radius: 12px;
+  background: linear-gradient(145deg, #f3e2cf, #fff9f1);
+  border: 1px solid rgba(171, 141, 109, 0.34);
+  color: #7b4a2d;
+  font-size: 22px;
+  font-weight: 800;
+}
+
+.month-tool-card {
+  padding-left: 18px;
+}
+
+.month-tool-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: #ad7b51;
+}
+
+.month-tool-card--check::before { background: #4f7f68; }
+.month-tool-card--lock::before { background: #b37a38; }
+.month-tool-card--export::before { background: #637b9b; }
 
 .month-card-title {
   font-size: 15px;
@@ -1519,12 +1637,46 @@ body::-webkit-scrollbar-thumb {
 }
 
 .month-summary-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  overflow: hidden;
   background: rgba(255, 255, 255, 0.96);
   border: 1px solid rgba(203, 182, 156, 0.45);
   border-radius: 18px;
   padding: 14px 16px;
   box-shadow: 0 10px 22px rgba(0, 0, 0, 0.05);
 }
+
+.month-overview-topgrid > .month-summary-grid .month-summary-card::after {
+  content: "";
+  position: absolute;
+  inset: auto -18px -26px auto;
+  width: 70px;
+  height: 70px;
+  border-radius: 50%;
+  background: var(--summary-accent, #9b7355);
+  opacity: 0.08;
+}
+
+.month-summary-icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--summary-accent, #9b7355) 14%, white);
+  color: var(--summary-accent, #7b4a2d);
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.month-summary-card--travel { --summary-accent: #4f7f68; }
+.month-summary-card--hours { --summary-accent: #9a623c; }
+.month-summary-card--people { --summary-accent: #637b9b; }
+.month-summary-card--entries { --summary-accent: #a47735; }
 
 .month-summary-label {
   font-size: 12px;
@@ -1590,6 +1742,9 @@ body::-webkit-scrollbar-thumb {
   text-transform: uppercase;
   letter-spacing: 0.04em;
   white-space: nowrap;
+  position: sticky;
+  top: 0;
+  z-index: 1;
 }
 
 .month-table tbody tr:nth-child(even) {
@@ -1620,11 +1775,21 @@ body::-webkit-scrollbar-thumb {
 }
 
 .month-card {
+  position: relative;
+  overflow: hidden;
   background: linear-gradient(180deg, #fffdfa, #f8f1e7);
   border: 1px solid rgba(203, 182, 156, 0.45);
   border-radius: 18px;
   padding: 14px;
   box-shadow: 0 8px 18px rgba(0, 0, 0, 0.04);
+}
+
+.month-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: linear-gradient(180deg, #7b4a2d, #c59a6d);
 }
 
 .month-card-edit {
@@ -1917,6 +2082,17 @@ body::-webkit-scrollbar-thumb {
   .month-summary-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .month-overview-topgrid > .month-filter-card:first-child,
+  .month-overview-topgrid > .month-tool-card,
+  .month-overview-topgrid > .month-summary-grid {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  .month-overview-topgrid > .month-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 830px) {
@@ -2022,6 +2198,15 @@ body::-webkit-scrollbar-thumb {
   .year-summary-grid,
   .month-summary-grid {
     grid-template-columns: 1fr;
+  }
+
+  .month-overview-topgrid > .month-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .month-overview-period {
+    width: 100%;
+    min-width: 0;
   }
 
   .year-modal,
