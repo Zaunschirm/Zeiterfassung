@@ -12,6 +12,7 @@ import {
   isTimeCompEntry,
   isVacationEntry,
 } from "../utils/timeEntryAbsences";
+import { collectSupabaseRows } from "../utils/pagination";
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
 
@@ -343,14 +344,14 @@ export default function VacationEntry({ currentUser = null } = {}) {
   async function loadTimeOff() {
     setCalendarLoading(true);
     try {
-      const { data, error } = await supabase
+      const data = await collectSupabaseRows(() => supabase
         .from("time_entries")
         .select("*")
         .gte("work_date", calendarFrom)
         .lte("work_date", calendarTo)
-        .order("work_date", { ascending: true });
-      if (error) throw error;
-      setTimeOffRows((data || []).filter(isTimeOffEntry));
+        .order("work_date", { ascending: true })
+        .order("id", { ascending: true }));
+      setTimeOffRows(data.filter(isTimeOffEntry));
     } catch (e) {
       console.error("[VacationEntry] time off load error", e);
       setError(e?.message || "Urlaub-/ZA-Kalender konnte nicht geladen werden.");

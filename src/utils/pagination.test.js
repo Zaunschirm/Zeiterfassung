@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { collectPaginatedRows } from "./pagination.js";
+import { collectPaginatedRows, collectSupabaseRows } from "./pagination.js";
 
 describe("collectPaginatedRows", () => {
   it("loads more than 500 rows without truncating them", async () => {
@@ -30,5 +30,20 @@ describe("collectPaginatedRows", () => {
 
   it("rejects malformed page results instead of silently losing rows", async () => {
     await expect(collectPaginatedRows(async () => null)).rejects.toThrow("must return an array");
+  });
+
+  it("collects Supabase-style range queries and propagates query errors", async () => {
+    const source = Array.from({ length: 5 }, (_, id) => ({ id }));
+    const buildQuery = vi.fn(() => ({
+      range: async (from, to) => ({ data: source.slice(from, to + 1), error: null }),
+    }));
+
+    await expect(collectSupabaseRows(buildQuery, { pageSize: 2 })).resolves.toEqual(source);
+    expect(buildQuery).toHaveBeenCalledTimes(3);
+
+    const queryError = new Error("query failed");
+    await expect(collectSupabaseRows(() => ({
+      range: async () => ({ data: null, error: queryError }),
+    }))).rejects.toBe(queryError);
   });
 });

@@ -14,6 +14,7 @@ import {
   isTimeCompEntry,
   isVacationEntry,
 } from "../utils/timeEntryAbsences";
+import { collectSupabaseRows } from "../utils/pagination";
 
 async function loadPdfLibs() {
   const [{ jsPDF }, autoTableModule] = await Promise.all([
@@ -414,21 +415,21 @@ export default function YearOverview() {
         return;
       }
 
-      let q = supabase
-        .from("v_time_entries_expanded")
-        .select("*")
-        .gte("work_date", range.from)
-        .lte("work_date", range.to)
-        .in("employee_id", ids);
+      const loadedRows = await collectSupabaseRows(() => {
+        let query = supabase
+          .from("v_time_entries_expanded")
+          .select("*")
+          .gte("work_date", range.from)
+          .lte("work_date", range.to)
+          .in("employee_id", ids);
+        if (selectedProjectId) query = query.eq("project_id", selectedProjectId);
+        return query
+          .order("employee_name", { ascending: true })
+          .order("work_date", { ascending: true })
+          .order("id", { ascending: true });
+      });
 
-      if (selectedProjectId) q = q.eq("project_id", selectedProjectId);
-
-      const { data, error } = await q
-        .order("employee_name", { ascending: true })
-        .order("work_date", { ascending: true });
-
-      if (error) throw error;
-      setRows(data || []);
+      setRows(loadedRows);
     } catch (e) {
       console.error("YearOverview load error:", e);
       setRows([]);

@@ -20,3 +20,12 @@ export async function collectPaginatedRows(fetchPage, { pageSize = 1000, maxPage
 
   throw new Error(`Pagination exceeded the safety limit of ${maxPages} pages`);
 }
+
+export function collectSupabaseRows(buildQuery, options) {
+  if (typeof buildQuery !== "function") throw new TypeError("buildQuery must be a function");
+  return collectPaginatedRows(async ({ from, to }) => {
+    const response = await buildQuery().range(from, to);
+    if (response?.error) throw response.error;
+    return response?.data || [];
+  }, options);
+}

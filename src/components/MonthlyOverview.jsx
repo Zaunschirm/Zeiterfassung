@@ -23,6 +23,7 @@ import {
   isVacationEntry,
 } from "../utils/timeEntryAbsences";
 import { calculateZaBalanceDelta, calculateZaBalanceForEmployee } from "../utils/overtime";
+import { collectSupabaseRows } from "../utils/pagination";
 
 async function loadPdfLibs() {
   const [{ jsPDF }, autoTableModule] = await Promise.all([
@@ -479,35 +480,32 @@ export default function MonthlyOverview() {
         }
       }
 
-      let q = supabase
-        .from("v_time_entries_expanded")
-        .select("*")
-        .gte("work_date", from)
-        .lte("work_date", to);
+      const buildMonthQuery = (withEmployeeName = true) => {
+        let query = supabase
+          .from("v_time_entries_expanded")
+          .select("*")
+          .gte("work_date", from)
+          .lte("work_date", to);
 
-      if (isManager) {
-        q = q.in("employee_id", ids);
-      } else {
-        const me = employees[0];
-        if (me?.id) q = q.eq("employee_id", me.id);
+        if (isManager) {
+          query = query.in("employee_id", ids);
+        } else {
+          const me = employees[0];
+          if (me?.id) query = query.eq("employee_id", me.id);
+        }
+        if (selectedProjectId) query = query.eq("project_id", selectedProjectId);
+        if (withEmployeeName) query = query.order("employee_name", { ascending: true });
+        return query.order("work_date", { ascending: true }).order("id", { ascending: true });
+      };
+
+      let loadedRows;
+      try {
+        loadedRows = await collectSupabaseRows(() => buildMonthQuery(true));
+      } catch (error) {
+        if (error?.code !== "42703") throw error;
+        loadedRows = await collectSupabaseRows(() => buildMonthQuery(false));
       }
-
-      if (selectedProjectId) q = q.eq("project_id", selectedProjectId);
-
-      let { data, error } = await q
-        .order("employee_name", { ascending: true })
-        .order("work_date", { ascending: true });
-
-      if (error?.code === "42703") {
-        const retry = await q
-          .order("work_date", { ascending: true })
-          .order("id", { ascending: true });
-        data = retry.data;
-        error = retry.error;
-      }
-
-      if (error) throw error;
-      setRows(data || []);
+      setRows(loadedRows);
     } catch (e) {
       console.error("month load error:", e);
       setRows([]);
@@ -958,14 +956,14 @@ export default function MonthlyOverview() {
 
     const activeIds = activeEmployees.map((e) => e.id).filter(Boolean);
 
-    let { data, error } = await supabase
+    const data = await collectSupabaseRows(() => supabase
       .from("v_time_entries_expanded")
-      .select("employee_id, employee_name, work_date, note")
+      .select("id, employee_id, employee_name, work_date, note")
       .gte("work_date", range.from)
       .lte("work_date", range.to)
-      .in("employee_id", activeIds);
-
-    if (error) throw error;
+      .in("employee_id", activeIds)
+      .order("work_date", { ascending: true })
+      .order("id", { ascending: true }));
 
     const existing = new Set(
       (data || [])
@@ -1096,14 +1094,14 @@ export default function MonthlyOverview() {
 
     let rawRows = [];
     if (employeeIds.length) {
-      const { data, error } = await supabase
+      rawRows = await collectSupabaseRows(() => supabase
         .from("v_time_entries_expanded")
         .select("*")
         .gte("work_date", range.from)
         .lte("work_date", range.to)
-        .in("employee_id", employeeIds);
-      if (error) throw error;
-      rawRows = data || [];
+        .in("employee_id", employeeIds)
+        .order("work_date", { ascending: true })
+        .order("id", { ascending: true }));
     }
 
     const dayMap = {};
@@ -1372,29 +1370,31 @@ export default function MonthlyOverview() {
 
     if (!employeeIds.length || !targetEndDate) return out;
 
-    let { data: zaRows, error: zaError } = await supabase
-      .from("time_entries")
-      .select("*")
-      .lte("work_date", targetEndDate)
-      .in("employee_id", employeeIds)
-      .order("work_date", { ascending: true });
-
-    if (zaError) {
+    let zaRows;
+    try {
+      zaRows = await collectSupabaseRows(() => supabase
+        .from("time_entries")
+        .select("*")
+        .lte("work_date", targetEndDate)
+        .in("employee_id", employeeIds)
+        .order("work_date", { ascending: true })
+        .order("id", { ascending: true }));
+    } catch (zaError) {
       console.warn("ZA-Stand konnte nicht geladen werden:", zaError);
       return out;
     }
 
-    zaRows = zaRows || [];
-
-    let { data: adjustments, error: adjError } = await supabase
-      .from("overtime_adjustments")
-      .select("employee_id, adjustment_date, hours")
-      .lte("adjustment_date", targetEndDate)
-      .in("employee_id", employeeIds);
-
-    if (adjError) {
+    let adjustments = [];
+    try {
+      adjustments = await collectSupabaseRows(() => supabase
+        .from("overtime_adjustments")
+        .select("id, employee_id, adjustment_date, hours")
+        .lte("adjustment_date", targetEndDate)
+        .in("employee_id", employeeIds)
+        .order("adjustment_date", { ascending: true })
+        .order("id", { ascending: true }));
+    } catch (adjError) {
       console.warn("ZA-Korrekturen konnten nicht geladen werden:", adjError);
-      adjustments = [];
     }
 
     for (const emp of employeesForExport || []) {
@@ -1477,16 +1477,14 @@ export default function MonthlyOverview() {
 
       const employeeIds = employeesForExport.map((e) => e.id).filter(Boolean);
 
-      let { data: payrollRawRows, error: payrollError } = await supabase
+      const payrollRawRows = await collectSupabaseRows(() => supabase
         .from("v_time_entries_expanded")
         .select("*")
         .gte("work_date", targetRange.from)
         .lte("work_date", targetRange.to)
-        .in("employee_id", employeeIds);
-
-      if (payrollError) throw payrollError;
-
-      payrollRawRows = payrollRawRows || [];
+        .in("employee_id", employeeIds)
+        .order("work_date", { ascending: true })
+        .order("id", { ascending: true }));
 
       const zaBalancesAtMonthEnd = await getZaBalancesAtMonthEnd(employeesForExport, targetRange.to);
       const dayBeforeRangeStart = Number.isFinite(dateToDayNumber(targetRange.from))

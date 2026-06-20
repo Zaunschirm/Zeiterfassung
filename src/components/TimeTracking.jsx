@@ -10,6 +10,7 @@ import {
 } from "../utils/weather";
 import { getEmployeeWorkDay, hmToMinutes } from "../utils/time";
 import { ensureMonthUnlocked } from "../utils/monthLock";
+import { collectSupabaseRows } from "../utils/pagination";
 
 // --------------------------------------------------
 // Helfer/Format
@@ -361,15 +362,13 @@ export default function TimeTracking() {
   };
 
   const buildMissingSummary = async (startIso, endIso) => {
-    const { data, error } = await supabase
+    const entries = await collectSupabaseRows(() => supabase
       .from("v_time_entries_expanded")
       .select("*")
       .gte("work_date", startIso)
-      .lte("work_date", endIso);
-
-    if (error) throw error;
-
-    const entries = data || [];
+      .lte("work_date", endIso)
+      .order("work_date", { ascending: true })
+      .order("id", { ascending: true }));
     const employeeMap = new Map();
 
     for (const day of listDaysInclusive(startIso, endIso)) {
