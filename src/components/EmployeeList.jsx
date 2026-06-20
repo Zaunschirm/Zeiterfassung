@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { DEFAULT_OFFICE_WORK_TIME_SETTINGS, normalizeWorkTimeSettings } from "../utils/time";
 import { calculateZaBalanceForEmployee } from "../utils/overtime";
+import { collectPaginatedRows } from "../utils/pagination";
 
 const PERMISSION_OPTIONS = [
   { key: "writeOwnTime", label: "Eigene Stunden schreiben" },
@@ -381,25 +382,33 @@ export default function EmployeeList() {
     setOvertimeLoading(true);
 
     try {
-      let entriesResponse = await supabase
-        .from("time_entries")
-        .select("*")
-        .order("work_date", { ascending: true });
+      const loadedEntries = await collectPaginatedRows(async ({ from, to }) => {
+        const response = await supabase
+          .from("time_entries")
+          .select("*")
+          .order("work_date", { ascending: true })
+          .order("id", { ascending: true })
+          .range(from, to);
+        if (response.error) throw response.error;
+        return response.data || [];
+      });
+      setEntries(loadedEntries);
 
-      if (entriesResponse.error) throw entriesResponse.error;
-      setEntries(entriesResponse.data || []);
-
-      const adjustmentsResponse = await supabase
-        .from("overtime_adjustments")
-        .select("*")
-        .order("adjustment_date", { ascending: false })
-        .limit(500);
-
-      if (adjustmentsResponse.error) {
+      try {
+        const loadedAdjustments = await collectPaginatedRows(async ({ from, to }) => {
+          const response = await supabase
+            .from("overtime_adjustments")
+            .select("*")
+            .order("adjustment_date", { ascending: false })
+            .order("id", { ascending: false })
+            .range(from, to);
+          if (response.error) throw response.error;
+          return response.data || [];
+        });
+        setOvertimeAdjustments(loadedAdjustments);
+      } catch {
         setOvertimeAdjustments([]);
         setOvertimeErr("Überstunden-Korrekturen konnten nicht geladen werden. Bitte zuerst die SQL-Tabelle anlegen.");
-      } else {
-        setOvertimeAdjustments(adjustmentsResponse.data || []);
       }
 
       if (!adjustEmployeeId && employeeRows?.length) {
