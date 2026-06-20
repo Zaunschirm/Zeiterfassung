@@ -987,22 +987,87 @@ body::-webkit-scrollbar-thumb {
 .year-overview {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 18px;
 }
 
 .year-overview-hero {
+  position: relative;
+  overflow: hidden;
   background: linear-gradient(135deg, rgba(123, 74, 45, 0.96), rgba(196, 154, 108, 0.92));
   color: #fff8f1;
   border: none;
   box-shadow: 0 18px 34px rgba(97, 60, 36, 0.22);
 }
 
+.year-overview-hero::after {
+  content: "";
+  position: absolute;
+  width: 280px;
+  height: 280px;
+  right: -80px;
+  top: -165px;
+  border-radius: 50%;
+  border: 48px solid rgba(255, 255, 255, 0.08);
+  pointer-events: none;
+}
+
 .year-overview-hero__content {
+  position: relative;
+  z-index: 1;
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 16px;
   flex-wrap: wrap;
+}
+
+.year-overview-hero-tools {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.year-overview-period {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 210px;
+  padding: 9px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(8px);
+}
+
+.year-overview-period-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.18);
+  font-size: 17px;
+}
+
+.year-overview-period small,
+.year-overview-period strong {
+  display: block;
+}
+
+.year-overview-period small {
+  margin-bottom: 2px;
+  color: rgba(255, 248, 241, 0.75);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.year-overview-period strong {
+  color: #fff;
+  font-size: 13px;
 }
 
 .year-overview-kicker {
@@ -1052,6 +1117,7 @@ body::-webkit-scrollbar-thumb {
   display: grid;
   grid-template-columns: 1.3fr 1fr;
   gap: 14px;
+  align-items: stretch;
 }
 
 .year-filter-card,
@@ -1059,6 +1125,44 @@ body::-webkit-scrollbar-thumb {
 .year-main-card {
   position: relative;
   overflow: hidden;
+}
+
+.year-overview .year-filter-card,
+.year-overview .year-range-card,
+.year-overview .year-main-card,
+.year-overview .year-project-card {
+  border: 1px solid rgba(190, 164, 136, 0.36);
+  box-shadow: 0 12px 30px rgba(71, 46, 27, 0.07);
+}
+
+.year-section-heading {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin-bottom: 14px;
+}
+
+.year-section-heading .year-card-title {
+  margin-bottom: 2px;
+}
+
+.year-section-icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  border-radius: 12px;
+  background: linear-gradient(145deg, #f3e2cf, #fff9f1);
+  border: 1px solid rgba(171, 141, 109, 0.34);
+  color: #7b4a2d;
+  font-size: 22px;
+  font-weight: 800;
+}
+
+.year-section-icon--calendar {
+  color: #637b9b;
+  background: linear-gradient(145deg, #e8edf3, #fff);
 }
 
 .year-card-title {
@@ -1156,12 +1260,49 @@ body::-webkit-scrollbar-thumb {
 }
 
 .year-summary-card {
+  --year-accent: #8b674d;
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  overflow: hidden;
   background: rgba(255, 255, 255, 0.96);
   border: 1px solid rgba(203, 182, 156, 0.45);
   border-radius: 18px;
   padding: 14px 16px;
   box-shadow: 0 10px 22px rgba(0, 0, 0, 0.05);
 }
+
+.year-summary-card::after {
+  content: "";
+  position: absolute;
+  inset: auto -18px -28px auto;
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: var(--year-accent);
+  opacity: 0.08;
+}
+
+.year-summary-icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--year-accent) 14%, white);
+  color: var(--year-accent);
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.year-summary-card--work { --year-accent: #9a623c; }
+.year-summary-card--travel { --year-accent: #4f7f68; }
+.year-summary-card--total { --year-accent: #637b9b; }
+.year-summary-card--target { --year-accent: #a47735; }
+.year-summary-card--difference.positive { --year-accent: #4e9c60; }
+.year-summary-card--difference.negative { --year-accent: #c56c5f; }
 
 .year-summary-card.positive {
   border-color: rgba(78, 156, 96, 0.35);
@@ -1271,6 +1412,70 @@ body::-webkit-scrollbar-thumb {
   text-transform: uppercase;
   letter-spacing: 0.04em;
   white-space: nowrap;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.year-project-card {
+  margin-bottom: 2px;
+}
+
+.year-project-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.year-project-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.2fr) minmax(0, 3fr);
+  align-items: center;
+  gap: 16px;
+  padding: 12px 14px;
+  border: 1px solid rgba(203, 182, 156, 0.36);
+  border-radius: 14px;
+  background: linear-gradient(180deg, #fffefd, #fbf6ef);
+}
+
+.year-project-name {
+  color: #3f2c1b;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.year-project-metrics {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(74px, 1fr));
+  gap: 8px;
+}
+
+.year-project-metrics span {
+  padding-left: 10px;
+  border-left: 1px solid rgba(203, 182, 156, 0.42);
+}
+
+.year-project-metrics small,
+.year-project-metrics strong {
+  display: block;
+}
+
+.year-project-metrics small {
+  margin-bottom: 3px;
+  color: #806956;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.year-project-metrics strong {
+  color: #473222;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.year-project-metrics .year-project-total strong {
+  color: #7b4a2d;
 }
 
 .year-table tbody tr:nth-child(even) {
@@ -2093,6 +2298,10 @@ body::-webkit-scrollbar-thumb {
   .month-overview-topgrid > .month-summary-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .year-project-row {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 830px) {
@@ -2207,6 +2416,26 @@ body::-webkit-scrollbar-thumb {
   .month-overview-period {
     width: 100%;
     min-width: 0;
+  }
+
+  .year-overview-hero-tools,
+  .year-overview-period {
+    width: 100%;
+  }
+
+  .year-overview-period {
+    min-width: 0;
+  }
+
+  .year-project-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .year-project-metrics span {
+    padding: 8px 10px;
+    border: 0;
+    border-radius: 10px;
+    background: rgba(244, 235, 224, 0.65);
   }
 
   .year-modal,

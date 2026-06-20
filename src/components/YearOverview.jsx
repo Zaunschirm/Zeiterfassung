@@ -1436,23 +1436,33 @@ export default function YearOverview() {
     {
       label: "Arbeitsstunden",
       value: `${totals.workH.toFixed(2)} h`,
+      icon: "◷",
+      accent: "work",
     },
     {
       label: "Fahrzeit",
       value: `${totals.travelH.toFixed(2)} h`,
+      icon: "↗",
+      accent: "travel",
     },
     {
       label: "Gesamtstunden",
       value: `${totals.totalH.toFixed(2)} h`,
+      icon: "Σ",
+      accent: "total",
     },
     {
       label: activeRange.mode === "year" ? "BUAK Soll" : "BUAK Soll Zeitraum",
       value: `${buakSoll.toFixed(2)} h`,
+      icon: "◎",
+      accent: "target",
     },
     {
       label: "Abweichung",
       value: `${buakDiff.toFixed(2)} h`,
       tone: buakDiff >= 0 ? "positive" : "negative",
+      icon: buakDiff >= 0 ? "+" : "−",
+      accent: "difference",
     },
   ];
 
@@ -1468,28 +1478,43 @@ export default function YearOverview() {
             </div>
           </div>
 
-          <div className="year-overview-actions">
-            <button
-              onClick={openPdfDialog}
-              className="hbz-btn hbz-btn-primary"
-              disabled={!hasData}
-            >
-              PDF export
-            </button>
-            <button
-              onClick={exportCSV}
-              className="hbz-btn"
-              disabled={!hasData}
-            >
-              CSV export
-            </button>
+          <div className="year-overview-hero-tools">
+            <div className="year-overview-period" aria-label={`Ausgewählter Zeitraum: ${rangeLabel}`}>
+              <span className="year-overview-period-icon" aria-hidden="true">▦</span>
+              <span>
+                <small>Ausgewählter Zeitraum</small>
+                <strong>{rangeLabel}</strong>
+              </span>
+            </div>
+            <div className="year-overview-actions">
+              <button
+                onClick={openPdfDialog}
+                className="hbz-btn hbz-btn-primary"
+                disabled={!hasData}
+              >
+                PDF export
+              </button>
+              <button
+                onClick={exportCSV}
+                className="hbz-btn"
+                disabled={!hasData}
+              >
+                CSV export
+              </button>
+            </div>
           </div>
         </div>
       </div>
 
       <div className="year-overview-topgrid">
         <div className="hbz-card year-filter-card">
-          <div className="year-card-title">Filter</div>
+          <div className="year-section-heading">
+            <span className="year-section-icon" aria-hidden="true">⌁</span>
+            <div>
+              <div className="year-card-title">Filter</div>
+              <div className="year-main-subtitle">Projekt und Mitarbeiter für die Auswertung wählen</div>
+            </div>
+          </div>
 
           <div className="year-filter-grid">
             <div className="field-inline">
@@ -1577,7 +1602,13 @@ export default function YearOverview() {
         </div>
 
         <div className="hbz-card year-range-card">
-          <div className="year-card-title">Zeitraum</div>
+          <div className="year-section-heading">
+            <span className="year-section-icon year-section-icon--calendar" aria-hidden="true">▦</span>
+            <div>
+              <div className="year-card-title">Zeitraum</div>
+              <div className="year-main-subtitle">Monat, Jahr oder individuellen Bereich festlegen</div>
+            </div>
+          </div>
 
           <div className="year-range-quick">
             <button
@@ -1664,31 +1695,41 @@ export default function YearOverview() {
         {summaryCards.map((card) => (
           <div
             key={card.label}
-            className={`year-summary-card ${card.tone || ""}`}
+            className={`year-summary-card year-summary-card--${card.accent} ${card.tone || ""}`}
           >
-            <div className="year-summary-label">{card.label}</div>
-            <div className="year-summary-value">{card.value}</div>
+            <span className="year-summary-icon" aria-hidden="true">{card.icon}</span>
+            <div>
+              <div className="year-summary-label">{card.label}</div>
+              <div className="year-summary-value">{card.value}</div>
+            </div>
           </div>
         ))}
       </div>
 
       {byProject.length > 0 && (
-        <div className="hbz-card" style={{ marginBottom: "16px" }}>
-          <div className="month-card-title">Abrechnung – Projekte</div>
-          <div style={{ marginTop: "10px" }}>
+        <div className="hbz-card year-project-card">
+          <div className="year-main-header">
+            <div>
+              <div className="year-card-title">Abrechnung – Projekte</div>
+              <div className="year-main-subtitle">Stunden, Fahrzeit und Einsatztage nach Projekt</div>
+            </div>
+            <span className="badge-soft">{byProject.length} Projekte</span>
+          </div>
+          <div className="year-project-list">
             {byProject.map((p) => (
               <div
                 key={`project-summary-${p.id || p.name}`}
-                style={{ padding: "10px", borderBottom: "1px solid #eee" }}
+                className="year-project-row"
               >
-                <div style={{ fontWeight: 600 }}>
+                <div className="year-project-name">
                   {p.code ? `${p.code} · ${p.name}` : p.name}
                 </div>
-                <div style={{ fontSize: "14px", marginTop: "4px" }}>
-                  Arbeitszeit: {h2(p.work).toFixed(2)} h &nbsp;|&nbsp;
-                  Fahrzeit: {h2(p.travel).toFixed(2)} h &nbsp;|&nbsp; Privat-PKW: {(p.privatePkwKm || 0).toLocaleString("de-AT")} km &nbsp;|&nbsp;
-                  <strong>Gesamt: {h2(p.total).toFixed(2)} h</strong> &nbsp;|&nbsp;
-                  Tage: {p.days ?? 0}
+                <div className="year-project-metrics">
+                  <span><small>Arbeitszeit</small><strong>{h2(p.work).toFixed(2)} h</strong></span>
+                  <span><small>Fahrzeit</small><strong>{h2(p.travel).toFixed(2)} h</strong></span>
+                  <span><small>Privat-PKW</small><strong>{(p.privatePkwKm || 0).toLocaleString("de-AT")} km</strong></span>
+                  <span className="year-project-total"><small>Gesamt</small><strong>{h2(p.total).toFixed(2)} h</strong></span>
+                  <span><small>Tage</small><strong>{p.days ?? 0}</strong></span>
                 </div>
               </div>
             ))}
