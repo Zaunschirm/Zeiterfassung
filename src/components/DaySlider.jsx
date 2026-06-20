@@ -1433,7 +1433,7 @@ export default function DaySlider() {
     ...(privatePkwUsed && Number(privatePkwKm || 0) > 0 ? [{ label: "Privat-PKW", value: `${Number(privatePkwKm || 0).toLocaleString("de-AT")} km` }] : []),
     ...(zaUsed ? [{ label: "Zeitausgleich", value: `${Number(zaHours || 0).toFixed(2).replace(".", ",")} h` }] : []),
     ...(badWeather ? [{ label: "Schlechtwetter", value: "Ja" }] : []),
-    { label: "Wetter", value: finalWeather || "—" },
+    ...(finalWeather ? [{ label: "Wetter", value: finalWeather }] : []),
   ];
   const editEntry = entries.find((row) => String(row.id) === String(editId)) || null;
 
@@ -1444,6 +1444,29 @@ export default function DaySlider() {
         .time-entry-success-mark { width: 24px; height: 24px; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: #2f7a3b; color: #fff; }
         .time-entry-success-text { flex: 1; }
         .time-entry-success-close { width: 32px; height: 32px; flex: 0 0 auto; border: 0; border-radius: 50%; background: transparent; color: #225522; font-size: 20px; cursor: pointer; }
+        .time-daily-check { padding: 0 !important; }
+        .time-daily-check-summary { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 16px; cursor: pointer; list-style: none; }
+        .time-daily-check-summary::-webkit-details-marker { display: none; }
+        .time-daily-check-summary::after { content: "+"; display: grid; place-items: center; width: 28px; height: 28px; flex: 0 0 28px; border-radius: 50%; background: #f2e7dc; color: #6d4a32; font-size: 18px; font-weight: 900; }
+        .time-daily-check[open] .time-daily-check-summary::after { content: "−"; }
+        .time-daily-check[open] > :not(summary) { margin-left: 16px; margin-right: 16px; }
+        .time-daily-check[open] > :last-child { margin-bottom: 16px; }
+        .time-daily-check-summary .month-card-title { margin-bottom: 2px; }
+        .time-entry-form-card { border: 1px solid rgba(183,151,119,.38); box-shadow: 0 14px 34px rgba(71,46,27,.08); }
+        .time-entry-form-heading { display: flex; align-items: center; gap: 11px; margin-bottom: 14px; }
+        .time-entry-form-heading .month-card-title { margin-bottom: 2px; }
+        .time-entry-form-icon { display: grid; place-items: center; width: 40px; height: 40px; flex: 0 0 40px; border-radius: 13px; background: linear-gradient(145deg, #edf7f0, #fff); border: 1px solid rgba(59,125,80,.2); color: #39734d; font-size: 22px; font-weight: 900; }
+        .time-extra-details { border: 1px solid rgba(171,141,109,.35); border-radius: 16px; overflow: hidden; background: rgba(252,248,243,.78); }
+        .time-extra-details > summary { display: flex; align-items: center; gap: 12px; padding: 13px 14px; cursor: pointer; list-style: none; }
+        .time-extra-details > summary::-webkit-details-marker { display: none; }
+        .time-extra-details > summary span { min-width: 0; }
+        .time-extra-details > summary b, .time-extra-details > summary small { display: block; }
+        .time-extra-details > summary b { color: #493321; font-size: 14px; }
+        .time-extra-details > summary small { margin-top: 2px; color: #806957; font-size: 11px; }
+        .time-extra-details > summary em { margin-left: auto; padding: 5px 9px; border-radius: 999px; background: #f0e4d8; color: #73523a; font-size: 11px; font-style: normal; font-weight: 800; }
+        .time-extra-details > summary::after { content: "+"; color: #7b573d; font-size: 19px; font-weight: 900; }
+        .time-extra-details[open] > summary::after { content: "−"; }
+        .time-extra-details[open] > .year-section { margin: 0; padding: 14px; border-top: 1px solid rgba(171,141,109,.25); }
         .mobile-time-entry { display: none; }
         @media (max-width: 768px) {
           .mobile-time-entry { display: block; padding-bottom: 92px; }
@@ -1467,6 +1490,8 @@ export default function DaySlider() {
           .mobile-total-box { margin-top: 14px; }
           .mobile-sticky-save { position: sticky; bottom: 8px; z-index: 30; padding: 10px; background: rgba(244, 236, 225, .88); backdrop-filter: blur(10px); border-radius: 20px; box-shadow: 0 -6px 24px rgba(88, 54, 30, .12); margin-top: 12px; }
           .mobile-sticky-save .save-btn { width: 100%; min-height: 52px; font-size: 16px; border-radius: 16px; }
+          .time-daily-check-summary { align-items: flex-start; flex-wrap: wrap; }
+          .time-daily-check-summary .daily-check-summary { width: calc(100% - 40px); }
         }
       `}</style>
       {successMessage ? (
@@ -1548,10 +1573,10 @@ export default function DaySlider() {
       </div>
 
       {dailyCheckRows.length > 0 && (
-        <div className="hbz-card month-main-card daily-check-card">
-          <div className="month-main-header">
+        <details className="hbz-card month-main-card daily-check-card time-daily-check">
+          <summary className="time-daily-check-summary">
             <div>
-              <div className="month-card-title">📊 Tageskontrolle</div>
+              <div className="month-card-title">Tageskontrolle</div>
               <div className="month-main-subtitle">
                 {dailyCheckLoading
                   ? "Prüfe Einträge…"
@@ -1569,7 +1594,7 @@ export default function DaySlider() {
               <span className="badge-soft">🟡 {dailyCheckSummary.urlaub}</span>
               <span className="badge-soft">🔵 {dailyCheckSummary.krank}</span>
             </div>
-          </div>
+          </summary>
 
 
           {canViewAllTeamStatus && (
@@ -1643,11 +1668,17 @@ export default function DaySlider() {
               ? "Geprüft werden nur aktive Mitarbeiter mit „In Tageskontrolle anzeigen“. Freie BUAK-Tage werden nicht als fehlend gewertet."
               : "Aus Datenschutzgründen wird hier nur dein eigener Status angezeigt."}
           </div>
-        </div>
+        </details>
       )}
 
-      <div className="hbz-card month-main-card">
-        <div className="month-card-title">Zeiten erfassen</div>
+      <div className="hbz-card month-main-card time-entry-form-card">
+        <div className="time-entry-form-heading">
+          <span className="time-entry-form-icon" aria-hidden="true">＋</span>
+          <div>
+            <div className="month-card-title">Zeit eintragen</div>
+            <div className="month-main-subtitle">Projekt, Arbeitszeit und Abwesenheit</div>
+          </div>
+        </div>
 
         <div className="month-filter-grid">
           <div className="field-inline">
@@ -1828,7 +1859,7 @@ export default function DaySlider() {
               <div className="month-card-field"><label className="hbz-label">Automatisch von Baustelle + Buchung</label><div className="hbz-input" style={{ display: "flex", alignItems: "center", gap: 8 }}><span>{weatherLoading ? "Lade Wetter…" : weatherAuto || "—"}</span><button type="button" className="hbz-btn btn-small" onClick={() => loadWeatherForCurrentBooking(true)} disabled={weatherLoading || !projectAddress || !!absenceType}>Aktualisieren</button></div></div>
               <div className="month-card-field" style={{ marginTop: 10 }}><label className="hbz-label">Manuell ändern</label><select className="hbz-input" value={weatherManual || "Automatisch"} disabled={!!absenceType} onChange={(e) => { const value = e.target.value; setWeatherManual(value === "Automatisch" ? "" : value); }}>{WEATHER_MANUAL_OPTIONS.map((opt) => <option key={opt} value={opt}>{opt}</option>)}</select></div>
             </details>
-            <details className="mobile-accordion" open><summary>🎤 Notiz / Tätigkeit <span>{note ? "ausgefüllt" : "leer"}</span></summary>
+            <details className="mobile-accordion"><summary>🎤 Notiz / Tätigkeit <span>{note ? "ausgefüllt" : "optional"}</span></summary>
               <button type="button" className={`mobile-voice-btn ${voiceListening ? "active" : ""}`} onClick={startVoiceNote} disabled={!voiceSupported || voiceListening}>{voiceListening ? "🎤 Aufnahme läuft…" : "🎤 Notiz sprechen"}</button>
               {!voiceSupported && <div className="help" style={{ marginTop: 6 }}>Spracherkennung ist in diesem Browser nicht verfügbar. Am iPhone kannst du alternativ die Diktierfunktion der Tastatur verwenden.</div>}
               <textarea className="hbz-textarea" rows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder="z. B. Tätigkeit, Besonderheiten…" style={{ marginTop: 10 }} />
@@ -2019,6 +2050,13 @@ onClick={applyUrlaubDefaults}
             </div>
           </div>
 
+          <details className="time-extra-details">
+            <summary>
+              <span><b>Zusatzangaben</b><small>Kran, Privat-PKW und Wetter</small></span>
+              <em>
+                {craneUsed ? `${craneHours} h Kran` : privatePkwUsed ? `${privatePkwKm || 0} km PKW` : finalWeather || "optional"}
+              </em>
+            </summary>
           <div className="year-section">
             <div className="month-card-title">Kranzeit / Privat-PKW</div>
             <div className="hbz-chipbar" style={{ alignItems: "center" }}>
@@ -2148,6 +2186,7 @@ onClick={applyUrlaubDefaults}
 
             {weatherError && <div className="help" style={{ marginTop: 8 }}>{weatherError}</div>}
           </div>
+          </details>
         </div>
 
         <div className="year-range-active" style={{ marginTop: 16 }}>
