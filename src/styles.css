@@ -875,6 +875,49 @@ body::-webkit-scrollbar-thumb {
   text-align: right;
 }
 
+.za-missing-toggle {
+  border: 0;
+  padding: 4px 7px;
+  border-radius: 8px;
+  background: #fff0d7;
+  color: #8a4d00;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.za-missing-toggle:hover,
+.za-missing-toggle:focus-visible {
+  background: #ffe3b8;
+  outline: 2px solid rgba(161, 92, 0, 0.25);
+  outline-offset: 2px;
+}
+
+.employee-table .za-missing-detail-row,
+.employee-table .za-missing-detail-row:hover {
+  background: #fff8e9;
+}
+
+.za-missing-detail {
+  display: grid;
+  gap: 7px;
+  color: #6f430c;
+}
+
+.za-missing-dates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.za-missing-dates span {
+  padding: 5px 8px;
+  border: 1px solid #e4bd83;
+  border-radius: 999px;
+  background: #fff;
+  font-weight: 700;
+}
+
 .employee-empty {
   text-align: center;
   padding: 14px;

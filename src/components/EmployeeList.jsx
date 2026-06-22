@@ -208,6 +208,7 @@ export default function EmployeeList() {
   const [adjustHours, setAdjustHours] = useState("");
   const [adjustNote, setAdjustNote] = useState("");
   const [adjustSaving, setAdjustSaving] = useState(false);
+  const [expandedZaMissingEmployeeId, setExpandedZaMissingEmployeeId] = useState(null);
 
   const [editId, setEditId] = useState(null);
 
@@ -1044,26 +1045,55 @@ export default function EmployeeList() {
               {rows.map((r) => {
                 const balance = overtimeByEmployee.get(String(r.id));
                 const zaEnabled = isZaAccountEnabled(r);
+                const employeeId = String(r.id);
+                const missingDays = balance?.missingDays || [];
+                const missingExpanded = expandedZaMissingEmployeeId === employeeId;
                 const startBalance = officialZaStartByEmployee.get(String(r.id)) || 0;
                 const currentBalance = balance?.balance || 0;
                 const movementSinceStart = currentBalance - startBalance;
                 const monthEnd = latestZaMonthEndByEmployee.get(String(r.id));
                 return (
-                  <tr key={`za-${r.id}`} style={{ opacity: r.disabled || !zaEnabled ? 0.5 : 1 }}>
-                    <td>{r.name}</td>
-                    <td>
-                      {zaEnabled
-                        ? balance?.missingDays?.length
-                          ? `⚠ ${balance.missingDays.length} fehlende${balance.missingDays.length === 1 ? "r Tag" : " Tage"}`
-                          : "✓ Vollständig"
-                        : "Nicht geprüft"}
-                    </td>
-                    <td className="num">{zaEnabled ? formatHours(startBalance) : "—"}</td>
-                    <td className="num">{zaEnabled ? formatHours(movementSinceStart) : "—"}</td>
-                    <td className="num"><strong>{zaEnabled ? formatHours(currentBalance) : "—"}</strong></td>
-                    <td>{zaEnabled && monthEnd ? `${formatDateAT(monthEnd.date)}${monthEnd.isStartStand ? " · Startstand" : ""}` : "—"}</td>
-                    <td className="num"><strong>{zaEnabled && monthEnd ? formatHours(monthEnd.balance || 0) : "—"}</strong></td>
-                  </tr>
+                  <React.Fragment key={`za-${r.id}`}>
+                    <tr style={{ opacity: r.disabled || !zaEnabled ? 0.5 : 1 }}>
+                      <td>{r.name}</td>
+                      <td>
+                        {zaEnabled
+                          ? missingDays.length
+                            ? (
+                              <button
+                                type="button"
+                                className="za-missing-toggle"
+                                aria-expanded={missingExpanded}
+                                onClick={() => setExpandedZaMissingEmployeeId(missingExpanded ? null : employeeId)}
+                              >
+                                ⚠ {missingDays.length} fehlende{missingDays.length === 1 ? "r Tag" : " Tage"} {missingExpanded ? "▴" : "▾"}
+                              </button>
+                            )
+                            : "✓ Vollständig"
+                          : "Nicht geprüft"}
+                      </td>
+                      <td className="num">{zaEnabled ? formatHours(startBalance) : "—"}</td>
+                      <td className="num">{zaEnabled ? formatHours(movementSinceStart) : "—"}</td>
+                      <td className="num"><strong>{zaEnabled ? formatHours(currentBalance) : "—"}</strong></td>
+                      <td>{zaEnabled && monthEnd ? `${formatDateAT(monthEnd.date)}${monthEnd.isStartStand ? " · Startstand" : ""}` : "—"}</td>
+                      <td className="num"><strong>{zaEnabled && monthEnd ? formatHours(monthEnd.balance || 0) : "—"}</strong></td>
+                    </tr>
+                    {missingExpanded && (
+                      <tr className="za-missing-detail-row">
+                        <td colSpan={7}>
+                          <div className="za-missing-detail">
+                            <strong>Fehlende Einträge für {r.name}</strong>
+                            <span>Diese Tage sind derzeit im ZA-Stand als Minus enthalten ({formatHours(-(balance?.missingSoll || 0))}).</span>
+                            <div className="za-missing-dates">
+                              {missingDays.map((missingDate) => (
+                                <span key={missingDate}>{formatDateAT(missingDate)}</span>
+                              ))}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
                 );
               })}
             </tbody>
