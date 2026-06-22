@@ -136,6 +136,15 @@ export function calculateZaDailyChange({ day, employee, date, neutralizeHolidays
   const soll = Number(getEmployeeSollHoursForDay(employee, date)) || 0;
   const zaFallback = currentDay.hasZa && currentDay.usedZa <= 0 ? soll : currentDay.usedZa;
   const isHoliday = neutralizeHolidays && !!getHolidayName(date);
+  const hasEntries = Array.isArray(currentDay.rows) && currentDay.rows.length > 0;
+  const isMissingEntry = soll > 0 && !isHoliday && !hasEntries;
+
+  let entryStatus = "recorded";
+  if (soll <= 0) entryStatus = "not_required";
+  else if (isHoliday) entryStatus = "holiday";
+  else if (currentDay.hasPaidAbsence) entryStatus = "paid_absence";
+  else if (currentDay.hasZa) entryStatus = "time_comp";
+  else if (isMissingEntry) entryStatus = "missing";
 
   let generated = 0;
   if (isHoliday || (currentDay.hasPaidAbsence && !currentDay.hasZa && currentDay.worked <= 0)) {
@@ -154,6 +163,8 @@ export function calculateZaDailyChange({ day, employee, date, neutralizeHolidays
     soll: roundHours(soll),
     usedZa: roundHours(zaFallback),
     generated: roundHours(generated),
+    entryStatus,
+    isMissingEntry,
   };
 }
 
@@ -169,13 +180,13 @@ export function calculateZaBalanceForEmployee({
   maxDays = 5000,
 }) {
   if (!employee || !from || !to) {
-    return { worked: 0, soll: 0, usedZa: 0, generated: 0, corrections: 0, balance: 0, days: [] };
+    return { worked: 0, soll: 0, usedZa: 0, generated: 0, corrections: 0, balance: 0, missingDays: [], missingSoll: 0, days: [] };
   }
 
   const startDay = dateToDayNumber(from);
   const endDay = dateToDayNumber(to);
   if (!Number.isFinite(startDay) || !Number.isFinite(endDay) || endDay < startDay) {
-    return { worked: 0, soll: 0, usedZa: 0, generated: 0, corrections: 0, balance: 0, days: [] };
+    return { worked: 0, soll: 0, usedZa: 0, generated: 0, corrections: 0, balance: 0, missingDays: [], missingSoll: 0, days: [] };
   }
 
   const dayMap = buildZaDayMap(entries);
@@ -222,6 +233,10 @@ export function calculateZaBalanceForEmployee({
   }
 
   const corrections = includedAdjustments.reduce((sum, adj) => sum + parseHoursValue(adj?.hours), 0);
+  const missingDays = days.filter((day) => day.isMissingEntry).map((day) => day.date);
+  const missingSoll = days
+    .filter((day) => day.isMissingEntry)
+    .reduce((sum, day) => sum + day.soll, 0);
 
   return {
     worked: roundHours(worked),
@@ -230,6 +245,8 @@ export function calculateZaBalanceForEmployee({
     generated: roundHours(generated),
     corrections: roundHours(corrections),
     balance: roundHours(generated + corrections),
+    missingDays,
+    missingSoll: roundHours(missingSoll),
     days,
   };
 }

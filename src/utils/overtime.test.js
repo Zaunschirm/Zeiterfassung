@@ -74,6 +74,46 @@ describe("overtime / ZA helpers", () => {
     }).generated).toBe(0);
   });
 
+  it("marks an empty required workday as missing without changing the established ZA formula", () => {
+    const result = calculateZaBalanceForEmployee({
+      employee: buakEmployee,
+      from: "2026-01-05",
+      to: "2026-01-05",
+      entries: [],
+    });
+
+    expect(result).toMatchObject({
+      generated: -9,
+      balance: -9,
+      missingDays: ["2026-01-05"],
+      missingSoll: 9,
+    });
+    expect(result.days[0]).toMatchObject({ entryStatus: "missing", isMissingEntry: true });
+  });
+
+  it("does not flag holidays, free days or recorded absences as missing", () => {
+    const holiday = calculateZaBalanceForEmployee({
+      employee: buakEmployee,
+      from: "2026-01-01",
+      to: "2026-01-01",
+    });
+    const weekend = calculateZaBalanceForEmployee({
+      employee: buakEmployee,
+      from: "2026-01-03",
+      to: "2026-01-04",
+    });
+    const vacation = calculateZaBalanceForEmployee({
+      employee: buakEmployee,
+      from: "2026-01-05",
+      to: "2026-01-05",
+      entries: [{ work_date: "2026-01-05", note: "[Urlaub]" }],
+    });
+
+    expect(holiday.missingDays).toEqual([]);
+    expect(weekend.missingDays).toEqual([]);
+    expect(vacation.missingDays).toEqual([]);
+  });
+
   it("keeps real vacation and sick entries neutral across a range", () => {
     const result = calculateZaBalanceForEmployee({
       employee: buakEmployee,

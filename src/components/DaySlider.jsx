@@ -225,6 +225,7 @@ export default function DaySlider() {
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
   const [ownZaBalance, setOwnZaBalance] = useState(null);
+  const [ownZaMissingDays, setOwnZaMissingDays] = useState([]);
   const [ownZaLoading, setOwnZaLoading] = useState(false);
   const validationDialogResolver = useRef(null);
   const assignmentLoadedDateRef = useRef(null);
@@ -810,6 +811,7 @@ export default function DaySlider() {
       const empId = emp?.id;
       if (!empId || !isZaAccountEnabled(emp)) {
         setOwnZaBalance(null);
+        setOwnZaMissingDays([]);
         setOwnZaLoading(false);
         return;
       }
@@ -848,7 +850,7 @@ export default function DaySlider() {
         if (rowsError) throw rowsError;
         if (corrError) throw corrError;
 
-        const balance = calculateZaBalanceForEmployee({
+        const calculation = calculateZaBalanceForEmployee({
           employee: emp,
           entries: rows || [],
           adjustments: corrections || [],
@@ -856,12 +858,18 @@ export default function DaySlider() {
           to: endDate,
           adjustmentFrom: startDate,
           adjustmentTo: today,
-        }).balance;
+        });
 
-        if (!cancelled) setOwnZaBalance(balance);
+        if (!cancelled) {
+          setOwnZaBalance(calculation.balance);
+          setOwnZaMissingDays(calculation.missingDays || []);
+        }
       } catch (e) {
         console.error("[DaySlider] ZA-Konto konnte nicht geladen werden:", e?.message || e);
-        if (!cancelled) setOwnZaBalance(null);
+        if (!cancelled) {
+          setOwnZaBalance(null);
+          setOwnZaMissingDays([]);
+        }
       } finally {
         if (!cancelled) setOwnZaLoading(false);
       }
@@ -1551,6 +1559,11 @@ export default function DaySlider() {
                 <b>nicht geführt</b>
               )}
             </div>
+            {ownZaEnabled && !ownZaLoading && ownZaMissingDays.length > 0 && (
+              <div className="month-overview-subtitle" style={{ marginTop: 4, color: "#a15c00", fontWeight: 700 }}>
+                ⚠ ZA-Stand prüfen: {ownZaMissingDays.length} fehlende{ownZaMissingDays.length === 1 ? "r Arbeitstag" : " Arbeitstage"}
+              </div>
+            )}
           </div>
 
           <div className="month-overview-actions">

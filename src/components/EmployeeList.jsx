@@ -269,7 +269,7 @@ export default function EmployeeList() {
             adjustmentFrom: startDate,
             adjustmentTo: endDate,
           })
-        : { worked: 0, soll: 0, generated: 0, usedZa: 0, corrections: 0, balance: 0, days: [] };
+        : { worked: 0, soll: 0, generated: 0, usedZa: 0, corrections: 0, balance: 0, missingDays: [], missingSoll: 0, days: [] };
 
       calculations.set(empId, {
         employee: emp,
@@ -1051,7 +1051,13 @@ export default function EmployeeList() {
                 return (
                   <tr key={`za-${r.id}`} style={{ opacity: r.disabled || !zaEnabled ? 0.5 : 1 }}>
                     <td>{r.name}</td>
-                    <td>{zaEnabled ? "Wird geprüft" : "Nicht geprüft"}</td>
+                    <td>
+                      {zaEnabled
+                        ? balance?.missingDays?.length
+                          ? `⚠ ${balance.missingDays.length} fehlende${balance.missingDays.length === 1 ? "r Tag" : " Tage"}`
+                          : "✓ Vollständig"
+                        : "Nicht geprüft"}
+                    </td>
                     <td className="num">{zaEnabled ? formatHours(startBalance) : "—"}</td>
                     <td className="num">{zaEnabled ? formatHours(movementSinceStart) : "—"}</td>
                     <td className="num"><strong>{zaEnabled ? formatHours(currentBalance) : "—"}</strong></td>
