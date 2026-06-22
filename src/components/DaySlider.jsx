@@ -835,7 +835,7 @@ export default function DaySlider() {
         // damit der aktuelle Arbeitstag nicht vorzeitig Minus macht.
         const correctionsPromise = supabase
           .from("overtime_adjustments")
-          .select("hours,adjustment_date")
+          .select("hours,adjustment_date,note")
           .eq("employee_id", String(empId))
           .gte("adjustment_date", startDate)
           .lte("adjustment_date", today);

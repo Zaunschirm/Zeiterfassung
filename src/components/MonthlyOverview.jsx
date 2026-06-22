@@ -1388,7 +1388,7 @@ export default function MonthlyOverview() {
     try {
       adjustments = await collectSupabaseRows(() => supabase
         .from("overtime_adjustments")
-        .select("id, employee_id, adjustment_date, hours")
+        .select("id, employee_id, adjustment_date, hours, note")
         .lte("adjustment_date", targetEndDate)
         .in("employee_id", employeeIds)
         .order("adjustment_date", { ascending: true })

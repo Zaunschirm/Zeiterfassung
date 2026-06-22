@@ -25,6 +25,37 @@ export function dateOnly(value) {
   return String(value).slice(0, 10);
 }
 
+export const ZA_OFFICIAL_START_NOTE = "Startwert ZA Tagesende 31.05.2026 lt. Mai-Lohnzettel";
+
+function normalizeAdjustmentText(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+export function isOfficialZaStartAdjustment(adjustment) {
+  const note = normalizeAdjustmentText(adjustment?.note);
+  return note === normalizeAdjustmentText(ZA_OFFICIAL_START_NOTE)
+    || (note.includes("startwert") && note.includes("31.05.2026") && note.includes("lohnzettel"));
+}
+
+export function isLegacyPreStartZaCorrection(adjustment) {
+  const note = normalizeAdjustmentText(adjustment?.note);
+  return note.includes("startwert")
+    || note.includes("korrektur mai")
+    || note.includes("31.05")
+    || note.includes("01.06")
+    || note.includes("lohnzettel");
+}
+
+export function shouldCountZaAdjustment(adjustment, employee) {
+  const startDate = dateOnly(employee?.za_start_date);
+  const adjustmentDate = dateOnly(adjustment?.adjustment_date || adjustment?.date);
+
+  if (!startDate) return true;
+  if (!adjustmentDate || adjustmentDate < startDate) return false;
+  if (adjustmentDate === startDate) return isOfficialZaStartAdjustment(adjustment);
+  return !isLegacyPreStartZaCorrection(adjustment);
+}
+
 export function dateToDayNumber(value) {
   const d = dateOnly(value);
   const parts = d.split("-").map((v) => Number(v));
@@ -151,6 +182,7 @@ export function calculateZaBalanceForEmployee({
   const adjFrom = adjustmentFrom ? dateOnly(adjustmentFrom) : "";
   const adjTo = adjustmentTo ? dateOnly(adjustmentTo) : "";
   const includedAdjustments = (adjustments || []).filter((adj) => {
+    if (!shouldCountZaAdjustment(adj, employee)) return false;
     const date = dateOnly(adj?.adjustment_date || adj?.date);
     if (adjFrom && date && date < adjFrom) return false;
     if (adjTo && date && date > adjTo) return false;

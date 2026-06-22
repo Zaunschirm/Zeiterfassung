@@ -5,6 +5,7 @@ import {
   calculateZaDailyChange,
   getEntryWorkHoursForZa,
   parseHoursValue,
+  shouldCountZaAdjustment,
 } from "./overtime.js";
 
 const buakEmployee = { role: "mitarbeiter", work_time_model: "buak" };
@@ -130,5 +131,37 @@ describe("overtime / ZA helpers", () => {
       ["2026-02-01", -0.5],
       ["2026-02-02", 0],
     ]);
+  });
+
+  it("uses only the official ZA start value and ignores delayed legacy start corrections", () => {
+    const employee = { ...buakEmployee, za_start_date: "2026-06-01" };
+    const official = {
+      adjustment_date: "2026-06-01",
+      hours: 38.25,
+      note: "Startwert ZA Tagesende 31.05.2026 lt. Mai-Lohnzettel",
+    };
+    const duplicate = {
+      adjustment_date: "2026-06-02",
+      hours: 24.5,
+      note: "Startwert aktueller ZA-Stand",
+    };
+    const realCorrection = {
+      adjustment_date: "2026-06-03",
+      hours: 1,
+      note: "Manuelle Korrektur",
+    };
+
+    expect(shouldCountZaAdjustment(official, employee)).toBe(true);
+    expect(shouldCountZaAdjustment(duplicate, employee)).toBe(false);
+    expect(shouldCountZaAdjustment(realCorrection, employee)).toBe(true);
+
+    const result = calculateZaBalanceForEmployee({
+      employee,
+      from: "2026-06-01",
+      to: "2026-06-03",
+      adjustments: [official, duplicate, realCorrection],
+    });
+
+    expect(result.corrections).toBe(39.25);
   });
 });
