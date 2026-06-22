@@ -58,7 +58,7 @@ export default function PushSettings({ currentUser, employeeId, canEdit = true }
   const [activatingDevice, setActivatingDevice] = useState(false);
   const [testingDevice, setTestingDevice] = useState(false);
 
-  const title = useMemo(() => "⚙️ Meine Einstellungen", []);
+  const title = useMemo(() => "Benachrichtigungen", []);
   const radioName = useMemo(() => `work_assignment_day_${userId || "me"}`, [userId]);
 
   useEffect(() => {
@@ -337,15 +337,21 @@ export default function PushSettings({ currentUser, employeeId, canEdit = true }
   const pushToggleDisabled = fieldDisabled || !supported;
 
   return (
-    <div className="hbz-card tight push-settings-card user-options-card" style={{ marginTop: 12 }}>
-      <button type="button" className="user-options-toggle" onClick={() => setOpen((value) => !value)}>
-        <span>{title}</span>
+    <div className="push-settings-card user-options-card" style={{ marginTop: 12 }}>
+      <button
+        type="button"
+        className="user-options-toggle"
+        onClick={() => setOpen((value) => !value)}
+        aria-expanded={open}
+        aria-controls={`push-settings-${userId || "me"}`}
+      >
+        <span className="user-options-title"><span aria-hidden="true">🔔</span>{title}</span>
         <span className={`badge-soft push-permission-${permission}`}>{permissionLabel}</span>
-        <span className="user-options-chevron">{open ? "▲" : "▼"}</span>
+        <span className="user-options-chevron" aria-hidden="true">{open ? "−" : "+"}</span>
       </button>
 
       {open && (
-        <div className="user-options-panel">
+        <div className="user-options-panel" id={`push-settings-${userId || "me"}`}>
           {!isEditable && (
             <div className="help" style={{ marginTop: 8 }}>
               Diese Einstellungen gehören nicht zu deinem Benutzer oder die Mitarbeiter-ID fehlt.

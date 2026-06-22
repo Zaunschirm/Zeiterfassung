@@ -9,6 +9,7 @@ import {
   replaceTimeOffEntriesSafely,
 } from "../lib/timeOffTransactions";
 import {
+  isSickEntry,
   isTimeCompEntry,
   isVacationEntry,
 } from "../utils/timeEntryAbsences";
@@ -103,11 +104,12 @@ function toHM(min) {
 const isZaEntry = isTimeCompEntry;
 
 function isTimeOffEntry(row) {
-  return isVacationEntry(row) || isZaEntry(row);
+  return isVacationEntry(row) || isSickEntry(row) || isZaEntry(row);
 }
 
 function getEntryKind(row) {
   if (isZaEntry(row)) return "za";
+  if (isSickEntry(row)) return "krank";
   if (isVacationEntry(row)) return "urlaub";
   return "sonstiges";
 }
@@ -137,6 +139,7 @@ function sameEmployee(emp, session) {
 function stripTimeOffNote(note) {
   return String(note || "")
     .replace(/^\s*\[Urlaub\]\s*/i, "")
+    .replace(/^\s*\[Krank\]\s*/i, "")
     .replace(/^\s*\[Zeitausgleich\]\s*/i, "")
     .trim();
 }
@@ -804,6 +807,7 @@ export default function VacationEntry({ currentUser = null } = {}) {
         String(a.employee?.name || "").localeCompare(String(b.employee?.name || ""), "de")
       );
       const vacation = entries.filter((r) => r.kind === "urlaub");
+      const sick = entries.filter((r) => r.kind === "krank");
       const za = entries.filter((r) => r.kind === "za");
       return {
         date,
@@ -812,6 +816,7 @@ export default function VacationEntry({ currentUser = null } = {}) {
         holidayName: getHolidayName(date),
         entries,
         vacation,
+        sick,
         za,
       };
     });
@@ -1038,6 +1043,7 @@ export default function VacationEntry({ currentUser = null } = {}) {
           </div>
           <div className="vacation-legend" aria-label="Farblegende">
             <span className="vacation-legend-item vacation-legend-item--vac"><i />Urlaub</span>
+            <span className="vacation-legend-item vacation-legend-item--sick"><i />Krank</span>
             <span className="vacation-legend-item vacation-legend-item--za"><i />Zeitausgleich</span>
           </div>
         </div>
@@ -1235,20 +1241,21 @@ export default function VacationEntry({ currentUser = null } = {}) {
       <section className="month-card vacation-panel vacation-calendar-panel" style={{ marginTop: 18 }}>
         <div className="vacation-calendar-head">
           <div>
-            <div className="month-card-title">Monatsübersicht Urlaub / ZA</div>
+            <div className="month-card-title">Abwesenheitskalender</div>
             <p className="hint" style={{ marginTop: 4 }}>
-              Monatsvorschau für alle Mitarbeiter. Urlaub und Zeitausgleich werden pro Tag zusammengefasst angezeigt.
+              Urlaub, Krankenstand und Zeitausgleich aller Mitarbeiter auf einen Blick.
             </p>
           </div>
           <div className="vac-month-controls">
-            <button type="button" className="hbz-chip" onClick={() => shiftCalendarMonth(-1)}>← Monat</button>
+            <button type="button" className="hbz-chip" aria-label="Vorherigen Monat anzeigen" onClick={() => shiftCalendarMonth(-1)}>← Monat</button>
             <input
               className="hbz-input vac-month-input"
               type="month"
+              aria-label="Kalendermonat auswählen"
               value={calendarMonth}
               onChange={(e) => setCalendarMonth(e.target.value)}
             />
-            <button type="button" className="hbz-chip" onClick={() => shiftCalendarMonth(1)}>Monat →</button>
+            <button type="button" className="hbz-chip" aria-label="Nächsten Monat anzeigen" onClick={() => shiftCalendarMonth(1)}>Monat →</button>
           </div>
         </div>
 
@@ -1278,6 +1285,12 @@ export default function VacationEntry({ currentUser = null } = {}) {
                       <div className="vac-month-line">
                         <span className="vac-pill za">ZA</span>
                         <strong>{day.za.map((r) => `${r.employee?.name}${Number(r.za_hours || 0) > 0 ? ` (${fmtHours(r.za_hours)})` : ""}`).filter(Boolean).join(", ")}</strong>
+                      </div>
+                    )}
+                    {day.sick.length > 0 && (
+                      <div className="vac-month-line">
+                        <span className="vac-pill sick">Krank</span>
+                        <strong>{day.sick.map((r) => r.employee?.name).filter(Boolean).join(", ")}</strong>
                       </div>
                     )}
                     {!hasEntries && <span className="vac-empty">—</span>}
@@ -1313,19 +1326,19 @@ export default function VacationEntry({ currentUser = null } = {}) {
               {calendarLoading ? (
                 <tr><td colSpan={7}>Lade Kalender…</td></tr>
               ) : timeOffDisplayRows.length === 0 ? (
-                <tr><td colSpan={7}>In diesem Zeitraum ist kein Urlaub/ZA eingetragen.</td></tr>
+                <tr><td colSpan={7}>In diesem Zeitraum ist keine Abwesenheit eingetragen.</td></tr>
               ) : (
                 timeOffDisplayRows.map((row) => {
                   const own = sameEmployee(row.employee, session);
-                  const allowed = isAdmin || own;
                   const kind = row.kind || getEntryKind(row);
+                  const allowed = kind !== "krank" && (isAdmin || own);
                   const weekLabel = weekRangeLabel(row.from_date || row.work_date, row.to_date || row.work_date);
                   const mixed = weekLabel === "gemischt";
                   return (
                     <tr key={`${row.employee_id}-${kind}-${row.from_date}-${row.to_date}-${row.cleanNote || ""}`} className={own ? "vac-own-row" : ""}>
                       <td>{formatDateRangeAT(row.from_date || row.work_date, row.to_date || row.work_date)}</td>
                       <td>{row.employee?.name || "—"}</td>
-                      <td><span className={`vac-pill ${kind === "za" ? "za" : "vac"}`}>{kind === "za" ? "Zeitausgleich" : "Urlaub"}</span></td>
+                      <td><span className={`vac-pill ${kind === "za" ? "za" : kind === "krank" ? "sick" : "vac"}`}>{kind === "za" ? "Zeitausgleich" : kind === "krank" ? "Krank" : "Urlaub"}</span></td>
                       <td><span className={`vac-pill ${mixed ? "mixed" : weekLabel === "Kurzwoche" ? "short" : "long"}`}>{weekLabel}</span></td>
                       <td>{kind === "za" ? fmtHours(row.za_hours) : "—"}</td>
                       <td>{row.cleanNote || "—"}</td>
@@ -1333,7 +1346,7 @@ export default function VacationEntry({ currentUser = null } = {}) {
                         {allowed ? (
                           <button type="button" className="hbz-mini-danger" onClick={() => deleteTimeOff(row)}>{isAdmin && !own ? "Eintrag löschen" : "Eigenen Eintrag löschen"}</button>
                         ) : (
-                          <span className="hint">nur Anzeige</span>
+                          <span className="hint">{kind === "krank" ? "über Zeiterfassung verwalten" : "nur Anzeige"}</span>
                         )}
                       </td>
                     </tr>
@@ -1347,7 +1360,7 @@ export default function VacationEntry({ currentUser = null } = {}) {
       </details>
 
       <style>{`
-        .vacation-page { --vac-blue: #426ca9; --vac-blue-soft: #edf3ff; --vac-gold: #a97924; --vac-gold-soft: #fff6dc; display: flex; flex-direction: column; gap: 2px; }
+        .vacation-page { --vac-blue: #426ca9; --vac-blue-soft: #edf3ff; --vac-sick: #a54f5f; --vac-sick-soft: #fff0f3; --vac-gold: #a97924; --vac-gold-soft: #fff6dc; display: flex; flex-direction: column; gap: 2px; }
         .vacation-hero { position: relative; overflow: hidden; padding-top: 18px; padding-bottom: 18px; background: linear-gradient(135deg, #6f4327 0%, #a36f47 58%, #c29669 100%); color: #fffaf4; border: 0; box-shadow: 0 18px 34px rgba(97,60,36,.22); }
         .vacation-hero::after { content: ""; position: absolute; width: 270px; height: 270px; right: -70px; top: -165px; border: 46px solid rgba(255,255,255,.08); border-radius: 50%; pointer-events: none; }
         .vacation-hero-content { position: relative; z-index: 1; display: flex; justify-content: space-between; align-items: center; gap: 20px; flex-wrap: wrap; }
@@ -1357,6 +1370,7 @@ export default function VacationEntry({ currentUser = null } = {}) {
         .vacation-legend-item { display: inline-flex; align-items: center; gap: 7px; padding: 8px 11px; border: 1px solid rgba(255,255,255,.24); border-radius: 999px; background: rgba(255,255,255,.12); color: #fff; font-size: 12px; font-weight: 800; backdrop-filter: blur(8px); }
         .vacation-legend-item i { width: 9px; height: 9px; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 3px rgba(255,255,255,.15); }
         .vacation-legend-item--vac { color: #dbe8ff; }
+        .vacation-legend-item--sick { color: #ffd8df; }
         .vacation-legend-item--za { color: #ffe8a4; }
         .vacation-panel { position: relative; overflow: hidden; border: 1px solid rgba(190,164,136,.36); box-shadow: 0 12px 30px rgba(71,46,27,.07); background: rgba(255,255,255,.94); }
         .vacation-panel::before { width: 4px; background: linear-gradient(180deg, #9b6b45, #d0ab82); }
@@ -1412,6 +1426,7 @@ export default function VacationEntry({ currentUser = null } = {}) {
         .vac-pill.short { background: #e7f7ed; color: #1d6a30; }
         .vac-pill.long { background: #fff0e3; color: #85460a; }
         .vac-pill.vac { background: var(--vac-blue-soft); color: #294f88; border: 1px solid rgba(66,108,169,.16); }
+        .vac-pill.sick { background: var(--vac-sick-soft); color: #8b3546; border: 1px solid rgba(165,79,95,.2); }
         .vac-pill.za { background: var(--vac-gold-soft); color: #795100; border: 1px solid rgba(169,121,36,.18); }
         .vac-pill.mixed { background: #f1edf8; color: #573a7d; }
         .vac-own-row { background: rgba(222, 242, 232, 0.62); }

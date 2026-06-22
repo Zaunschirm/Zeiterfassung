@@ -20,18 +20,17 @@ export default function NavBar({ onLogout, currentUser, role }) {
   const mainLinks = [
     { to: "/zeiterfassung", label: "Zeiterfassung" },
     { to: "/arbeitseinteilung", label: "Arbeitseinteilung" },
-    { to: "/projektfotos", label: "Projektfotos" },
-    { to: "/urlaub", label: "Urlaub/ZA" },
+    { to: "/urlaub", label: "Abwesenheiten" },
     { to: "/monatsuebersicht", label: "Monatsübersicht" },
   ];
+
+  const moreLinks = [{ to: "/projektfotos", label: "Projektfotos" }];
 
   const adminLinks = [
     ...(canSeeAdmin ? [{ to: "/projekte", label: "Projekte" }] : []),
     ...(canSeeAdmin ? [{ to: "/mitarbeiter", label: "Mitarbeiter" }] : []),
     ...(isAdmin ? [{ to: "/jahresuebersicht", label: "Jahresübersicht" }] : []),
   ];
-
-  const allLinks = [...mainLinks, ...adminLinks];
 
   const renderNavLink = (to, label) => (
     <NavLink
@@ -48,7 +47,7 @@ export default function NavBar({ onLogout, currentUser, role }) {
 
   return (
     <>
-      <nav className="app-nav">
+      <nav className="app-nav" aria-label="Hauptnavigation">
         <div className="app-nav-left">
           <div className="app-logo-circle">
             <span>HZ</span>
@@ -60,7 +59,21 @@ export default function NavBar({ onLogout, currentUser, role }) {
         </div>
 
         <div className="app-nav-center">
-          {allLinks.map((link) => renderNavLink(link.to, link.label))}
+          {mainLinks.map((link) => renderNavLink(link.to, link.label))}
+          <details className="app-nav-more">
+            <summary className="app-nav-btn">Mehr</summary>
+            <div className="app-nav-dropdown">
+              {moreLinks.map((link) => renderNavLink(link.to, link.label))}
+            </div>
+          </details>
+          {adminLinks.length > 0 && (
+            <details className="app-nav-more">
+              <summary className="app-nav-btn">Verwaltung</summary>
+              <div className="app-nav-dropdown">
+                {adminLinks.map((link) => renderNavLink(link.to, link.label))}
+              </div>
+            </details>
+          )}
         </div>
 
         <div className="app-nav-right">
@@ -81,15 +94,21 @@ export default function NavBar({ onLogout, currentUser, role }) {
           type="button"
           className="app-nav-mobile-toggle"
           onClick={() => setMobileOpen((v) => !v)}
+          aria-expanded={mobileOpen}
+          aria-controls="mobile-navigation"
+          aria-label={mobileOpen ? "Menü schließen" : "Menü öffnen"}
         >
-          Menü
+          {mobileOpen ? "Schließen" : "Menü"}
         </button>
       </nav>
 
       {mobileOpen && (
-        <div className="app-nav-menu-mobile">
+        <div className="app-nav-menu-mobile" id="mobile-navigation">
           <div className="app-nav-menu-mobile-row">
-            {allLinks.map((link) => renderNavLink(link.to, link.label))}
+            {mainLinks.map((link) => renderNavLink(link.to, link.label))}
+            {moreLinks.map((link) => renderNavLink(link.to, link.label))}
+            {adminLinks.length > 0 && <div className="app-nav-mobile-heading">Verwaltung</div>}
+            {adminLinks.map((link) => renderNavLink(link.to, link.label))}
             <button type="button" className="app-nav-btn" onClick={onLogout}>
               <span className="app-nav-label">Logout</span>
             </button>

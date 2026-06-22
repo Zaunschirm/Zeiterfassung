@@ -1126,15 +1126,21 @@ export default function EmployeeList() {
 
       <div className="hbz-card employee-page-card">
         <div className="employee-page-head">
-          <h3 className="employee-page-title">Mitarbeiterliste</h3>
-          <span className="badge-soft">{rows.length} Mitarbeiter</span>
+          <div>
+            <h3 className="employee-page-title">Mitarbeiterliste</h3>
+            <div className="help" style={{ marginTop: 4 }}>Status, Arbeitsmodell und ZA-Konto kompakt verwalten</div>
+          </div>
+          <div className="employee-head-stats">
+            <span className="badge-soft">{rows.filter((r) => !r.disabled).length} aktiv</span>
+            <span className="badge-soft">{rows.filter(isZaAccountEnabled).length} mit ZA-Konto</span>
+          </div>
         </div>
 
         {loading ? (
           <div className="text-sm opacity-70">Lade Mitarbeiter…</div>
         ) : (
           <div className="employee-table-wrap">
-            <table className="employee-table" style={{ tableLayout: "fixed", width: "100%" }}>
+            <table className="employee-table employee-directory-table" style={{ tableLayout: "fixed", width: "100%" }}>
               <thead>
                 <tr>
                   <th style={{ width: "18%" }}>Mitarbeiter</th>
@@ -1157,39 +1163,28 @@ export default function EmployeeList() {
                 {rows.map((r) => {
                   const modelLabel = WORK_TIME_MODEL_OPTIONS.find((m) => m.value === (r.work_time_model || (String(r.role || "").toLowerCase() === "buchhaltung" ? "verwaltung" : "buak")))?.label || "BUAK / Zimmerer";
                   const zaEnabled = isZaAccountEnabled(r);
+                  const zaBalance = overtimeByEmployee.get(String(r.id));
                   return (
                   <tr
                     key={r.id}
-                    style={{
-                      opacity: r.disabled ? 0.5 : 1,
-                      background: r.disabled ? "#f5f1eb" : "transparent",
-                    }}
+                    className={`employee-list-row${r.disabled ? " disabled" : ""}`}
                   >
-                    <td>
+                    <td data-label="Mitarbeiter">
                       <strong>{r.name}</strong>
                       <div className="help" style={{ marginTop: 3 }}>Code: {r.code || "—"}</div>
                     </td>
-                    <td>
+                    <td data-label="Rolle / Modell">
                       <strong>{roleLabel(r.role)}</strong>
                       <div className="help" style={{ marginTop: 3 }}>{modelLabel}</div>
                     </td>
-                    <td>
+                    <td data-label="Eintritt / ZA">
                       <strong>{r.za_start_date || "—"}</strong>
-                      <div className="help" style={{ marginTop: 3 }}>{zaEnabled ? "ZA geprüft" : "ZA nicht geprüft"}</div>
+                      <div className="help" style={{ marginTop: 3 }}>
+                        {zaEnabled ? `ZA-Stand ${formatHours(zaBalance?.balance || 0)}` : "ZA nicht geführt"}
+                      </div>
                     </td>
-                    <td>
-                      <span
-                        style={{
-                          display: "inline-block",
-                          padding: "4px 10px",
-                          borderRadius: "999px",
-                          fontSize: "12px",
-                          fontWeight: 600,
-                          background: r.disabled ? "#e5ddd2" : "#e7f4ea",
-                          color: r.disabled ? "#7b4a2d" : "#2f6b3a",
-                          border: r.disabled ? "1px solid #d2c2b2" : "1px solid #cfe4d3",
-                        }}
-                      >
+                    <td data-label="Status">
+                      <span className={`employee-status-pill ${r.disabled ? "disabled" : "active"}`}>
                         {r.disabled ? "deaktiviert" : "aktiv"}
                       </span>
                       <div style={{ marginTop: 6 }}>
@@ -1198,12 +1193,12 @@ export default function EmployeeList() {
                         </span>
                       </div>
                     </td>
-                    <td style={{ fontSize: 12, lineHeight: 1.25 }}>
+                    <td data-label="Rechte" style={{ fontSize: 12, lineHeight: 1.25 }}>
                       {permissionSummary(r.permissions)}
                     </td>
-                    <td className="num" style={{ whiteSpace: "normal" }}>
+                    <td data-label="Aktionen" className="num" style={{ whiteSpace: "normal" }}>
                       <div className="employee-action-group" style={{ display: "flex", flexWrap: "wrap", gap: 5, justifyContent: "flex-end" }}>
-                        <button type="button" className="hbz-btn btn-small" onClick={() => editEmployee(r)}>Edit</button>
+                        <button type="button" className="hbz-btn btn-small" onClick={() => editEmployee(r)}>Bearbeiten</button>
                         <button type="button" className="hbz-btn btn-small" onClick={() => toggleActive(r)}>{r.disabled ? "Aktiv" : "Deaktiv"}</button>
                         <button type="button" className="hbz-btn btn-small" onClick={() => toggleZaAccount(r)}>{zaEnabled ? "ZA aus" : "ZA an"}</button>
                         <button type="button" className="hbz-btn btn-small" onClick={() => resetPin(r)}>PIN</button>
