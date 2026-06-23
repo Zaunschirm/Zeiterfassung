@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
+import { isValidPin, matchesStoredPin } from "../utils/pinAuth";
 
 function normalizeRole(role) {
   const r = String(role || "mitarbeiter").trim().toLowerCase();
@@ -38,6 +39,11 @@ export default function LoginPanel({ onLogin }) {
       return;
     }
 
+    if (!isValidPin(pinValue)) {
+      setError("Bitte genau 4 Ziffern als PIN eingeben.");
+      return;
+    }
+
     try {
       setLoading(true);
 
@@ -69,7 +75,7 @@ export default function LoginPanel({ onLogin }) {
         return;
       }
 
-      if (storedPin !== pinValue) {
+      if (!matchesStoredPin(storedPin, pinValue)) {
         setError("PIN ist falsch.");
         return;
       }

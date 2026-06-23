@@ -7,6 +7,7 @@ import {
   shouldCountZaAdjustment,
 } from "../utils/overtime";
 import { collectPaginatedRows } from "../utils/pagination";
+import { encodePin, isValidPin } from "../utils/pinAuth";
 
 const PERMISSION_OPTIONS = [
   { key: "writeOwnTime", label: "Eigene Stunden schreiben" },
@@ -452,14 +453,6 @@ export default function EmployeeList() {
     return String(Math.floor(1000 + Math.random() * 9000));
   }
 
-  function b64(s) {
-    try {
-      return btoa(s);
-    } catch {
-      return Buffer.from(s, "utf-8").toString("base64");
-    }
-  }
-
   function setPermission(key, checked) {
     setPermissions((prev) => ({
       ...prev,
@@ -527,14 +520,14 @@ export default function EmployeeList() {
     if (pin === null) return;
     pin = (pin || "").trim() || randomPin();
 
-    if (!/^\d{4}$/.test(pin)) {
+    if (!isValidPin(pin)) {
       alert("Bitte genau 4 Ziffern eingeben.");
       return;
     }
 
     const { error } = await supabase
       .from("employees")
-      .update({ pin: b64(pin), pin_hash: null })
+      .update({ pin: encodePin(pin), pin_hash: null })
       .eq("id", row.id);
 
     if (error) {

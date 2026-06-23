@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { supabase } from "/src/lib/supabase.js";
 import { DEFAULT_OFFICE_WORK_TIME_SETTINGS, normalizeWorkTimeSettings } from "/src/utils/time.js";
+import { encodePin, isValidPin } from "/src/utils/pinAuth.js";
 
 const PERMISSION_OPTIONS = [
   { key: "writeOwnTime", label: "Eigene Stunden schreiben" },
@@ -41,14 +42,6 @@ const WEEKDAYS = [
   [6, "Samstag"],
   [7, "Sonntag"],
 ];
-
-function b64(value) {
-  try {
-    return btoa(value);
-  } catch {
-    return Buffer.from(value, "utf-8").toString("base64");
-  }
-}
 
 function calcDayHours(day) {
   if (!day?.active || !day.start || !day.end) return "0,00";
@@ -217,7 +210,11 @@ export default function EmployeeCreate() {
       };
 
       if (cleanPin) {
-        payload.pin = b64(cleanPin);
+        if (!isValidPin(cleanPin)) {
+          setErr("Bitte genau 4 Ziffern als PIN eingeben.");
+          return;
+        }
+        payload.pin = encodePin(cleanPin);
       }
 
       const { error } = await supabase.from("employees").insert(payload);
