@@ -1,7 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { DEFAULT_OFFICE_WORK_TIME_SETTINGS, normalizeWorkTimeSettings } from "../utils/time";
-import { calculateZaBalanceForEmployee } from "../utils/overtime";
+import {
+  calculateZaBalanceForEmployee,
+  isOfficialZaStartAdjustment,
+  shouldCountZaAdjustment,
+} from "../utils/overtime";
 import { collectPaginatedRows } from "../utils/pagination";
 
 const PERMISSION_OPTIONS = [
@@ -141,49 +145,6 @@ function isZaAccountEnabled(emp) {
   return emp?.include_in_za_account !== false;
 }
 
-const ZA_OFFICIAL_START_NOTE = "Startwert ZA Tagesende 31.05.2026 lt. Mai-Lohnzettel";
-
-function normalizeText(value) {
-  return String(value || "").trim().toLowerCase();
-}
-
-function isOfficialZaStartAdjustment(adj) {
-  const note = normalizeText(adj?.note);
-  return note === normalizeText(ZA_OFFICIAL_START_NOTE) || (note.includes("startwert") && note.includes("31.05.2026") && note.includes("lohnzettel"));
-}
-
-function isLegacyPreStartZaCorrection(adj) {
-  const note = normalizeText(adj?.note);
-  return note.includes("startwert")
-    || note.includes("korrektur mai")
-    || note.includes("31.05")
-    || note.includes("01.06")
-    || note.includes("lohnzettel");
-}
-
-function shouldCountZaAdjustment(adj, emp) {
-  const startDate = dateOnly(emp?.za_start_date);
-  const adjustmentDate = dateOnly(adj?.adjustment_date);
-
-  if (!startDate) return true;
-  if (!adjustmentDate) return false;
-
-  // Alles vor dem Startdatum wird fachlich ignoriert.
-  if (adjustmentDate < startDate) return false;
-
-  // Am Startdatum zählt nur der offizielle Lohnverrechnungs-Startstand.
-  // Dadurch bleiben alte Test-/Doppelkorrekturen vom 01.06. draußen.
-  if (adjustmentDate === startDate) {
-    return isOfficialZaStartAdjustment(adj);
-  }
-
-  // Alte Mai-/Startwert-Korrekturen, die irrtümlich später gespeichert wurden,
-  // dürfen den laufenden Juni-Stand nicht verfälschen.
-  if (isLegacyPreStartZaCorrection(adj)) return false;
-
-  // Echte manuelle Korrekturen nach dem Startdatum zählen normal weiter.
-  return true;
-}
 
 export default function EmployeeList() {
   const [rows, setRows] = useState([]);
