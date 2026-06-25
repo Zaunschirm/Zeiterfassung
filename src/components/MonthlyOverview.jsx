@@ -23,7 +23,7 @@ import {
   isTimeCompEntry,
   isVacationEntry,
 } from "../utils/timeEntryAbsences";
-import { calculateZaBalanceDelta, calculateZaBalanceForEmployee } from "../utils/overtime";
+import { calculateZaBalanceDelta, calculateZaBalanceForEmployee, isOfficialZaStartAdjustment } from "../utils/overtime";
 import { collectSupabaseRows } from "../utils/pagination";
 
 async function loadPdfLibs() {
@@ -1392,6 +1392,7 @@ export default function MonthlyOverview() {
         balance: 0,
         endDate: targetEndDate,
         included: emp?.include_in_za_account !== false,
+        source: "calculated",
       });
     });
 
@@ -1413,10 +1414,14 @@ export default function MonthlyOverview() {
 
     let adjustments = [];
     try {
+      const adjustmentLookupTo = Number.isFinite(dateToDayNumber(targetEndDate))
+        ? dayNumberToDate(dateToDayNumber(targetEndDate) + 1)
+        : targetEndDate;
+
       adjustments = await collectSupabaseRows(() => supabase
         .from("overtime_adjustments")
         .select("id, employee_id, adjustment_date, hours, note")
-        .lte("adjustment_date", targetEndDate)
+        .lte("adjustment_date", adjustmentLookupTo)
         .in("employee_id", employeeIds)
         .order("adjustment_date", { ascending: true })
         .order("id", { ascending: true }));
@@ -1428,7 +1433,7 @@ export default function MonthlyOverview() {
       const empId = String(emp.id || "");
       const current = out.get(empId) || { balance: 0, endDate: targetEndDate, included: true };
       if (emp?.include_in_za_account === false) {
-        out.set(empId, { ...current, balance: 0, included: false });
+        out.set(empId, { ...current, balance: 0, included: false, source: "not_included" });
         continue;
       }
 
@@ -1438,6 +1443,31 @@ export default function MonthlyOverview() {
         .filter(Boolean)
         .sort()[0] || "";
       const startDate = emp.za_start_date || emp.entry_date || firstEntryDate || targetEndDate;
+      const startDay = dateToDayNumber(startDate);
+      const targetDay = dateToDayNumber(targetEndDate);
+      if (Number.isFinite(startDay) && Number.isFinite(targetDay) && targetDay < startDay) {
+        const dayBeforeStart = dayNumberToDate(startDay - 1);
+        const officialStartAdjustment = (adjustments || []).find(
+          (adj) =>
+            String(adj.employee_id || "") === empId &&
+            dateOnly(adj.adjustment_date) === dateOnly(startDate) &&
+            isOfficialZaStartAdjustment(adj)
+        );
+
+        if (targetEndDate === dayBeforeStart && officialStartAdjustment) {
+          out.set(empId, {
+            ...current,
+            balance: parseHoursValue(officialStartAdjustment.hours),
+            included: true,
+            source: "official_start",
+            sourceDate: dayBeforeStart,
+          });
+        } else {
+          out.set(empId, { ...current, balance: 0, included: true, source: "before_start" });
+        }
+        continue;
+      }
+
       const empAdjustments = (adjustments || []).filter(
         (adj) => String(adj.employee_id || "") === empId && isOnOrAfterStartDate(adj.adjustment_date, emp.za_start_date)
       );
@@ -1452,7 +1482,7 @@ export default function MonthlyOverview() {
         neutralizeHolidays: true,
       });
 
-      out.set(empId, { ...current, balance: result.balance, included: true });
+      out.set(empId, { ...current, balance: result.balance, included: true, source: "calculated" });
     }
 
     return out;
@@ -1707,18 +1737,26 @@ export default function MonthlyOverview() {
         const zaTaken = d.timeCompHours || 0;
         const paidHours = recordedHours + d.holidayHours + d.sickHours + zaTaken;
         const sollHoursInRange = calcEmployeeSollHoursForRange(d.emp, targetRange.from, targetRange.to, true);
-        const zaBalanceBefore = zaBalancesBeforeMonth.get(String(emp.id))?.balance ?? 0;
-        const zaBalanceEnd = zaBalancesAtMonthEnd.get(String(emp.id))?.balance ?? 0;
+        const zaBalanceBeforeInfo = zaBalancesBeforeMonth.get(String(emp.id));
+        const zaBalanceEndInfo = zaBalancesAtMonthEnd.get(String(emp.id));
+        const zaBalanceBefore = zaBalanceBeforeInfo?.balance ?? 0;
+        const zaBalanceEnd = zaBalanceEndInfo?.balance ?? 0;
         const zaKontoChange = calculateZaBalanceDelta(zaBalanceBefore, zaBalanceEnd);
         const zaExpectedEnd = Math.round((zaBalanceBefore + zaKontoChange) * 100) / 100;
         const zaDiff = Math.round((zaBalanceEnd - zaExpectedEnd) * 100) / 100;
+        const zaIsOfficialStart = zaBalanceEndInfo?.source === "official_start";
+        const zaHint = zaIsOfficialStart
+          ? `Startwert ${formatDateAT(zaBalanceEndInfo.sourceDate || targetRange.to)} lt. Mai-Lohnzettel`
+          : Math.abs(zaDiff) > 0.01
+            ? `Differenz ${formatSignedHoursAT(zaDiff)}`
+            : "OK";
 
         zaReconcileRows.push([
           safePdfText(d.name),
           formatSignedHoursAT(zaBalanceBefore),
-          formatSignedHoursAT(zaKontoChange),
+          zaIsOfficialStart ? "Startwert" : formatSignedHoursAT(zaKontoChange),
           formatSignedHoursAT(zaBalanceEnd),
-          formatSignedHoursAT(zaDiff),
+          zaHint,
         ]);
 
         if (d.vacationDates.length) {
@@ -1885,7 +1923,7 @@ export default function MonthlyOverview() {
           "ZA Stand vorher",
           "ZA Änderung",
           "ZA Stand Ende",
-          "Differenz",
+          "Hinweis",
         ]],
         body: zaReconcileRows,
         startY: currentY + 6,
@@ -1906,11 +1944,11 @@ export default function MonthlyOverview() {
         },
         alternateRowStyles: { fillColor: lightGray },
         columnStyles: {
-          0: { cellWidth: 220, halign: "left" },
-          1: { cellWidth: 130, halign: "right" },
-          2: { cellWidth: 130, halign: "right" },
-          3: { cellWidth: 130, halign: "right" },
-          4: { cellWidth: 110, halign: "right" },
+          0: { cellWidth: 175, halign: "left" },
+          1: { cellWidth: 105, halign: "right" },
+          2: { cellWidth: 105, halign: "right" },
+          3: { cellWidth: 105, halign: "right" },
+          4: { cellWidth: 235, halign: "left" },
         },
         margin: { left: marginX, right: marginX },
       });
