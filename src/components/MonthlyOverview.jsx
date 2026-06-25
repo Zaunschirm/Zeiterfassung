@@ -23,6 +23,13 @@ import {
   isTimeCompEntry,
   isVacationEntry,
 } from "../utils/timeEntryAbsences";
+import {
+  auditDisplayValue,
+  auditFieldLabel,
+  buildAuditEntrySummary,
+  buildDeleteAuditRows,
+  buildUpdateAuditRows,
+} from "../utils/timeAudit";
 import { calculateZaBalanceDelta, calculateZaBalanceForEmployee, isOfficialZaStartAdjustment } from "../utils/overtime";
 import { collectSupabaseRows } from "../utils/pagination";
 
@@ -292,6 +299,26 @@ function formatDateAT(ymd) {
   return `${d}.${m}.${y}`;
 }
 
+function formatDateTimeAT(value) {
+  if (!value) return "—";
+  try {
+    return new Date(value).toLocaleString("de-AT", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return String(value);
+  }
+}
+
+const asAuditIdOrNull = (value) => {
+  const text = value == null ? "" : String(value).trim();
+  return text || null;
+};
+
 function uniqueSortedDates(arr) {
   return Array.from(new Set(arr || []))
     .filter(Boolean)
@@ -385,6 +412,9 @@ export default function MonthlyOverview() {
   const [payrollExportLoading, setPayrollExportLoading] = useState(false);
   const [monthLockInfo, setMonthLockInfo] = useState(null);
   const [monthLockLoading, setMonthLockLoading] = useState(false);
+  const [payrollCloseout, setPayrollCloseout] = useState(null);
+  const [payrollCloseoutLoading, setPayrollCloseoutLoading] = useState(false);
+  const [payrollCloseoutBusy, setPayrollCloseoutBusy] = useState(false);
 
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
@@ -601,6 +631,12 @@ export default function MonthlyOverview() {
     refreshMonthLockInfo();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [monthLockRange?.from]);
+
+  useEffect(() => {
+    if (!isAdmin || payrollCandidateEmployees.length === 0) return;
+    loadPayrollCloseoutStatus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdmin, payrollCheckRange?.from, payrollCandidateEmployees.length]);
 
   function useVisibleMonthForLock() {
     const ym = monthFilter || activeRange?.from?.slice(0, 7) || previousMonthStr;
@@ -830,8 +866,49 @@ export default function MonthlyOverview() {
     setEditState(null);
   }
 
+  const auditSummary = (row) =>
+    buildAuditEntrySummary(row, {
+      fallbackDate: activeRange?.from,
+      getEmployeeNameById,
+      getProjectNameById,
+      toHM,
+    });
+
+  const auditValue = (field, value) =>
+    auditDisplayValue(field, value, {
+      getProjectNameById,
+      toHM,
+    });
+
+  async function insertAuditRows(rowsToInsert) {
+    const cleaned = (rowsToInsert || []).filter(Boolean);
+    if (!cleaned.length) return;
+    const { error } = await supabase.from("time_entry_audit_log").insert(cleaned);
+    if (error) console.warn("[MonthlyOverview] audit log:", error?.message || error);
+  }
+
+  async function writeUpdateAudit(oldRow, update) {
+    const actor = asAuditIdOrNull(session?.id);
+    const auditRows = buildUpdateAuditRows(oldRow, update, {
+      actor,
+      asUuidOrNull: asAuditIdOrNull,
+      displayValue: auditValue,
+    });
+    await insertAuditRows(auditRows);
+  }
+
+  async function writeDeleteAudit(oldRow) {
+    const actor = asAuditIdOrNull(session?.id);
+    await insertAuditRows(buildDeleteAuditRows(oldRow, {
+      actor,
+      asUuidOrNull: asAuditIdOrNull,
+      summary: auditSummary,
+    }));
+  }
+
   async function saveEdit() {
     if (!isManager || !editId || !editState) return;
+    const oldRow = rows.find((r) => String(r.id) === String(editId));
 
     const from_m = hmToMin(editState.from_hm);
     const to_m = hmToMin(editState.to_hm);
@@ -876,6 +953,7 @@ export default function MonthlyOverview() {
       return;
     }
 
+    await writeUpdateAudit(oldRow, update);
     await loadMonth();
     cancelEdit();
   }
@@ -893,6 +971,7 @@ export default function MonthlyOverview() {
 
     try {
       await deleteTimeEntry(supabase, id, { entry: targetRow });
+      await writeDeleteAudit(targetRow);
     } catch (error) {
       console.error("delete error:", error);
       alert("Löschen fehlgeschlagen.");
@@ -1313,6 +1392,114 @@ export default function MonthlyOverview() {
       });
     } finally {
       setPayrollCheckLoading(false);
+    }
+  }
+
+  async function loadPayrollCloseoutStatus() {
+    if (!isAdmin || !payrollCheckRange?.from) return;
+    try {
+      setPayrollCloseoutLoading(true);
+      const employeeIds = payrollCandidateEmployees.map((e) => e.id).filter(Boolean);
+      const check = employeeIds.length
+        ? await buildPayrollCheck(payrollCheckRange, employeeIds)
+        : null;
+
+      const lock = await getMonthLock(supabase, payrollCheckRange.from);
+
+      let pendingRequests = [];
+      try {
+        const { data, error } = await supabase
+          .from("time_off_requests")
+          .select("id, employee_id, entry_type, from_date, to_date, note, status")
+          .eq("status", "pending")
+          .lte("from_date", payrollCheckRange.to)
+          .gte("to_date", payrollCheckRange.from);
+        if (error) throw error;
+        pendingRequests = data || [];
+      } catch (requestError) {
+        console.warn("[MonthlyOverview] offene Freigaben konnten nicht geladen werden:", requestError?.message || requestError);
+      }
+
+      let afterLockAuditRows = [];
+      if (lock?.locked_at) {
+        try {
+          const { data, error } = await supabase
+            .from("time_entry_audit_log")
+            .select("*")
+            .gte("changed_at", lock.locked_at)
+            .order("changed_at", { ascending: false })
+            .limit(120);
+          if (error) throw error;
+          afterLockAuditRows = (data || []).filter((row) => {
+            const empId = String(row.employee_id || "");
+            return employeeIds.some((id) => String(id) === empId);
+          });
+        } catch (auditError) {
+          console.warn("[MonthlyOverview] Audit nach Monatsabschluss konnte nicht geladen werden:", auditError?.message || auditError);
+        }
+      }
+
+      setPayrollCloseout({
+        range: payrollCheckRange,
+        checkedAt: new Date().toISOString(),
+        lock,
+        check,
+        pendingRequests,
+        afterLockAuditRows,
+      });
+    } finally {
+      setPayrollCloseoutLoading(false);
+    }
+  }
+
+  async function closePayrollMonth() {
+    if (!isAdmin || !payrollCheckRange?.from) return;
+    try {
+      setPayrollCloseoutBusy(true);
+      const employeeIds = payrollCandidateEmployees.map((e) => e.id).filter(Boolean);
+      const check = await buildPayrollCheck(payrollCheckRange, employeeIds);
+      let pendingRequests = payrollCloseout?.pendingRequests || [];
+      try {
+        const { data, error } = await supabase
+          .from("time_off_requests")
+          .select("id, employee_id, entry_type, from_date, to_date, note, status")
+          .eq("status", "pending")
+          .lte("from_date", payrollCheckRange.to)
+          .gte("to_date", payrollCheckRange.from);
+        if (error) throw error;
+        pendingRequests = data || [];
+      } catch (requestError) {
+        console.warn("[MonthlyOverview] offene Freigaben vor Monatsabschluss konnten nicht geladen werden:", requestError?.message || requestError);
+      }
+      const pendingCount = pendingRequests.length;
+      const missingCount = check?.missingCount || 0;
+      const warningCount = check?.warnings?.length || 0;
+      const auditCount = check?.auditRows?.length || 0;
+      const hasIssues = missingCount > 0 || warningCount > 0 || auditCount > 0 || pendingCount > 0;
+
+      const issueText = hasIssues
+        ? `\n\nAchtung:\n- Fehlende Einträge: ${missingCount}\n- Warnungen: ${warningCount}\n- Änderungen/Audit: ${auditCount}\n- Offene Urlaub/ZA-Freigaben: ${pendingCount}\n\nTrotzdem abschließen?`
+        : "";
+
+      if (!window.confirm(`Monat ${payrollCheckRange.label} abschließen, sperren und Lohn-PDF erstellen?${issueText}`)) return;
+
+      const actorId = asAuditIdOrNull(session?.id);
+      await setMonthLocked(
+        supabase,
+        payrollCheckRange.from,
+        true,
+        actorId,
+        `Lohnverrechnung abgeschlossen: ${payrollCheckRange.label}`
+      );
+
+      await refreshMonthLockInfo();
+      await loadPayrollCloseoutStatus();
+      await exportLohnverrechnungPDF(payrollCheckRange, payrollCandidateEmployees);
+    } catch (err) {
+      console.error("Monatsabschluss Fehler:", err);
+      alert(`Monatsabschluss Fehler:\n${err?.message || err}`);
+    } finally {
+      setPayrollCloseoutBusy(false);
     }
   }
 
@@ -2458,6 +2645,93 @@ export default function MonthlyOverview() {
             )}
           </div>
         </div>
+
+        {isAdmin && (
+          <div className="hbz-card month-filter-card month-tool-card month-tool-card--check">
+            <div className="month-card-title">Monatsabschluss Lohnverrechnung</div>
+            <div className="month-main-subtitle">
+              Vormonat: <b>{payrollCheckRange.label}</b> · Status:{" "}
+              <b>{payrollCloseout?.lock?.locked ? "abgeschlossen / gesperrt" : "offen"}</b>
+              {payrollCloseout?.lock?.locked_at
+                ? ` seit ${formatDateTimeAT(payrollCloseout.lock.locked_at)}`
+                : ""}
+            </div>
+
+            <div className="month-summary-grid" style={{ marginTop: 12 }}>
+              <div className="month-summary-card month-summary-card--entries">
+                <div>
+                  <div className="month-summary-label">Fehlende Einträge</div>
+                  <div className="month-summary-value">
+                    {payrollCloseoutLoading ? "…" : payrollCloseout?.check?.missingCount ?? "—"}
+                  </div>
+                </div>
+              </div>
+              <div className="month-summary-card month-summary-card--hours">
+                <div>
+                  <div className="month-summary-label">Warnungen</div>
+                  <div className="month-summary-value">
+                    {payrollCloseoutLoading ? "…" : payrollCloseout?.check?.warnings?.length ?? "—"}
+                  </div>
+                </div>
+              </div>
+              <div className="month-summary-card month-summary-card--people">
+                <div>
+                  <div className="month-summary-label">Offene Urlaub/ZA</div>
+                  <div className="month-summary-value">
+                    {payrollCloseoutLoading ? "…" : payrollCloseout?.pendingRequests?.length ?? "—"}
+                  </div>
+                </div>
+              </div>
+              <div className="month-summary-card month-summary-card--travel">
+                <div>
+                  <div className="month-summary-label">Nach Abschluss geändert</div>
+                  <div className="month-summary-value">
+                    {payrollCloseoutLoading ? "…" : payrollCloseout?.afterLockAuditRows?.length ?? 0}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {payrollCloseout?.pendingRequests?.length > 0 && (
+              <div className="hbz-alert hbz-alert-warning" style={{ marginTop: 12 }}>
+                Es gibt noch offene Urlaub/ZA-Freigaben im Zeitraum. Bitte vor dem Abschluss prüfen.
+              </div>
+            )}
+
+            {payrollCloseout?.afterLockAuditRows?.length > 0 && (
+              <div className="hbz-alert hbz-alert-warning" style={{ marginTop: 12 }}>
+                Nach dem Monatsabschluss wurden noch Stunden geändert. Bitte vor der Lohnverrechnung kontrollieren.
+              </div>
+            )}
+
+            <div className="month-chip-actions" style={{ marginTop: 12 }}>
+              <button
+                type="button"
+                className="hbz-btn"
+                disabled={payrollCloseoutLoading || payrollCloseoutBusy}
+                onClick={loadPayrollCloseoutStatus}
+              >
+                Status prüfen
+              </button>
+              <button
+                type="button"
+                className="hbz-btn"
+                disabled={payrollCloseoutLoading || payrollCloseoutBusy}
+                onClick={() => runPayrollCheck(payrollCandidateEmployees.map((e) => e.id).filter(Boolean))}
+              >
+                Lohncheck öffnen
+              </button>
+              <button
+                type="button"
+                className="hbz-btn hbz-btn-primary"
+                disabled={payrollCloseoutLoading || payrollCloseoutBusy || !payrollCandidateEmployees.length}
+                onClick={closePayrollMonth}
+              >
+                {payrollCloseoutBusy ? "Schließe ab…" : "Abschließen, sperren & PDF"}
+              </button>
+            </div>
+          </div>
+        )}
 
         {isAdmin && (
           <div className="hbz-card month-filter-card month-tool-card month-tool-card--lock">

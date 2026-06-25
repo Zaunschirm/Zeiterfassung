@@ -69,12 +69,9 @@ const formatTemp = (value) =>
 const formatPrecip = (value) =>
   typeof value === "number" && !Number.isNaN(value) ? `${value.toFixed(1)} mm` : "—";
 
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
 const asUuidOrNull = (value) => {
-  const text = value == null ? "" : String(value);
-  return UUID_RE.test(text) ? text : null;
+  const text = value == null ? "" : String(value).trim();
+  return text || null;
 };
 
 const formatDateTimeAT = (value) => {
