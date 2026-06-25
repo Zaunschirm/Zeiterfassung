@@ -145,7 +145,7 @@ export default function App() {
         }
 
         if (!cancelled) {
-          setPendingTimeOffRequestCount(Number(count || 0));
+          setPendingTimeOffRequestCount(Number(count ?? data?.length ?? 0));
           setPendingTimeOffRequests(
             (data || []).map((request) => ({
               ...request,
@@ -277,7 +277,7 @@ export default function App() {
             />
 
             <div className="app-page">
-              {isAdmin && pendingTimeOffRequestCount > 0 && (
+              {isAdmin && (pendingTimeOffRequestCount > 0 || pendingTimeOffRequests.length > 0) && (
                 <section className="admin-approval-card" aria-label="Offene Urlaub und ZA Freigaben">
                   <div className="admin-approval-head">
                     <div>
