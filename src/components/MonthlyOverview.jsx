@@ -303,6 +303,10 @@ const isAbsenceRow = isAbsenceEntry;
 const isPayrollCheckEmployee = () => true;
 
 const isBadWeatherRow = (r) => r?.bad_weather === true || r?.bad_weather === "true";
+const stripAbsencePrefix = (note) =>
+  String(note || "")
+    .replace(/^\s*\[(Urlaub|Krank|Zeitausgleich|Schlechtwetter)\]\s*/i, "")
+    .trim();
 const rowWorkMinutes = (r) => Math.max((r.start_min ?? r.from_min ?? 0) - 0, 0) && Math.max((r.end_min ?? r.to_min ?? 0) - (r.start_min ?? r.from_min ?? 0) - (r.break_min || 0), 0);
 const getProjectAddress = (r, projects = []) => {
   const prj = projects.find((p) => String(p.id) === String(r.project_id));
@@ -1567,6 +1571,8 @@ export default function MonthlyOverview() {
           timeCompDates: [],
           timeCompHours: 0,
           sickHours: 0,
+          badWeatherRows: [],
+          badWeatherHours: 0,
           holidayRows: [],
           holidayHours: 0,
           rows: [],
@@ -1608,6 +1614,18 @@ export default function MonthlyOverview() {
           const za = parseZaHours(r.za_hours) || (Number(getEmployeeSollHoursForDay(d.emp, r.work_date)) || 0);
           d.timeCompHours += za;
           return;
+        }
+
+        if (isBadWeatherRow(r)) {
+          const badWeatherMinutes = Number(r.bad_weather_minutes || 0) || Math.max(mins - travel, 0);
+          if (badWeatherMinutes > 0) {
+            d.badWeatherRows.push({
+              date: r.work_date,
+              minutes: badWeatherMinutes,
+              note: stripAbsencePrefix(r.note || ""),
+            });
+            d.badWeatherHours += h2(badWeatherMinutes);
+          }
         }
 
         d.recordedMinutes += mins;
@@ -1724,6 +1742,7 @@ export default function MonthlyOverview() {
         vacationDays: 0,
         sickDays: 0,
         dietDays: 0,
+        badWeatherHours: 0,
         paidHours: 0,
         sollHours: 0,
         privatePkwKm: 0,
@@ -1797,6 +1816,17 @@ export default function MonthlyOverview() {
           ]);
         }
 
+        if (d.badWeatherRows.length) {
+          detailRows.push([
+            safePdfText(d.name),
+            "Schlechtwetter",
+            d.badWeatherRows
+              .map((row) => `${formatDateAT(row.date)} (${formatHoursAT(h2(row.minutes))}${row.note ? `, ${safePdfText(row.note)}` : ""})`)
+              .join(", "),
+            `${formatHoursAT(d.badWeatherHours)} Schlechtwetter`,
+          ]);
+        }
+
         totals.recordedHours += recordedHours;
         totals.travelHours += travelHours;
         totals.holidayHours += d.holidayHours;
@@ -1805,6 +1835,7 @@ export default function MonthlyOverview() {
         totals.vacationDays += d.vacationDates.length;
         totals.sickDays += d.sickDates.length;
         totals.dietDays += d.workDays.size;
+        totals.badWeatherHours += d.badWeatherHours;
         totals.paidHours += paidHours;
         totals.sollHours += sollHoursInRange;
         totals.privatePkwKm += privatePkwKm;
@@ -1819,6 +1850,7 @@ export default function MonthlyOverview() {
           formatDaysAT(d.vacationDates.length),
           formatDaysAT(d.sickDates.length),
           formatDaysAT(d.workDays.size),
+          formatHoursAT(d.badWeatherHours),
           formatHoursAT(sollHoursInRange),
           formatHoursAT(paidHours),
           privatePkwKm > 0 ? `${formatNumberAT(privatePkwKm, 1)} km` : "—",
@@ -1835,12 +1867,14 @@ export default function MonthlyOverview() {
         formatDaysAT(totals.vacationDays),
         formatDaysAT(totals.sickDays),
         formatDaysAT(totals.dietDays),
+        formatHoursAT(totals.badWeatherHours),
         formatHoursAT(totals.sollHours),
         formatHoursAT(totals.paidHours),
         totals.privatePkwKm > 0 ? `${formatNumberAT(totals.privatePkwKm, 1)} km` : "—",
       ]);
 
       const showPrivatePkwColumn = totals.privatePkwKm > 0;
+      const showBadWeatherColumn = totals.badWeatherHours > 0;
       const payrollHead = [
         "Mitarbeiter",
         "Arbeit inkl. Fahrzeit",
@@ -1851,14 +1885,23 @@ export default function MonthlyOverview() {
         "Urlaub Tage",
         "Krank Tage",
         "Diäten Tage",
+        ...(showBadWeatherColumn ? ["Schlechtwetter"] : []),
         "Sollstunden",
         "Lohnstunden gesamt",
         ...(showPrivatePkwColumn ? ["Privat-PKW"] : []),
       ];
 
-      const payrollBody = showPrivatePkwColumn
-        ? employeeBody
-        : employeeBody.map((row) => row.slice(0, 11));
+      const payrollBody = employeeBody.map((row) => {
+        const base = [
+          ...row.slice(0, 9),
+          ...(showBadWeatherColumn ? [row[9]] : []),
+          row[10],
+          row[11],
+          ...(showPrivatePkwColumn ? [row[12]] : []),
+        ];
+        return base;
+      });
+      const paidHoursColumnIndex = payrollHead.indexOf("Lohnstunden gesamt");
 
       autoTable(doc, {
         head: [payrollHead],
@@ -1899,7 +1942,7 @@ export default function MonthlyOverview() {
             data.cell.styles.fontStyle = "bold";
             data.cell.styles.fillColor = [239, 232, 224];
           }
-          if (data.section === "body" && data.column.index === 9) {
+          if (data.section === "body" && data.column.index === paidHoursColumnIndex) {
             data.cell.styles.fontStyle = "bold";
           }
         },
