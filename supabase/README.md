@@ -10,3 +10,7 @@ ausgeführt werden. Alternativ kann ein mit dem Projekt verbundenes Supabase-CLI
 idempotente Monatsgutschrift für Urlaub. Bis diese Funktion in der Datenbank
 installiert ist, verwendet die App weiterhin den bisherigen kompatiblen
 Client-Fallback.
+
+`202606250001_create_time_off_requests.sql` legt die Freigabe-Tabelle fuer
+Urlaub-/ZA-Antraege an. Ohne diese Migration koennen Mitarbeiter keine neuen
+Antraege senden und Admins sehen keine offenen Freigaben.

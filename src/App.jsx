@@ -22,6 +22,7 @@ export default function App() {
   const [loggedIn, setLoggedIn] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
   const [role, setRole] = useState(null);
+  const [pendingTimeOffRequestCount, setPendingTimeOffRequestCount] = useState(0);
 
   const location = useLocation();
   const navigate = useNavigate();
@@ -32,6 +33,7 @@ export default function App() {
   const canViewYearOverview = hasPermission(currentUser, "viewYearOverview");
   const canManageProjects = hasPermission(currentUser, "manageProjects");
   const canManageEmployees = hasPermission(currentUser, "manageEmployees");
+  const isAdmin = String(role || currentUser?.role || "").toLowerCase() === "admin";
 
   useEffect(() => {
     let mounted = true;
@@ -80,6 +82,39 @@ export default function App() {
       navigate("/zeiterfassung", { replace: true });
     }
   }, [loggedIn, location.pathname, navigate]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadPendingTimeOffRequests() {
+      if (!loggedIn || !isAdmin) {
+        setPendingTimeOffRequestCount(0);
+        return;
+      }
+
+      try {
+        const { count, error } = await supabase
+          .from("time_off_requests")
+          .select("id", { count: "exact", head: true })
+          .eq("status", "pending");
+
+        if (error) throw error;
+        if (!cancelled) setPendingTimeOffRequestCount(Number(count || 0));
+      } catch (e) {
+        // Nicht blockierend: Falls die Migration noch nicht ausgeführt wurde,
+        // bleibt die App normal nutzbar.
+        console.warn("[App] Offene Urlaub/ZA-Anträge konnten nicht geladen werden:", e?.message || e);
+        if (!cancelled) setPendingTimeOffRequestCount(0);
+      }
+    }
+
+    loadPendingTimeOffRequests();
+    window.addEventListener("hbz-time-off-requests-changed", loadPendingTimeOffRequests);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("hbz-time-off-requests-changed", loadPendingTimeOffRequests);
+    };
+  }, [loggedIn, isAdmin]);
 
   const handleLogin = async (user, persistent = false) => {
     if (!user) return;
@@ -185,6 +220,18 @@ export default function App() {
             />
 
             <div className="app-page">
+              {isAdmin && pendingTimeOffRequestCount > 0 && (
+                <div className="hbz-alert hbz-alert-info" style={{ marginBottom: 12 }}>
+                  {pendingTimeOffRequestCount} offene Urlaub/ZA-Freigabe{pendingTimeOffRequestCount === 1 ? "" : "n"} warten auf Prüfung.{" "}
+                  <button
+                    type="button"
+                    className="hbz-link-button"
+                    onClick={() => navigate("/urlaub")}
+                  >
+                    Jetzt prüfen
+                  </button>
+                </div>
+              )}
               <Routes>
                 <Route path="/zeiterfassung" element={<DaySlider />} />
                 <Route path="/projekte" element={canManageProjects ? <ProjectAdmin /> : <Navigate to="/zeiterfassung" replace />} />

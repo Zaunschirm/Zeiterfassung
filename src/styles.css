@@ -45,6 +45,29 @@ body::-webkit-scrollbar-thumb {
   margin-top: 14px;
 }
 
+.hbz-alert {
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-weight: 700;
+}
+
+.hbz-alert-info {
+  border: 1px solid rgba(70, 115, 170, 0.28);
+  background: #f2f7ff;
+  color: #244d7a;
+}
+
+.hbz-link-button {
+  border: 0;
+  background: transparent;
+  color: #184f91;
+  font: inherit;
+  font-weight: 900;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0;
+}
+
 .app-nav {
   display: flex;
   align-items: center;

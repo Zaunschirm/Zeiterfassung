@@ -281,6 +281,9 @@ export default function VacationEntry({ currentUser = null } = {}) {
   const [vacationAdjustDays, setVacationAdjustDays] = useState("");
   const [vacationAdjustNote, setVacationAdjustNote] = useState("");
   const [vacationAdjustSaving, setVacationAdjustSaving] = useState(false);
+  const [timeOffRequests, setTimeOffRequests] = useState([]);
+  const [timeOffRequestsLoading, setTimeOffRequestsLoading] = useState(false);
+  const [timeOffRequestBusyId, setTimeOffRequestBusyId] = useState("");
   const monthlyAccrualDoneRef = useRef(false);
 
   const calendarAnchorDate = useMemo(() => `${calendarMonth || todayISO().slice(0, 7)}-01`, [calendarMonth]);
@@ -368,6 +371,46 @@ export default function VacationEntry({ currentUser = null } = {}) {
     loadTimeOff();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [calendarFrom, calendarTo, employees.length]);
+
+  async function loadTimeOffRequests() {
+    if (!targetEmployee?.id && !isAdmin) {
+      setTimeOffRequests([]);
+      return;
+    }
+
+    try {
+      setTimeOffRequestsLoading(true);
+      let query = supabase
+        .from("time_off_requests")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(80);
+
+      if (isAdmin) {
+        query = query.eq("status", "pending");
+      } else {
+        query = query
+          .eq("employee_id", String(targetEmployee.id))
+          .in("status", ["pending", "approved", "rejected"]);
+      }
+
+      const { data, error: requestError } = await query;
+      if (requestError) throw requestError;
+      setTimeOffRequests(data || []);
+    } catch (e) {
+      // Nicht blockierend: Falls die Migration noch fehlt, bleibt die Seite bedienbar.
+      console.warn("[VacationEntry] Freigabe-Anträge konnten nicht geladen werden", e?.message || e);
+      setTimeOffRequests([]);
+    } finally {
+      setTimeOffRequestsLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (employees.length === 0) return;
+    loadTimeOffRequests();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [employees.length, isAdmin, targetEmployee?.id]);
 
   const vacationAccountYear = useMemo(() => Number(String(fromDate || todayISO()).slice(0, 4)) || new Date().getFullYear(), [fromDate]);
 
@@ -822,6 +865,14 @@ export default function VacationEntry({ currentUser = null } = {}) {
     });
   }, [calendarFrom, calendarTo, timeOffRows, employeeById]);
 
+  const visibleTimeOffRequests = useMemo(() => {
+    return (timeOffRequests || []).map((request) => ({
+      ...request,
+      employee: employeeById.get(String(request.employee_id)) || null,
+      daysCount: Array.isArray(request.days) ? request.days.length : 0,
+    }));
+  }, [timeOffRequests, employeeById]);
+
   function shiftCalendarMonth(delta) {
     const base = parseDateLocal(`${calendarMonth || todayISO().slice(0, 7)}-01`) || new Date();
     base.setMonth(base.getMonth() + delta);
@@ -850,6 +901,43 @@ export default function VacationEntry({ currentUser = null } = {}) {
     }
     if (preview.length === 0) {
       setError(`Für diesen Zeitraum gibt es laut Arbeitszeitmodell keine ${entryType === "za" ? "ZA-Tage" : "Urlaubstage"} zum Eintragen.`);
+      return;
+    }
+
+    if (!isAdmin) {
+      try {
+        setSaving(true);
+        const requestDays = preview.map((item) => ({
+          date: item.date,
+          requiredMinutes: Number(item.requiredMinutes || 0),
+          startMin: Number(item.startMin || 0),
+          weekType: item.weekType || "",
+          holidayName: item.holidayName || "",
+          autoShortFriday: !!item.autoShortFriday,
+        }));
+
+        const { error: requestError } = await supabase.from("time_off_requests").insert({
+          employee_id: String(targetEmployee.id),
+          requested_by: String(session?.id || targetEmployee.id),
+          entry_type: entryType,
+          from_date: fromDate,
+          to_date: toDate,
+          days: requestDays,
+          note: note.trim() || null,
+          status: "pending",
+        });
+        if (requestError) throw requestError;
+
+        setMessage(`${entryType === "za" ? "ZA" : "Urlaub"}-Antrag wurde an den Admin gesendet.`);
+        setNote("");
+        await loadTimeOffRequests();
+        window.dispatchEvent(new CustomEvent("hbz-time-off-requests-changed"));
+      } catch (e) {
+        console.error("[VacationEntry] request save error", e);
+        setError(e?.message || "Antrag konnte nicht gespeichert werden.");
+      } finally {
+        setSaving(false);
+      }
       return;
     }
 
@@ -983,6 +1071,166 @@ export default function VacationEntry({ currentUser = null } = {}) {
     }
   }
 
+  async function approveTimeOffRequest(request) {
+    if (!isAdmin || !request?.id) return;
+    const employee = employeeById.get(String(request.employee_id));
+    if (!employee) {
+      setError("Mitarbeiter zum Antrag wurde nicht gefunden.");
+      return;
+    }
+
+    const requestDays = Array.isArray(request.days) ? request.days : [];
+    if (requestDays.length === 0) {
+      setError("Der Antrag enthält keine Tage.");
+      return;
+    }
+
+    const requestType = request.entry_type === "za" ? "za" : "urlaub";
+    const requestDates = requestDays.map((item) => String(item.date || "").slice(0, 10)).filter(Boolean).sort();
+    const existingFrom = requestDates[0];
+    const existingTo = requestDates[requestDates.length - 1];
+    const adminNote = window.prompt("Notiz zur Freigabe optional:", "") || "";
+
+    try {
+      setTimeOffRequestBusyId(String(request.id));
+      setError("");
+      setMessage("");
+
+      const monthsToCheck = Array.from(new Set(requestDates.map((dateValue) => String(dateValue).slice(0, 7))));
+      for (const ym of monthsToCheck) {
+        await ensureMonthUnlocked(supabase, ym);
+      }
+
+      const { data: existing, error: existingError } = await supabase
+        .from("time_entries")
+        .select("*")
+        .eq("employee_id", employee.id)
+        .gte("work_date", existingFrom)
+        .lte("work_date", existingTo);
+      if (existingError) throw existingError;
+
+      const existingDates = new Set(
+        (existing || [])
+          .filter((row) => requestDates.includes(String(row.work_date || "").slice(0, 10)))
+          .map((row) => String(row.work_date || "").slice(0, 10))
+      );
+      if (existingDates.size > 0) {
+        throw new Error(`Freigabe nicht möglich: Für ${Array.from(existingDates).map(formatDateAT).join(", ")} gibt es bereits Einträge.`);
+      }
+
+      const prefix = requestType === "za" ? "[Zeitausgleich]" : "[Urlaub]";
+      const rowsToInsert = requestDays.map((item) => {
+        const requiredMinutes = Number(item.requiredMinutes || 0);
+        return {
+          employee_id: employee.id,
+          work_date: String(item.date).slice(0, 10),
+          project_id: null,
+          project: null,
+          start_min: 0,
+          end_min: 0,
+          break_min: 0,
+          travel_minutes: 0,
+          travel_cost_center: "FAHRZEIT",
+          crane_hours: 0,
+          private_pkw_km: 0,
+          absence_type: requestType === "za" ? "za" : "urlaub",
+          za_hours: requestType === "za" ? requiredMinutes / 60 : 0,
+          bad_weather: false,
+          bad_weather_minutes: 0,
+          weather_auto: null,
+          weather_manual: null,
+          weather_final: null,
+          note: `${prefix}${String(request.note || "").trim() ? ` ${String(request.note).trim()}` : ""}`,
+        };
+      });
+
+      const vacationDelta = calculateVacationBalanceDelta({
+        entryType: requestType,
+        insertedCount: rowsToInsert.length,
+        replacedRows: [],
+      });
+      let transactionVacationDays = vacationEntitlementDays(employee);
+      const applyVacationDelta = async (deltaDays) => {
+        const employeeAtCurrentBalance = {
+          ...employee,
+          vacation_entitlement_days: transactionVacationDays,
+        };
+        await changeVacationCurrentDays(employeeAtCurrentBalance, deltaDays, "", { recordAudit: false });
+        transactionVacationDays = roundVacationDays(transactionVacationDays + deltaDays);
+      };
+
+      await replaceTimeOffEntriesSafely({
+        client: supabase,
+        rowsToInsert,
+        deleteIds: [],
+        vacationDelta,
+        applyVacationDelta,
+      });
+
+      if (vacationDelta) {
+        const changedDays = Math.abs(vacationDelta);
+        await recordVacationAdjustment(
+          employee,
+          vacationDelta,
+          `Urlaub freigegeben: ${changedDays} Tag${changedDays === 1 ? "" : "e"}`
+        );
+      }
+
+      const { error: updateError } = await supabase
+        .from("time_off_requests")
+        .update({
+          status: "approved",
+          decided_by: String(session?.id || ""),
+          decided_at: new Date().toISOString(),
+          admin_note: adminNote.trim() || null,
+        })
+        .eq("id", request.id);
+      if (updateError) throw updateError;
+
+      setMessage(`${requestType === "za" ? "ZA" : "Urlaub"}-Antrag freigegeben.`);
+      await loadTimeOff();
+      await loadVacationAccount();
+      await loadTimeOffRequests();
+      window.dispatchEvent(new CustomEvent("hbz-time-off-requests-changed"));
+    } catch (e) {
+      console.error("[VacationEntry] approve request error", e);
+      setError(e?.message || "Antrag konnte nicht freigegeben werden.");
+    } finally {
+      setTimeOffRequestBusyId("");
+    }
+  }
+
+  async function rejectTimeOffRequest(request) {
+    if (!isAdmin || !request?.id) return;
+    const reason = window.prompt("Grund für Ablehnung optional:", "");
+    if (reason === null) return;
+
+    try {
+      setTimeOffRequestBusyId(String(request.id));
+      setError("");
+      setMessage("");
+      const { error: updateError } = await supabase
+        .from("time_off_requests")
+        .update({
+          status: "rejected",
+          decided_by: String(session?.id || ""),
+          decided_at: new Date().toISOString(),
+          admin_note: reason.trim() || null,
+        })
+        .eq("id", request.id);
+      if (updateError) throw updateError;
+
+      setMessage("Antrag abgelehnt.");
+      await loadTimeOffRequests();
+      window.dispatchEvent(new CustomEvent("hbz-time-off-requests-changed"));
+    } catch (e) {
+      console.error("[VacationEntry] reject request error", e);
+      setError(e?.message || "Antrag konnte nicht abgelehnt werden.");
+    } finally {
+      setTimeOffRequestBusyId("");
+    }
+  }
+
   async function deleteTimeOff(row) {
     const emp = employeeById.get(String(row.employee_id));
     const allowed = isAdmin || sameEmployee(emp, session);
@@ -1058,6 +1306,60 @@ export default function VacationEntry({ currentUser = null } = {}) {
         {error && <div className="hbz-alert hbz-alert-error">{error}</div>}
         {message && <div className="hbz-alert hbz-alert-ok">{message}</div>}
 
+        {(isAdmin || visibleTimeOffRequests.length > 0) && (
+          <div className="vacation-request-panel">
+            <div className="vacation-request-head">
+              <div>
+                <div className="month-card-title">{isAdmin ? "Offene Freigaben" : "Meine Anträge"}</div>
+                <p className="hint">
+                  {isAdmin
+                    ? "Urlaub und ZA werden erst nach deiner Freigabe in Zeiterfassung und Konto übernommen."
+                    : "Deine Anträge werden vom Admin geprüft und danach freigegeben oder abgelehnt."}
+                </p>
+              </div>
+              {timeOffRequestsLoading ? <span className="badge-soft">lädt…</span> : <span className="badge-soft">{visibleTimeOffRequests.length}</span>}
+            </div>
+
+            {visibleTimeOffRequests.length === 0 ? (
+              <div className="hint">Keine offenen Anträge.</div>
+            ) : (
+              <div className="vacation-request-list">
+                {visibleTimeOffRequests.map((request) => {
+                  const requestTypeLabel = request.entry_type === "za" ? "Zeitausgleich" : "Urlaub";
+                  const busy = String(timeOffRequestBusyId) === String(request.id);
+                  return (
+                    <div key={request.id} className={`vacation-request-row status-${request.status}`}>
+                      <div>
+                        <div className="vacation-request-title">
+                          <span className={`vac-pill ${request.entry_type === "za" ? "za" : "vac"}`}>{requestTypeLabel}</span>
+                          <b>{request.employee ? getEmployeeLabel(request.employee) : `MA ${request.employee_id}`}</b>
+                          <span>{formatDateRangeAT(request.from_date, request.to_date)}</span>
+                        </div>
+                        <div className="hint">
+                          {request.daysCount} Tag{request.daysCount === 1 ? "" : "e"}
+                          {request.note ? ` · ${request.note}` : ""}
+                          {request.status !== "pending" ? ` · ${request.status === "approved" ? "freigegeben" : "abgelehnt"}` : ""}
+                          {request.admin_note ? ` · Admin: ${request.admin_note}` : ""}
+                        </div>
+                      </div>
+                      {isAdmin && request.status === "pending" && (
+                        <div className="vacation-request-actions">
+                          <button type="button" className="hbz-chip active" onClick={() => approveTimeOffRequest(request)} disabled={busy}>
+                            Freigeben
+                          </button>
+                          <button type="button" className="hbz-chip" onClick={() => rejectTimeOffRequest(request)} disabled={busy}>
+                            Ablehnen
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="vacation-form-grid" style={{ marginTop: 12 }}>
           <label className="hbz-field">
             <span className="hbz-label">Von</span>
@@ -1118,7 +1420,11 @@ export default function VacationEntry({ currentUser = null } = {}) {
             {preview.length} {entryType === "za" ? "ZA-Tag" : "Urlaubstag"}{preview.length === 1 ? "" : "e"} vorbereitet
           </span>
           <button type="button" className="save-btn lg" onClick={saveTimeOff} disabled={saving || preview.length === 0 || !targetEmployee}>
-            {saving ? "Speichere…" : entryType === "za" ? "Zeitausgleich eintragen" : "Urlaub eintragen"}
+            {saving
+              ? "Speichere…"
+              : isAdmin
+                ? (entryType === "za" ? "Zeitausgleich eintragen" : "Urlaub eintragen")
+                : (entryType === "za" ? "ZA-Antrag senden" : "Urlaubsantrag senden")}
           </button>
         </div>
       </section>
@@ -1407,6 +1713,14 @@ export default function VacationEntry({ currentUser = null } = {}) {
         .hbz-alert { border-radius: 12px; padding: 10px 12px; margin: 10px 0; font-weight: 700; }
         .hbz-alert-error { border: 1px solid #ff8b8b; background: #fff5f5; color: #8a1f1f; }
         .hbz-alert-ok { border: 1px solid #9bd3a6; background: #f2fff5; color: #1d6a30; }
+        .vacation-request-panel { margin: 12px 0 16px; padding: 14px; border: 1px solid rgba(91,126,166,.24); border-radius: 16px; background: #f5f8fc; }
+        .vacation-request-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 10px; }
+        .vacation-request-list { display: grid; gap: 8px; }
+        .vacation-request-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 11px; border: 1px solid rgba(91,126,166,.18); border-radius: 12px; background: #fff; }
+        .vacation-request-row.status-approved { border-color: rgba(60,140,80,.28); background: #f7fff8; }
+        .vacation-request-row.status-rejected { border-color: rgba(170,80,80,.28); background: #fff8f8; }
+        .vacation-request-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; color: #493321; }
+        .vacation-request-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
         .hint { color: #7d6756; font-size: 12px; }
         .hbz-info-line { border: 1px solid rgba(92, 68, 45, 0.16); background: rgba(255,255,255,0.62); border-radius: 12px; padding: 10px 12px; color: #4c3727; }
         .table-scroll { overflow-x: auto; }
