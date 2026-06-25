@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { getWeatherFinalLabel } from "../utils/weather";
 import { ensureMonthUnlocked } from "../utils/monthLock";
+import { deleteTimeEntry } from "../lib/timeEntries";
 
 const toHM = (mins = 0) =>
   `${String(Math.floor((mins ?? 0) / 60)).padStart(2, "0")}:${String(
@@ -155,11 +156,7 @@ export default function EntryTable({ date, currentUser = null, isAdmin = false }
       await ensureMonthUnlocked(supabase, entryToDelete?.work_date);
       await writeDeleteAudit(entryToDelete);
 
-      const { error } = await supabase
-        .from("time_entries")
-        .delete()
-        .eq("id", id);
-      if (error) throw error;
+      await deleteTimeEntry(supabase, id, { entry: entryToDelete });
       setRows((r) => r.filter((x) => x.id !== id));
     } catch (e) {
       alert(e?.message || "Löschen fehlgeschlagen.");

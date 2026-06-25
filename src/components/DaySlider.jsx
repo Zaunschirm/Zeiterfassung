@@ -1423,7 +1423,7 @@ export default function DaySlider() {
     if (!window.confirm("Eintrag wirklich löschen?")) return;
     try {
       await writeDeleteAudit(targetRow);
-      await deleteTimeEntry(supabase, id);
+      await deleteTimeEntry(supabase, id, { entry: targetRow });
       await loadEntries();
       await loadDailyCheckEntries();
     } catch (e) {

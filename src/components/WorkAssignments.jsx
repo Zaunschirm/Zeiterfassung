@@ -4,7 +4,7 @@ import { getSession } from "../lib/session";
 import { hasPermission } from "../lib/permissions";
 import { getBuakWeekType, getHolidayName, getEmployeeWorkDay, hmToMinutes } from "../utils/time";
 import { ensureMonthUnlocked } from "../utils/monthLock";
-import { createTimeEntries } from "../lib/timeEntries";
+import { createTimeEntries, deleteTimeEntry } from "../lib/timeEntries";
 import { getTimeEntryAbsenceType } from "../utils/timeEntryAbsences";
 
 function formatLocalDate(date) {
@@ -980,15 +980,7 @@ export default function WorkAssignments() {
     try {
       await ensureMonthUnlocked(supabase, dateStr);
       setBusyKey(`delete-${kind}-${row.id}`);
-      const { error } = await supabase.from("time_entries").delete().eq("id", row.id);
-      if (error) throw error;
-
-      if (kind === "urlaub") {
-        const employee = employees.find((emp) => String(emp.id) === String(row.employee_id));
-        if (employee) {
-          await changeVacationCurrentDays(employee, 1, `Urlaub aus Arbeitseinteilung gelöscht: ${dateStr}`);
-        }
-      }
+      await deleteTimeEntry(supabase, row.id, { entry: row });
 
       await markAssignmentChanged(row.employee_id, dateStr);
       await loadAssignments();

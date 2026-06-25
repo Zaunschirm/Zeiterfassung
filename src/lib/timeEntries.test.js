@@ -64,6 +64,59 @@ describe("time entry persistence", () => {
     expect(eq).toHaveBeenCalledWith("id", "entry-1");
   });
 
+  it("restores one vacation day when deleting a vacation entry", async () => {
+    const employeeMaybeSingle = vi.fn().mockResolvedValue({
+      data: { id: 13, vacation_entitlement_days: 10 },
+      error: null,
+    });
+    const employeeEqForSelect = vi.fn(() => ({ maybeSingle: employeeMaybeSingle }));
+    const employeeSelect = vi.fn(() => ({ eq: employeeEqForSelect }));
+    const employeeEqForUpdate = vi.fn().mockResolvedValue({ error: null });
+    const employeeUpdate = vi.fn(() => ({ eq: employeeEqForUpdate }));
+
+    const vacationInsert = vi.fn().mockResolvedValue({ error: null });
+
+    const timeEntryEq = vi.fn().mockResolvedValue({ error: null });
+    const timeEntryDelete = vi.fn(() => ({ eq: timeEntryEq }));
+
+    const client = {
+      from: vi.fn((table) => {
+        if (table === "employees") {
+          return { select: employeeSelect, update: employeeUpdate };
+        }
+        if (table === "vacation_adjustments") {
+          return { insert: vacationInsert };
+        }
+        if (table === "time_entries") {
+          return { delete: timeEntryDelete };
+        }
+        throw new Error(`Unexpected table ${table}`);
+      }),
+    };
+
+    await expect(
+      deleteTimeEntry(client, "entry-urlaub", {
+        entry: {
+          id: "entry-urlaub",
+          employee_id: 13,
+          work_date: "2026-06-26",
+          note: "[Urlaub]",
+        },
+      })
+    ).resolves.toBeUndefined();
+
+    expect(employeeUpdate).toHaveBeenCalledWith({ vacation_entitlement_days: 11 });
+    expect(vacationInsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        employee_id: "13",
+        days: 1,
+        note: "Urlaub gelöscht: 2026-06-26",
+      })
+    );
+    expect(timeEntryDelete).toHaveBeenCalledOnce();
+    expect(timeEntryEq).toHaveBeenCalledWith("id", "entry-urlaub");
+  });
+
   it("forwards database errors", async () => {
     const databaseError = new Error("database unavailable");
     const select = vi.fn().mockResolvedValue({ data: null, error: databaseError });

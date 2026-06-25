@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { getSession } from "../lib/session";
+import { deleteTimeEntry } from "../lib/timeEntries";
 import {
   getBuakWeekType,
   getBuakSollHoursForWeek,
@@ -860,9 +861,9 @@ export default function MonthlyOverview() {
     }
     if (!confirm("Eintrag wirklich löschen?")) return;
 
-    const { error } = await supabase.from("time_entries").delete().eq("id", id);
-
-    if (error) {
+    try {
+      await deleteTimeEntry(supabase, id, { entry: targetRow });
+    } catch (error) {
       console.error("delete error:", error);
       alert("Löschen fehlgeschlagen.");
       return;
