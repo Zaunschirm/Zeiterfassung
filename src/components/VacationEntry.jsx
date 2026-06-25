@@ -873,6 +873,18 @@ export default function VacationEntry({ currentUser = null } = {}) {
     }));
   }, [timeOffRequests, employeeById]);
 
+  const timeOffRequestSummary = useMemo(() => {
+    return visibleTimeOffRequests.reduce(
+      (summary, request) => {
+        summary.total += 1;
+        if (request.entry_type === "za") summary.za += 1;
+        else summary.vacation += 1;
+        return summary;
+      },
+      { total: 0, vacation: 0, za: 0 }
+    );
+  }, [visibleTimeOffRequests]);
+
   function shiftCalendarMonth(delta) {
     const base = parseDateLocal(`${calendarMonth || todayISO().slice(0, 7)}-01`) || new Date();
     base.setMonth(base.getMonth() + delta);
@@ -1316,7 +1328,17 @@ export default function VacationEntry({ currentUser = null } = {}) {
                     : "Deine Anträge werden vom Admin geprüft und danach freigegeben oder abgelehnt."}
                 </p>
               </div>
-              {timeOffRequestsLoading ? <span className="badge-soft">lädt…</span> : <span className="badge-soft">{visibleTimeOffRequests.length}</span>}
+              <div className="vacation-request-summary" aria-label="Antragsübersicht">
+                {timeOffRequestsLoading ? (
+                  <span className="badge-soft">lädt…</span>
+                ) : (
+                  <>
+                    <span className="vacation-request-count strong">{timeOffRequestSummary.total}</span>
+                    <span className="vacation-request-count vac">{timeOffRequestSummary.vacation} Urlaub</span>
+                    <span className="vacation-request-count za">{timeOffRequestSummary.za} ZA</span>
+                  </>
+                )}
+              </div>
             </div>
 
             {visibleTimeOffRequests.length === 0 ? (
@@ -1326,25 +1348,29 @@ export default function VacationEntry({ currentUser = null } = {}) {
                 {visibleTimeOffRequests.map((request) => {
                   const requestTypeLabel = request.entry_type === "za" ? "Zeitausgleich" : "Urlaub";
                   const busy = String(timeOffRequestBusyId) === String(request.id);
+                  const requestStatusLabel =
+                    request.status === "approved" ? "Freigegeben" :
+                    request.status === "rejected" ? "Abgelehnt" :
+                    "Offen";
                   return (
                     <div key={request.id} className={`vacation-request-row status-${request.status}`}>
-                      <div>
+                      <div className="vacation-request-body">
                         <div className="vacation-request-title">
                           <span className={`vac-pill ${request.entry_type === "za" ? "za" : "vac"}`}>{requestTypeLabel}</span>
+                          <span className={`vacation-request-status status-${request.status}`}>{requestStatusLabel}</span>
                           <b>{request.employee ? getEmployeeLabel(request.employee) : `MA ${request.employee_id}`}</b>
-                          <span>{formatDateRangeAT(request.from_date, request.to_date)}</span>
+                          <span className="vacation-request-date">{formatDateRangeAT(request.from_date, request.to_date)}</span>
                         </div>
                         <div className="hint">
-                          {request.daysCount} Tag{request.daysCount === 1 ? "" : "e"}
+                          <span className="vacation-request-meta-item">{request.daysCount} Tag{request.daysCount === 1 ? "" : "e"}</span>
                           {request.note ? ` · ${request.note}` : ""}
-                          {request.status !== "pending" ? ` · ${request.status === "approved" ? "freigegeben" : "abgelehnt"}` : ""}
                           {request.admin_note ? ` · Admin: ${request.admin_note}` : ""}
                         </div>
                       </div>
                       {isAdmin && request.status === "pending" && (
                         <div className="vacation-request-actions">
                           <button type="button" className="hbz-chip active" onClick={() => approveTimeOffRequest(request)} disabled={busy}>
-                            Freigeben
+                            {busy ? "Läuft…" : "Freigeben"}
                           </button>
                           <button type="button" className="hbz-chip" onClick={() => rejectTimeOffRequest(request)} disabled={busy}>
                             Ablehnen
@@ -1712,13 +1738,25 @@ export default function VacationEntry({ currentUser = null } = {}) {
         .hbz-alert { border-radius: 12px; padding: 10px 12px; margin: 10px 0; font-weight: 700; }
         .hbz-alert-error { border: 1px solid #ff8b8b; background: #fff5f5; color: #8a1f1f; }
         .hbz-alert-ok { border: 1px solid #9bd3a6; background: #f2fff5; color: #1d6a30; }
-        .vacation-request-panel { margin: 12px 0 16px; padding: 14px; border: 1px solid rgba(91,126,166,.24); border-radius: 16px; background: #f5f8fc; }
-        .vacation-request-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 10px; }
-        .vacation-request-list { display: grid; gap: 8px; }
-        .vacation-request-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 11px; border: 1px solid rgba(91,126,166,.18); border-radius: 12px; background: #fff; }
+        .vacation-request-panel { margin: 12px 0 16px; padding: 14px; border: 1px solid rgba(91,126,166,.24); border-radius: 18px; background: linear-gradient(180deg, #f8fbff, #f1f6fb); box-shadow: inset 0 0 0 1px rgba(255,255,255,.7); }
+        .vacation-request-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 12px; }
+        .vacation-request-summary { display: flex; align-items: center; justify-content: flex-end; gap: 6px; flex-wrap: wrap; min-width: 150px; }
+        .vacation-request-count { display: inline-flex; align-items: center; justify-content: center; min-height: 26px; padding: 4px 9px; border-radius: 999px; border: 1px solid rgba(91,126,166,.16); background: #fff; color: #526980; font-size: 12px; font-weight: 900; white-space: nowrap; }
+        .vacation-request-count.strong { min-width: 32px; background: #456f9d; color: #fff; border-color: rgba(69,111,157,.2); }
+        .vacation-request-count.vac { background: var(--vac-blue-soft); color: #294f88; }
+        .vacation-request-count.za { background: var(--vac-gold-soft); color: #795100; }
+        .vacation-request-list { display: grid; gap: 9px; }
+        .vacation-request-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 11px 12px; border: 1px solid rgba(91,126,166,.18); border-radius: 14px; background: #fff; box-shadow: 0 8px 18px rgba(61,82,105,.06); }
         .vacation-request-row.status-approved { border-color: rgba(60,140,80,.28); background: #f7fff8; }
         .vacation-request-row.status-rejected { border-color: rgba(170,80,80,.28); background: #fff8f8; }
+        .vacation-request-body { min-width: 0; }
         .vacation-request-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; color: #493321; }
+        .vacation-request-status { display: inline-flex; align-items: center; min-height: 22px; padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 900; letter-spacing: .01em; }
+        .vacation-request-status.status-pending { background: #fff8e8; color: #8b5f00; border: 1px solid rgba(139,95,0,.14); }
+        .vacation-request-status.status-approved { background: #eaf8ee; color: #236b36; border: 1px solid rgba(35,107,54,.16); }
+        .vacation-request-status.status-rejected { background: #fff0f0; color: #943030; border: 1px solid rgba(148,48,48,.16); }
+        .vacation-request-date { color: #6f5745; font-size: 12px; font-weight: 800; }
+        .vacation-request-meta-item { font-weight: 900; color: #5d7287; }
         .vacation-request-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
         .hint { color: #7d6756; font-size: 12px; }
         .hbz-info-line { border: 1px solid rgba(92, 68, 45, 0.16); background: rgba(255,255,255,0.62); border-radius: 12px; padding: 10px 12px; color: #4c3727; }
@@ -1777,6 +1815,9 @@ export default function VacationEntry({ currentUser = null } = {}) {
           .vacation-form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
           .vacation-primary-action { align-items: stretch; flex-direction: column; }
           .vacation-primary-action .save-btn { width: 100%; }
+          .vacation-request-head, .vacation-request-row { align-items: stretch; flex-direction: column; }
+          .vacation-request-summary, .vacation-request-actions { justify-content: flex-start; width: 100%; }
+          .vacation-request-actions .hbz-chip { flex: 1; justify-content: center; }
           .vac-month-day { grid-template-columns: 1fr; }
           .vac-day-row { gap: 4px; }
           .vac-day { min-height: 50px; padding: 6px 3px; font-size: 12px; }
