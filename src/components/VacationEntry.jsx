@@ -282,6 +282,7 @@ export default function VacationEntry({ currentUser = null } = {}) {
   const [vacationAdjustNote, setVacationAdjustNote] = useState("");
   const [vacationAdjustSaving, setVacationAdjustSaving] = useState(false);
   const [timeOffRequests, setTimeOffRequests] = useState([]);
+  const [timeOffRequestEmployees, setTimeOffRequestEmployees] = useState([]);
   const [timeOffRequestsLoading, setTimeOffRequestsLoading] = useState(false);
   const [timeOffRequestBusyId, setTimeOffRequestBusyId] = useState("");
   const monthlyAccrualDoneRef = useRef(false);
@@ -342,6 +343,12 @@ export default function VacationEntry({ currentUser = null } = {}) {
     return map;
   }, [employees]);
 
+  const timeOffRequestEmployeeById = useMemo(() => {
+    const map = new Map(employeeById);
+    timeOffRequestEmployees.forEach((e) => map.set(String(e.id), e));
+    return map;
+  }, [employeeById, timeOffRequestEmployees]);
+
   const targetEmployee = useMemo(() => {
     if (isAdmin) return employeeById.get(String(selectedEmployeeId)) || null;
     return ownEmployee;
@@ -396,11 +403,32 @@ export default function VacationEntry({ currentUser = null } = {}) {
 
       const { data, error: requestError } = await query;
       if (requestError) throw requestError;
-      setTimeOffRequests(data || []);
+      const rows = data || [];
+      const missingEmployeeIds = [
+        ...new Set(
+          rows
+            .map((request) => String(request.employee_id || ""))
+            .filter((id) => id && !employeeById.has(id))
+        ),
+      ];
+
+      if (missingEmployeeIds.length > 0) {
+        const { data: extraEmployees, error: employeeError } = await supabase
+          .from("employees")
+          .select("id, name, code, active, disabled, role, vacation_entitlement_days, za_start_date")
+          .in("id", missingEmployeeIds);
+        if (employeeError) throw employeeError;
+        setTimeOffRequestEmployees(extraEmployees || []);
+      } else {
+        setTimeOffRequestEmployees([]);
+      }
+
+      setTimeOffRequests(rows);
     } catch (e) {
       // Nicht blockierend: Falls die Migration noch fehlt, bleibt die Seite bedienbar.
       console.warn("[VacationEntry] Freigabe-Anträge konnten nicht geladen werden", e?.message || e);
       setTimeOffRequests([]);
+      setTimeOffRequestEmployees([]);
     } finally {
       setTimeOffRequestsLoading(false);
     }
@@ -868,10 +896,10 @@ export default function VacationEntry({ currentUser = null } = {}) {
   const visibleTimeOffRequests = useMemo(() => {
     return (timeOffRequests || []).map((request) => ({
       ...request,
-      employee: employeeById.get(String(request.employee_id)) || null,
+      employee: timeOffRequestEmployeeById.get(String(request.employee_id)) || null,
       daysCount: Array.isArray(request.days) ? request.days.length : 0,
     }));
-  }, [timeOffRequests, employeeById]);
+  }, [timeOffRequests, timeOffRequestEmployeeById]);
 
   const timeOffRequestSummary = useMemo(() => {
     return visibleTimeOffRequests.reduce(
@@ -1085,7 +1113,7 @@ export default function VacationEntry({ currentUser = null } = {}) {
 
   async function approveTimeOffRequest(request) {
     if (!isAdmin || !request?.id) return;
-    const employee = employeeById.get(String(request.employee_id));
+    const employee = timeOffRequestEmployeeById.get(String(request.employee_id));
     if (!employee) {
       setError("Mitarbeiter zum Antrag wurde nicht gefunden.");
       return;
@@ -1359,6 +1387,9 @@ export default function VacationEntry({ currentUser = null } = {}) {
                           <span className={`vac-pill ${request.entry_type === "za" ? "za" : "vac"}`}>{requestTypeLabel}</span>
                           <span className={`vacation-request-status status-${request.status}`}>{requestStatusLabel}</span>
                           <b>{request.employee ? getEmployeeLabel(request.employee) : `MA ${request.employee_id}`}</b>
+                          {request.employee && (request.employee.active === false || request.employee.disabled === true) ? (
+                            <span className="vacation-request-inactive">inaktiv</span>
+                          ) : null}
                           <span className="vacation-request-date">{formatDateRangeAT(request.from_date, request.to_date)}</span>
                         </div>
                         <div className="hint">
@@ -1755,6 +1786,7 @@ export default function VacationEntry({ currentUser = null } = {}) {
         .vacation-request-status.status-pending { background: #fff8e8; color: #8b5f00; border: 1px solid rgba(139,95,0,.14); }
         .vacation-request-status.status-approved { background: #eaf8ee; color: #236b36; border: 1px solid rgba(35,107,54,.16); }
         .vacation-request-status.status-rejected { background: #fff0f0; color: #943030; border: 1px solid rgba(148,48,48,.16); }
+        .vacation-request-inactive { display: inline-flex; align-items: center; min-height: 21px; padding: 3px 7px; border-radius: 999px; background: #f1eee9; color: #7d6756; border: 1px solid rgba(125,103,86,.16); font-size: 11px; font-weight: 900; }
         .vacation-request-date { color: #6f5745; font-size: 12px; font-weight: 800; }
         .vacation-request-meta-item { font-weight: 900; color: #5d7287; }
         .vacation-request-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
