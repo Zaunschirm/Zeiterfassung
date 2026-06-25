@@ -1539,6 +1539,7 @@ export default function MonthlyOverview() {
           sickHours: 0,
           holidayRows: [],
           holidayHours: 0,
+          rows: [],
           datesWithAnyEntry: new Set(),
           datesWithWorkEntry: new Set(),
         };
@@ -1555,6 +1556,7 @@ export default function MonthlyOverview() {
         const mins = entryMinutes(r);
         const travel = getTravel(r) || 0;
 
+        d.rows.push(r);
         d.datesWithAnyEntry.add(r.work_date);
 
         if (isVacation) {
@@ -1656,7 +1658,7 @@ export default function MonthlyOverview() {
 
       const hintLines = [
         "Diese Übersicht enthält alle für die Lohnverrechnung relevanten Summen je Mitarbeiter.",
-        "Lohnstunden gesamt = Arbeit inkl. Fahrzeit + bezahlte Feiertage + Krankenstand + ZA laut Sollzeit. Urlaub wird als Tage ausgewiesen und mit 0,00 h gerechnet.",
+        "Lohnstunden gesamt = Arbeit inkl. Fahrzeit + bezahlte Feiertage + Krankenstand + ZA laut Sollzeit. Urlaub wird als Tage ausgewiesen und mit 0,00 h gerechnet. Diäten Tage = tatsächliche Arbeitstage.",
       ];
 
       let hintY = 74;
@@ -1691,14 +1693,17 @@ export default function MonthlyOverview() {
         zaTaken: 0,
         vacationDays: 0,
         sickDays: 0,
+        dietDays: 0,
         paidHours: 0,
         sollHours: 0,
+        privatePkwKm: 0,
       };
 
       const employeeBody = employeesForExport.map((emp) => {
         const d = payrollByEmployee[emp.id];
         const recordedHours = h2(d.recordedMinutes);
         const travelHours = h2(d.travelMinutes);
+        const privatePkwKm = (d.rows || []).reduce((sum, row) => sum + parsePrivatePkwKm(row.private_pkw_km), 0);
         const zaTaken = d.timeCompHours || 0;
         const paidHours = recordedHours + d.holidayHours + d.sickHours + zaTaken;
         const sollHoursInRange = calcEmployeeSollHoursForRange(d.emp, targetRange.from, targetRange.to, true);
@@ -1761,8 +1766,10 @@ export default function MonthlyOverview() {
         totals.zaTaken += zaTaken;
         totals.vacationDays += d.vacationDates.length;
         totals.sickDays += d.sickDates.length;
+        totals.dietDays += d.workDays.size;
         totals.paidHours += paidHours;
         totals.sollHours += sollHoursInRange;
+        totals.privatePkwKm += privatePkwKm;
 
         return [
           safePdfText(d.name),
@@ -1773,8 +1780,10 @@ export default function MonthlyOverview() {
           formatHoursAT(zaTaken),
           formatDaysAT(d.vacationDates.length),
           formatDaysAT(d.sickDates.length),
+          formatDaysAT(d.workDays.size),
           formatHoursAT(sollHoursInRange),
           formatHoursAT(paidHours),
+          privatePkwKm > 0 ? `${formatNumberAT(privatePkwKm, 1)} km` : "—",
         ];
       });
 
@@ -1787,24 +1796,35 @@ export default function MonthlyOverview() {
         formatHoursAT(totals.zaTaken),
         formatDaysAT(totals.vacationDays),
         formatDaysAT(totals.sickDays),
+        formatDaysAT(totals.dietDays),
         formatHoursAT(totals.sollHours),
         formatHoursAT(totals.paidHours),
+        totals.privatePkwKm > 0 ? `${formatNumberAT(totals.privatePkwKm, 1)} km` : "—",
       ]);
 
+      const showPrivatePkwColumn = totals.privatePkwKm > 0;
+      const payrollHead = [
+        "Mitarbeiter",
+        "Arbeit inkl. Fahrzeit",
+        "davon Fahrzeit",
+        "Feiertag",
+        "Krank",
+        "ZA",
+        "Urlaub Tage",
+        "Krank Tage",
+        "Diäten Tage",
+        "Sollstunden",
+        "Lohnstunden gesamt",
+        ...(showPrivatePkwColumn ? ["Privat-PKW"] : []),
+      ];
+
+      const payrollBody = showPrivatePkwColumn
+        ? employeeBody
+        : employeeBody.map((row) => row.slice(0, 11));
+
       autoTable(doc, {
-        head: [[
-          "Mitarbeiter",
-          "Arbeit inkl. Fahrzeit",
-          "davon Fahrzeit",
-          "Feiertag",
-          "Krank",
-          "ZA",
-          "Urlaub Tage",
-          "Krank Tage",
-          "Sollstunden",
-          "Lohnstunden gesamt",
-        ]],
-        body: employeeBody,
+        head: [payrollHead],
+        body: payrollBody,
         startY,
         theme: "striped",
         styles: {
@@ -1823,16 +1843,18 @@ export default function MonthlyOverview() {
         },
         alternateRowStyles: { fillColor: lightGray },
         columnStyles: {
-          0: { cellWidth: 145, halign: "left" },
-          1: { cellWidth: 82, halign: "right" },
-          2: { cellWidth: 70, halign: "right" },
-          3: { cellWidth: 62, halign: "right" },
-          4: { cellWidth: 62, halign: "right" },
-          5: { cellWidth: 58, halign: "right" },
-          6: { cellWidth: 58, halign: "right" },
-          7: { cellWidth: 58, halign: "right" },
-          8: { cellWidth: 70, halign: "right" },
-          9: { cellWidth: 90, halign: "right" },
+          0: { cellWidth: showPrivatePkwColumn ? 116 : 132, halign: "left" },
+          1: { cellWidth: showPrivatePkwColumn ? 72 : 78, halign: "right" },
+          2: { cellWidth: showPrivatePkwColumn ? 58 : 62, halign: "right" },
+          3: { cellWidth: showPrivatePkwColumn ? 54 : 58, halign: "right" },
+          4: { cellWidth: showPrivatePkwColumn ? 54 : 58, halign: "right" },
+          5: { cellWidth: showPrivatePkwColumn ? 50 : 54, halign: "right" },
+          6: { cellWidth: showPrivatePkwColumn ? 50 : 54, halign: "right" },
+          7: { cellWidth: showPrivatePkwColumn ? 50 : 54, halign: "right" },
+          8: { cellWidth: showPrivatePkwColumn ? 52 : 56, halign: "right" },
+          9: { cellWidth: showPrivatePkwColumn ? 64 : 70, halign: "right" },
+          10: { cellWidth: showPrivatePkwColumn ? 76 : 84, halign: "right" },
+          11: { cellWidth: 60, halign: "right" },
         },
         didParseCell: (data) => {
           if (data.section === "body" && data.row.index === employeeBody.length - 1) {
@@ -1947,7 +1969,7 @@ export default function MonthlyOverview() {
 
       doc.setFontSize(8.5);
       const calcText =
-        "Berechnung für die Steuerberatung: Lohnstunden gesamt = Arbeit inkl. Fahrzeit + Feiertag + Krankenstand + ZA laut Sollzeit. Urlaubstage werden separat als Tage ausgewiesen und mit 0,00 h gerechnet. ZA-Abgleich: Stand vorher + Änderung = Stand Monatsende.";
+        "Berechnung für die Steuerberatung: Lohnstunden gesamt = Arbeit inkl. Fahrzeit + Feiertag + Krankenstand + ZA laut Sollzeit. Urlaubstage werden separat als Tage ausgewiesen und mit 0,00 h gerechnet. Diäten Tage = tatsächliche Arbeitstage. ZA-Abgleich: Stand vorher + Änderung = Stand Monatsende.";
       doc.text(doc.splitTextToSize(calcText, pageWidth - marginX * 2), marginX, currentY);
 
       addFooter();
