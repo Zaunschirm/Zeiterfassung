@@ -81,6 +81,32 @@ function formatSignedHours(value) {
   return `${sign}${n.toFixed(2)}`;
 }
 
+function formatNumberAT(value, digits = 2) {
+  const n = Math.round((Number(value) || 0) * 100) / 100;
+  return n.toLocaleString("de-AT", {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
+}
+
+function formatHoursAT(value) {
+  return `${formatNumberAT(value)} h`;
+}
+
+function formatSignedHoursAT(value) {
+  const n = Math.round((Number(value) || 0) * 100) / 100;
+  const sign = n > 0 ? "+" : "";
+  return `${sign}${formatNumberAT(n)} h`;
+}
+
+function formatDaysAT(value) {
+  const n = Number(value || 0);
+  return n.toLocaleString("de-AT", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  });
+}
+
 function dateOnly(value) {
   if (!value) return "";
   return String(value).slice(0, 10);
@@ -1600,6 +1626,8 @@ export default function MonthlyOverview() {
       const brown = [123, 74, 45];
       const lightGray = [245, 245, 245];
       const midGray = [210, 210, 210];
+      const green = [48, 112, 68];
+      const blue = [55, 92, 135];
 
       const addFooter = () => {
         const pageCount = doc.internal.getNumberOfPages();
@@ -1607,7 +1635,7 @@ export default function MonthlyOverview() {
           doc.setPage(i);
           doc.setFontSize(7.5);
           doc.text(
-            "Berechnung: Lohnstunden = Einträge inkl. Fahrzeit + Feiertag + Krankenstand + ZA; ZA-Abgleich: Stand vorher + zentrale Kontobewegung = Stand Monatsende.",
+            "Lohnverrechnung: Arbeit inkl. Fahrzeit + Feiertag + Krankenstand + ZA laut Sollzeit. Urlaub wird mit 0,00 h geführt.",
             marginX,
             pageHeight - 18
           );
@@ -1617,21 +1645,24 @@ export default function MonthlyOverview() {
         }
       };
 
-      doc.setFontSize(17);
-      doc.text(`Lohnverrechnung ${safePdfText(targetRange.label)}`, marginX, 38);
+      doc.setFillColor(...brown);
+      doc.rect(0, 0, pageWidth, 54, "F");
+      doc.setTextColor(255);
+      doc.setFontSize(18);
+      doc.text(`Lohnverrechnung ${safePdfText(targetRange.label)}`, marginX, 28);
+      doc.setFontSize(9.5);
+      doc.text(`Ausdruck für Steuerberatung - erstellt am ${new Date().toLocaleDateString("de-AT")}`, marginX, 43);
+      doc.setTextColor(45, 36, 29);
 
-      doc.setFontSize(9);
       const hintLines = [
-        "Hinweis zur Berechnung:",
-        "Lohnstunden gesamt enthalten Arbeitszeit laut Einträgen inklusive Fahrzeit sowie bezahlte Feiertage, Krankenstandstage und angerechneten Zeitausgleich gemäß hinterlegter BUAK-/Sollzeit.",
-        "Urlaubstage werden mit 0,00 Stunden berücksichtigt. Zeitausgleich zählt als abgedeckte Arbeitszeit und wird zusätzlich als Verbrauch vom ZA-Konto ausgewiesen.",
-        "ZA-Konto Änderung = Lohnstunden gesamt minus Sollstunden minus ZA-Verbrauch. Der ZA-Abgleich zeigt den Stand vor dem Monat, die Änderung laut Lohnverrechnung und den Stand am Monatsende.",
+        "Diese Übersicht enthält alle für die Lohnverrechnung relevanten Summen je Mitarbeiter.",
+        "Lohnstunden gesamt = Arbeit inkl. Fahrzeit + bezahlte Feiertage + Krankenstand + ZA laut Sollzeit. Urlaub wird als Tage ausgewiesen und mit 0,00 h gerechnet.",
       ];
 
-      let hintY = 56;
-      hintLines.forEach((line, idx) => {
+      let hintY = 74;
+      hintLines.forEach((line) => {
         const wrapped = doc.splitTextToSize(line, pageWidth - marginX * 2);
-        doc.setFontSize(idx === 0 ? 9.5 : 8.8);
+        doc.setFontSize(9);
         doc.text(wrapped, marginX, hintY);
         hintY += wrapped.length * 10;
       });
@@ -1642,7 +1673,7 @@ export default function MonthlyOverview() {
         .join(", ");
 
       const wrappedEmployees = doc.splitTextToSize(
-        `Aktive Mitarbeiter: ${employeeNamesLine || "—"}`,
+        `Mitarbeiter im Export (${employeesForExport.length}): ${employeeNamesLine || "—"}`,
         pageWidth - marginX * 2
       );
       doc.setFontSize(9);
@@ -1651,12 +1682,23 @@ export default function MonthlyOverview() {
       let startY = hintY + 5 + wrappedEmployees.length * 11 + 12;
 
       const detailRows = [];
-      const summaryRows = [];
       const zaReconcileRows = [];
+      const totals = {
+        recordedHours: 0,
+        travelHours: 0,
+        holidayHours: 0,
+        sickHours: 0,
+        zaTaken: 0,
+        vacationDays: 0,
+        sickDays: 0,
+        paidHours: 0,
+        sollHours: 0,
+      };
 
       const employeeBody = employeesForExport.map((emp) => {
         const d = payrollByEmployee[emp.id];
         const recordedHours = h2(d.recordedMinutes);
+        const travelHours = h2(d.travelMinutes);
         const zaTaken = d.timeCompHours || 0;
         const paidHours = recordedHours + d.holidayHours + d.sickHours + zaTaken;
         const sollHoursInRange = calcEmployeeSollHoursForRange(d.emp, targetRange.from, targetRange.to, true);
@@ -1668,21 +1710,10 @@ export default function MonthlyOverview() {
 
         zaReconcileRows.push([
           safePdfText(d.name),
-          dayBeforeRangeStart ? formatDateAT(dayBeforeRangeStart) : "—",
-          formatSignedHours(zaBalanceBefore),
-          formatSignedHours(zaKontoChange),
-          targetRange.to ? formatDateAT(targetRange.to) : "—",
-          formatSignedHours(zaBalanceEnd),
-          formatSignedHours(zaDiff),
-        ]);
-
-        summaryRows.push([
-          safePdfText(d.name),
-          d.holidayHours.toFixed(2),
-          d.sickHours.toFixed(2),
-          `${d.vacationDates.length}`,
-          zaTaken > 0 ? `-${zaTaken.toFixed(2)}` : "0.00",
-          `${d.sickDates.length}`,
+          formatSignedHoursAT(zaBalanceBefore),
+          formatSignedHoursAT(zaKontoChange),
+          formatSignedHoursAT(zaBalanceEnd),
+          formatSignedHoursAT(zaDiff),
         ]);
 
         if (d.vacationDates.length) {
@@ -1699,7 +1730,7 @@ export default function MonthlyOverview() {
             safePdfText(d.name),
             "Krankenstand",
             d.sickDates.map(formatDateAT).join(", "),
-            `${d.sickHours.toFixed(2)} h enthalten`,
+            `${formatHoursAT(d.sickHours)} bezahlt`,
           ]);
         }
 
@@ -1708,7 +1739,7 @@ export default function MonthlyOverview() {
             safePdfText(d.name),
             "Zeitausgleich",
             d.timeCompDates.map(formatDateAT).join(", "),
-            `${(d.timeCompHours || 0).toFixed(2)} h vom ZA-Konto`,
+            `${formatHoursAT(d.timeCompHours || 0)} ZA-Verbrauch`,
           ]);
         }
 
@@ -1719,43 +1750,66 @@ export default function MonthlyOverview() {
             d.holidayRows
               .map((h) => `${formatDateAT(h.date)} ${h.name}`)
               .join(", "),
-            `${d.holidayHours.toFixed(2)} h enthalten`,
+            `${formatHoursAT(d.holidayHours)} bezahlt`,
           ]);
         }
 
+        totals.recordedHours += recordedHours;
+        totals.travelHours += travelHours;
+        totals.holidayHours += d.holidayHours;
+        totals.sickHours += d.sickHours;
+        totals.zaTaken += zaTaken;
+        totals.vacationDays += d.vacationDates.length;
+        totals.sickDays += d.sickDates.length;
+        totals.paidHours += paidHours;
+        totals.sollHours += sollHoursInRange;
+
         return [
           safePdfText(d.name),
-          paidHours.toFixed(2),
-          recordedHours.toFixed(2),
-          d.holidayHours.toFixed(2),
-          zaTaken.toFixed(2),
-          String(d.workDays.size),
-          sollHoursInRange.toFixed(2),
-          zaTaken > 0 ? `-${zaTaken.toFixed(2)}` : "0.00",
-          formatSignedHours(zaKontoChange),
-          formatSignedHours(zaBalanceEnd),
+          formatHoursAT(recordedHours),
+          formatHoursAT(travelHours),
+          formatHoursAT(d.holidayHours),
+          formatHoursAT(d.sickHours),
+          formatHoursAT(zaTaken),
+          formatDaysAT(d.vacationDates.length),
+          formatDaysAT(d.sickDates.length),
+          formatHoursAT(sollHoursInRange),
+          formatHoursAT(paidHours),
         ];
       });
+
+      employeeBody.push([
+        "GESAMT",
+        formatHoursAT(totals.recordedHours),
+        formatHoursAT(totals.travelHours),
+        formatHoursAT(totals.holidayHours),
+        formatHoursAT(totals.sickHours),
+        formatHoursAT(totals.zaTaken),
+        formatDaysAT(totals.vacationDays),
+        formatDaysAT(totals.sickDays),
+        formatHoursAT(totals.sollHours),
+        formatHoursAT(totals.paidHours),
+      ]);
 
       autoTable(doc, {
         head: [[
           "Mitarbeiter",
-          "Lohnstunden gesamt",
-          "Arbeitszeit laut Einträgen",
-          "Feiertag bezahlt",
-          "ZA angerechnet",
-          "Gearb. Tage",
+          "Arbeit inkl. Fahrzeit",
+          "davon Fahrzeit",
+          "Feiertag",
+          "Krank",
+          "ZA",
+          "Urlaub Tage",
+          "Krank Tage",
           "Sollstunden",
-          "ZA Verbrauch",
-          "ZA Konto Änderung",
-          "ZA Stand Monatsende",
+          "Lohnstunden gesamt",
         ]],
         body: employeeBody,
         startY,
         theme: "striped",
         styles: {
-          fontSize: 8.1,
-          cellPadding: { top: 5, right: 5, bottom: 5, left: 5 },
+          fontSize: 8,
+          cellPadding: { top: 5, right: 4, bottom: 5, left: 4 },
           overflow: "linebreak",
           valign: "middle",
           lineColor: [230, 230, 230],
@@ -1769,16 +1823,25 @@ export default function MonthlyOverview() {
         },
         alternateRowStyles: { fillColor: lightGray },
         columnStyles: {
-          0: { cellWidth: 125, halign: "left" },
-          1: { cellWidth: 76, halign: "right" },
-          2: { cellWidth: 88, halign: "right" },
-          3: { cellWidth: 66, halign: "right" },
-          4: { cellWidth: 70, halign: "right" },
-          5: { cellWidth: 52, halign: "right" },
-          6: { cellWidth: 62, halign: "right" },
-          7: { cellWidth: 65, halign: "right" },
-          8: { cellWidth: 78, halign: "right" },
-          9: { cellWidth: 76, halign: "right" },
+          0: { cellWidth: 145, halign: "left" },
+          1: { cellWidth: 82, halign: "right" },
+          2: { cellWidth: 70, halign: "right" },
+          3: { cellWidth: 62, halign: "right" },
+          4: { cellWidth: 62, halign: "right" },
+          5: { cellWidth: 58, halign: "right" },
+          6: { cellWidth: 58, halign: "right" },
+          7: { cellWidth: 58, halign: "right" },
+          8: { cellWidth: 70, halign: "right" },
+          9: { cellWidth: 90, halign: "right" },
+        },
+        didParseCell: (data) => {
+          if (data.section === "body" && data.row.index === employeeBody.length - 1) {
+            data.cell.styles.fontStyle = "bold";
+            data.cell.styles.fillColor = [239, 232, 224];
+          }
+          if (data.section === "body" && data.column.index === 9) {
+            data.cell.styles.fontStyle = "bold";
+          }
         },
         margin: { left: marginX, right: marginX },
       });
@@ -1791,16 +1854,14 @@ export default function MonthlyOverview() {
       }
 
       doc.setFontSize(13);
-      doc.text(`ZA-Konto Abgleich bis ${formatDateAT(targetRange.to)}`, marginX, currentY);
+      doc.text(`ZA-Konto Abgleich (${dayBeforeRangeStart ? formatDateAT(dayBeforeRangeStart) : "—"} bis ${formatDateAT(targetRange.to)})`, marginX, currentY);
       currentY += 10;
 
       autoTable(doc, {
         head: [[
           "Mitarbeiter",
-          "Stand Datum",
           "ZA Stand vorher",
-          "Zentrale Kontobewegung",
-          "Endstand Datum",
+          "ZA Änderung",
           "ZA Stand Ende",
           "Differenz",
         ]],
@@ -1816,68 +1877,18 @@ export default function MonthlyOverview() {
           lineWidth: 0.2,
         },
         headStyles: {
-          fillColor: midGray,
+          fillColor: blue,
           textColor: 255,
           fontStyle: "bold",
           halign: "center",
         },
         alternateRowStyles: { fillColor: lightGray },
         columnStyles: {
-          0: { cellWidth: 155, halign: "left" },
-          1: { cellWidth: 82, halign: "center" },
-          2: { cellWidth: 100, halign: "right" },
-          3: { cellWidth: 105, halign: "right" },
-          4: { cellWidth: 82, halign: "center" },
-          5: { cellWidth: 100, halign: "right" },
-          6: { cellWidth: 78, halign: "right" },
-        },
-        margin: { left: marginX, right: marginX },
-      });
-
-      currentY = (doc.lastAutoTable?.finalY || currentY) + 18;
-
-      if (currentY > pageHeight - 130) {
-        doc.addPage();
-        currentY = 38;
-      }
-
-      doc.setFontSize(13);
-      doc.text("Summen Abwesenheiten", marginX, currentY);
-      currentY += 10;
-
-      autoTable(doc, {
-        head: [[
-          "Mitarbeiter",
-          "Feiertag bezahlt",
-          "Krankenstand bezahlt",
-          "Urlaub Tage",
-          "ZA genommen",
-          "Krankenstand Tage",
-        ]],
-        body: summaryRows,
-        startY: currentY + 6,
-        theme: "striped",
-        styles: {
-          fontSize: 8.6,
-          cellPadding: { top: 5, right: 5, bottom: 5, left: 5 },
-          overflow: "linebreak",
-          valign: "middle",
-          lineColor: [230, 230, 230],
-          lineWidth: 0.2,
-        },
-        headStyles: {
-          fillColor: midGray,
-          textColor: 255,
-          fontStyle: "bold",
-        },
-        alternateRowStyles: { fillColor: lightGray },
-        columnStyles: {
-          0: { cellWidth: 170 },
-          1: { cellWidth: 110, halign: "right" },
+          0: { cellWidth: 220, halign: "left" },
+          1: { cellWidth: 130, halign: "right" },
           2: { cellWidth: 130, halign: "right" },
-          3: { cellWidth: 95, halign: "right" },
-          4: { cellWidth: 105, halign: "right" },
-          5: { cellWidth: 120, halign: "right" },
+          3: { cellWidth: 130, halign: "right" },
+          4: { cellWidth: 110, halign: "right" },
         },
         margin: { left: marginX, right: marginX },
       });
@@ -1908,7 +1919,7 @@ export default function MonthlyOverview() {
             lineWidth: 0.2,
           },
           headStyles: {
-            fillColor: midGray,
+            fillColor: green,
             textColor: 255,
             fontStyle: "bold",
           },
@@ -1936,7 +1947,7 @@ export default function MonthlyOverview() {
 
       doc.setFontSize(8.5);
       const calcText =
-        "Berechnung: Lohnstunden gesamt = Arbeitszeit laut Einträgen inkl. Fahrzeit + bezahlte Feiertage + bezahlte Krankenstandstage + angerechneter Zeitausgleich laut Sollzeit. Urlaub = 0,00 h. ZA-Konto Änderung = Lohnstunden gesamt - Sollstunden - ZA-Verbrauch. ZA-Konto Abgleich = Stand vor Monat + Änderung laut Lohnverrechnung = Stand am Monatsende.";
+        "Berechnung für die Steuerberatung: Lohnstunden gesamt = Arbeit inkl. Fahrzeit + Feiertag + Krankenstand + ZA laut Sollzeit. Urlaubstage werden separat als Tage ausgewiesen und mit 0,00 h gerechnet. ZA-Abgleich: Stand vorher + Änderung = Stand Monatsende.";
       doc.text(doc.splitTextToSize(calcText, pageWidth - marginX * 2), marginX, currentY);
 
       addFooter();
