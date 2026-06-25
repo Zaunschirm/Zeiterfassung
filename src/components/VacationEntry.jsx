@@ -1089,7 +1089,7 @@ export default function VacationEntry({ currentUser = null } = {}) {
     const requestDates = requestDays.map((item) => String(item.date || "").slice(0, 10)).filter(Boolean).sort();
     const existingFrom = requestDates[0];
     const existingTo = requestDates[requestDates.length - 1];
-    const adminNote = window.prompt("Notiz zur Freigabe optional:", "") || "";
+    const adminNote = "";
 
     try {
       setTimeOffRequestBusyId(String(request.id));
@@ -1202,8 +1202,7 @@ export default function VacationEntry({ currentUser = null } = {}) {
 
   async function rejectTimeOffRequest(request) {
     if (!isAdmin || !request?.id) return;
-    const reason = window.prompt("Grund für Ablehnung optional:", "");
-    if (reason === null) return;
+    if (!window.confirm("Antrag wirklich ablehnen?")) return;
 
     try {
       setTimeOffRequestBusyId(String(request.id));
@@ -1215,7 +1214,7 @@ export default function VacationEntry({ currentUser = null } = {}) {
           status: "rejected",
           decided_by: String(session?.id || ""),
           decided_at: new Date().toISOString(),
-          admin_note: reason.trim() || null,
+          admin_note: null,
         })
         .eq("id", request.id);
       if (updateError) throw updateError;
