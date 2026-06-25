@@ -68,6 +68,147 @@ body::-webkit-scrollbar-thumb {
   padding: 0;
 }
 
+.admin-approval-card {
+  margin-bottom: 14px;
+  padding: 14px;
+  border: 1px solid rgba(70, 115, 170, 0.24);
+  border-radius: 18px;
+  background: linear-gradient(180deg, #f8fbff, #eef5fc);
+  box-shadow: 0 10px 26px rgba(54, 82, 112, 0.09);
+}
+
+.admin-approval-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.admin-approval-eyebrow {
+  color: #456f9d;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.admin-approval-card h2 {
+  margin: 2px 0 4px;
+  color: #2f241b;
+  font-size: 20px;
+}
+
+.admin-approval-card p {
+  margin: 0;
+  color: #6d5a48;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.admin-approval-summary {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.admin-approval-count,
+.admin-approval-type {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.admin-approval-count {
+  min-height: 27px;
+  padding: 4px 9px;
+  border: 1px solid rgba(91, 126, 166, 0.16);
+  background: #fff;
+  color: #526980;
+}
+
+.admin-approval-count.all {
+  min-width: 34px;
+  background: #456f9d;
+  color: #fff;
+}
+
+.admin-approval-count.vac,
+.admin-approval-type.vac {
+  background: #eaf3ff;
+  color: #294f88;
+}
+
+.admin-approval-count.za,
+.admin-approval-type.za {
+  background: #fff3d7;
+  color: #795100;
+}
+
+.admin-approval-list {
+  display: grid;
+  gap: 7px;
+  margin-top: 12px;
+}
+
+.admin-approval-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 9px;
+  align-items: center;
+  padding: 9px 10px;
+  border: 1px solid rgba(91, 126, 166, 0.14);
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.84);
+}
+
+.admin-approval-type {
+  min-width: 58px;
+  min-height: 25px;
+  padding: 4px 8px;
+}
+
+.admin-approval-row b,
+.admin-approval-row small {
+  display: block;
+}
+
+.admin-approval-row b {
+  color: #3b2a1d;
+  font-size: 13px;
+}
+
+.admin-approval-row small,
+.admin-approval-more {
+  color: #6d5a48;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.admin-approval-more {
+  padding: 2px 4px 0;
+}
+
+.admin-approval-action {
+  margin-top: 12px;
+  border: 0;
+  border-radius: 999px;
+  background: #7b4a2d;
+  color: #fff;
+  cursor: pointer;
+  font-weight: 900;
+  padding: 9px 14px;
+  box-shadow: 0 8px 16px rgba(84, 50, 29, 0.16);
+}
+
+.admin-approval-action:hover {
+  background: #673b22;
+}
+
 .app-nav {
   display: flex;
   align-items: center;
@@ -2790,6 +2931,18 @@ body::-webkit-scrollbar-thumb {
   .app-nav {
     padding: 4px 8px;
     gap: 6px;
+  }
+
+  .admin-approval-head {
+    flex-direction: column;
+  }
+
+  .admin-approval-summary {
+    justify-content: flex-start;
+  }
+
+  .admin-approval-action {
+    width: 100%;
   }
 }
 
