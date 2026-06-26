@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { getSession } from "../lib/session";
+import { filterVisibleEmployeesForRole } from "../utils/employeeVisibility";
 import {
   calcBuakSollHoursForYear,
   calcBuakSollHoursForMonth,
@@ -302,14 +303,15 @@ export default function YearOverview() {
     return ["buchhaltung", "verwaltung", "bu/vw", "bu_vw", "buvw"].includes(normalized);
   };
   const filterEmployeesForCurrentUser = (list = []) => {
+    const visibleWithoutTests = filterVisibleEmployeesForRole(list, role);
     if (isAdmin) return list;
     if (isBuVwRole(role)) {
-      return list.filter((emp) =>
+      return visibleWithoutTests.filter((emp) =>
         (session?.id != null && String(emp.id) === String(session.id)) ||
         (session?.code && String(emp.code) === String(session.code))
       );
     }
-    return list.filter((emp) => !isBuVwRole(emp?.role));
+    return visibleWithoutTests.filter((emp) => !isBuVwRole(emp?.role));
   };
 
   const now = new Date();

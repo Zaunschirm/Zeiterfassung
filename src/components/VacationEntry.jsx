@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { getSession } from "../lib/session";
+import { filterVisibleEmployeesForRole } from "../utils/employeeVisibility";
 import { getEmployeeWorkDay, getBuakWeekType, getHolidayName, hmToMinutes } from "../utils/time";
 import { ensureMonthUnlocked } from "../utils/monthLock";
 import {
@@ -303,7 +304,7 @@ export default function VacationEntry({ currentUser = null } = {}) {
           .order("name", { ascending: true });
         if (error) throw error;
 
-        const rows = (data || []).filter((e) => e?.active !== false && e?.disabled !== true);
+        const rows = filterVisibleEmployeesForRole(data || [], session?.role).filter((e) => e?.active !== false && e?.disabled !== true);
         let own = rows.find((e) => sameEmployee(e, session)) || null;
 
         if (!own && session?.id != null) {
@@ -415,7 +416,7 @@ export default function VacationEntry({ currentUser = null } = {}) {
       if (missingEmployeeIds.length > 0) {
         const { data: extraEmployees, error: employeeError } = await supabase
           .from("employees")
-          .select("id, name, code, active, disabled, role, vacation_entitlement_days, za_start_date")
+          .select("id, name, code, active, disabled, role, is_test_employee, vacation_entitlement_days, za_start_date")
           .in("id", missingEmployeeIds);
         if (employeeError) throw employeeError;
         setTimeOffRequestEmployees(extraEmployees || []);

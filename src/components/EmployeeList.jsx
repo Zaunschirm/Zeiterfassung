@@ -165,6 +165,7 @@ export default function EmployeeList() {
   const [workTimeSettings, setWorkTimeSettings] = useState(() => normalizeWorkTimeSettings(DEFAULT_OFFICE_WORK_TIME_SETTINGS));
   const [zaStartDate, setZaStartDate] = useState("");
   const [includeInZaAccount, setIncludeInZaAccount] = useState(true);
+  const [isTestEmployee, setIsTestEmployee] = useState(false);
   const [saving, setSaving] = useState(false);
   const [adjustEmployeeId, setAdjustEmployeeId] = useState("");
   const [adjustHours, setAdjustHours] = useState("");
@@ -599,6 +600,7 @@ export default function EmployeeList() {
     setWorkTimeSettings(normalizeWorkTimeSettings(row.work_time_settings, nextModel));
     setZaStartDate(row.za_start_date || "");
     setIncludeInZaAccount(row.include_in_za_account !== false);
+    setIsTestEmployee(row.is_test_employee === true);
   }
 
   function clearForm() {
@@ -612,6 +614,7 @@ export default function EmployeeList() {
     setWorkTimeSettings(normalizeWorkTimeSettings(DEFAULT_OFFICE_WORK_TIME_SETTINGS, "verwaltung"));
     setZaStartDate("");
     setIncludeInZaAccount(true);
+    setIsTestEmployee(false);
   }
 
   function updateWorkTimeDay(day, patch) {
@@ -653,11 +656,12 @@ export default function EmployeeList() {
         code,
         role,
         permissions,
-        show_in_daily_check: role === "buchhaltung" ? false : showInDailyCheck,
+        show_in_daily_check: isTestEmployee || role === "buchhaltung" ? false : showInDailyCheck,
         work_time_model: role === "buchhaltung" && workTimeModel === "buak" ? "verwaltung" : workTimeModel,
         work_time_settings: workTimeModel === "buak" ? null : workTimeSettings,
         za_start_date: zaStartDate || null,
-        include_in_za_account: includeInZaAccount,
+        include_in_za_account: isTestEmployee ? false : includeInZaAccount,
+        is_test_employee: isTestEmployee,
       };
 
       if (editId) {
@@ -771,12 +775,33 @@ export default function EmployeeList() {
             <label className="employee-control-check" style={{ marginTop: 6 }}>
               <input
                 type="checkbox"
-                checked={includeInZaAccount}
+                checked={includeInZaAccount && !isTestEmployee}
+                disabled={isTestEmployee}
                 onChange={(e) => setIncludeInZaAccount(e.target.checked)}
               />
               <span>
                 <strong>Im ZA-Konto prüfen</strong>
-                <small>Wenn deaktiviert, wird diese Person im Überstunden-/ZA-Konto nicht berechnet.</small>
+                <small>{isTestEmployee ? "Testpersonen werden nicht im echten ZA-Konto berechnet." : "Wenn deaktiviert, wird diese Person im Überstunden-/ZA-Konto nicht berechnet."}</small>
+              </span>
+            </label>
+          </div>
+
+          <div style={{ gridColumn: "1 / -1" }}>
+            <label className="employee-control-check">
+              <input
+                type="checkbox"
+                checked={isTestEmployee}
+                onChange={(e) => {
+                  setIsTestEmployee(e.target.checked);
+                  if (e.target.checked) {
+                    setShowInDailyCheck(false);
+                    setIncludeInZaAccount(false);
+                  }
+                }}
+              />
+              <span>
+                <strong>Test-Mitarbeiter</strong>
+                <small>Nur Admins sehen diese Person in Auswahl, Auswertungen und Lohn-/ZA-Prüfungen.</small>
               </span>
             </label>
           </div>
@@ -1161,6 +1186,7 @@ export default function EmployeeList() {
                   >
                     <td data-label="Mitarbeiter">
                       <strong>{r.name}</strong>
+                      {r.is_test_employee === true ? <span className="badge-soft" style={{ marginLeft: 6 }}>Test</span> : null}
                       <div className="help" style={{ marginTop: 3 }}>Code: {r.code || "—"}</div>
                     </td>
                     <td data-label="Rolle / Modell">

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { getSession } from "../lib/session";
+import { filterVisibleEmployeesForRole } from "../utils/employeeVisibility";
 import DaySlider from "./DaySlider";
 import EntryTable from "./EntryTable";
 import PushSettings from "./PushSettings";
@@ -280,7 +281,7 @@ export default function TimeTracking() {
           .eq("disabled", false)
           .order("name", { ascending: true });
 
-        setEmployees(emp || []);
+        setEmployees(filterVisibleEmployeesForRole(emp || [], currentRole));
 
         // Falls noch niemand gewählt ist: eingeloggte Person vorauswählen
         if ((emp || []).length && selectedEmployees.length === 0 && currentUser?.code) {

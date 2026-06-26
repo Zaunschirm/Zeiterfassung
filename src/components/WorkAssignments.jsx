@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { getSession } from "../lib/session";
+import { filterVisibleEmployeesForRole } from "../utils/employeeVisibility";
 import { hasPermission } from "../lib/permissions";
 import { getBuakWeekType, getHolidayName, getEmployeeWorkDay, hmToMinutes } from "../utils/time";
 import { ensureMonthUnlocked } from "../utils/monthLock";
@@ -173,7 +174,7 @@ export default function WorkAssignments() {
       try {
         let query = supabase
           .from("employees")
-          .select("id, code, name, role, active, disabled, permissions")
+          .select("id, code, name, role, active, disabled, is_test_employee, permissions")
           .limit(1);
 
         if (session?.code) query = query.eq("code", session.code);
@@ -344,11 +345,11 @@ export default function WorkAssignments() {
   useEffect(() => {
     async function fetchEmployeesForAssignments() {
       const selectVariants = [
-        "id, name, role, active, disabled, vacation_entitlement_days, urlaub_anspruch_tage, vacation_days",
-        "id, name, role, active, disabled, vacation_entitlement_days",
-        "id, name, role, active, disabled, urlaub_anspruch_tage",
-        "id, name, role, active, disabled, vacation_days",
-        "id, name, role, active, disabled",
+        "id, name, role, active, disabled, is_test_employee, vacation_entitlement_days, urlaub_anspruch_tage, vacation_days",
+        "id, name, role, active, disabled, is_test_employee, vacation_entitlement_days",
+        "id, name, role, active, disabled, is_test_employee, urlaub_anspruch_tage",
+        "id, name, role, active, disabled, is_test_employee, vacation_days",
+        "id, name, role, active, disabled, is_test_employee",
         "id, name, role, active",
         "id, name, role",
       ];
@@ -364,7 +365,7 @@ export default function WorkAssignments() {
 
           if (error) throw error;
 
-          return (data || []).filter((employee) => {
+          return filterVisibleEmployeesForRole(data || [], currentUser?.role || session?.role).filter((employee) => {
             const role = normalizeRole(employee.role);
             const isOffice = role === "buchhaltung" || role === "verwaltung" || role === "buchhaltung/verwaltung";
             const isActive = employee.active !== false;

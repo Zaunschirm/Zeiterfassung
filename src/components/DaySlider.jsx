@@ -28,6 +28,7 @@ import {
   buildDeleteAuditRows,
   buildUpdateAuditRows,
 } from "../utils/timeAudit";
+import { filterVisibleEmployeesForRole } from "../utils/employeeVisibility";
 import {
   buildEditedTimeEntryPayload,
   buildNewTimeEntryPayload,
@@ -347,7 +348,7 @@ export default function DaySlider() {
           .order("name", { ascending: true });
 
         if (error) throw error;
-        const list = data || [];
+        const list = filterVisibleEmployeesForRole(data || [], role);
         const me = list.find((employee) => employee.code === session?.code) || null;
         const validCodes = new Set(list.map((employee) => employee.code));
 

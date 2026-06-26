@@ -30,6 +30,7 @@ import {
   buildDeleteAuditRows,
   buildUpdateAuditRows,
 } from "../utils/timeAudit";
+import { filterVisibleEmployeesForRole, isTestEmployee } from "../utils/employeeVisibility";
 import { calculateZaBalanceDelta, calculateZaBalanceForEmployee, isOfficialZaStartAdjustment } from "../utils/overtime";
 import { collectSupabaseRows } from "../utils/pagination";
 
@@ -364,14 +365,15 @@ export default function MonthlyOverview() {
     return ["buchhaltung", "verwaltung", "bu/vw", "bu_vw", "buvw"].includes(normalized);
   };
   const filterEmployeesForCurrentUser = (list = []) => {
+    const visibleWithoutTests = filterVisibleEmployeesForRole(list, role);
     if (isAdmin) return list;
     if (isBuVwRole(role)) {
-      return list.filter((emp) =>
+      return visibleWithoutTests.filter((emp) =>
         (session?.id != null && String(emp.id) === String(session.id)) ||
         (session?.code && String(emp.code) === String(session.code))
       );
     }
-    return list.filter((emp) => !isBuVwRole(emp?.role));
+    return visibleWithoutTests.filter((emp) => !isBuVwRole(emp?.role));
   };
 
   const now = new Date();
@@ -443,6 +445,7 @@ export default function MonthlyOverview() {
     () =>
       employees
         .filter(isActiveEmployee)
+        .filter((employee) => !isTestEmployee(employee))
         .sort((a, b) => (a.name || a.code || "").localeCompare(b.name || b.code || "")),
     [employees]
   );
