@@ -14,3 +14,7 @@ Client-Fallback.
 `202606250001_create_time_off_requests.sql` legt die Freigabe-Tabelle fuer
 Urlaub-/ZA-Antraege an. Ohne diese Migration koennen Mitarbeiter keine neuen
 Antraege senden und Admins sehen keine offenen Freigaben.
+
+`202607010001_create_regie_reports.sql` legt Regieberichte mit Arbeits-,
+Material- und Unterschriftsdaten an. Die Unterschrift wird mit dem Bericht
+gespeichert und in die PDF-Ausgabe übernommen.

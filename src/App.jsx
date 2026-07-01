@@ -11,6 +11,7 @@ import ProjectAdmin from "./components/ProjectAdmin.jsx";
 import YearOverview from "./components/YearOverview.jsx";
 import WorkAssignments from "./components/WorkAssignments.jsx";
 import VacationEntry from "./components/VacationEntry.jsx";
+import RegieReports from "./components/RegieReports.jsx";
 
 import { getSession, setSession, clearSession } from "./lib/session";
 import { APP_VERSION } from "./version";
@@ -334,6 +335,7 @@ export default function App() {
                 <Route path="/jahresuebersicht" element={canViewYearOverview ? <YearOverview /> : <Navigate to="/zeiterfassung" replace />} />
                 <Route path="/monatsuebersicht" element={canViewMonthlyOverview ? <MonthlyOverview /> : <Navigate to="/zeiterfassung" replace />} />
                 <Route path="/projektfotos" element={<ProjectPhotos />} />
+                <Route path="/regieberichte" element={<RegieReports />} />
                 <Route path="/urlaub" element={<VacationEntry currentUser={currentUser} />} />
                 <Route path="/mitarbeiter" element={canManageEmployees ? <EmployeeList /> : <Navigate to="/zeiterfassung" replace />} />
                 <Route path="/" element={<Navigate to="/zeiterfassung" replace />} />

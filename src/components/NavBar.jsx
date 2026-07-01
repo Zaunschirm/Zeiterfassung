@@ -24,7 +24,7 @@ export default function NavBar({ onLogout, currentUser, role }) {
     { to: "/monatsuebersicht", label: "Monatsübersicht" },
   ];
 
-  const moreLinks = [{ to: "/projektfotos", label: "Projektfotos" }];
+  const moreLinks = [{ to: "/regieberichte", label: "Regieberichte" }, { to: "/projektfotos", label: "Projektfotos" }];
 
   const adminLinks = [
     ...(canSeeAdmin ? [{ to: "/projekte", label: "Projekte" }] : []),
