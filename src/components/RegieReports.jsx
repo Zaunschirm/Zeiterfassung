@@ -300,13 +300,15 @@ export default function RegieReports() {
     };
   }
   function validate(nextStatus) {
-    if (!reportDate || !projectId || !description.trim()) return "Bitte Datum, Projekt und Arbeitsauftrag ausfüllen.";
+    if (!reportDate || !projectId) return "Bitte Datum und Projekt ausfüllen.";
     if (nextStatus === "prepared") {
+      if (!description.trim()) return "Bitte den Arbeitsauftrag ausfüllen.";
       if (!clientName.trim()) return "Bitte den Auftraggeber eintragen.";
       if (!assignedEmployeeIds.length) return "Bitte mindestens einen Mitarbeiter zuweisen.";
       if (!prepareLaborItems(laborItems).length) return "Bitte die zugewiesenen Mitarbeiter in die Stundenliste übernehmen.";
     }
     if (nextStatus === "signed") {
+      if (!description.trim()) return "Bitte die ausgeführten Arbeiten beschreiben.";
       if (!cleanLaborItems(laborItems).length) return "Bitte mindestens einen Mitarbeiter mit Stunden eintragen.";
       if (!clientName.trim() || !signedBy.trim() || !signatureData) return "Auftraggeber, Unterzeichner und Unterschrift werden benötigt.";
     }
