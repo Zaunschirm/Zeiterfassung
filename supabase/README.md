@@ -22,3 +22,7 @@ gespeichert und in die PDF-Ausgabe übernommen.
 `202607010002_prepare_regie_reports.sql` ergänzt den Desktop-zu-Handy-Ablauf:
 Admins/Teamleiter weisen vorbereitete Arbeitsaufträge Mitarbeitern zu; diese
 ergänzen mobil nur Stunden, Material und Unterschrift.
+
+`202607010003_add_regie_report_photos.sql` ergänzt Regieberichte um
+Baustellenfotos. Die Dateien liegen im bestehenden Storage-Bucket
+`project-photos`; im Bericht werden Bildpfad und Dateiname gespeichert.
