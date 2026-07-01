@@ -20,9 +20,15 @@ describe("employeeVisibility", () => {
     ]);
   });
 
+  it("keeps the current test employee visible to themselves", () => {
+    expect(filterVisibleEmployeesForRole(employees, "mitarbeiter", { id: 2, code: "TESTMA" })).toEqual([
+      employees[0],
+      employees[1],
+    ]);
+  });
+
   it("detects only explicitly flagged test employees", () => {
     expect(isTestEmployee({ name: "Test Name", is_test_employee: false })).toBe(false);
     expect(isTestEmployee({ name: "Egal", is_test_employee: true })).toBe(true);
   });
 });
-

@@ -304,7 +304,7 @@ export default function VacationEntry({ currentUser = null } = {}) {
           .order("name", { ascending: true });
         if (error) throw error;
 
-        const rows = filterVisibleEmployeesForRole(data || [], session?.role).filter((e) => e?.active !== false && e?.disabled !== true);
+        const rows = filterVisibleEmployeesForRole(data || [], session?.role, session).filter((e) => e?.active !== false && e?.disabled !== true);
         let own = rows.find((e) => sameEmployee(e, session)) || null;
 
         if (!own && session?.id != null) {
@@ -636,6 +636,29 @@ export default function VacationEntry({ currentUser = null } = {}) {
     } catch (auditError) {
       console.warn("[VacationEntry] Urlaubskorrektur-Audit konnte nicht gespeichert werden", auditError);
     }
+  }
+
+  async function recordApprovedTimeOffAudit(savedRows, employee, source = "time_off_approval") {
+    const auditRows = (savedRows || [])
+      .filter((row) => row?.id != null)
+      .map((row) => ({
+        entry_id: String(row.id),
+        employee_id: String(row.employee_id ?? employee?.id ?? ""),
+        changed_by: String(session?.id || session?.code || "admin"),
+        change_type: "create",
+        field_name: "Eintrag",
+        old_value: null,
+        new_value: `${String(row.work_date || "").slice(0, 10)} · ${getEmployeeLabel(employee)} · ${Number(row.za_hours || 0) > 0 ? `ZA ${fmtHours(Number(row.za_hours || 0))}` : "Urlaub"}${row.note ? ` · ${row.note}` : ""}`,
+        source,
+      }));
+    if (!auditRows.length) return true;
+
+    const { error: auditError } = await supabase.from("time_entry_audit_log").insert(auditRows);
+    if (auditError) {
+      console.warn("[VacationEntry] Freigabe-Audit konnte nicht gespeichert werden", auditError);
+      return false;
+    }
+    return true;
   }
 
   async function changeVacationCurrentDays(
@@ -1077,13 +1100,15 @@ export default function VacationEntry({ currentUser = null } = {}) {
           transactionVacationDays = roundVacationDays(transactionVacationDays + deltaDays);
         };
 
-        await replaceTimeOffEntriesSafely({
+        const savedRows = await replaceTimeOffEntriesSafely({
           client: supabase,
           rowsToInsert,
           deleteIds,
           vacationDelta,
           applyVacationDelta,
         });
+
+        await recordApprovedTimeOffAudit(savedRows, targetEmployee, "time_off_admin_entry");
 
         if (vacationDelta) {
           const changedDays = Math.abs(vacationDelta);
@@ -1200,13 +1225,15 @@ export default function VacationEntry({ currentUser = null } = {}) {
         transactionVacationDays = roundVacationDays(transactionVacationDays + deltaDays);
       };
 
-      await replaceTimeOffEntriesSafely({
+      const savedRows = await replaceTimeOffEntriesSafely({
         client: supabase,
         rowsToInsert,
         deleteIds: [],
         vacationDelta,
         applyVacationDelta,
       });
+
+      const auditSaved = await recordApprovedTimeOffAudit(savedRows, employee);
 
       if (vacationDelta) {
         const changedDays = Math.abs(vacationDelta);
@@ -1228,7 +1255,10 @@ export default function VacationEntry({ currentUser = null } = {}) {
         .eq("id", request.id);
       if (updateError) throw updateError;
 
-      setMessage(`${requestType === "za" ? "ZA" : "Urlaub"}-Antrag freigegeben.`);
+      setMessage(
+        `${requestType === "za" ? "ZA" : "Urlaub"}-Antrag freigegeben.` +
+          (auditSaved ? "" : " Achtung: Das Änderungsprotokoll konnte nicht gespeichert werden.")
+      );
       await loadTimeOff();
       await loadVacationAccount();
       await loadTimeOffRequests();
