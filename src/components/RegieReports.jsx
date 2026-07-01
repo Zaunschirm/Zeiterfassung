@@ -138,7 +138,7 @@ export default function RegieReports() {
   const [employees, setEmployees] = useState([]);
   const [reports, setReports] = useState([]);
   const [selectedId, setSelectedId] = useState("");
-  const [reportNumber, setReportNumber] = useState(() => createReportNumber());
+  const [reportNumber, setReportNumber] = useState(() => createReportNumber("Projekt", new Date()));
   const [reportDate, setReportDate] = useState(todayISO());
   const [projectId, setProjectId] = useState("");
   const [location, setLocation] = useState("");
@@ -189,12 +189,16 @@ export default function RegieReports() {
     }
   }
   useEffect(() => { loadData(); }, []);
+  useEffect(() => {
+    if (selectedId) return;
+    setReportNumber(createReportNumber(selectedProject?.name || "Projekt", `${reportDate}T12:00:00`));
+  }, [selectedId, selectedProject?.name, reportDate]);
   useEffect(() => () => {
     if (pdfPreviewUrl) URL.revokeObjectURL(pdfPreviewUrl);
   }, [pdfPreviewUrl]);
 
   function resetReport() {
-    setSelectedId(""); setReportNumber(createReportNumber()); setReportDate(todayISO()); setProjectId("");
+    setSelectedId(""); setReportNumber(createReportNumber("Projekt", new Date())); setReportDate(todayISO()); setProjectId("");
     setLocation(""); setClientName(""); setClientContact(""); setDescription(""); setLaborItems([]);
     setMaterialItems([emptyMaterial()]); setPhotos([]); setAssignedEmployeeIds([]); setSignedBy(""); setSignatureData("");
     setSignedAt(""); setStatus("draft"); setError(""); setMessage("");

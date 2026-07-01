@@ -1,9 +1,15 @@
-export function createReportNumber(dateValue = new Date(), randomValue = Math.random()) {
+export function createReportNumber(projectName = "Projekt", dateValue = new Date()) {
   const date = dateValue instanceof Date ? dateValue : new Date(dateValue);
   const pad = (value) => String(value).padStart(2, "0");
-  const stamp = `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}-${pad(date.getHours())}${pad(date.getMinutes())}`;
-  const suffix = Math.floor(Number(randomValue || 0) * 1000).toString().padStart(3, "0");
-  return `RB-${stamp}-${suffix}`;
+  const stamp = `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}`;
+  const project = String(projectName || "Projekt")
+    .trim()
+    .replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue").replace(/ß/g, "ss")
+    .replace(/Ä/g, "Ae").replace(/Ö/g, "Oe").replace(/Ü/g, "Ue")
+    .replace(/[^a-zA-Z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48) || "Projekt";
+  return `RB-${project}-${stamp}`;
 }
 export function cleanLaborItems(items = []) {
   return items.map((item) => ({ employee_id: item?.employee_id ? String(item.employee_id) : "", name: String(item?.name || "").trim(), hours: Math.max(0, Number(item?.hours || 0)), activity: String(item?.activity || "").trim() })).filter((item) => item.name && item.hours > 0);

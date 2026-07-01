@@ -20,11 +20,14 @@ export default function NavBar({ onLogout, currentUser, role }) {
   const mainLinks = [
     { to: "/zeiterfassung", label: "Zeiterfassung" },
     { to: "/arbeitseinteilung", label: "Arbeitseinteilung" },
-    { to: "/urlaub", label: "Abwesenheiten" },
-    { to: "/monatsuebersicht", label: "Monatsübersicht" },
+    { to: "/regieberichte", label: "Regieberichte" },
   ];
 
-  const moreLinks = [{ to: "/regieberichte", label: "Regieberichte" }, { to: "/projektfotos", label: "Projektfotos" }];
+  const moreLinks = [
+    { to: "/urlaub", label: "Abwesenheiten" },
+    { to: "/monatsuebersicht", label: "Monatsübersicht" },
+    { to: "/projektfotos", label: "Projektfotos" },
+  ];
 
   const adminLinks = [
     ...(canSeeAdmin ? [{ to: "/projekte", label: "Projekte" }] : []),
