@@ -1701,11 +1701,12 @@ export default function MonthlyOverview() {
         label: targetRange.label,
       }, employeesForExport);
 
-      if (missingResult?.missing?.length > 0) {
-        const missingDays = missingResult.missing.reduce(
-          (sum, item) => sum + (item.dates?.length || 0),
-          0
-        );
+      const missingDays = (missingResult?.missing || []).reduce(
+        (sum, item) => sum + (item.dates?.length || 0),
+        0
+      );
+
+      if (missingDays > 0) {
 
         const exportList = confirm(
           `Achtung: Für die Lohnverrechnung fehlen noch ${missingDays} Einträge bei ${missingResult.missing.length} aktiven Mitarbeiter(n).\n\nSoll eine Liste mit den fehlenden Einträgen als PDF exportiert werden?`
@@ -1727,6 +1728,8 @@ export default function MonthlyOverview() {
       }
 
       const employeeIds = employeesForExport.map((e) => e.id).filter(Boolean);
+      const payrollValidation = await buildPayrollCheck(targetRange, employeeIds);
+      const payrollWarningCount = payrollValidation?.warnings?.length || 0;
 
       const payrollRawRows = await collectSupabaseRows(() => supabase
         .from("v_time_entries_expanded")
@@ -1900,6 +1903,24 @@ export default function MonthlyOverview() {
       ];
 
       let hintY = 74;
+      if (missingDays > 0 || payrollWarningCount > 0) {
+        const warningLines = doc.splitTextToSize(
+          `ACHTUNG: UNVOLLSTAENDIGER PRUEFSTAND - ${missingDays} fehlende Arbeitstage, ${payrollWarningCount} Auffaelligkeiten. Vor Weitergabe an die Steuerberatung pruefen.`,
+          pageWidth - marginX * 2 - 18
+        );
+        const warningHeight = Math.max(30, warningLines.length * 10 + 12);
+        doc.setFillColor(255, 239, 235);
+        doc.setDrawColor(180, 55, 45);
+        doc.roundedRect(marginX, hintY - 11, pageWidth - marginX * 2, warningHeight, 3, 3, "FD");
+        doc.setTextColor(145, 35, 30);
+        doc.setFontSize(9);
+        doc.setFont(undefined, "bold");
+        doc.text(warningLines, marginX + 9, hintY + 1);
+        doc.setFont(undefined, "normal");
+        doc.setTextColor(45, 36, 29);
+        hintY += warningHeight + 5;
+      }
+
       hintLines.forEach((line) => {
         const wrapped = doc.splitTextToSize(line, pageWidth - marginX * 2);
         doc.setFontSize(9);
@@ -2097,10 +2118,11 @@ export default function MonthlyOverview() {
         head: [payrollHead],
         body: payrollBody,
         startY,
+        tableWidth: "wrap",
         theme: "striped",
         styles: {
-          fontSize: 8,
-          cellPadding: { top: 5, right: 4, bottom: 5, left: 4 },
+          fontSize: 7,
+          cellPadding: { top: 4, right: 2, bottom: 4, left: 2 },
           overflow: "linebreak",
           valign: "middle",
           lineColor: [230, 230, 230],
@@ -2111,6 +2133,7 @@ export default function MonthlyOverview() {
           textColor: 255,
           fontStyle: "bold",
           halign: "center",
+          fontSize: 7,
         },
         alternateRowStyles: { fillColor: lightGray },
         columnStyles: {
@@ -2160,10 +2183,11 @@ export default function MonthlyOverview() {
         ]],
         body: zaReconcileRows,
         startY: currentY + 6,
+        tableWidth: "wrap",
         theme: "striped",
         styles: {
-          fontSize: 8.4,
-          cellPadding: { top: 4, right: 4, bottom: 4, left: 4 },
+          fontSize: 7.5,
+          cellPadding: { top: 4, right: 2, bottom: 4, left: 2 },
           overflow: "linebreak",
           valign: "middle",
           lineColor: [230, 230, 230],
@@ -2174,6 +2198,7 @@ export default function MonthlyOverview() {
           textColor: 255,
           fontStyle: "bold",
           halign: "center",
+          fontSize: 7.2,
         },
         alternateRowStyles: { fillColor: lightGray },
         columnStyles: {
@@ -2202,10 +2227,11 @@ export default function MonthlyOverview() {
           head: [["Mitarbeiter", "Art", "Datum / Zeitraum", "Berechnung"]],
           body: detailRows,
           startY: currentY + 6,
+          tableWidth: "wrap",
           theme: "striped",
           styles: {
-            fontSize: 8.6,
-            cellPadding: { top: 5, right: 5, bottom: 5, left: 5 },
+            fontSize: 7.8,
+            cellPadding: { top: 4, right: 3, bottom: 4, left: 3 },
             overflow: "linebreak",
             valign: "top",
             lineColor: [230, 230, 230],
@@ -2215,6 +2241,7 @@ export default function MonthlyOverview() {
             fillColor: green,
             textColor: 255,
             fontStyle: "bold",
+            fontSize: 7.5,
           },
           alternateRowStyles: { fillColor: lightGray },
           columnStyles: {
