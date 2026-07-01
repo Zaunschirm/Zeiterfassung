@@ -21,11 +21,14 @@ const fmtDate = (value) => {
 const fmtHours = (value) => `${Number(value || 0).toLocaleString("de-AT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} h`;
 
 function SignaturePad({ value, onChange, disabled }) {
-  const canvasRef = useRef(null);
+  const previewRef = useRef(null);
+  const editorRef = useRef(null);
   const drawingRef = useRef(false);
+  const [expanded, setExpanded] = useState(false);
+  const [draft, setDraft] = useState("");
 
-  function prepare() {
-    const canvas = canvasRef.current;
+  function prepare(ref) {
+    const canvas = ref.current;
     if (!canvas) return null;
     const rect = canvas.getBoundingClientRect();
     const ratio = Math.max(window.devicePixelRatio || 1, 1);
@@ -35,61 +38,92 @@ function SignaturePad({ value, onChange, disabled }) {
       canvas.width = width;
       canvas.height = height;
       const ctx = canvas.getContext("2d");
-      ctx.scale(ratio, ratio);
+      ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
-      ctx.lineWidth = 2.2;
+      ctx.lineWidth = 2.6;
       ctx.strokeStyle = "#2d241f";
     }
     return canvas;
   }
 
-  useEffect(() => {
-    const canvas = prepare();
-    if (!canvas || !value) return;
+  function drawValue(ref, imageValue) {
+    const canvas = prepare(ref);
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, rect.width, rect.height);
+    if (!imageValue) return;
     const image = new Image();
-    image.onload = () => canvas.getContext("2d").drawImage(image, 0, 0, canvas.width, canvas.height);
-    image.src = value;
-  }, [value]);
+    image.onload = () => ctx.drawImage(image, 0, 0, rect.width, rect.height);
+    image.src = imageValue;
+  }
 
-  const point = (event) => {
-    const rect = canvasRef.current.getBoundingClientRect();
+  useEffect(() => { drawValue(previewRef, value); }, [value]);
+  useEffect(() => {
+    if (!expanded) return undefined;
+    const frame = window.requestAnimationFrame(() => drawValue(editorRef, draft));
+    const closeOnEscape = (event) => { if (event.key === "Escape") setExpanded(false); };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => { window.cancelAnimationFrame(frame); window.removeEventListener("keydown", closeOnEscape); };
+  }, [expanded]);
+
+  const point = (event, ref) => {
+    const rect = ref.current.getBoundingClientRect();
     return { x: event.clientX - rect.left, y: event.clientY - rect.top };
   };
   function start(event) {
-    if (disabled) return;
     event.preventDefault();
-    const canvas = prepare();
+    const canvas = prepare(editorRef);
     const ctx = canvas.getContext("2d");
-    const p = point(event);
+    const p = point(event, editorRef);
     drawingRef.current = true;
     canvas.setPointerCapture?.(event.pointerId);
     ctx.beginPath();
     ctx.moveTo(p.x, p.y);
   }
   function move(event) {
-    if (!drawingRef.current || disabled) return;
+    if (!drawingRef.current) return;
     event.preventDefault();
-    const p = point(event);
-    const ctx = canvasRef.current.getContext("2d");
+    const p = point(event, editorRef);
+    const ctx = editorRef.current.getContext("2d");
     ctx.lineTo(p.x, p.y);
     ctx.stroke();
   }
   function finish() {
     if (!drawingRef.current) return;
     drawingRef.current = false;
-    onChange?.(canvasRef.current.toDataURL("image/png"));
+    setDraft(editorRef.current.toDataURL("image/png"));
   }
   function clear() {
-    const canvas = prepare();
-    canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
-    onChange?.("");
+    const canvas = prepare(editorRef);
+    const rect = canvas.getBoundingClientRect();
+    canvas.getContext("2d").clearRect(0, 0, rect.width, rect.height);
+    setDraft("");
+  }
+  function openEditor() {
+    if (disabled) return;
+    setDraft(value || "");
+    setExpanded(true);
+  }
+  function apply() {
+    onChange?.(draft);
+    setExpanded(false);
   }
 
   return (
-    <div>
-      <canvas ref={canvasRef} className="regie-signature-canvas" onPointerDown={start} onPointerMove={move} onPointerUp={finish} onPointerCancel={finish} aria-label="Unterschriftsfeld Auftraggeber" />
-      {!disabled && <button type="button" className="hbz-btn btn-small" onClick={clear}>Unterschrift löschen</button>}
+    <div className="regie-signature">
+      <button type="button" className="regie-signature-preview" onClick={openEditor} disabled={disabled} aria-label={disabled ? "Unterschrift Auftraggeber" : "Großes Unterschriftsfeld öffnen"}>
+        <canvas ref={previewRef} className="regie-signature-canvas" />
+        {!value && !disabled && <span>Zum Unterschreiben antippen</span>}
+      </button>
+      {expanded && <div className="regie-signature-overlay" role="dialog" aria-modal="true" aria-label="Unterschrift erfassen">
+        <div className="regie-signature-modal">
+          <div className="regie-signature-head"><div><strong>Unterschrift Auftraggeber</strong><small>Bitte im großen Feld unterschreiben.</small></div><button type="button" className="hbz-btn btn-small" onClick={() => setExpanded(false)}>Abbrechen</button></div>
+          <canvas ref={editorRef} className="regie-signature-editor" onPointerDown={start} onPointerMove={move} onPointerUp={finish} onPointerCancel={finish} aria-label="Großes Unterschriftsfeld" />
+          <div className="regie-signature-actions"><button type="button" className="hbz-btn" onClick={clear}>Löschen</button><button type="button" className="hbz-btn hbz-btn-primary" onClick={apply}>Unterschrift übernehmen</button></div>
+        </div>
+      </div>}
     </div>
   );
 }
@@ -516,10 +550,10 @@ export default function RegieReports() {
       </div>}
 
       <style>{`
-        .regie-header{display:flex;justify-content:space-between;gap:16px;align-items:flex-end;margin-bottom:16px}.regie-header h1{margin:2px 0 4px}.regie-header p{margin:0;color:#6f6259}.regie-layout{display:grid;grid-template-columns:280px minmax(0,1fr);gap:16px}.regie-list{align-self:start;position:sticky;top:82px}.regie-list-item{display:flex;width:100%;flex-direction:column;align-items:flex-start;gap:3px;border:1px solid #eadfd7;background:#fff;padding:10px;margin-top:8px;border-radius:9px;text-align:left;cursor:pointer}.regie-list-item.active{border-color:#7b4a2d;background:#fff8f2}.regie-list-item span{font-size:12px;color:#6f6259}.regie-list-item small{font-weight:800}.regie-list-item small.signed{color:#28723d}.regie-list-item small.prepared{color:#1f6592}.regie-list-item small.draft{color:#9a6812}.regie-form-head,.regie-section-head{display:flex;align-items:center;justify-content:space-between;gap:12px}.regie-form-head h2{margin:2px 0 12px;font-size:20px}.regie-status{padding:6px 10px;border-radius:999px;font-size:12px;font-weight:900}.regie-status.signed{background:#e7f6eb;color:#246a36}.regie-status.prepared{background:#e9f4fb;color:#1f6592}.regie-status.draft{background:#fff3d7;color:#875b00}.regie-form fieldset{border:0;padding:0;margin:0;min-width:0}.regie-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.regie-form label{display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:800;color:#5a3a23}.regie-block{margin-top:14px}.regie-section{border-top:1px solid #eadfd7;margin-top:18px;padding-top:16px}.regie-section h3{margin:0 0 10px}.regie-assignment-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.regie-assignment{flex-direction:row!important;align-items:center;padding:8px;border:1px solid #eadfd7;border-radius:8px;background:#fff}.regie-row{display:grid;gap:8px;margin-top:8px;align-items:center}.regie-row.labor{grid-template-columns:1.1fr 90px 1.5fr 34px}.regie-row.material{grid-template-columns:1.6fr 90px 100px 34px}.regie-remove{border:0;background:#fff0ed;color:#a23a2c;border-radius:8px;height:38px;font-size:22px;cursor:pointer}.regie-total{text-align:right;margin-top:10px;font-weight:900}.regie-signature-canvas{display:block;width:100%;height:180px;background:#fff;border:2px dashed #bda99a;border-radius:10px;touch-action:none;margin:8px 0}.regie-actions{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end;margin-top:18px}.regie-empty{text-align:center;padding:40px 20px}
+        .regie-header{display:flex;justify-content:space-between;gap:16px;align-items:flex-end;margin-bottom:16px}.regie-header h1{margin:2px 0 4px}.regie-header p{margin:0;color:#6f6259}.regie-layout{display:grid;grid-template-columns:280px minmax(0,1fr));gap:16px}.regie-list{align-self:start;position:sticky;top:82px}.regie-list-item{display:flex;width:100%;flex-direction:column;align-items:flex-start;gap:3px;border:1px solid #eadfd7;background:#fff;padding:10px;margin-top:8px;border-radius:9px;text-align:left;cursor:pointer}.regie-list-item.active{border-color:#7b4a2d;background:#fff8f2}.regie-list-item span{font-size:12px;color:#6f6259}.regie-list-item small{font-weight:800}.regie-list-item small.signed{color:#28723d}.regie-list-item small.prepared{color:#1f6592}.regie-list-item small.draft{color:#9a6812}.regie-form-head,.regie-section-head{display:flex;align-items:center;justify-content:space-between;gap:12px}.regie-form-head h2{margin:2px 0 12px;font-size:20px}.regie-status{padding:6px 10px;border-radius:999px;font-size:12px;font-weight:900}.regie-status.signed{background:#e7f6eb;color:#246a36}.regie-status.prepared{background:#e9f4fb;color:#1f6592}.regie-status.draft{background:#fff3d7;color:#875b00}.regie-form fieldset{border:0;padding:0;margin:0;min-width:0}.regie-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.regie-form label{display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:800;color:#5a3a23}.regie-block{margin-top:14px}.regie-section{border-top:1px solid #eadfd7;margin-top:18px;padding-top:16px}.regie-section h3{margin:0 0 10px}.regie-assignment-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.regie-assignment{flex-direction:row!important;align-items:center;padding:8px;border:1px solid #eadfd7;border-radius:8px;background:#fff}.regie-row{display:grid;gap:8px;margin-top:8px;align-items:center}.regie-row.labor{grid-template-columns:1.1fr 90px 1.5fr 34px}.regie-row.material{grid-template-columns:1.6fr 90px 100px 34px}.regie-remove{border:0;background:#fff0ed;color:#a23a2c;border-radius:8px;height:38px;font-size:22px;cursor:pointer}.regie-total{text-align:right;margin-top:10px;font-weight:900}.regie-signature-canvas{display:block;width:100%;height:180px;background:#fff;border:2px dashed #bda99a;border-radius:10px;pointer-events:none}.regie-signature-preview{position:relative;display:block;width:100%;padding:0;border:0;background:transparent;cursor:pointer}.regie-signature-preview:disabled{cursor:default}.regie-signature-preview span{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#765f50;font-weight:800}.regie-signature-overlay{position:fixed;inset:0;z-index:1900;padding:18px;background:rgba(30,24,20,.78);display:flex;align-items:center;justify-content:center}.regie-signature-modal{width:min(1000px,100%);height:min(720px,calc(100vh - 36px));padding:14px;background:#f8f4f0;border-radius:14px;display:flex;flex-direction:column;gap:12px;box-shadow:0 24px 70px rgba(0,0,0,.4)}.regie-signature-head,.regie-signature-actions{display:flex;align-items:center;justify-content:space-between;gap:12px}.regie-signature-head div{display:flex;flex-direction:column;gap:2px}.regie-signature-head small{color:#75675d}.regie-signature-editor{display:block;width:100%;min-height:260px;flex:1;background:#fff;border:3px solid #7b4a2d;border-radius:12px;touch-action:none}.regie-signature-actions{justify-content:flex-end}.regie-actions{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end;margin-top:18px}.regie-empty{text-align:center;padding:40px 20px}
         .regie-voice{margin-top:8px}.regie-voice.listening{background:#fff0ed;color:#9b3024}.regie-section-head .hint{margin:0}.regie-photo-upload{display:inline-flex!important;flex-direction:row!important;cursor:pointer}.regie-photo-upload input{display:none}.regie-photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;margin-top:12px}.regie-photo-grid figure{position:relative;margin:0;border:1px solid #eadfd7;border-radius:10px;overflow:hidden;background:#fff}.regie-photo-grid img{display:block;width:100%;height:120px;object-fit:cover}.regie-photo-grid figcaption{padding:7px;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.regie-photo-grid button{position:absolute;top:5px;right:5px;width:28px;height:28px;border:0;border-radius:50%;background:rgba(125,34,25,.9);color:#fff;font-size:20px;cursor:pointer}
         .regie-pdf-overlay{position:fixed;inset:0;z-index:1800;background:rgba(30,24,20,.72);padding:20px;display:flex;align-items:center;justify-content:center}.regie-pdf-modal{width:min(960px,100%);height:min(900px,calc(100vh - 40px));background:#fff;border-radius:12px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 24px 70px rgba(0,0,0,.35)}.regie-pdf-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 14px;border-bottom:1px solid #eadfd7}.regie-pdf-modal iframe{width:100%;flex:1;border:0;background:#eee}
-        @media(max-width:800px){.regie-header{align-items:stretch;flex-direction:column}.regie-layout{grid-template-columns:1fr}.regie-list{position:static;max-height:230px;overflow:auto}.regie-grid,.regie-assignment-grid{grid-template-columns:1fr}.regie-row.labor{grid-template-columns:1fr 86px}.regie-row.labor input:nth-of-type(2){grid-column:1/3}.regie-row.material{grid-template-columns:1fr 72px 88px 34px}.regie-form{padding:13px}.regie-actions{position:sticky;bottom:0;background:#fff;padding:10px 0;z-index:4}.regie-actions .hbz-btn{flex:1 1 150px}.regie-signature-canvas{height:160px}.regie-section-head{align-items:flex-start;flex-wrap:wrap}.regie-photo-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.regie-pdf-overlay{padding:0}.regie-pdf-modal{height:100vh;border-radius:0}}
+        @media(max-width:800px){.regie-header{align-items:stretch;flex-direction:column}.regie-layout{grid-template-columns:1fr}.regie-list{position:static;max-height:230px;overflow:auto}.regie-grid,.regie-assignment-grid{grid-template-columns:1fr}.regie-row.labor{grid-template-columns:1fr 86px}.regie-row.labor input:nth-of-type(2){grid-column:1/3}.regie-row.material{grid-template-columns:1fr 72px 88px 34px}.regie-form{padding:13px}.regie-actions{position:sticky;bottom:0;background:#fff;padding:10px 0;z-index:4}.regie-actions .hbz-btn{flex:1 1 150px}.regie-signature-canvas{height:150px}.regie-signature-overlay{padding:0}.regie-signature-modal{height:100vh;border-radius:0;padding:10px}.regie-signature-actions .hbz-btn{flex:1}.regie-section-head{align-items:flex-start;flex-wrap:wrap}.regie-photo-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.regie-pdf-overlay{padding:0}.regie-pdf-modal{height:100vh;border-radius:0}}
       `}</style>
     </div>
   );
