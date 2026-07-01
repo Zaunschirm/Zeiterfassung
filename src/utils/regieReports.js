@@ -8,7 +8,13 @@ export function createReportNumber(dateValue = new Date(), randomValue = Math.ra
 export function cleanLaborItems(items = []) {
   return items.map((item) => ({ employee_id: item?.employee_id ? String(item.employee_id) : "", name: String(item?.name || "").trim(), hours: Math.max(0, Number(item?.hours || 0)), activity: String(item?.activity || "").trim() })).filter((item) => item.name && item.hours > 0);
 }
+export function prepareLaborItems(items = []) {
+  return items.map((item) => ({ employee_id: item?.employee_id ? String(item.employee_id) : "", name: String(item?.name || "").trim(), hours: Math.max(0, Number(item?.hours || 0)), activity: String(item?.activity || "").trim() })).filter((item) => item.name);
+}
 export function cleanMaterialItems(items = []) {
   return items.map((item) => ({ description: String(item?.description || "").trim(), quantity: Math.max(0, Number(item?.quantity || 0)), unit: String(item?.unit || "Stk.").trim() || "Stk." })).filter((item) => item.description && item.quantity > 0);
+}
+export function prepareMaterialItems(items = []) {
+  return items.map((item) => ({ description: String(item?.description || "").trim(), quantity: Math.max(0, Number(item?.quantity || 0)), unit: String(item?.unit || "Stk.").trim() || "Stk." })).filter((item) => item.description);
 }
 export const sumLaborHours = (items = []) => cleanLaborItems(items).reduce((sum, item) => sum + item.hours, 0);

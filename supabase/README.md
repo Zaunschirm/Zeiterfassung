@@ -18,3 +18,7 @@ Antraege senden und Admins sehen keine offenen Freigaben.
 `202607010001_create_regie_reports.sql` legt Regieberichte mit Arbeits-,
 Material- und Unterschriftsdaten an. Die Unterschrift wird mit dem Bericht
 gespeichert und in die PDF-Ausgabe übernommen.
+
+`202607010002_prepare_regie_reports.sql` ergänzt den Desktop-zu-Handy-Ablauf:
+Admins/Teamleiter weisen vorbereitete Arbeitsaufträge Mitarbeitern zu; diese
+ergänzen mobil nur Stunden, Material und Unterschrift.
