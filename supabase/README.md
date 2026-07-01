@@ -26,3 +26,7 @@ ergänzen mobil nur Stunden, Material und Unterschrift.
 `202607010003_add_regie_report_photos.sql` ergänzt Regieberichte um
 Baustellenfotos. Die Dateien liegen im bestehenden Storage-Bucket
 `project-photos`; im Bericht werden Bildpfad und Dateiname gespeichert.
+
+`202607010004_archive_regie_reports.sql` ergänzt die revisionssichere
+Archivierung unterschriebener Regieberichte. Entwürfe und bereitgestellte
+Aufträge können weiterhin vollständig gelöscht werden.
