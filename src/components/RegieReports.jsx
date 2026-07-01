@@ -13,6 +13,7 @@ import {
 } from "../utils/regieReports";
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
+const OFFLINE_DRAFT_KEY = "hbz_regie_offline_draft_v1";
 const emptyMaterial = () => ({ description: "", quantity: 1, unit: "Stk." });
 const fmtDate = (value) => {
   const [y, m, d] = String(value || "").slice(0, 10).split("-");
@@ -137,6 +138,11 @@ export default function RegieReports() {
   const [projects, setProjects] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [reports, setReports] = useState([]);
+  const [materialTemplates, setMaterialTemplates] = useState([]);
+  const [auditRows, setAuditRows] = useState([]);
+  const [auditOpen, setAuditOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [showArchived, setShowArchived] = useState(false);
   const [selectedId, setSelectedId] = useState("");
   const [reportNumber, setReportNumber] = useState(() => createReportNumber("Projekt", new Date()));
@@ -161,36 +167,72 @@ export default function RegieReports() {
   const [message, setMessage] = useState("");
   const [voiceListening, setVoiceListening] = useState(false);
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState("");
+  const [offlineReady, setOfflineReady] = useState(false);
+  const originalReportRef = useRef(null);
 
   const selectedProject = useMemo(() => projects.find((p) => String(p.id) === String(projectId)), [projects, projectId]);
   const locked = status === "signed" || isArchived;
   const visibleReports = useMemo(() => {
-    if (canPrepare) return reports.filter((report) => showArchived ? report.is_archived : !report.is_archived);
+    if (canPrepare) return reports.filter((report) => {
+      if (showArchived ? !report.is_archived : report.is_archived) return false;
+      if (statusFilter !== "all" && report.status !== statusFilter) return false;
+      const haystack = `${report.report_number} ${report.project_name || ""} ${report.client_name || ""}`.toLowerCase();
+      return haystack.includes(search.trim().toLowerCase());
+    });
     return reports.filter((report) => {
       const assigned = Array.isArray(report.assigned_employee_ids) ? report.assigned_employee_ids.map(String) : [];
       return !report.is_archived && report.status !== "draft" && assigned.includes(ownId);
     });
-  }, [reports, canPrepare, ownId, showArchived]);
+  }, [reports, canPrepare, ownId, showArchived, search, statusFilter]);
 
   async function loadData() {
     setError("");
     try {
-      const [projectResult, employeeResult, reportResult] = await Promise.all([
+      const [projectResult, employeeResult, reportResult, templateResult] = await Promise.all([
         supabase.from("projects").select("*").eq("active", true).order("name"),
         supabase.from("employees").select("id, code, name, active, disabled, is_test_employee").order("name"),
         supabase.from("regie_reports").select("*").order("report_date", { ascending: false }).order("created_at", { ascending: false }).limit(100),
+        supabase.from("regie_material_templates").select("*").eq("active", true).order("description"),
       ]);
       if (projectResult.error) throw projectResult.error;
       if (employeeResult.error) throw employeeResult.error;
       if (reportResult.error) throw reportResult.error;
+      if (templateResult.error) throw templateResult.error;
       setProjects(projectResult.data || []);
       setEmployees(filterVisibleEmployeesForRole(employeeResult.data || [], role, session).filter((e) => e.active !== false && e.disabled !== true));
       setReports(reportResult.data || []);
+      setMaterialTemplates(templateResult.data || []);
     } catch (e) {
       setError(e?.message || "Regieberichte konnten nicht geladen werden.");
     }
   }
   useEffect(() => { loadData(); }, []);
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(OFFLINE_DRAFT_KEY) || "null");
+      if (saved && Date.now() - Number(saved.savedAt || 0) < 7 * 86400000) {
+        setReportDate(saved.reportDate || todayISO()); setProjectId(saved.projectId || ""); setLocation(saved.location || "");
+        setClientName(saved.clientName || ""); setClientContact(saved.clientContact || ""); setDescription(saved.description || "");
+        setLaborItems(Array.isArray(saved.laborItems) ? saved.laborItems : []); setMaterialItems(Array.isArray(saved.materialItems) && saved.materialItems.length ? saved.materialItems : [emptyMaterial()]);
+        setPhotos(Array.isArray(saved.photos) ? saved.photos : []);
+        setAssignedEmployeeIds(Array.isArray(saved.assignedEmployeeIds) ? saved.assignedEmployeeIds : []);
+        setMessage("Lokal zwischengespeicherter Regieentwurf wurde wiederhergestellt.");
+      }
+    } catch { localStorage.removeItem(OFFLINE_DRAFT_KEY); }
+    setOfflineReady(true);
+  }, []);
+  useEffect(() => {
+    if (!offlineReady || selectedId || locked) return;
+    const hasContent = !!(projectId || location || clientName || clientContact || description.trim() || laborItems.length || materialItems.some((row) => row.description?.trim()) || photos.length || assignedEmployeeIds.length);
+    if (!hasContent) { localStorage.removeItem(OFFLINE_DRAFT_KEY); return; }
+    const draft = { savedAt: Date.now(), reportDate, projectId, location, clientName, clientContact, description, laborItems, materialItems, photos, assignedEmployeeIds };
+    localStorage.setItem(OFFLINE_DRAFT_KEY, JSON.stringify(draft));
+  }, [offlineReady, selectedId, locked, reportDate, projectId, location, clientName, clientContact, description, laborItems, materialItems, photos, assignedEmployeeIds]);
+  useEffect(() => {
+    const backOnline = () => setMessage("Verbindung wiederhergestellt. Der lokale Entwurf kann jetzt gespeichert werden.");
+    window.addEventListener("online", backOnline);
+    return () => window.removeEventListener("online", backOnline);
+  }, []);
   useEffect(() => {
     if (selectedId) return;
     setReportNumber(createReportNumber(selectedProject?.name || "Projekt", `${reportDate}T12:00:00`));
@@ -200,12 +242,14 @@ export default function RegieReports() {
   }, [pdfPreviewUrl]);
 
   function resetReport() {
+    localStorage.removeItem(OFFLINE_DRAFT_KEY); originalReportRef.current = null;
     setSelectedId(""); setReportNumber(createReportNumber("Projekt", new Date())); setReportDate(todayISO()); setProjectId("");
     setLocation(""); setClientName(""); setClientContact(""); setDescription(""); setLaborItems([]);
     setMaterialItems([emptyMaterial()]); setPhotos([]); setAssignedEmployeeIds([]); setSignedBy(""); setSignatureData("");
     setSignedAt(""); setStatus("draft"); setIsArchived(false); setError(""); setMessage("");
   }
   function openReport(report) {
+    originalReportRef.current = report;
     setSelectedId(report.id); setReportNumber(report.report_number); setReportDate(report.report_date);
     setProjectId(report.project_id || ""); setLocation(report.location || ""); setClientName(report.client_name || "");
     setClientContact(report.client_contact || ""); setDescription(report.description || "");
@@ -219,6 +263,24 @@ export default function RegieReports() {
     setAssignedEmployeeIds(Array.isArray(report.assigned_employee_ids) ? report.assigned_employee_ids.map(String) : []);
     setSignedBy(report.signed_by || ""); setSignatureData(report.signature_data || ""); setSignedAt(report.signed_at || "");
     setStatus(report.status || "draft"); setIsArchived(report.is_archived === true); setError(""); setMessage("");
+  }
+
+  async function writeAudit(report, action, previous = null) {
+    const fields = ["report_date", "project_name", "location", "client_name", "client_contact", "description", "labor_items", "material_items", "photo_paths", "status", "signed_by", "is_archived"];
+    const changes = {};
+    for (const field of fields) {
+      const before = previous?.[field] ?? null;
+      const after = report?.[field] ?? null;
+      if (JSON.stringify(before) !== JSON.stringify(after)) changes[field] = { old: before, new: after };
+    }
+    await supabase.from("regie_report_audit_log").insert({ report_id: report.id, report_number: report.report_number, action, changed_by: String(session?.id || session?.code || ""), changed_by_name: session?.name || session?.code || null, changes });
+  }
+
+  async function loadAudit() {
+    if (!selectedId) return;
+    const { data, error: auditError } = await supabase.from("regie_report_audit_log").select("*").eq("report_id", selectedId).order("changed_at", { ascending: false });
+    if (auditError) { setError(auditError.message); return; }
+    setAuditRows(data || []); setAuditOpen(true);
   }
   function setLaborEmployee(index, employeeId) {
     const employee = employees.find((e) => String(e.id) === String(employeeId));
@@ -301,6 +363,17 @@ export default function RegieReports() {
     } finally { setPhotoBusy(false); }
   }
 
+  function addMaterialTemplate(template) {
+    setMaterialItems((rows) => [...rows.filter((row) => row.description), { description: template.description, quantity: 1, unit: template.unit || "Stk." }]);
+  }
+
+  async function saveMaterialTemplate(row) {
+    if (!row?.description?.trim()) return;
+    const { error: templateError } = await supabase.from("regie_material_templates").insert({ description: row.description.trim(), unit: row.unit || "Stk." });
+    if (templateError) { setError(templateError.message); return; }
+    await loadData(); setMessage("Material wurde als Vorlage gespeichert.");
+  }
+
   async function photoDataUrl(photo) {
     const response = await fetch(photo.url);
     if (!response.ok) throw new Error("Foto konnte für PDF nicht geladen werden.");
@@ -311,6 +384,13 @@ export default function RegieReports() {
       reader.onerror = reject;
       reader.readAsDataURL(blob);
     });
+  }
+
+  async function urlDataUrl(url) {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error("Datei konnte nicht geladen werden.");
+    const blob = await response.blob();
+    return await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = reject; reader.readAsDataURL(blob); });
   }
 
   function makePayload(nextStatus) {
@@ -373,6 +453,9 @@ export default function RegieReports() {
         ? await supabase.from("regie_reports").update(payload).eq("id", selectedId).select().single()
         : await supabase.from("regie_reports").insert(payload).select().single();
       if (result.error) throw result.error;
+      await writeAudit(result.data, selectedId ? "update" : "create", originalReportRef.current);
+      originalReportRef.current = result.data;
+      localStorage.removeItem(OFFLINE_DRAFT_KEY);
       setSelectedId(result.data.id); setReportNumber(result.data.report_number); setStatus(nextStatus); setSignedAt(result.data.signed_at || "");
       setMessage(nextStatus === "signed" ? "Regiebericht unterschrieben und abgeschlossen." : nextStatus === "prepared" ? "Auftrag wurde für den Mitarbeiter vorbereitet." : "Entwurf gespeichert.");
       await loadData();
@@ -391,6 +474,7 @@ export default function RegieReports() {
       try {
         const { error: archiveError } = await supabase.from("regie_reports").update({ is_archived: true, archived_at: new Date().toISOString(), archived_by: String(session?.id || session?.code || "") }).eq("id", selectedId);
         if (archiveError) throw archiveError;
+        await writeAudit({ ...originalReportRef.current, id: selectedId, report_number: reportNumber, is_archived: true }, "archive", originalReportRef.current);
         setIsArchived(true); setShowArchived(false); setMessage("Unterschriebener Regiebericht wurde archiviert.");
         await loadData();
       } catch (e) { setError(e?.message || "Regiebericht konnte nicht archiviert werden."); }
@@ -407,6 +491,7 @@ export default function RegieReports() {
       const paths = photos.map((photo) => photo.path).filter(Boolean);
       const { error: deleteError } = await supabase.from("regie_reports").delete().eq("id", selectedId);
       if (deleteError) throw deleteError;
+      await writeAudit({ ...originalReportRef.current, id: selectedId, report_number: reportNumber }, "delete", originalReportRef.current);
       if (paths.length) {
         await supabase.storage.from("project-photos").remove(paths);
         await supabase.from("project_photos").delete().in("file_path", paths);
@@ -424,6 +509,7 @@ export default function RegieReports() {
     try {
       const { error: restoreError } = await supabase.from("regie_reports").update({ is_archived: false, archived_at: null, archived_by: null }).eq("id", selectedId);
       if (restoreError) throw restoreError;
+      await writeAudit({ ...originalReportRef.current, id: selectedId, report_number: reportNumber, is_archived: false }, "restore", originalReportRef.current);
       setIsArchived(false); setMessage("Regiebericht wurde aus dem Archiv geholt.");
       await loadData();
     } catch (e) { setError(e?.message || "Regiebericht konnte nicht wiederhergestellt werden."); }
@@ -437,6 +523,7 @@ export default function RegieReports() {
     const brown = [123, 74, 45];
     doc.setFillColor(...brown); doc.rect(0, 0, 595, 62, "F"); doc.setTextColor(255); doc.setFontSize(20);
     doc.text("Regiebericht", 36, 30); doc.setFontSize(10); doc.text(reportNumber, 36, 48); doc.setTextColor(40);
+    try { const logo = await urlDataUrl("/logo.png"); doc.addImage(logo, "PNG", 510, 8, 48, 46); } catch { /* Logo ist optional. */ }
     autoTable(doc, { startY: 80, theme: "grid", styles: { fontSize: 9, cellPadding: 5 }, body: [["Datum", fmtDate(reportDate), "Projekt", selectedProject?.name || "—"], ["Ort", location || selectedProject?.address || "—", "Auftraggeber", clientName || "—"], ["Kontakt", clientContact || "—", "Erstellt von", session?.name || session?.code || "—"]] });
     let y = doc.lastAutoTable.finalY + 22;
     doc.setFontSize(12); doc.text("Ausgeführte Arbeiten", 36, y);
@@ -477,6 +564,10 @@ export default function RegieReports() {
       } catch {
         // Ein einzelnes nicht erreichbares Foto soll die PDF-Erstellung nicht verhindern.
       }
+    }
+    const pageCount = doc.getNumberOfPages();
+    for (let page = 1; page <= pageCount; page += 1) {
+      doc.setPage(page); doc.setFontSize(8); doc.setTextColor(90); doc.text(`Seite ${page} von ${pageCount}`, 297.5, 820, { align: "center" });
     }
     return doc;
   }
@@ -535,6 +626,7 @@ export default function RegieReports() {
       <div className="regie-layout">
         <aside className="hbz-card regie-list">
           <div className="month-card-title">{canPrepare ? "Regieberichte" : "Meine Aufträge"}</div>
+          {canPrepare && <div className="regie-filters"><input className="hbz-input" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Projekt, Nummer, Auftraggeber…" /><select className="hbz-input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}><option value="all">Alle Status</option><option value="draft">Entwürfe</option><option value="prepared">Bereit</option><option value="signed">Unterschrieben</option></select></div>}
           {canPrepare && <label className="regie-archive-toggle"><input type="checkbox" checked={showArchived} onChange={(event) => { setShowArchived(event.target.checked); resetReport(); }} />Archivierte anzeigen</label>}
           {!visibleReports.length && <p className="hint">{canPrepare ? "Noch keine Regieberichte vorhanden." : "Derzeit ist dir kein Regieauftrag zugewiesen."}</p>}
           {visibleReports.map((report) => (
@@ -552,7 +644,7 @@ export default function RegieReports() {
             <fieldset disabled={locked || busy}>
               <div className="regie-grid">
                 <label>Datum<input className="hbz-input" disabled={!canPrepare} type="date" value={reportDate} onChange={(e) => setReportDate(e.target.value)} /></label>
-                <label>Projekt / Baustelle<select className="hbz-input" disabled={!canPrepare} value={projectId} onChange={(e) => { setProjectId(e.target.value); const project = projects.find((item) => String(item.id) === String(e.target.value)); if (!location && project?.address) setLocation(project.address); }}><option value="">Bitte auswählen</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>
+                <label>Projekt / Baustelle<select className="hbz-input" disabled={!canPrepare} value={projectId} onChange={(e) => { setProjectId(e.target.value); const project = projects.find((item) => String(item.id) === String(e.target.value)); if (project?.address) setLocation(project.address); if (project?.client_name) setClientName(project.client_name); if (project?.client_contact) setClientContact(project.client_contact); }}><option value="">Bitte auswählen</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>
                 <label>Ort / Baustellenadresse<input className="hbz-input" disabled={!canPrepare} value={location} onChange={(e) => setLocation(e.target.value)} /></label>
                 <label>Auftraggeber (Firma/Name)<input className="hbz-input" disabled={!canPrepare} value={clientName} onChange={(e) => setClientName(e.target.value)} /></label>
                 <label>Kontakt / Bauleiter<input className="hbz-input" disabled={!canPrepare} value={clientContact} onChange={(e) => setClientContact(e.target.value)} /></label>
@@ -577,13 +669,15 @@ export default function RegieReports() {
 
               <section className="regie-section">
                 <div className="regie-section-head"><h3>Material und Geräte</h3><button type="button" className="hbz-btn btn-small" onClick={() => setMaterialItems((rows) => [...rows, emptyMaterial()])}>+ Position</button></div>
+                {!!materialTemplates.length && <div className="regie-template-list">{materialTemplates.map((template) => <button type="button" className="hbz-btn btn-small" key={template.id} onClick={() => addMaterialTemplate(template)}>+ {template.description}</button>)}</div>}
                 {materialItems.map((row, index) => <div className="regie-row material" key={index}><input className="hbz-input" value={row.description} onChange={(e) => setMaterialItems((rows) => rows.map((item, i) => i === index ? { ...item, description: e.target.value } : item))} placeholder="Material / Gerät" /><input className="hbz-input" type="number" min="0" step="0.01" value={row.quantity} onChange={(e) => setMaterialItems((rows) => rows.map((item, i) => i === index ? { ...item, quantity: e.target.value } : item))} /><select className="hbz-input" value={row.unit} onChange={(e) => setMaterialItems((rows) => rows.map((item, i) => i === index ? { ...item, unit: e.target.value } : item))}><option>Stk.</option><option>m</option><option>m²</option><option>m³</option><option>kg</option><option>Std.</option><option>pauschal</option></select><button type="button" className="regie-remove" onClick={() => setMaterialItems((rows) => rows.filter((_, i) => i !== index))}>×</button></div>)}
+                {canPrepare && materialItems.some((row) => row.description?.trim()) && <button type="button" className="hbz-btn btn-small regie-save-template" onClick={() => saveMaterialTemplate(materialItems.find((row) => row.description?.trim()))}>Erste Position als Vorlage speichern</button>}
               </section>
 
               <section className="regie-section">
                 <div className="regie-section-head"><div><h3>Baustellenfotos</h3><p className="hint">Bis zu 8 Fotos, jeweils maximal 8 MB.</p></div><label className="hbz-btn btn-small regie-photo-upload">+ Fotos hinzufügen<input type="file" accept="image/*" capture="environment" multiple onChange={addPhotos} /></label></div>
                 {photoBusy && <p className="hint">Fotos werden hochgeladen …</p>}
-                {!!photos.length && <div className="regie-photo-grid">{photos.map((photo) => <figure key={photo.path}><img src={photo.url} alt={photo.name || "Baustellenfoto"} /><figcaption>{photo.name || "Foto"}</figcaption>{!locked && <button type="button" aria-label="Foto entfernen" onClick={() => removePhoto(photo)}>×</button>}</figure>)}</div>}
+                {!!photos.length && <div className="regie-photo-grid">{photos.map((photo) => <figure key={photo.path}><img src={photo.url} alt={photo.name || "Baustellenfoto"} />{locked ? <figcaption>{photo.name || "Foto"}</figcaption> : <input className="regie-photo-caption" value={photo.name || ""} onChange={(e) => setPhotos((rows) => rows.map((item) => item.path === photo.path ? { ...item, name: e.target.value } : item))} placeholder="Fotobeschriftung" />}{!locked && <button type="button" aria-label="Foto entfernen" onClick={() => removePhoto(photo)}>×</button>}</figure>)}</div>}
               </section>
 
               <section className="regie-section signature">
@@ -599,6 +693,7 @@ export default function RegieReports() {
               {!locked && !canPrepare && <button className="hbz-btn hbz-btn-primary" disabled={busy || status !== "prepared"} onClick={() => save("signed")}>Unterschreiben & abschließen</button>}
               {canPrepare && selectedId && !isArchived && <button className="hbz-btn regie-danger" disabled={busy} onClick={archiveOrDelete}>{status === "signed" ? "Archivieren" : "Löschen"}</button>}
               {canPrepare && selectedId && isArchived && <button className="hbz-btn" disabled={busy} onClick={restoreArchived}>Aus Archiv holen</button>}
+              {canPrepare && selectedId && <button className="hbz-btn" onClick={loadAudit}>Änderungsverlauf</button>}
               <button className="hbz-btn" onClick={previewPdf}>PDF-Vorschau</button>
               <button className="hbz-btn" onClick={exportPdf}>PDF herunterladen</button>
               <button className="hbz-btn" onClick={sharePdf}>PDF teilen</button>
@@ -613,11 +708,13 @@ export default function RegieReports() {
           <iframe src={pdfPreviewUrl} title={`PDF-Vorschau ${reportNumber}`} />
         </div>
       </div>}
+      {auditOpen && <div className="regie-pdf-overlay" role="dialog" aria-modal="true" aria-label="Änderungsverlauf"><div className="regie-audit-modal"><div className="regie-pdf-head"><strong>Änderungsverlauf · {reportNumber}</strong><button type="button" className="hbz-btn btn-small" onClick={() => setAuditOpen(false)}>Schließen</button></div><div className="regie-audit-list">{!auditRows.length ? <p>Keine Änderungen protokolliert.</p> : auditRows.map((row) => <article key={row.id}><b>{new Date(row.changed_at).toLocaleString("de-AT")} · {row.changed_by_name || row.changed_by || "Unbekannt"}</b><span>{row.action}</span><pre>{JSON.stringify(row.changes, null, 2)}</pre></article>)}</div></div></div>}
 
       <style>{`
         .regie-header{display:flex;justify-content:space-between;gap:16px;align-items:flex-end;margin-bottom:16px}.regie-header h1{margin:2px 0 4px}.regie-header p{margin:0;color:#6f6259}.regie-layout{display:grid;grid-template-columns:280px minmax(0,1fr));gap:16px}.regie-list{align-self:start;position:sticky;top:82px}.regie-list-item{display:flex;width:100%;flex-direction:column;align-items:flex-start;gap:3px;border:1px solid #eadfd7;background:#fff;padding:10px;margin-top:8px;border-radius:9px;text-align:left;cursor:pointer}.regie-list-item.active{border-color:#7b4a2d;background:#fff8f2}.regie-list-item span{font-size:12px;color:#6f6259}.regie-list-item small{font-weight:800}.regie-list-item small.signed{color:#28723d}.regie-list-item small.prepared{color:#1f6592}.regie-list-item small.draft{color:#9a6812}.regie-form-head,.regie-section-head{display:flex;align-items:center;justify-content:space-between;gap:12px}.regie-form-head h2{margin:2px 0 12px;font-size:20px}.regie-status{padding:6px 10px;border-radius:999px;font-size:12px;font-weight:900}.regie-status.signed{background:#e7f6eb;color:#246a36}.regie-status.prepared{background:#e9f4fb;color:#1f6592}.regie-status.draft{background:#fff3d7;color:#875b00}.regie-form fieldset{border:0;padding:0;margin:0;min-width:0}.regie-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.regie-form label{display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:800;color:#5a3a23}.regie-block{margin-top:14px}.regie-section{border-top:1px solid #eadfd7;margin-top:18px;padding-top:16px}.regie-section h3{margin:0 0 10px}.regie-assignment-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.regie-assignment{flex-direction:row!important;align-items:center;padding:8px;border:1px solid #eadfd7;border-radius:8px;background:#fff}.regie-row{display:grid;gap:8px;margin-top:8px;align-items:center}.regie-row.labor{grid-template-columns:1.1fr 90px 1.5fr 34px}.regie-row.material{grid-template-columns:1.6fr 90px 100px 34px}.regie-remove{border:0;background:#fff0ed;color:#a23a2c;border-radius:8px;height:38px;font-size:22px;cursor:pointer}.regie-total{text-align:right;margin-top:10px;font-weight:900}.regie-signature-canvas{display:block;width:100%;height:180px;background:#fff;border:2px dashed #bda99a;border-radius:10px;pointer-events:none}.regie-signature-preview{position:relative;display:block;width:100%;padding:0;border:0;background:transparent;cursor:pointer}.regie-signature-preview:disabled{cursor:default}.regie-signature-preview span{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#765f50;font-weight:800}.regie-signature-overlay{position:fixed;inset:0;z-index:1900;padding:18px;background:rgba(30,24,20,.78);display:flex;align-items:center;justify-content:center}.regie-signature-modal{width:min(1000px,100%);height:min(720px,calc(100vh - 36px));padding:14px;background:#f8f4f0;border-radius:14px;display:flex;flex-direction:column;gap:12px;box-shadow:0 24px 70px rgba(0,0,0,.4)}.regie-signature-head,.regie-signature-actions{display:flex;align-items:center;justify-content:space-between;gap:12px}.regie-signature-head div{display:flex;flex-direction:column;gap:2px}.regie-signature-head small{color:#75675d}.regie-signature-editor{display:block;width:100%;min-height:260px;flex:1;background:#fff;border:3px solid #7b4a2d;border-radius:12px;touch-action:none}.regie-signature-actions{justify-content:flex-end}.regie-actions{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end;margin-top:18px}.regie-empty{text-align:center;padding:40px 20px}
         .regie-voice{margin-top:8px}.regie-voice.listening{background:#fff0ed;color:#9b3024}.regie-section-head .hint{margin:0}.regie-photo-upload{display:inline-flex!important;flex-direction:row!important;cursor:pointer}.regie-photo-upload input{display:none}.regie-photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;margin-top:12px}.regie-photo-grid figure{position:relative;margin:0;border:1px solid #eadfd7;border-radius:10px;overflow:hidden;background:#fff}.regie-photo-grid img{display:block;width:100%;height:120px;object-fit:cover}.regie-photo-grid figcaption{padding:7px;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.regie-photo-grid button{position:absolute;top:5px;right:5px;width:28px;height:28px;border:0;border-radius:50%;background:rgba(125,34,25,.9);color:#fff;font-size:20px;cursor:pointer}
         .regie-archive-toggle{display:flex!important;flex-direction:row!important;align-items:center;gap:7px;margin-top:9px;font-size:12px!important}.regie-list-item small.archived{color:#666}.regie-status.archived{background:#ececec;color:#555}.regie-danger{color:#9f2f24;border-color:#d9a49d!important}.regie-danger:hover{background:#fff0ed}
+        .regie-filters{display:grid;gap:7px;margin-top:9px}.regie-template-list{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}.regie-save-template{margin-top:8px}.regie-photo-caption{width:100%;box-sizing:border-box;border:0;border-top:1px solid #eadfd7;padding:7px;font-size:11px}.regie-audit-modal{width:min(850px,100%);max-height:calc(100vh - 40px);background:#fff;border-radius:12px;overflow:hidden;display:flex;flex-direction:column}.regie-audit-list{padding:14px;overflow:auto}.regie-audit-list article{border-bottom:1px solid #eadfd7;padding:10px 0;display:grid;gap:4px}.regie-audit-list span{color:#6f6259}.regie-audit-list pre{white-space:pre-wrap;font-size:11px;background:#f7f3ef;padding:8px;border-radius:7px}
         .regie-pdf-overlay{position:fixed;inset:0;z-index:1800;background:rgba(30,24,20,.72);padding:20px;display:flex;align-items:center;justify-content:center}.regie-pdf-modal{width:min(960px,100%);height:min(900px,calc(100vh - 40px));background:#fff;border-radius:12px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 24px 70px rgba(0,0,0,.35)}.regie-pdf-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 14px;border-bottom:1px solid #eadfd7}.regie-pdf-modal iframe{width:100%;flex:1;border:0;background:#eee}
         @media(max-width:800px){.regie-header{align-items:stretch;flex-direction:column}.regie-layout{grid-template-columns:1fr}.regie-list{position:static;max-height:230px;overflow:auto}.regie-grid,.regie-assignment-grid{grid-template-columns:1fr}.regie-row.labor{grid-template-columns:1fr 86px}.regie-row.labor input:nth-of-type(2){grid-column:1/3}.regie-row.material{grid-template-columns:1fr 72px 88px 34px}.regie-form{padding:13px}.regie-actions{position:sticky;bottom:0;background:#fff;padding:10px 0;z-index:4}.regie-actions .hbz-btn{flex:1 1 150px}.regie-signature-canvas{height:150px}.regie-signature-overlay{padding:0}.regie-signature-modal{height:100vh;border-radius:0;padding:10px}.regie-signature-actions .hbz-btn{flex:1}.regie-section-head{align-items:flex-start;flex-wrap:wrap}.regie-photo-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.regie-pdf-overlay{padding:0}.regie-pdf-modal{height:100vh;border-radius:0}}
       `}</style>

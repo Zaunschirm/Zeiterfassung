@@ -12,6 +12,8 @@ const emptyForm = {
   name: "",
   cost_center: "",
   address: "",
+  client_name: "",
+  client_contact: "",
   active: true,
 };
 
@@ -155,6 +157,8 @@ export default function ProjectAdmin() {
       name: form.name?.trim(),
       cost_center: form.cost_center?.trim() || null,
       address: form.address?.trim() || null,
+      client_name: form.client_name?.trim() || null,
+      client_contact: form.client_contact?.trim() || null,
       active: !!form.active,
     };
 
@@ -205,6 +209,8 @@ export default function ProjectAdmin() {
       name: p.name || "",
       cost_center: p.cost_center || "",
       address: p.address || "",
+      client_name: p.client_name || "",
+      client_contact: p.client_contact || "",
       active: !!p.active,
     });
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -273,6 +279,15 @@ export default function ProjectAdmin() {
             <div className="help" style={{ marginTop: 6 }}>
               Diese Adresse wird für das automatische Wetter in der Tageserfassung verwendet.
             </div>
+          </div>
+
+          <div>
+            <label className="hbz-label">Auftraggeber</label>
+            <input className="hbz-input" name="client_name" value={form.client_name} onChange={onChange} placeholder="Firma oder Name" />
+          </div>
+          <div>
+            <label className="hbz-label">Bauleiter / Kontakt</label>
+            <input className="hbz-input" name="client_contact" value={form.client_contact} onChange={onChange} placeholder="Name, Telefon oder E-Mail" />
           </div>
 
           <div className="project-active-row" style={{ gridColumn: "1 / -1" }}>

@@ -30,3 +30,7 @@ Baustellenfotos. Die Dateien liegen im bestehenden Storage-Bucket
 `202607010004_archive_regie_reports.sql` ergänzt die revisionssichere
 Archivierung unterschriebener Regieberichte. Entwürfe und bereitgestellte
 Aufträge können weiterhin vollständig gelöscht werden.
+
+`202607010005_regie_report_productivity.sql` ergänzt Auftraggeberdaten bei
+Projekten, Materialvorlagen und ein eigenes Änderungsprotokoll für
+Regieberichte.
