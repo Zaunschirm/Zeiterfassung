@@ -20,6 +20,17 @@ import {
 import { getBuakWeekLabel, getEmployeeWorkDay, getHolidayName, hmToMinutes } from "../utils/time";
 import { calculateZaBalanceForEmployee } from "../utils/overtime";
 import { formatValidationMessages, validateTimeEntry } from "../utils/timeValidation";
+
+const formatDateWithWeekday = (value) => {
+  const parsed = new Date(`${value}T12:00:00`);
+  if (Number.isNaN(parsed.getTime())) return value || "—";
+  return parsed.toLocaleDateString("de-AT", {
+    weekday: "short",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+};
 import {
   auditDisplayValue,
   auditFieldLabel,
@@ -1535,7 +1546,7 @@ export default function DaySlider() {
             <div className="month-overview-kicker">Zeiterfassung</div>
             <h2 className="month-overview-title">Tageserfassung</h2>
             <div className="month-overview-subtitle">
-              Datum: <b>{date}</b>
+              Datum: <b>{formatDateWithWeekday(date)}</b>
             </div>
             {buakWeekLabel && (
               <div className="month-overview-subtitle">
