@@ -11,6 +11,7 @@ const supabase =
 const emptyForm = {
   name: "",
   cost_center: "",
+  external_cost_center: "",
   address: "",
   client_name: "",
   client_contact: "",
@@ -117,6 +118,7 @@ export default function ProjectAdmin() {
         (p) =>
           p.name?.toLowerCase().includes(q) ||
           p.cost_center?.toLowerCase().includes(q) ||
+          p.external_cost_center?.toLowerCase().includes(q) ||
           p.address?.toLowerCase().includes(q) ||
           p.client_name?.toLowerCase().includes(q) ||
           p.client_contact?.toLowerCase().includes(q)
@@ -172,6 +174,7 @@ export default function ProjectAdmin() {
     const payload = {
       name: form.name?.trim(),
       cost_center: form.cost_center?.trim() || null,
+      external_cost_center: form.external_cost_center?.trim() || null,
       address: form.address?.trim() || null,
       client_name: form.client_name?.trim() || null,
       client_contact: form.client_contact?.trim() || null,
@@ -224,6 +227,7 @@ export default function ProjectAdmin() {
     setForm({
       name: p.name || "",
       cost_center: p.cost_center || "",
+      external_cost_center: p.external_cost_center || "",
       address: p.address || "",
       client_name: p.client_name || "",
       client_contact: p.client_contact || "",
@@ -280,6 +284,17 @@ export default function ProjectAdmin() {
               value={form.cost_center}
               onChange={onChange}
               placeholder="optional"
+            />
+          </div>
+
+          <div>
+            <label className="hbz-label">Externe Kostenstelle</label>
+            <input
+              className="hbz-input"
+              name="external_cost_center"
+              value={form.external_cost_center}
+              onChange={onChange}
+              placeholder="Kostenstelle des Auftraggebers"
             />
           </div>
 
@@ -359,7 +374,7 @@ export default function ProjectAdmin() {
             <select className="hbz-input" value={contactFilter} onChange={(e) => setContactFilter(e.target.value)}><option value="all">Alle Kontaktdaten</option><option value="complete">Kontaktdaten vollständig</option><option value="missing">Kontaktdaten fehlen</option></select>
             <input
               className="hbz-input"
-              placeholder="Projekt, Adresse, Auftraggeber, Bauleiter…"
+              placeholder="Projekt, Kostenstelle, Auftraggeber, Bauleiter…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -378,6 +393,9 @@ export default function ProjectAdmin() {
                   </th>
                   <th onClick={() => toggleSort("cost_center")} style={{ cursor: "pointer" }}>
                     Kostenstelle{sortArrow("cost_center")}
+                  </th>
+                  <th onClick={() => toggleSort("external_cost_center")} style={{ cursor: "pointer" }}>
+                    Externe Kostenstelle{sortArrow("external_cost_center")}
                   </th>
                   <th onClick={() => toggleSort("address")} style={{ cursor: "pointer" }}>
                     Baustellenadresse{sortArrow("address")}
@@ -399,6 +417,7 @@ export default function ProjectAdmin() {
                   <tr key={p.id}>
                     <td>{p.name}</td>
                     <td>{p.cost_center || "—"}</td>
+                    <td>{p.external_cost_center || "—"}</td>
                     <td>
                       {p.address ? (
                         <div
@@ -466,7 +485,7 @@ export default function ProjectAdmin() {
 
                 {filtered.length === 0 && (
                   <tr>
-                    <td colSpan={9} className="employee-empty">
+                    <td colSpan={10} className="employee-empty">
                       Keine Projekte gefunden
                     </td>
                   </tr>

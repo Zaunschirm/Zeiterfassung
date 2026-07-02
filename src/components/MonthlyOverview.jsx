@@ -2304,9 +2304,15 @@ export default function MonthlyOverview() {
       rowsForExport.forEach((r) => {
         const key = String(r.project_id || r.project_name || "ohne");
         const name = String(r.project_name || "Ohne Projekt");
+        const project = projects.find((item) => String(item.id) === String(r.project_id));
         const current =
           perProject.get(key) || {
             name,
+            costCenter: project?.cost_center || "",
+            externalCostCenter: project?.external_cost_center || "",
+            address: project?.address || "",
+            clientName: project?.client_name || "",
+            clientContact: project?.client_contact || "",
             work: 0,
             travel: 0,
             total: 0,
@@ -2322,15 +2328,22 @@ export default function MonthlyOverview() {
         perProject.set(key, current);
       });
 
-      const projectBody = Array.from(perProject.values())
-        .sort((a, b) => String(a.name).localeCompare(String(b.name), "de"))
-        .map((p) => [
-          p.name,
-          `${h2(p.work).toLocaleString("de-AT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} h`,
-          `${h2(p.travel).toLocaleString("de-AT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} h`,
-          `${h2(p.total).toLocaleString("de-AT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} h`,
-          String(p.days.size),
-        ]);
+      const projectValues = Array.from(perProject.values())
+        .sort((a, b) => String(a.name).localeCompare(String(b.name), "de"));
+      const projectInfoFields = [
+        { key: "costCenter", label: "Kostenstelle" },
+        { key: "externalCostCenter", label: "Externe Kostenstelle" },
+        { key: "address", label: "Adresse" },
+        { key: "clientName", label: "Auftraggeber" },
+        { key: "clientContact", label: "Bauleiter / Kontakt" },
+      ].filter((field) => projectValues.some((project) => String(project[field.key] || "").trim()));
+      const projectBody = projectValues.map((p) => [
+        p.name,
+        `${h2(p.work).toLocaleString("de-AT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} h`,
+        `${h2(p.travel).toLocaleString("de-AT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} h`,
+        `${h2(p.total).toLocaleString("de-AT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} h`,
+        String(p.days.size),
+      ]);
 
       const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
       const pageWidth = doc.internal.pageSize.getWidth();
@@ -2387,6 +2400,21 @@ export default function MonthlyOverview() {
       });
 
       let currentY = (doc.lastAutoTable?.finalY || 220) + 28;
+      if (projectInfoFields.length) {
+        if (currentY > pageHeight - 130) { doc.addPage(); currentY = 48; }
+        doc.setTextColor(...darkBrown); doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.text("Projektdaten", 40, currentY);
+        autoTable(doc, {
+          head: [["Projekt", ...projectInfoFields.map((field) => field.label)]],
+          body: projectValues.map((project) => [project.name, ...projectInfoFields.map((field) => project[field.key] || "-")]),
+          startY: currentY + 10,
+          styles: { fontSize: projectInfoFields.length >= 4 ? 7.5 : 8.5, cellPadding: 5, overflow: "linebreak", textColor: darkBrown, lineColor: [231, 224, 218], lineWidth: 0.25 },
+          headStyles: { fillColor: [146, 103, 76], textColor: 255, fontStyle: "bold" },
+          alternateRowStyles: { fillColor: warm },
+          columnStyles: { 0: { cellWidth: 145, fontStyle: "bold" } },
+          margin: { left: 40, right: 40 },
+        });
+        currentY = (doc.lastAutoTable?.finalY || currentY) + 28;
+      }
       if (currentY > pageHeight - 130) {
         doc.addPage();
         currentY = 48;
