@@ -40,7 +40,11 @@ async function loadPdfLibs() {
     import("jspdf-autotable"),
   ]);
 
-  return { jsPDF, autoTable: autoTableModule.default };
+  const autoTable = autoTableModule.default || autoTableModule.autoTable;
+  if (typeof jsPDF !== "function" || typeof autoTable !== "function") {
+    throw new Error("PDF-Bibliothek konnte nicht vollständig geladen werden.");
+  }
+  return { jsPDF, autoTable };
 }
 
 // ---------- Utils ----------
@@ -2298,8 +2302,8 @@ export default function MonthlyOverview() {
 
       const perProject = new Map();
       rowsForExport.forEach((r) => {
-        const key = r.project_id || r.project_name || "ohne";
-        const name = r.project_name || "Ohne Projekt";
+        const key = String(r.project_id || r.project_name || "ohne");
+        const name = String(r.project_name || "Ohne Projekt");
         const current =
           perProject.get(key) || {
             name,
@@ -2321,7 +2325,7 @@ export default function MonthlyOverview() {
       });
 
       const projectBody = Array.from(perProject.values())
-        .sort((a, b) => a.name.localeCompare(b.name))
+        .sort((a, b) => String(a.name).localeCompare(String(b.name), "de"))
         .map((p) => [
           p.name,
           h2(p.work).toFixed(2),
@@ -2358,9 +2362,9 @@ export default function MonthlyOverview() {
         const pureWorkHours = h2(getPureWorkMinutes(r));
 
         return [
-          r.work_date,
-          r.employee_name || "",
-          r.project_name || "—",
+          String(r.work_date || ""),
+          String(r.employee_name || ""),
+          String(r.project_name || "—"),
           pureWorkHours.toFixed(2),
           travelHours.toFixed(2),
           formatPrivatePkwKm(r.private_pkw_km),
@@ -2380,7 +2384,7 @@ export default function MonthlyOverview() {
       doc.save(`Abrechnung_${rangeLabel.replace(/\s+/g, "_")}.pdf`);
     } catch (err) {
       console.error("Abrechnung PDF Fehler:", err);
-      alert("Abrechnung PDF Fehler – bitte Konsole prüfen.");
+      alert(`Abrechnung PDF Fehler:\n${err?.message || err}`);
     }
   }
 
