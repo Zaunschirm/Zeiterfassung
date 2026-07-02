@@ -2328,33 +2328,75 @@ export default function MonthlyOverview() {
         .sort((a, b) => String(a.name).localeCompare(String(b.name), "de"))
         .map((p) => [
           p.name,
-          h2(p.work).toFixed(2),
-          h2(p.travel).toFixed(2),
-          p.privatePkwKm.toLocaleString("de-AT"),
-          h2(p.total).toFixed(2),
+          `${h2(p.work).toLocaleString("de-AT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} h`,
+          `${h2(p.travel).toLocaleString("de-AT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} h`,
+          p.privatePkwKm ? `${p.privatePkwKm.toLocaleString("de-AT")} km` : "-",
+          `${h2(p.total).toLocaleString("de-AT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} h`,
           String(p.days.size),
         ]);
 
       const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
-      doc.setFontSize(16);
-      doc.text(`Abrechnung ${rangeLabel}`, 40, 40);
-      doc.setFontSize(10);
-      doc.text("Zuerst Projekt-Gesamtsumme, danach tägliche Auflistung je Mitarbeiter", 40, 58);
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const brown = [123, 74, 45];
+      const darkBrown = [70, 43, 29];
+      const warm = [247, 243, 239];
+      const gray = [102, 94, 88];
+      const formatHours = (value) => `${Number(value || 0).toLocaleString("de-AT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} h`;
+      const formatDate = (value) => {
+        const [y, m, d] = String(value || "").slice(0, 10).split("-");
+        return y && m && d ? `${d}.${m}.${y}` : "-";
+      };
+      const selectedProjectName = projects.find((project) => String(project.id) === String(selectedProjectId))?.name || "Alle Projekte";
+      const employeeCount = new Set(rowsForExport.map((row) => String(row.employee_id || row.employee_name || "")).filter(Boolean)).size;
+      const totalWorkMinutes = rowsForExport.reduce((sum, row) => sum + getPureWorkMinutes(row), 0);
+      const totalTravelMinutes = rowsForExport.reduce((sum, row) => sum + (row._travel || 0), 0);
+      const totalMinutes = rowsForExport.reduce((sum, row) => sum + (row._mins || 0), 0);
+
+      doc.setFillColor(...darkBrown); doc.rect(0, 0, pageWidth, 78, "F");
+      doc.setTextColor(255); doc.setFont("helvetica", "bold"); doc.setFontSize(10); doc.text("HOLZBAU ZAUNSCHIRM", 40, 25);
+      doc.setFontSize(22); doc.text("Projektabrechnung", 40, 53);
+      doc.setFont("helvetica", "normal"); doc.setFontSize(10); doc.text(`Zeitraum ${rangeLabel}`, pageWidth - 40, 30, { align: "right" });
+      doc.text(`Erstellt am ${new Date().toLocaleDateString("de-AT")}`, pageWidth - 40, 49, { align: "right" });
+
+      doc.setTextColor(...darkBrown); doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.text("AUSWERTUNG", 40, 101);
+      doc.setFont("helvetica", "normal"); doc.setFontSize(11); doc.text(`${selectedProjectName}  |  ${employeeCount} Mitarbeiter im Export`, 40, 119);
+
+      const cards = [
+        ["Arbeitszeit", formatHours(h2(totalWorkMinutes))],
+        ["Fahrzeit", formatHours(h2(totalTravelMinutes))],
+        ["Gesamtstunden", formatHours(h2(totalMinutes))],
+        ["Mitarbeiter", String(employeeCount)],
+      ];
+      const cardGap = 10; const cardWidth = (pageWidth - 80 - cardGap * 3) / 4;
+      cards.forEach(([label, value], index) => {
+        const x = 40 + index * (cardWidth + cardGap);
+        doc.setFillColor(...warm); doc.roundedRect(x, 135, cardWidth, 50, 5, 5, "F");
+        doc.setTextColor(...gray); doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.text(label.toUpperCase(), x + 12, 153);
+        doc.setTextColor(...darkBrown); doc.setFont("helvetica", "bold"); doc.setFontSize(15); doc.text(value, x + 12, 174);
+      });
+
+      doc.setTextColor(...darkBrown); doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.text("Projektübersicht", 40, 210);
 
       autoTable(doc, {
         head: [["Projekt", "Arbeitszeit", "Fahrzeit", "Privat-PKW km", "Gesamtstunden", "Arbeitstage"]],
         body: projectBody,
-        startY: 80,
-        styles: { fontSize: 10, cellPadding: 4, overflow: "linebreak" },
-        headStyles: { fillColor: [123, 74, 45] },
+        startY: 220,
+        styles: { fontSize: 9, cellPadding: 6, overflow: "linebreak", textColor: darkBrown, lineColor: [231, 224, 218], lineWidth: 0.35 },
+        headStyles: { fillColor: brown, textColor: 255, fontStyle: "bold" },
+        alternateRowStyles: { fillColor: warm },
+        columnStyles: { 0: { cellWidth: 235 }, 1: { halign: "right" }, 2: { halign: "right" }, 3: { halign: "right" }, 4: { halign: "right", fontStyle: "bold" }, 5: { halign: "right" } },
         margin: { left: 40, right: 40 },
       });
 
-      let currentY = (doc.lastAutoTable?.finalY || 80) + 18;
-      if (currentY > doc.internal.pageSize.getHeight() - 120) {
+      let currentY = (doc.lastAutoTable?.finalY || 220) + 28;
+      if (currentY > pageHeight - 130) {
         doc.addPage();
-        currentY = 40;
+        currentY = 48;
       }
+
+      doc.setTextColor(...darkBrown); doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.text("Tagesdetails", 40, currentY);
+      currentY += 10;
 
       const body = rowsForExport.map((r) => {
         const totalHours = h2(r._mins);
@@ -2362,13 +2404,13 @@ export default function MonthlyOverview() {
         const pureWorkHours = h2(getPureWorkMinutes(r));
 
         return [
-          String(r.work_date || ""),
+          formatDate(r.work_date),
           String(r.employee_name || ""),
           String(r.project_name || "—"),
-          pureWorkHours.toFixed(2),
-          travelHours.toFixed(2),
+          formatHours(pureWorkHours),
+          formatHours(travelHours),
           formatPrivatePkwKm(r.private_pkw_km),
-          totalHours.toFixed(2),
+          formatHours(totalHours),
         ];
       });
 
@@ -2376,10 +2418,22 @@ export default function MonthlyOverview() {
         head: [["Datum", "Mitarbeiter", "Projekt", "Arbeitszeit", "Fahrzeit", "Privat-PKW", "Gesamtstunden"]],
         body,
         startY: currentY,
-        styles: { fontSize: 9, cellPadding: 3, overflow: "linebreak" },
-        headStyles: { fillColor: [200, 200, 200] },
+        styles: { fontSize: 8.5, cellPadding: 5, overflow: "linebreak", textColor: darkBrown, lineColor: [231, 224, 218], lineWidth: 0.25 },
+        headStyles: { fillColor: brown, textColor: 255, fontStyle: "bold" },
+        alternateRowStyles: { fillColor: warm },
+        columnStyles: { 0: { cellWidth: 65 }, 1: { cellWidth: 125 }, 2: { cellWidth: 190 }, 3: { halign: "right" }, 4: { halign: "right" }, 5: { halign: "right" }, 6: { halign: "right", fontStyle: "bold" } },
         margin: { left: 40, right: 40 },
       });
+
+      const pageCount = doc.getNumberOfPages();
+      for (let page = 1; page <= pageCount; page += 1) {
+        doc.setPage(page);
+        if (page > 1) { doc.setFillColor(...brown); doc.rect(0, 0, pageWidth, 5, "F"); }
+        doc.setDrawColor(220, 212, 206); doc.line(40, pageHeight - 27, pageWidth - 40, pageHeight - 27);
+        doc.setFont("helvetica", "normal"); doc.setFontSize(7.5); doc.setTextColor(...gray);
+        doc.text("Holzbau Zaunschirm GmbH | Projektabrechnung", 40, pageHeight - 14);
+        doc.text(`Seite ${page} von ${pageCount}`, pageWidth - 40, pageHeight - 14, { align: "right" });
+      }
 
       doc.save(`Abrechnung_${rangeLabel.replace(/\s+/g, "_")}.pdf`);
     } catch (err) {
