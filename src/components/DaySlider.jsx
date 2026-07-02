@@ -789,20 +789,9 @@ export default function DaySlider() {
     window.addEventListener("hbz-prev-day", handlePrevDay);
     window.addEventListener("hbz-next-day", handleNextDay);
 
-    function handleArrowKey(event) {
-      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
-      if (!window.matchMedia("(min-width: 801px)").matches || event.altKey || event.ctrlKey || event.metaKey) return;
-      if (event.target?.closest?.("input, textarea, select, button, [contenteditable='true'], canvas, [role='slider']")) return;
-      event.preventDefault();
-      shiftDate(event.key === "ArrowRight" ? 1 : -1);
-    }
-
-    window.addEventListener("keydown", handleArrowKey);
-
     return () => {
       window.removeEventListener("hbz-prev-day", handlePrevDay);
       window.removeEventListener("hbz-next-day", handleNextDay);
-      window.removeEventListener("keydown", handleArrowKey);
     };
   }, []);
 
