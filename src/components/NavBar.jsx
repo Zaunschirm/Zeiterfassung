@@ -3,7 +3,6 @@ import { NavLink } from "react-router-dom";
 
 export default function NavBar({ onLogout, currentUser, role }) {
   const [mobileOpen, setMobileOpen] = useState(false);
-
   const isAdmin = role === "admin";
   const canSeeAdmin = role === "admin" || role === "teamleiter";
 

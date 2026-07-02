@@ -54,6 +54,25 @@ export default function DailySiteReports() {
   }
   useEffect(() => { load(); }, [date]);
 
+  function shiftReportDate(days) {
+    const next = new Date(`${date}T12:00:00`);
+    next.setDate(next.getDate() + days);
+    const nextDate = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}-${String(next.getDate()).padStart(2, "0")}`;
+    setDate(nextDate); setProjectId(""); setSelectedId(""); setMessage("");
+  }
+
+  useEffect(() => {
+    function handleArrowKey(event) {
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+      if (!window.matchMedia("(min-width: 801px)").matches || event.altKey || event.ctrlKey || event.metaKey) return;
+      if (event.target?.closest?.("input, textarea, select, button, [contenteditable='true'], canvas, [role='slider']")) return;
+      event.preventDefault();
+      shiftReportDate(event.key === "ArrowRight" ? 1 : -1);
+    }
+    window.addEventListener("keydown", handleArrowKey);
+    return () => window.removeEventListener("keydown", handleArrowKey);
+  }, [date]);
+
   function prepareProject(nextProjectId) {
     const project = projects.find((p) => String(p.id) === String(nextProjectId));
     const relevant = entries.filter((e) => String(e.project_id || "") === String(nextProjectId) && !e.absence_type);

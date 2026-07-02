@@ -520,9 +520,20 @@ export default function WorkAssignments() {
     window.addEventListener("hbz-prev-week", handlePrevWeek);
     window.addEventListener("hbz-next-week", handleNextWeek);
 
+    function handleArrowKey(event) {
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+      if (!window.matchMedia("(min-width: 801px)").matches || event.altKey || event.ctrlKey || event.metaKey) return;
+      if (event.target?.closest?.("input, textarea, select, button, [contenteditable='true'], canvas, [role='slider']")) return;
+      event.preventDefault();
+      shiftWeek(event.key === "ArrowRight" ? 1 : -1);
+    }
+
+    window.addEventListener("keydown", handleArrowKey);
+
     return () => {
       window.removeEventListener("hbz-prev-week", handlePrevWeek);
       window.removeEventListener("hbz-next-week", handleNextWeek);
+      window.removeEventListener("keydown", handleArrowKey);
     };
   }, [weekAnchor]);
 
