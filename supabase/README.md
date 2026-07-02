@@ -34,3 +34,7 @@ Aufträge können weiterhin vollständig gelöscht werden.
 `202607010005_regie_report_productivity.sql` ergänzt Auftraggeberdaten bei
 Projekten, Materialvorlagen und ein eigenes Änderungsprotokoll für
 Regieberichte.
+
+`202607010006_create_daily_site_reports.sql` legt tägliche Bautagesberichte
+pro Projekt an. Mitarbeiter, Stunden, Tätigkeiten und Wetter werden aus der
+Zeiterfassung vorbereitet; Material/Geräte und Fotos bleiben optional.

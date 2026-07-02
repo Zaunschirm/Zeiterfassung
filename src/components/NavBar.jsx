@@ -21,6 +21,7 @@ export default function NavBar({ onLogout, currentUser, role }) {
     { to: "/zeiterfassung", label: "Zeiterfassung" },
     { to: "/arbeitseinteilung", label: "Arbeitseinteilung" },
     { to: "/regieberichte", label: "Regieberichte" },
+    { to: "/bautagesberichte", label: "Bautagesberichte" },
   ];
 
   const moreLinks = [
