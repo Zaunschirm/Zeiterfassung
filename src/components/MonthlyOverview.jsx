@@ -2309,7 +2309,6 @@ export default function MonthlyOverview() {
             name,
             work: 0,
             travel: 0,
-            privatePkwKm: 0,
             total: 0,
             days: new Set(),
           };
@@ -2317,7 +2316,6 @@ export default function MonthlyOverview() {
         const workMinutes = getPureWorkMinutes(r);
         current.work += workMinutes;
         current.travel += r._travel || 0;
-        current.privatePkwKm += parsePrivatePkwKm(r.private_pkw_km);
         current.total += r._mins || 0;
         if (r.work_date) current.days.add(r.work_date);
 
@@ -2330,7 +2328,6 @@ export default function MonthlyOverview() {
           p.name,
           `${h2(p.work).toLocaleString("de-AT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} h`,
           `${h2(p.travel).toLocaleString("de-AT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} h`,
-          p.privatePkwKm ? `${p.privatePkwKm.toLocaleString("de-AT")} km` : "-",
           `${h2(p.total).toLocaleString("de-AT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} h`,
           String(p.days.size),
         ]);
@@ -2379,13 +2376,13 @@ export default function MonthlyOverview() {
       doc.setTextColor(...darkBrown); doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.text("Projektübersicht", 40, 210);
 
       autoTable(doc, {
-        head: [["Projekt", "Arbeitszeit", "Fahrzeit", "Privat-PKW km", "Gesamtstunden", "Arbeitstage"]],
+        head: [["Projekt", "Arbeitszeit", "Fahrzeit", "Gesamtstunden", "Arbeitstage"]],
         body: projectBody,
         startY: 220,
         styles: { fontSize: 9, cellPadding: 6, overflow: "linebreak", textColor: darkBrown, lineColor: [231, 224, 218], lineWidth: 0.35 },
         headStyles: { fillColor: brown, textColor: 255, fontStyle: "bold" },
         alternateRowStyles: { fillColor: warm },
-        columnStyles: { 0: { cellWidth: 235 }, 1: { halign: "right" }, 2: { halign: "right" }, 3: { halign: "right" }, 4: { halign: "right", fontStyle: "bold" }, 5: { halign: "right" } },
+        columnStyles: { 0: { cellWidth: 290 }, 1: { halign: "right" }, 2: { halign: "right" }, 3: { halign: "right", fontStyle: "bold" }, 4: { halign: "right" } },
         margin: { left: 40, right: 40 },
       });
 
@@ -2409,19 +2406,18 @@ export default function MonthlyOverview() {
           String(r.project_name || "—"),
           formatHours(pureWorkHours),
           formatHours(travelHours),
-          formatPrivatePkwKm(r.private_pkw_km),
           formatHours(totalHours),
         ];
       });
 
       autoTable(doc, {
-        head: [["Datum", "Mitarbeiter", "Projekt", "Arbeitszeit", "Fahrzeit", "Privat-PKW", "Gesamtstunden"]],
+        head: [["Datum", "Mitarbeiter", "Projekt", "Arbeitszeit", "Fahrzeit", "Gesamtstunden"]],
         body,
         startY: currentY,
         styles: { fontSize: 8.5, cellPadding: 5, overflow: "linebreak", textColor: darkBrown, lineColor: [231, 224, 218], lineWidth: 0.25 },
         headStyles: { fillColor: brown, textColor: 255, fontStyle: "bold" },
         alternateRowStyles: { fillColor: warm },
-        columnStyles: { 0: { cellWidth: 65 }, 1: { cellWidth: 125 }, 2: { cellWidth: 190 }, 3: { halign: "right" }, 4: { halign: "right" }, 5: { halign: "right" }, 6: { halign: "right", fontStyle: "bold" } },
+        columnStyles: { 0: { cellWidth: 70 }, 1: { cellWidth: 145 }, 2: { cellWidth: 235 }, 3: { halign: "right" }, 4: { halign: "right" }, 5: { halign: "right", fontStyle: "bold" } },
         margin: { left: 40, right: 40 },
       });
 
