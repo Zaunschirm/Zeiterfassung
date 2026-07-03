@@ -1260,10 +1260,9 @@ export default function MonthlyOverview() {
 
     const warnings = [];
     Object.values(dayMap).forEach((d) => {
-      const hours = h2(d.minutes);
       const pureWorkHours = h2(Math.max(d.minutes - d.travel, 0));
-      if (hours > 10) {
-        warnings.push({ type: "Hohe Stunden", employee: d.employee_name, date: d.work_date, text: `${hours.toFixed(2)} h an einem Tag` });
+      if (pureWorkHours > 10) {
+        warnings.push({ type: "Hohe Stunden", employee: d.employee_name, date: d.work_date, text: `${pureWorkHours.toFixed(2)} h reine Arbeitszeit (ohne Fahrzeit)` });
       }
       if (pureWorkHours >= 6 && d.break_min <= 0) {
         warnings.push({ type: "Pause fehlt", employee: d.employee_name, date: d.work_date, text: `${pureWorkHours.toFixed(2)} h Arbeitszeit ohne Pause` });
