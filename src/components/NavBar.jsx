@@ -1,8 +1,9 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { NavLink } from "react-router-dom";
 
 export default function NavBar({ onLogout, currentUser, role }) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [openMenu, setOpenMenu] = useState(null);
   const isAdmin = role === "admin";
   const canSeeAdmin = role === "admin" || role === "teamleiter";
 
@@ -35,6 +36,14 @@ export default function NavBar({ onLogout, currentUser, role }) {
     ...(isAdmin ? [{ to: "/jahresuebersicht", label: "Jahresübersicht" }] : []),
   ];
 
+  useEffect(() => {
+    const closeOnOutsideClick = (event) => {
+      if (!event.target?.closest?.(".app-nav-more")) setOpenMenu(null);
+    };
+    document.addEventListener("pointerdown", closeOnOutsideClick);
+    return () => document.removeEventListener("pointerdown", closeOnOutsideClick);
+  }, []);
+
   const renderNavLink = (to, label) => (
     <NavLink
       key={to}
@@ -42,7 +51,10 @@ export default function NavBar({ onLogout, currentUser, role }) {
       className={({ isActive }) =>
         `app-nav-btn${isActive ? " app-nav-btn-active" : ""}`
       }
-      onClick={() => setMobileOpen(false)}
+      onClick={() => {
+        setMobileOpen(false);
+        setOpenMenu(null);
+      }}
     >
       <span className="app-nav-label">{label}</span>
     </NavLink>
@@ -63,15 +75,15 @@ export default function NavBar({ onLogout, currentUser, role }) {
 
         <div className="app-nav-center">
           {mainLinks.map((link) => renderNavLink(link.to, link.label))}
-          <details className="app-nav-more">
-            <summary className="app-nav-btn">Mehr</summary>
+          <details className="app-nav-more" open={openMenu === "more"}>
+            <summary className="app-nav-btn" onClick={(event) => { event.preventDefault(); setOpenMenu((value) => value === "more" ? null : "more"); }}>Mehr</summary>
             <div className="app-nav-dropdown">
               {moreLinks.map((link) => renderNavLink(link.to, link.label))}
             </div>
           </details>
           {adminLinks.length > 0 && (
-            <details className="app-nav-more">
-              <summary className="app-nav-btn">Verwaltung</summary>
+            <details className="app-nav-more" open={openMenu === "admin"}>
+              <summary className="app-nav-btn" onClick={(event) => { event.preventDefault(); setOpenMenu((value) => value === "admin" ? null : "admin"); }}>Verwaltung</summary>
               <div className="app-nav-dropdown">
                 {adminLinks.map((link) => renderNavLink(link.to, link.label))}
               </div>
