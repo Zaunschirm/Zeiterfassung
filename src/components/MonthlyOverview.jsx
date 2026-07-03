@@ -1245,26 +1245,30 @@ export default function MonthlyOverview() {
       const vacation = isVacationRow(r);
       const sick = isSickRow(r);
       const timeComp = isTimeCompRow(r);
+      const badWeather = isBadWeatherRow(r);
       const mins = entryMinutes(r);
       const pureWork = getPureWorkMinutes(r);
-      d.minutes += mins;
-      d.travel += getTravel(r) || 0;
-      d.break_min += Number(r.break_min || 0);
+      const isActualWork = !vacation && !sick && !timeComp && !badWeather;
+      if (isActualWork) {
+        d.minutes += mins;
+        d.travel += getTravel(r) || 0;
+        d.break_min += Number(r.break_min || 0);
+      }
       d.privatePkwKm += parsePrivatePkwKm(r.private_pkw_km);
       if (note) d.notes.push(note);
       if (vacation) d.hasVacation = true;
       if (sick) d.hasSick = true;
       if (timeComp) d.hasTimeComp = true;
-      if (!vacation && !sick && !timeComp && pureWork > 0) d.hasWork = true;
+      if (isActualWork && pureWork > 0) d.hasWork = true;
     });
 
     const warnings = [];
     Object.values(dayMap).forEach((d) => {
       const pureWorkHours = h2(Math.max(d.minutes - d.travel, 0));
-      if (pureWorkHours > 10) {
+      if (d.hasWork && pureWorkHours > 10) {
         warnings.push({ type: "Hohe Stunden", employee: d.employee_name, date: d.work_date, text: `${pureWorkHours.toFixed(2)} h reine Arbeitszeit (ohne Fahrzeit)` });
       }
-      if (pureWorkHours >= 6 && d.break_min <= 0) {
+      if (d.hasWork && pureWorkHours >= 6 && d.break_min <= 0) {
         warnings.push({ type: "Pause fehlt", employee: d.employee_name, date: d.work_date, text: `${pureWorkHours.toFixed(2)} h Arbeitszeit ohne Pause` });
       }
       if (d.travel > 150) {
