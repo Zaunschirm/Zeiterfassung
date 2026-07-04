@@ -3,6 +3,7 @@ import { supabase } from "../lib/supabase";
 import { getSession } from "../lib/session";
 import { filterVisibleEmployeesForRole } from "../utils/employeeVisibility";
 import { uploadProjectPhoto } from "../utils/uploadProjectPhoto";
+import { addPdfFooters, addPdfHeader, brandedTable, PDF_BRAND } from "../utils/pdfBranding";
 import {
   cleanLaborItems,
   cleanMaterialItems,
@@ -520,11 +521,9 @@ export default function RegieReports() {
     const [{ jsPDF }, autoTableModule] = await Promise.all([import("jspdf"), import("jspdf-autotable")]);
     const doc = new jsPDF({ unit: "pt", format: "a4" });
     const autoTable = autoTableModule.default;
-    const brown = [123, 74, 45];
-    doc.setFillColor(...brown); doc.rect(0, 0, 595, 62, "F"); doc.setTextColor(255); doc.setFontSize(20);
-    doc.text("Regiebericht", 36, 30); doc.setFontSize(10); doc.text(reportNumber, 36, 48); doc.setTextColor(40);
-    try { const logo = await urlDataUrl("/logo.png"); doc.addImage(logo, "PNG", 510, 8, 48, 46); } catch { /* Logo ist optional. */ }
-    autoTable(doc, { startY: 80, theme: "grid", styles: { fontSize: 9, cellPadding: 5 }, body: [["Datum", fmtDate(reportDate), "Projekt", selectedProject?.name || "—"], ["Ort", location || selectedProject?.address || "—", "Auftraggeber", clientName || "—"], ["Kontakt", clientContact || "—", "Erstellt von", session?.name || session?.code || "—"]] });
+    const brown = PDF_BRAND.brown;
+    addPdfHeader(doc, { title: "Regiebericht", rightTop: reportNumber, subtitle: `${selectedProject?.name || "Ohne Projekt"} | ${fmtDate(reportDate)}` });
+    autoTable(doc, { startY: 84, theme: "grid", ...brandedTable, body: [["Datum", fmtDate(reportDate), "Projekt", selectedProject?.name || "—"], ["Ort", location || selectedProject?.address || "—", "Auftraggeber", clientName || "—"], ["Kontakt", clientContact || "—", "Erstellt von", session?.name || session?.code || "—"]] });
     let y = doc.lastAutoTable.finalY + 22;
     doc.setFontSize(12); doc.text("Ausgeführte Arbeiten", 36, y);
     autoTable(doc, { startY: y + 10, theme: "grid", styles: { fontSize: 9, cellPadding: 6 }, body: [[description]], margin: { left: 36, right: 36 } });
@@ -565,10 +564,7 @@ export default function RegieReports() {
         // Ein einzelnes nicht erreichbares Foto soll die PDF-Erstellung nicht verhindern.
       }
     }
-    const pageCount = doc.getNumberOfPages();
-    for (let page = 1; page <= pageCount; page += 1) {
-      doc.setPage(page); doc.setFontSize(8); doc.setTextColor(90); doc.text(`Seite ${page} von ${pageCount}`, 297.5, 820, { align: "center" });
-    }
+    addPdfFooters(doc, { label: "Regiebericht", detail: reportNumber });
     return doc;
   }
 

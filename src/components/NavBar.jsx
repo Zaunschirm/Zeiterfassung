@@ -18,6 +18,7 @@ export default function NavBar({ onLogout, currentUser, role }) {
   }, [currentUser]);
 
   const mainLinks = [
+    ...(isAdmin ? [{ to: "/dashboard", label: "Dashboard" }] : []),
     { to: "/zeiterfassung", label: "Zeiterfassung" },
     { to: "/arbeitseinteilung", label: "Arbeitseinteilung" },
     { to: "/regieberichte", label: "Regieberichte" },

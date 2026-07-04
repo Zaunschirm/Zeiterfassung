@@ -13,6 +13,7 @@ import WorkAssignments from "./components/WorkAssignments.jsx";
 import VacationEntry from "./components/VacationEntry.jsx";
 import RegieReports from "./components/RegieReports.jsx";
 import DailySiteReports from "./components/DailySiteReports.jsx";
+import AdminDashboard from "./components/AdminDashboard.jsx";
 
 import { getSession, setSession, clearSession } from "./lib/session";
 import { APP_VERSION } from "./version";
@@ -109,9 +110,9 @@ export default function App() {
 
   useEffect(() => {
     if (loggedIn && (location.pathname === "/" || location.pathname === "/login")) {
-      navigate("/zeiterfassung", { replace: true });
+      navigate(isAdmin ? "/dashboard" : "/zeiterfassung", { replace: true });
     }
-  }, [loggedIn, location.pathname, navigate]);
+  }, [loggedIn, location.pathname, navigate, isAdmin]);
 
   useEffect(() => {
     let cancelled = false;
@@ -279,7 +280,7 @@ export default function App() {
             />
 
             <div className="app-page">
-              {isAdmin && (pendingTimeOffRequestCount > 0 || pendingTimeOffRequests.length > 0) && (
+              {isAdmin && location.pathname !== "/dashboard" && (pendingTimeOffRequestCount > 0 || pendingTimeOffRequests.length > 0) && (
                 <section className="admin-approval-card" aria-label="Offene Urlaub und ZA Freigaben">
                   <div className="admin-approval-head">
                     <div>
@@ -330,6 +331,7 @@ export default function App() {
                 </section>
               )}
               <Routes>
+                <Route path="/dashboard" element={isAdmin ? <AdminDashboard /> : <Navigate to="/zeiterfassung" replace />} />
                 <Route path="/zeiterfassung" element={<DaySlider />} />
                 <Route path="/projekte" element={canManageProjects ? <ProjectAdmin /> : <Navigate to="/zeiterfassung" replace />} />
                 <Route path="/arbeitseinteilung" element={canViewAssignments ? <WorkAssignments /> : <Navigate to="/zeiterfassung" replace />} />
@@ -340,7 +342,7 @@ export default function App() {
                 <Route path="/bautagesberichte" element={<DailySiteReports />} />
                 <Route path="/urlaub" element={<VacationEntry currentUser={currentUser} />} />
                 <Route path="/mitarbeiter" element={canManageEmployees ? <EmployeeList /> : <Navigate to="/zeiterfassung" replace />} />
-                <Route path="/" element={<Navigate to="/zeiterfassung" replace />} />
+                <Route path="/" element={<Navigate to={isAdmin ? "/dashboard" : "/zeiterfassung"} replace />} />
                 <Route path="*" element={<Navigate to="/zeiterfassung" replace />} />
               </Routes>
             </div>
