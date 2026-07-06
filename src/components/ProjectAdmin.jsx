@@ -384,8 +384,8 @@ export default function ProjectAdmin() {
         {loading ? (
           <p className="text-sm opacity-70">Lade Projekte…</p>
         ) : (
-          <div className="employee-table-wrap">
-            <table className="employee-table">
+          <div className="employee-table-wrap project-table-wrap">
+            <table className="employee-table project-directory-table">
               <thead>
                 <tr>
                   <th onClick={() => toggleSort("name")} style={{ cursor: "pointer" }}>
