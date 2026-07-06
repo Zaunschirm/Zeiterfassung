@@ -14,6 +14,7 @@ import VacationEntry from "./components/VacationEntry.jsx";
 import RegieReports from "./components/RegieReports.jsx";
 import DailySiteReports from "./components/DailySiteReports.jsx";
 import AdminDashboard from "./components/AdminDashboard.jsx";
+import ProjectBilling from "./components/ProjectBilling.jsx";
 
 import { getSession, setSession, clearSession } from "./lib/session";
 import { APP_VERSION } from "./version";
@@ -334,6 +335,7 @@ export default function App() {
                 <Route path="/dashboard" element={isAdmin ? <AdminDashboard /> : <Navigate to="/zeiterfassung" replace />} />
                 <Route path="/zeiterfassung" element={<DaySlider />} />
                 <Route path="/projekte" element={canManageProjects ? <ProjectAdmin /> : <Navigate to="/zeiterfassung" replace />} />
+                <Route path="/abrechnung" element={isAdmin ? <ProjectBilling /> : <Navigate to="/zeiterfassung" replace />} />
                 <Route path="/arbeitseinteilung" element={canViewAssignments ? <WorkAssignments /> : <Navigate to="/zeiterfassung" replace />} />
                 <Route path="/jahresuebersicht" element={canViewYearOverview ? <YearOverview /> : <Navigate to="/zeiterfassung" replace />} />
                 <Route path="/monatsuebersicht" element={canViewMonthlyOverview ? <MonthlyOverview /> : <Navigate to="/zeiterfassung" replace />} />
