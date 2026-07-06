@@ -466,8 +466,8 @@ export default function RegieReports() {
     } finally { setBusy(false); }
   }
 
-  async function copyDraftReport() {
-    if (!canPrepare || !selectedId || status !== "draft" || isArchived) return;
+  async function copyReportAsDraft() {
+    if (!canPrepare || !selectedId || !["draft", "prepared"].includes(status) || isArchived) return;
     setBusy(true); setError(""); setMessage("");
     try {
       const baseName = selectedProject?.name || "Projekt";
@@ -494,10 +494,10 @@ export default function RegieReports() {
       if (insertError) throw insertError;
       await writeAudit(data, "copy", originalReportRef.current);
       openReport(data);
-      setMessage("Entwurf wurde kopiert. Bitte vor dem Bereitstellen neu prüfen und bewusst bereitstellen.");
+      setMessage("Regiebericht wurde als neuer Entwurf kopiert. Bitte vor dem Bereitstellen neu prüfen und bewusst bereitstellen.");
       await loadData();
     } catch (e) {
-      setError(e?.message || "Entwurf konnte nicht kopiert werden.");
+      setError(e?.message || "Regiebericht konnte nicht kopiert werden.");
     } finally {
       setBusy(false);
     }
@@ -722,7 +722,7 @@ export default function RegieReports() {
 
             <div className="regie-actions">
               {!locked && canPrepare && <><button className="hbz-btn" disabled={busy} onClick={() => save("draft")}>Entwurf speichern</button><button className="hbz-btn hbz-btn-primary" disabled={busy} onClick={() => save("prepared")}>Für Mitarbeiter bereitstellen</button></>}
-              {!locked && canPrepare && selectedId && status === "draft" && <button className="hbz-btn" disabled={busy} onClick={copyDraftReport}>Entwurf kopieren</button>}
+              {!locked && canPrepare && selectedId && ["draft", "prepared"].includes(status) && <button className="hbz-btn" disabled={busy} onClick={copyReportAsDraft}>Als Entwurf kopieren</button>}
               {!locked && !canPrepare && <button className="hbz-btn hbz-btn-primary" disabled={busy || status !== "prepared"} onClick={() => save("signed")}>Unterschreiben & abschließen</button>}
               {canPrepare && selectedId && !isArchived && <button className="hbz-btn regie-danger" disabled={busy} onClick={archiveOrDelete}>{status === "signed" ? "Archivieren" : "Löschen"}</button>}
               {canPrepare && selectedId && isArchived && <button className="hbz-btn" disabled={busy} onClick={restoreArchived}>Aus Archiv holen</button>}
