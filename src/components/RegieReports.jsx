@@ -423,7 +423,6 @@ export default function RegieReports() {
   function validate(nextStatus) {
     if (!reportDate || !projectId) return "Bitte Datum und Projekt ausfüllen.";
     if (nextStatus === "prepared") {
-      if (!description.trim()) return "Bitte den Arbeitsauftrag ausfüllen.";
       if (!clientName.trim()) return "Bitte den Auftraggeber eintragen.";
       if (!assignedEmployeeIds.length) return "Bitte mindestens einen Mitarbeiter zuweisen.";
       if (!prepareLaborItems(laborItems).length) return "Bitte die zugewiesenen Mitarbeiter in die Stundenliste übernehmen.";
@@ -569,7 +568,7 @@ export default function RegieReports() {
   }
 
   function validatePdf() {
-    const problem = validate(status === "signed" ? "signed" : "draft");
+    const problem = validate(status === "signed" ? "signed" : "draft") || (!description.trim() ? "Bitte vor PDF/Teilen die Arbeiten beschreiben." : "");
     if (problem) setError(problem);
     return !problem;
   }
