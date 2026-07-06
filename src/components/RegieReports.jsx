@@ -466,6 +466,43 @@ export default function RegieReports() {
     } finally { setBusy(false); }
   }
 
+  async function copyDraftReport() {
+    if (!canPrepare || !selectedId || status !== "draft" || isArchived) return;
+    setBusy(true); setError(""); setMessage("");
+    try {
+      const baseName = selectedProject?.name || "Projekt";
+      const baseNumber = createReportNumber(baseName, `${reportDate}T12:00:00`);
+      const { data: matchingNumbers, error: numberError } = await supabase.from("regie_reports").select("report_number").like("report_number", `${baseNumber}%`);
+      if (numberError) throw numberError;
+      const used = new Set((matchingNumbers || []).map((item) => item.report_number));
+      let nextNumber = baseNumber;
+      let suffix = 2;
+      while (used.has(nextNumber)) nextNumber = `${baseNumber}-${suffix++}`;
+
+      const payload = {
+        ...makePayload("draft"),
+        report_number: nextNumber,
+        status: "draft",
+        signed_by: null,
+        signature_data: null,
+        signed_at: null,
+        prepared_at: null,
+        prepared_by: null,
+        updated_at: new Date().toISOString(),
+      };
+      const { data, error: insertError } = await supabase.from("regie_reports").insert(payload).select().single();
+      if (insertError) throw insertError;
+      await writeAudit(data, "copy", originalReportRef.current);
+      openReport(data);
+      setMessage("Entwurf wurde kopiert. Bitte vor dem Bereitstellen neu prüfen und bewusst bereitstellen.");
+      await loadData();
+    } catch (e) {
+      setError(e?.message || "Entwurf konnte nicht kopiert werden.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function archiveOrDelete() {
     if (!canPrepare || !selectedId) return;
     if (status === "signed") {
@@ -685,6 +722,7 @@ export default function RegieReports() {
 
             <div className="regie-actions">
               {!locked && canPrepare && <><button className="hbz-btn" disabled={busy} onClick={() => save("draft")}>Entwurf speichern</button><button className="hbz-btn hbz-btn-primary" disabled={busy} onClick={() => save("prepared")}>Für Mitarbeiter bereitstellen</button></>}
+              {!locked && canPrepare && selectedId && status === "draft" && <button className="hbz-btn" disabled={busy} onClick={copyDraftReport}>Entwurf kopieren</button>}
               {!locked && !canPrepare && <button className="hbz-btn hbz-btn-primary" disabled={busy || status !== "prepared"} onClick={() => save("signed")}>Unterschreiben & abschließen</button>}
               {canPrepare && selectedId && !isArchived && <button className="hbz-btn regie-danger" disabled={busy} onClick={archiveOrDelete}>{status === "signed" ? "Archivieren" : "Löschen"}</button>}
               {canPrepare && selectedId && isArchived && <button className="hbz-btn" disabled={busy} onClick={restoreArchived}>Aus Archiv holen</button>}
