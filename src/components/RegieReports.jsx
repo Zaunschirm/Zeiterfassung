@@ -687,6 +687,26 @@ export default function RegieReports() {
     doc.save(`Regiebericht_${reportNumber}.pdf`);
   }
 
+  async function savePdfFile() {
+    if (!validatePdf()) return;
+    try {
+      const doc = await createPdfDocument();
+      const fileName = `Regiebericht_${reportNumber}.pdf`;
+      const url = URL.createObjectURL(doc.output("blob"));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = fileName;
+      link.rel = "noopener";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1500);
+      setMessage("PDF wurde zum Speichern vorbereitet.");
+    } catch (e) {
+      setError(e?.message || "PDF konnte nicht gespeichert werden.");
+    }
+  }
+
   async function previewPdf() {
     if (!validatePdf()) return;
     try {
@@ -816,6 +836,7 @@ export default function RegieReports() {
               {canPrepare && selectedId && isArchived && <button className="hbz-btn" disabled={busy} onClick={restoreArchived}>Aus Archiv holen</button>}
               {canPrepare && selectedId && <button className="hbz-btn" onClick={loadAudit}>Änderungsverlauf</button>}
               <button className="hbz-btn" onClick={previewPdf}>PDF-Vorschau</button>
+              <button className="hbz-btn hbz-btn-primary" onClick={savePdfFile}>PDF speichern</button>
               <button className="hbz-btn" onClick={exportPdf}>PDF herunterladen</button>
               <button className="hbz-btn" onClick={sharePdf}>PDF teilen</button>
             </div>
