@@ -13,6 +13,9 @@ export function getTimeEntryAbsenceType(entry) {
   ) {
     return "krank";
   }
+  if (absenceType === "sonderurlaub" || note.includes("[sonderurlaub") || note.includes("sonderurlaub")) {
+    return "sonderurlaub";
+  }
   if (absenceType === "urlaub" || note.includes("[urlaub]") || note.includes("urlaub")) {
     return "urlaub";
   }
@@ -32,6 +35,7 @@ export function getTimeEntryAbsenceKind(entry) {
   const type = getTimeEntryAbsenceType(entry);
   if (type === "krank") return "Krank";
   if (type === "urlaub") return "Urlaub";
+  if (type === "sonderurlaub") return "Sonderurlaub";
   if (type === "za") return "ZA";
   return "";
 }

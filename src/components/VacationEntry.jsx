@@ -17,6 +17,8 @@ import {
 import { collectSupabaseRows } from "../utils/pagination";
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
+const SPECIAL_LEAVE_STORAGE_KEY = "hbz_special_leave_reasons_v1";
+const DEFAULT_SPECIAL_LEAVE_REASONS = ["Begräbnis", "Geburt", "Hochzeit", "Behördentermin", "Pflegefreistellung", "Sonstiger Sonderurlaub"];
 
 function parseDateLocal(iso) {
   const [y, m, d] = String(iso || "").slice(0, 10).split("-").map(Number);
@@ -104,15 +106,58 @@ function toHM(min) {
 
 const isZaEntry = isTimeCompEntry;
 
+function isSpecialLeaveEntry(row) {
+  const absenceType = String(row?.absence_type || "").toLowerCase();
+  const note = String(row?.note || "").toLowerCase();
+  return absenceType === "sonderurlaub" || note.includes("[sonderurlaub") || note.includes("sonderurlaub");
+}
+
 function isTimeOffEntry(row) {
-  return isVacationEntry(row) || isSickEntry(row) || isZaEntry(row);
+  return isVacationEntry(row) || isSpecialLeaveEntry(row) || isSickEntry(row) || isZaEntry(row);
 }
 
 function getEntryKind(row) {
   if (isZaEntry(row)) return "za";
   if (isSickEntry(row)) return "krank";
+  if (isSpecialLeaveEntry(row)) return "sonderurlaub";
   if (isVacationEntry(row)) return "urlaub";
   return "sonstiges";
+}
+
+function entryTypeLabel(type) {
+  if (type === "za") return "Zeitausgleich";
+  if (type === "sonderurlaub") return "Sonderurlaub";
+  if (type === "krank") return "Krank";
+  return "Urlaub";
+}
+
+function entryTypeShortLabel(type) {
+  if (type === "za") return "ZA";
+  if (type === "sonderurlaub") return "Sonderurlaub";
+  return entryTypeLabel(type);
+}
+
+function entryTypePillClass(type) {
+  if (type === "za") return "za";
+  if (type === "krank") return "sick";
+  if (type === "sonderurlaub") return "special";
+  return "vac";
+}
+
+function notePrefixForEntryType(type, reason = "") {
+  if (type === "za") return "[Zeitausgleich]";
+  if (type === "sonderurlaub") return `[Sonderurlaub${reason ? `: ${reason}` : ""}]`;
+  return "[Urlaub]";
+}
+
+function dbAbsenceTypeForEntryType(type) {
+  if (type === "za") return "za";
+  if (type === "sonderurlaub") return "sonderurlaub";
+  return "urlaub";
+}
+
+function normalizeRequestEntryType(type) {
+  return type === "za" || type === "sonderurlaub" ? type : "urlaub";
 }
 
 function getEmployeeLabel(emp) {
@@ -140,6 +185,7 @@ function sameEmployee(emp, session) {
 function stripTimeOffNote(note) {
   return String(note || "")
     .replace(/^\s*\[Urlaub\]\s*/i, "")
+    .replace(/^\s*\[Sonderurlaub[^\]]*\]\s*/i, "")
     .replace(/^\s*\[Krank\]\s*/i, "")
     .replace(/^\s*\[Zeitausgleich\]\s*/i, "")
     .trim();
@@ -241,6 +287,8 @@ function buildPreviewHint(group, entryType) {
 
   if (entryType === "za") {
     parts.push(`[Zeitausgleich] ${fmtHours(Number(group?.requiredMinutes || 0) / 60)} werden vom ZA-Konto abgezogen`);
+  } else if (entryType === "sonderurlaub") {
+    parts.push(`[Sonderurlaub] ${days.length} Tag${days.length === 1 ? "" : "e"} / 0,00 h Arbeitszeit`);
   } else {
     parts.push(`[Urlaub] ${days.length} Tag${days.length === 1 ? "" : "e"} / 0,00 h Arbeitszeit`);
   }
@@ -264,6 +312,16 @@ export default function VacationEntry({ currentUser = null } = {}) {
   const [ownEmployee, setOwnEmployee] = useState(null);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState("");
   const [entryType, setEntryType] = useState("urlaub");
+  const [specialLeaveReason, setSpecialLeaveReason] = useState(DEFAULT_SPECIAL_LEAVE_REASONS[0]);
+  const [specialLeaveReasons, setSpecialLeaveReasons] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(SPECIAL_LEAVE_STORAGE_KEY) || "null");
+      return Array.isArray(saved) && saved.length ? saved : DEFAULT_SPECIAL_LEAVE_REASONS;
+    } catch {
+      return DEFAULT_SPECIAL_LEAVE_REASONS;
+    }
+  });
+  const [specialLeaveReasonDraft, setSpecialLeaveReasonDraft] = useState("");
   const [fromDate, setFromDate] = useState(todayISO());
   const [toDate, setToDate] = useState(todayISO());
   const [note, setNote] = useState("");
@@ -291,6 +349,24 @@ export default function VacationEntry({ currentUser = null } = {}) {
   const calendarAnchorDate = useMemo(() => `${calendarMonth || todayISO().slice(0, 7)}-01`, [calendarMonth]);
   const calendarFrom = useMemo(() => monthStart(calendarAnchorDate), [calendarAnchorDate]);
   const calendarTo = useMemo(() => monthEnd(calendarAnchorDate), [calendarAnchorDate]);
+
+  useEffect(() => {
+    localStorage.setItem(SPECIAL_LEAVE_STORAGE_KEY, JSON.stringify(specialLeaveReasons));
+    if (!specialLeaveReasons.includes(specialLeaveReason)) setSpecialLeaveReason(specialLeaveReasons[0] || "");
+  }, [specialLeaveReasons, specialLeaveReason]);
+
+  function addSpecialLeaveReason() {
+    const value = specialLeaveReasonDraft.trim();
+    if (!value) return;
+    setSpecialLeaveReasons((rows) => (rows.includes(value) ? rows : [...rows, value]));
+    setSpecialLeaveReason(value);
+    setSpecialLeaveReasonDraft("");
+  }
+
+  function removeSpecialLeaveReason(value) {
+    const next = specialLeaveReasons.filter((item) => item !== value);
+    setSpecialLeaveReasons(next.length ? next : DEFAULT_SPECIAL_LEAVE_REASONS);
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -902,6 +978,7 @@ export default function VacationEntry({ currentUser = null } = {}) {
         String(a.employee?.name || "").localeCompare(String(b.employee?.name || ""), "de")
       );
       const vacation = entries.filter((r) => r.kind === "urlaub");
+      const special = entries.filter((r) => r.kind === "sonderurlaub");
       const sick = entries.filter((r) => r.kind === "krank");
       const za = entries.filter((r) => r.kind === "za");
       return {
@@ -911,6 +988,7 @@ export default function VacationEntry({ currentUser = null } = {}) {
         holidayName: getHolidayName(date),
         entries,
         vacation,
+        special,
         sick,
         za,
       };
@@ -930,10 +1008,11 @@ export default function VacationEntry({ currentUser = null } = {}) {
       (summary, request) => {
         summary.total += 1;
         if (request.entry_type === "za") summary.za += 1;
+        else if (request.entry_type === "sonderurlaub") summary.special += 1;
         else summary.vacation += 1;
         return summary;
       },
-      { total: 0, vacation: 0, za: 0 }
+      { total: 0, vacation: 0, special: 0, za: 0 }
     );
   }, [visibleTimeOffRequests]);
 
@@ -964,7 +1043,7 @@ export default function VacationEntry({ currentUser = null } = {}) {
       return;
     }
     if (preview.length === 0) {
-      setError(`Für diesen Zeitraum gibt es laut Arbeitszeitmodell keine ${entryType === "za" ? "ZA-Tage" : "Urlaubstage"} zum Eintragen.`);
+      setError(`Für diesen Zeitraum gibt es laut Arbeitszeitmodell keine ${entryTypeShortLabel(entryType)}-Tage zum Eintragen.`);
       return;
     }
 
@@ -987,12 +1066,12 @@ export default function VacationEntry({ currentUser = null } = {}) {
           from_date: fromDate,
           to_date: toDate,
           days: requestDays,
-          note: note.trim() || null,
+          note: entryType === "sonderurlaub" ? [specialLeaveReason, note.trim()].filter(Boolean).join(" · ") || null : note.trim() || null,
           status: "pending",
         });
         if (requestError) throw requestError;
 
-        setMessage(`${entryType === "za" ? "ZA" : "Urlaub"}-Antrag wurde an den Admin gesendet.`);
+        setMessage(`${entryTypeShortLabel(entryType)}-Antrag wurde an den Admin gesendet.`);
         setNote("");
         await loadTimeOffRequests();
         window.dispatchEvent(new CustomEvent("hbz-time-off-requests-changed"));
@@ -1041,7 +1120,7 @@ export default function VacationEntry({ currentUser = null } = {}) {
       const replacedRows = [];
       const rowsToInsert = [];
       const skipped = [];
-      const prefix = entryType === "za" ? "[Zeitausgleich]" : "[Urlaub]";
+      const prefix = notePrefixForEntryType(entryType, entryType === "sonderurlaub" ? specialLeaveReason : "");
 
       for (const item of preview) {
         const existingRows = existingMap.get(item.date) || [];
@@ -1073,7 +1152,7 @@ export default function VacationEntry({ currentUser = null } = {}) {
           travel_cost_center: "FAHRZEIT",
           crane_hours: 0,
           private_pkw_km: 0,
-          absence_type: entryType === "za" ? "za" : "urlaub",
+          absence_type: dbAbsenceTypeForEntryType(entryType),
           za_hours: zaHours,
           bad_weather: false,
           bad_weather_minutes: 0,
@@ -1122,7 +1201,7 @@ export default function VacationEntry({ currentUser = null } = {}) {
       }
 
       setMessage(
-        `${entryType === "za" ? "Zeitausgleich" : "Urlaub"} eingetragen für ${getEmployeeLabel(targetEmployee)}: ${rowsToInsert.length} Tag${rowsToInsert.length === 1 ? "" : "e"}.` +
+        `${entryTypeLabel(entryType)} eingetragen für ${getEmployeeLabel(targetEmployee)}: ${rowsToInsert.length} Tag${rowsToInsert.length === 1 ? "" : "e"}.` +
           (skipped.length > 0
             ? ` Nicht gespeichert: ${skipped.length} Tag${skipped.length === 1 ? "" : "e"}, weil dort bereits ein Eintrag vorhanden ist.`
             : "")
@@ -1151,7 +1230,7 @@ export default function VacationEntry({ currentUser = null } = {}) {
       return;
     }
 
-    const requestType = request.entry_type === "za" ? "za" : "urlaub";
+    const requestType = normalizeRequestEntryType(request.entry_type);
     const requestDates = requestDays.map((item) => String(item.date || "").slice(0, 10)).filter(Boolean).sort();
     const existingFrom = requestDates[0];
     const existingTo = requestDates[requestDates.length - 1];
@@ -1184,7 +1263,7 @@ export default function VacationEntry({ currentUser = null } = {}) {
         throw new Error(`Freigabe nicht möglich: Für ${Array.from(existingDates).map(formatDateAT).join(", ")} gibt es bereits Einträge.`);
       }
 
-      const prefix = requestType === "za" ? "[Zeitausgleich]" : "[Urlaub]";
+      const prefix = notePrefixForEntryType(requestType);
       const rowsToInsert = requestDays.map((item) => {
         const requiredMinutes = Number(item.requiredMinutes || 0);
         return {
@@ -1199,7 +1278,7 @@ export default function VacationEntry({ currentUser = null } = {}) {
           travel_cost_center: "FAHRZEIT",
           crane_hours: 0,
           private_pkw_km: 0,
-          absence_type: requestType === "za" ? "za" : "urlaub",
+          absence_type: dbAbsenceTypeForEntryType(requestType),
           za_hours: requestType === "za" ? requiredMinutes / 60 : 0,
           bad_weather: false,
           bad_weather_minutes: 0,
@@ -1256,7 +1335,7 @@ export default function VacationEntry({ currentUser = null } = {}) {
       if (updateError) throw updateError;
 
       setMessage(
-        `${requestType === "za" ? "ZA" : "Urlaub"}-Antrag freigegeben.` +
+        `${entryTypeShortLabel(requestType)}-Antrag freigegeben.` +
           (auditSaved ? "" : " Achtung: Das Änderungsprotokoll konnte nicht gespeichert werden.")
       );
       await loadTimeOff();
@@ -1305,7 +1384,7 @@ export default function VacationEntry({ currentUser = null } = {}) {
     const emp = employeeById.get(String(row.employee_id));
     const allowed = isAdmin || sameEmployee(emp, session);
     if (!allowed) return;
-    const kind = getEntryKind(row) === "za" ? "Zeitausgleich" : "Urlaub";
+    const kind = entryTypeLabel(getEntryKind(row));
     const ids = Array.isArray(row.ids) && row.ids.length ? row.ids : [row.id];
     const rangeText = row.from_date && row.to_date ? formatDateRangeAT(row.from_date, row.to_date) : formatDateAT(row.work_date);
     const ok = window.confirm(`${isAdmin ? "Diesen" : "Eigenen"} ${kind}-Eintrag für ${rangeText} wirklich löschen?`);
@@ -1361,6 +1440,7 @@ export default function VacationEntry({ currentUser = null } = {}) {
           </div>
           <div className="vacation-legend" aria-label="Farblegende">
             <span className="vacation-legend-item vacation-legend-item--vac"><i />Urlaub</span>
+            <span className="vacation-legend-item vacation-legend-item--special"><i />Sonderurlaub</span>
             <span className="vacation-legend-item vacation-legend-item--sick"><i />Krank</span>
             <span className="vacation-legend-item vacation-legend-item--za"><i />Zeitausgleich</span>
           </div>
@@ -1394,6 +1474,7 @@ export default function VacationEntry({ currentUser = null } = {}) {
                   <>
                     <span className="vacation-request-count strong">{timeOffRequestSummary.total}</span>
                     <span className="vacation-request-count vac">{timeOffRequestSummary.vacation} Urlaub</span>
+                    <span className="vacation-request-count special">{timeOffRequestSummary.special} Sonderurlaub</span>
                     <span className="vacation-request-count za">{timeOffRequestSummary.za} ZA</span>
                   </>
                 )}
@@ -1405,7 +1486,7 @@ export default function VacationEntry({ currentUser = null } = {}) {
             ) : (
               <div className="vacation-request-list">
                 {visibleTimeOffRequests.map((request) => {
-                  const requestTypeLabel = request.entry_type === "za" ? "Zeitausgleich" : "Urlaub";
+                  const requestTypeLabel = entryTypeLabel(normalizeRequestEntryType(request.entry_type));
                   const busy = String(timeOffRequestBusyId) === String(request.id);
                   const requestStatusLabel =
                     request.status === "approved" ? "Freigegeben" :
@@ -1415,7 +1496,7 @@ export default function VacationEntry({ currentUser = null } = {}) {
                     <div key={request.id} className={`vacation-request-row status-${request.status}`}>
                       <div className="vacation-request-body">
                         <div className="vacation-request-title">
-                          <span className={`vac-pill ${request.entry_type === "za" ? "za" : "vac"}`}>{requestTypeLabel}</span>
+                          <span className={`vac-pill ${entryTypePillClass(normalizeRequestEntryType(request.entry_type))}`}>{requestTypeLabel}</span>
                           <span className={`vacation-request-status status-${request.status}`}>{requestStatusLabel}</span>
                           <b>{request.employee ? getEmployeeLabel(request.employee) : `MA ${request.employee_id}`}</b>
                           {request.employee && (request.employee.active === false || request.employee.disabled === true) ? (
@@ -1460,6 +1541,7 @@ export default function VacationEntry({ currentUser = null } = {}) {
             <span className="hbz-label">Art</span>
             <select className="hbz-input" value={entryType} onChange={(e) => setEntryType(e.target.value)}>
               <option value="urlaub">Urlaub</option>
+              <option value="sonderurlaub">Sonderurlaub</option>
               <option value="za">Zeitausgleich</option>
             </select>
           </label>
@@ -1480,6 +1562,22 @@ export default function VacationEntry({ currentUser = null } = {}) {
           )}
         </div>
 
+        {entryType === "sonderurlaub" && (
+          <div className="vacation-form-grid" style={{ marginTop: 12 }}>
+            <label className="hbz-field">
+              <span className="hbz-label">Art Sonderurlaub</span>
+              <select className="hbz-input" value={specialLeaveReason} onChange={(e) => setSpecialLeaveReason(e.target.value)}>
+                {specialLeaveReasons.map((reason) => (
+                  <option key={reason} value={reason}>{reason}</option>
+                ))}
+              </select>
+            </label>
+            <div className="hbz-info-line">
+              Wird separat dokumentiert und zieht keinen normalen Urlaub ab.
+            </div>
+          </div>
+        )}
+
         {isAdmin && (
           <div className="hbz-info-line" style={{ marginTop: 10 }}>
             Admin-Eintragung für: <b>{targetEmployee ? getEmployeeLabel(targetEmployee) : "nicht ausgewählt"}</b>
@@ -1490,7 +1588,7 @@ export default function VacationEntry({ currentUser = null } = {}) {
           <summary>Notiz und weitere Optionen</summary>
           <label className="hbz-field" style={{ marginTop: 12 }}>
             <span className="hbz-label">Notiz optional</span>
-            <input className="hbz-input" value={note} onChange={(e) => setNote(e.target.value)} placeholder={entryType === "za" ? "z. B. ZA laut Vereinbarung" : "z. B. Sommerurlaub"} />
+            <input className="hbz-input" value={note} onChange={(e) => setNote(e.target.value)} placeholder={entryType === "za" ? "z. B. ZA laut Vereinbarung" : entryType === "sonderurlaub" ? "z. B. kurzer Hinweis zum Sonderurlaub" : "z. B. Sommerurlaub"} />
           </label>
 
           <div className="hbz-chipbar" style={{ marginTop: 12 }}>
@@ -1498,20 +1596,39 @@ export default function VacationEntry({ currentUser = null } = {}) {
               Nur Arbeitstage laut Modell
             </button>
             <button type="button" className={`hbz-chip ${replaceExistingTimeOff ? "active" : ""}`} onClick={() => setReplaceExistingTimeOff((v) => !v)}>
-              vorhandenen Urlaub/ZA überschreiben
+              vorhandene Abwesenheit überschreiben
             </button>
           </div>
+          {isAdmin && (
+            <details className="vac-admin-details" style={{ marginTop: 12 }}>
+              <summary>Admin: Sonderurlaub-Arten verwalten</summary>
+              <div className="vac-special-editor">
+                <div className="vac-special-add">
+                  <input className="hbz-input" value={specialLeaveReasonDraft} onChange={(e) => setSpecialLeaveReasonDraft(e.target.value)} placeholder="Neue Art, z. B. Umzug" />
+                  <button type="button" className="hbz-chip active" onClick={addSpecialLeaveReason}>Hinzufügen</button>
+                </div>
+                <div className="vac-special-list">
+                  {specialLeaveReasons.map((reason) => (
+                    <span key={reason} className="vac-special-chip">
+                      {reason}
+                      <button type="button" aria-label={`${reason} entfernen`} onClick={() => removeSpecialLeaveReason(reason)}>×</button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </details>
+          )}
         </details>
         <div className="vacation-primary-action">
           <span>
-            {preview.length} {entryType === "za" ? "ZA-Tag" : "Urlaubstag"}{preview.length === 1 ? "" : "e"} vorbereitet
+            {preview.length} {entryTypeShortLabel(entryType)}-Tag{preview.length === 1 ? "" : "e"} vorbereitet
           </span>
           <button type="button" className="save-btn lg" onClick={saveTimeOff} disabled={saving || preview.length === 0 || !targetEmployee}>
             {saving
               ? "Speichere…"
               : isAdmin
-                ? (entryType === "za" ? "Zeitausgleich eintragen" : "Urlaub eintragen")
-                : (entryType === "za" ? "ZA-Antrag senden" : "Urlaubsantrag senden")}
+                ? `${entryTypeLabel(entryType)} eintragen`
+                : `${entryTypeShortLabel(entryType)}-Antrag senden`}
           </button>
         </div>
       </section>
@@ -1584,7 +1701,7 @@ export default function VacationEntry({ currentUser = null } = {}) {
           <div><div className="month-card-title">Vorschau</div><p className="hint">Vor dem Speichern nochmals kontrollieren</p></div>
         </div>
         <p className="hint">
-          Es werden {preview.length} {entryType === "za" ? "ZA-Tag" : "Urlaubstag"}{preview.length === 1 ? "" : "e"} vorbereitet.
+          Es werden {preview.length} {entryTypeShortLabel(entryType)}-Tag{preview.length === 1 ? "" : "e"} vorbereitet.
           Bestehende Einträge werden nicht überschrieben, außer es ist ausdrücklich aktiviert.
         </p>
         <details className="vacation-preview-details">
@@ -1615,7 +1732,7 @@ export default function VacationEntry({ currentUser = null } = {}) {
                     <tr key={`${row.employee.id}-${row.from_date}-${row.to_date}-${idx}`}>
                       <td>{row.employee.name}</td>
                       <td>{formatDateRangeAT(row.from_date, row.to_date)}</td>
-                      <td><span className={`vac-pill ${entryType === "za" ? "za" : "vac"}`}>{entryType === "za" ? "Zeitausgleich" : "Urlaub"}</span></td>
+                      <td><span className={`vac-pill ${entryTypePillClass(entryType)}`}>{entryTypeLabel(entryType)}</span></td>
                       <td><span className={`vac-pill ${mixed ? "mixed" : weekLabel === "Kurzwoche" ? "short" : "long"}`}>{weekLabel}</span></td>
                       <td>{row.rows.length}</td>
                       <td>{fmtHours(row.requiredMinutes / 60)}</td>
@@ -1672,6 +1789,12 @@ export default function VacationEntry({ currentUser = null } = {}) {
                       <div className="vac-month-line">
                         <span className="vac-pill vac">Urlaub</span>
                         <strong>{day.vacation.map((r) => r.employee?.name).filter(Boolean).join(", ")}</strong>
+                      </div>
+                    )}
+                    {day.special.length > 0 && (
+                      <div className="vac-month-line">
+                        <span className="vac-pill special">Sonderurlaub</span>
+                        <strong>{day.special.map((r) => `${r.employee?.name}${r.cleanNote ? ` (${r.cleanNote})` : ""}`).filter(Boolean).join(", ")}</strong>
                       </div>
                     )}
                     {day.za.length > 0 && (
@@ -1731,7 +1854,7 @@ export default function VacationEntry({ currentUser = null } = {}) {
                     <tr key={`${row.employee_id}-${kind}-${row.from_date}-${row.to_date}-${row.cleanNote || ""}`} className={own ? "vac-own-row" : ""}>
                       <td>{formatDateRangeAT(row.from_date || row.work_date, row.to_date || row.work_date)}</td>
                       <td>{row.employee?.name || "—"}</td>
-                      <td><span className={`vac-pill ${kind === "za" ? "za" : kind === "krank" ? "sick" : "vac"}`}>{kind === "za" ? "Zeitausgleich" : kind === "krank" ? "Krank" : "Urlaub"}</span></td>
+                      <td><span className={`vac-pill ${entryTypePillClass(kind)}`}>{entryTypeLabel(kind)}</span></td>
                       <td><span className={`vac-pill ${mixed ? "mixed" : weekLabel === "Kurzwoche" ? "short" : "long"}`}>{weekLabel}</span></td>
                       <td>{kind === "za" ? fmtHours(row.za_hours) : "—"}</td>
                       <td>{row.cleanNote || "—"}</td>
@@ -1763,6 +1886,7 @@ export default function VacationEntry({ currentUser = null } = {}) {
         .vacation-legend-item { display: inline-flex; align-items: center; gap: 7px; padding: 8px 11px; border: 1px solid rgba(255,255,255,.24); border-radius: 999px; background: rgba(255,255,255,.12); color: #fff; font-size: 12px; font-weight: 800; backdrop-filter: blur(8px); }
         .vacation-legend-item i { width: 9px; height: 9px; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 3px rgba(255,255,255,.15); }
         .vacation-legend-item--vac { color: #dbe8ff; }
+        .vacation-legend-item--special { color: #e6ddff; }
         .vacation-legend-item--sick { color: #ffd8df; }
         .vacation-legend-item--za { color: #ffe8a4; }
         .vacation-panel { position: relative; overflow: hidden; border: 1px solid rgba(190,164,136,.36); box-shadow: 0 12px 30px rgba(71,46,27,.07); background: rgba(255,255,255,.94); }
@@ -1806,6 +1930,7 @@ export default function VacationEntry({ currentUser = null } = {}) {
         .vacation-request-count { display: inline-flex; align-items: center; justify-content: center; min-height: 26px; padding: 4px 9px; border-radius: 999px; border: 1px solid rgba(91,126,166,.16); background: #fff; color: #526980; font-size: 12px; font-weight: 900; white-space: nowrap; }
         .vacation-request-count.strong { min-width: 32px; background: #456f9d; color: #fff; border-color: rgba(69,111,157,.2); }
         .vacation-request-count.vac { background: var(--vac-blue-soft); color: #294f88; }
+        .vacation-request-count.special { background: #f1edf8; color: #573a7d; }
         .vacation-request-count.za { background: var(--vac-gold-soft); color: #795100; }
         .vacation-request-list { display: grid; gap: 9px; }
         .vacation-request-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 11px 12px; border: 1px solid rgba(91,126,166,.18); border-radius: 14px; background: #fff; box-shadow: 0 8px 18px rgba(61,82,105,.06); }
@@ -1840,6 +1965,7 @@ export default function VacationEntry({ currentUser = null } = {}) {
         .vac-pill.short { background: #e7f7ed; color: #1d6a30; }
         .vac-pill.long { background: #fff0e3; color: #85460a; }
         .vac-pill.vac { background: var(--vac-blue-soft); color: #294f88; border: 1px solid rgba(66,108,169,.16); }
+        .vac-pill.special { background: #f1edf8; color: #573a7d; border: 1px solid rgba(87,58,125,.18); }
         .vac-pill.sick { background: var(--vac-sick-soft); color: #8b3546; border: 1px solid rgba(165,79,95,.2); }
         .vac-pill.za { background: var(--vac-gold-soft); color: #795100; border: 1px solid rgba(169,121,36,.18); }
         .vac-pill.mixed { background: #f1edf8; color: #573a7d; }
@@ -1869,6 +1995,12 @@ export default function VacationEntry({ currentUser = null } = {}) {
         .vac-account-box.strong { background: #f2fff5; border-color: #9bd3a6; }
         .vac-admin-details { border: 1px dashed rgba(92, 68, 45, 0.22); border-radius: 12px; padding: 9px 12px; background: rgba(255,255,255,0.45); }
         .vac-admin-details summary { cursor: pointer; color: #7d4a25; font-weight: 900; }
+        .vac-special-editor { display: grid; gap: 10px; margin-top: 12px; }
+        .vac-special-add { display: flex; gap: 8px; flex-wrap: wrap; }
+        .vac-special-add .hbz-input { flex: 1 1 220px; }
+        .vac-special-list { display: flex; gap: 7px; flex-wrap: wrap; }
+        .vac-special-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 999px; background: #f1edf8; color: #573a7d; border: 1px solid rgba(87,58,125,.18); font-size: 12px; font-weight: 900; }
+        .vac-special-chip button { border: 0; background: transparent; color: #7b3f5e; font-size: 16px; font-weight: 900; line-height: 1; cursor: pointer; }
         @media (max-width: 720px) {
           .vacation-hero-content, .vacation-calendar-head { align-items: flex-start; flex-direction: column; }
           .vacation-legend, .vac-month-controls { width: 100%; }
