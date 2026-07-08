@@ -135,9 +135,10 @@ export default function DailySiteReports() {
     return () => window.removeEventListener("keydown", handleArrowKey);
   }, [date]);
 
-  function prepareProject(nextProjectId) {
-    const project = projects.find((p) => String(p.id) === String(nextProjectId));
-    const relevant = dateEntries.filter((e) => String(e.project_id || "") === String(nextProjectId) && !e.absence_type && !isBadWeatherEntry(e));
+  function employeeItemsFromTimeEntries(nextProjectId, reportDate = date) {
+    const relevantEntries = entries.filter((e) => String(e.work_date).slice(0, 10) === reportDate);
+    const relevantAssignments = assignments.filter((row) => String(row.assignment_date).slice(0, 10) === reportDate);
+    const relevant = relevantEntries.filter((e) => String(e.project_id || "") === String(nextProjectId) && !e.absence_type && !isBadWeatherEntry(e));
     const grouped = new Map();
     for (const row of relevant) {
       const id = String(row.employee_id || "");
@@ -145,24 +146,41 @@ export default function DailySiteReports() {
       const old = grouped.get(id) || { employee_id: id, name: employee?.name || row.employee_name || id, hours: 0 };
       old.hours += entryHours(row); grouped.set(id, old);
     }
-    for (const row of dateAssignments.filter((item) => String(item.project_id) === String(nextProjectId))) {
+    for (const row of relevantAssignments.filter((item) => String(item.project_id) === String(nextProjectId))) {
       const id = String(row.employee_id || "");
       if (!grouped.has(id)) { const employee = employees.find((item) => String(item.id) === id); grouped.set(id, { employee_id: id, name: employee?.name || id, hours: 0 }); }
     }
+    return [...grouped.values()];
+  }
+
+  function prepareProject(nextProjectId) {
+    const project = projects.find((p) => String(p.id) === String(nextProjectId));
+    const relevant = dateEntries.filter((e) => String(e.project_id || "") === String(nextProjectId) && !e.absence_type && !isBadWeatherEntry(e));
     const notes = [...new Set(relevant.map((row) => String(row.note || "").trim()).filter(Boolean))];
     const weatherText = relevant.map((row) => row.weather_manual || row.weather_auto || "").find(Boolean) || "";
     setProjectId(String(nextProjectId)); setSelectedId(""); setStatus("draft");
     setLocation(project?.address || ""); setClientName(project?.client_name || ""); setClientContact(project?.client_contact || "");
-    setEmployeeItems([...grouped.values()]); setActivities(notes.join("\n")); setWeather(weatherText);
+    setEmployeeItems(employeeItemsFromTimeEntries(nextProjectId, date)); setActivities(notes.join("\n")); setWeather(weatherText);
     setIncidents(""); setDeliveries(""); setMaterialsEquipment(""); setPhotos([]); setMessage("");
   }
 
   function openReport(report) {
+    const reportDate = String(report.report_date || date).slice(0, 10);
+    const freshEmployeeItems = employeeItemsFromTimeEntries(report.project_id, reportDate);
+    setDate(reportDate);
     setSelectedId(report.id); setProjectId(String(report.project_id)); setLocation(report.location || ""); setClientName(report.client_name || "");
-    setClientContact(report.client_contact || ""); setWeather(report.weather || ""); setEmployeeItems(Array.isArray(report.employee_items) ? report.employee_items : []);
+    setClientContact(report.client_contact || ""); setWeather(report.weather || "");
+    setEmployeeItems(report.status === "completed" || !freshEmployeeItems.length ? (Array.isArray(report.employee_items) ? report.employee_items : []) : freshEmployeeItems);
     setActivities(report.activities || ""); setIncidents(report.incidents || ""); setDeliveries(report.deliveries || ""); setMaterialsEquipment(report.materials_equipment || "");
     setPhotos((Array.isArray(report.photo_paths) ? report.photo_paths : []).map((photo) => { const { data } = supabase.storage.from("project-photos").getPublicUrl(photo.path); return { ...photo, url: data?.publicUrl || "" }; }));
     setStatus(report.status || "draft"); setMessage("");
+  }
+
+  function refreshEmployeeItemsFromTimeEntries() {
+    if (!projectId || status === "completed") return;
+    const freshEmployeeItems = employeeItemsFromTimeEntries(projectId, date);
+    setEmployeeItems(freshEmployeeItems);
+    setMessage(freshEmployeeItems.length ? "Mitarbeiter und Stunden aus der Zeiterfassung aktualisiert." : "Keine Zeiteinträge für diese Baustelle gefunden.");
   }
 
   function payload(nextStatus) {
@@ -291,7 +309,7 @@ export default function DailySiteReports() {
     <section className="regie-section"><h3>Mitarbeiter und Stunden</h3>{employeeItems.map((item) => <div className="daily-employee" key={item.employee_id}><span>{item.name}</span><b>{fmtHours(item.hours)}</b></div>)}</section>
     <label className="regie-block">Ausgeführte Arbeiten<textarea className="hbz-textarea" rows="5" value={activities} onChange={(e) => setActivities(e.target.value)} /></label><label className="regie-block">Besondere Vorkommnisse / Behinderungen (optional)<textarea className="hbz-textarea" rows="3" value={incidents} onChange={(e) => setIncidents(e.target.value)} /></label><label className="regie-block">Lieferungen (optional)<textarea className="hbz-textarea" rows="2" value={deliveries} onChange={(e) => setDeliveries(e.target.value)} /></label><label className="regie-block">Material und Geräte (nur bei Bedarf)<textarea className="hbz-textarea" rows="2" value={materialsEquipment} onChange={(e) => setMaterialsEquipment(e.target.value)} /></label>
     <section className="regie-section"><div className="regie-section-head"><h3>Fotos (optional)</h3><label className="hbz-btn btn-small daily-upload">+ Fotos<input type="file" accept="image/*" capture="environment" multiple onChange={addPhotos} /></label></div>{!!photos.length && <div className="daily-photos">{photos.map((photo) => <figure key={photo.path}><img src={photo.url} alt={photo.caption || "Baustellenfoto"} /><input value={photo.caption || ""} onChange={(e) => setPhotos((rows) => rows.map((item) => item.path === photo.path ? { ...item, caption: e.target.value } : item))} placeholder="Beschreibung" /><button type="button" onClick={() => removePhoto(photo)}>×</button></figure>)}</div>}</section></fieldset>}
-    {projectId && <div className="regie-actions">{!locked && <><button className="hbz-btn" onClick={copyPreviousDay}>Vortag kopieren</button><button className="hbz-btn" onClick={() => save("draft")}>Entwurf speichern</button><button className="hbz-btn hbz-btn-primary" onClick={() => save("completed")}>Bautagesbericht abschließen</button></>}{locked && canManage && <button className="hbz-btn" onClick={reopenReport}>Mit Begründung korrigieren</button>}{selectedId && canManage && <button className="hbz-btn" onClick={showAudit}>Änderungsverlauf</button>}<button className="hbz-btn" onClick={previewPdf}>PDF-Vorschau</button><button className="hbz-btn" onClick={exportPdf}>PDF laden</button><button className="hbz-btn" onClick={() => sharePdf("mail")}>Per E-Mail</button><button className="hbz-btn" onClick={() => sharePdf("whatsapp")}>Per WhatsApp</button></div>}</main></div>
+    {projectId && <div className="regie-actions">{!locked && <><button className="hbz-btn" onClick={refreshEmployeeItemsFromTimeEntries}>Stunden aktualisieren</button><button className="hbz-btn" onClick={copyPreviousDay}>Vortag kopieren</button><button className="hbz-btn" onClick={() => save("draft")}>Entwurf speichern</button><button className="hbz-btn hbz-btn-primary" onClick={() => save("completed")}>Bautagesbericht abschließen</button></>}{locked && canManage && <button className="hbz-btn" onClick={reopenReport}>Mit Begründung korrigieren</button>}{selectedId && canManage && <button className="hbz-btn" onClick={showAudit}>Änderungsverlauf</button>}<button className="hbz-btn" onClick={previewPdf}>PDF-Vorschau</button><button className="hbz-btn" onClick={exportPdf}>PDF laden</button><button className="hbz-btn" onClick={() => sharePdf("mail")}>Per E-Mail</button><button className="hbz-btn" onClick={() => sharePdf("whatsapp")}>Per WhatsApp</button></div>}</main></div>
     {pdfPreviewUrl && <div className="daily-modal" role="dialog" aria-modal="true"><div className="daily-pdf"><div><b>PDF-Vorschau</b><button className="hbz-btn btn-small" onClick={() => { URL.revokeObjectURL(pdfPreviewUrl); setPdfPreviewUrl(""); }}>Schließen</button></div><iframe title="PDF-Vorschau Bautagesbericht" src={pdfPreviewUrl} /></div></div>}
     {auditOpen && <div className="daily-modal" role="dialog" aria-modal="true"><div className="daily-audit"><div className="daily-modal-head"><b>Änderungsverlauf</b><button className="hbz-btn btn-small" onClick={() => setAuditOpen(false)}>Schließen</button></div>{!auditRows.length ? <p>Keine Änderungen protokolliert.</p> : auditRows.map((row) => <article key={row.id}><b>{new Date(row.changed_at).toLocaleString("de-AT")} · {row.changed_by_name || row.changed_by || "Unbekannt"}</b><span>{row.action}{row.reason ? ` – ${row.reason}` : ""}</span></article>)}</div></div>}
     <style>{`.daily-head{display:flex;justify-content:space-between;align-items:end;gap:16px;margin-bottom:16px}.daily-head h1{margin:2px 0}.daily-head p{margin:0;color:#6f6259}.daily-date-nav{display:flex;align-items:end;gap:7px}.daily-draft-note{font-size:12px;color:#39734a;margin:-6px 0 10px}.daily-reminder{display:flex;justify-content:space-between;background:#fff1cd;border-color:#e8bf59;color:#654800}.daily-week{margin-bottom:16px}.daily-week-head{display:flex;align-items:center;justify-content:space-between;gap:8px}.daily-week-days{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-top:10px}.daily-week-day{border:1px solid #eadfd7;border-radius:9px;background:#fff;padding:8px;display:grid;gap:3px;text-align:left;cursor:pointer}.daily-week-day.active{border-color:#7b4a2d;box-shadow:0 0 0 2px #ead8cc}.daily-week-day span,.daily-week-day small{font-size:11px}.daily-week-day .done{color:#28743a}.daily-week-day .draft{color:#9b6600}.daily-week-day .missing{color:#a12626;font-weight:700}.daily-week-day .empty{color:#8a817b}.daily-layout{display:grid;grid-template-columns:300px minmax(0,1fr);gap:16px}.daily-list{align-self:start}.daily-list-item{display:flex;flex-direction:column;width:100%;text-align:left;gap:4px;margin-top:8px;padding:10px;border:1px solid #eadfd7;border-radius:9px;background:#fff;cursor:pointer}.daily-list-item span{font-size:12px;color:#6f6259}.daily-form fieldset{border:0;padding:0;margin:0}.daily-form-head{display:flex;justify-content:space-between;align-items:center}.daily-form-head h2{margin:0}.daily-empty{text-align:center;padding:60px 15px}.daily-employee{display:flex;justify-content:space-between;border-bottom:1px solid #eee;padding:8px}.daily-upload{display:inline-flex!important;flex-direction:row!important}.daily-upload input{display:none}.daily-photos{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px}.daily-photos figure{position:relative;margin:0}.daily-photos img{width:100%;height:120px;object-fit:cover;border-radius:8px}.daily-photos input{width:100%;box-sizing:border-box}.daily-photos button{position:absolute;right:4px;top:4px;border:0;border-radius:50%;background:#9f2f24;color:#fff;width:28px;height:28px}.daily-modal{position:fixed;inset:0;z-index:1600;background:#0009;display:flex;align-items:center;justify-content:center;padding:20px}.daily-pdf,.daily-audit{width:min(1000px,100%);height:min(90vh,850px);background:#fff;border-radius:12px;padding:12px;box-sizing:border-box}.daily-pdf>div,.daily-modal-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}.daily-pdf iframe{width:100%;height:calc(100% - 44px);border:0}.daily-audit{height:auto;max-height:85vh;overflow:auto;max-width:760px}.daily-audit article{display:grid;gap:4px;padding:10px 0;border-bottom:1px solid #eadfd7}.daily-audit span{color:#6f6259}@media(max-width:800px){.daily-head{align-items:stretch;flex-direction:column}.daily-date-nav label{flex:1}.daily-week-days{display:flex;overflow:auto}.daily-week-day{min-width:118px}.daily-layout{grid-template-columns:1fr}.daily-form{padding:13px}.daily-reminder{display:grid}.daily-pdf{height:95vh;padding:7px}.daily-page .regie-actions{position:sticky;bottom:6px;z-index:35;background:rgba(248,244,240,.95);padding:9px;border-radius:12px;box-shadow:0 -8px 24px rgba(70,43,29,.12)}.daily-page .regie-actions .hbz-btn{min-height:44px;flex:1}.daily-page textarea{font-size:16px}}`}</style>
