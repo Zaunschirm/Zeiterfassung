@@ -174,6 +174,7 @@ export default function RegieReports() {
 
   const selectedProject = useMemo(() => projects.find((p) => String(p.id) === String(projectId)), [projects, projectId]);
   const locked = status === "signed" || isArchived;
+  const canEditWorkDetails = !locked && (canPrepare || status === "prepared");
   const visibleReports = useMemo(() => {
     if (canPrepare) return reports.filter((report) => {
       if (showArchived ? !report.is_archived : report.is_archived) return false;
@@ -702,8 +703,8 @@ export default function RegieReports() {
                       <option value="">Mitarbeiter</option>
                       {employees.map((employee) => <option value={employee.id} key={employee.id}>{employee.name}</option>)}
                     </select>
-                    <input className="hbz-input" inputMode="decimal" value={row.hours} onChange={(e) => setLaborItems((rows) => rows.map((item, i) => i === index ? { ...item, hours: e.target.value } : item))} onBlur={(e) => setLaborItems((rows) => rows.map((item, i) => i === index ? { ...item, hours: formatCalculatedNumber(e.target.value) } : item))} placeholder="Std. z. B. 2+1,5" />
-                    <input className="hbz-input" disabled={!canPrepare} value={row.activity || ""} onChange={(e) => setLaborItems((rows) => rows.map((item, i) => i === index ? { ...item, activity: e.target.value } : item))} placeholder="Tätigkeit" />
+                    <input className="hbz-input" disabled={!canEditWorkDetails} inputMode="decimal" value={row.hours} onChange={(e) => setLaborItems((rows) => rows.map((item, i) => i === index ? { ...item, hours: e.target.value } : item))} onBlur={(e) => setLaborItems((rows) => rows.map((item, i) => i === index ? { ...item, hours: formatCalculatedNumber(e.target.value) } : item))} placeholder="Std. z. B. 2+1,5" />
+                    <input className="hbz-input" disabled={!canEditWorkDetails} value={row.activity || ""} onChange={(e) => setLaborItems((rows) => rows.map((item, i) => i === index ? { ...item, activity: e.target.value } : item))} placeholder="Tätigkeit" />
                     {canPrepare && <button type="button" className="regie-remove" onClick={() => setLaborItems((rows) => rows.filter((_, i) => i !== index))}>×</button>}
                   </div>
                 ))}
