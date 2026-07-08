@@ -12,6 +12,7 @@ import {
   prepareMaterialItems,
   sumLaborHours,
 } from "../utils/regieReports";
+import { formatCalculatedNumber } from "../utils/calculatedInput";
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
 const OFFLINE_DRAFT_KEY = "hbz_regie_offline_draft_v1";
@@ -695,14 +696,31 @@ export default function RegieReports() {
             <fieldset disabled={locked || busy}>
               <section className="regie-section">
                 <div className="regie-section-head"><h3>Mitarbeiter und Stunden</h3>{canPrepare && <button type="button" className="hbz-btn btn-small" onClick={() => setLaborItems((rows) => [...rows, { employee_id: "", name: "", hours: 0, activity: "" }])}>+ Mitarbeiter</button>}</div>
-                {laborItems.map((row, index) => <div className="regie-row labor" key={index}><select className="hbz-input" disabled={!canPrepare} value={row.employee_id || ""} onChange={(e) => setLaborEmployee(index, e.target.value)}><option value="">Mitarbeiter</option>{employees.map((employee) => <option value={employee.id} key={employee.id}>{employee.name}</option>)}</select><input className="hbz-input" type="number" min="0" step="0.25" value={row.hours} onChange={(e) => setLaborItems((rows) => rows.map((item, i) => i === index ? { ...item, hours: e.target.value } : item))} placeholder="Std." /><input className="hbz-input" disabled={!canPrepare} value={row.activity || ""} onChange={(e) => setLaborItems((rows) => rows.map((item, i) => i === index ? { ...item, activity: e.target.value } : item))} placeholder="Tätigkeit" />{canPrepare && <button type="button" className="regie-remove" onClick={() => setLaborItems((rows) => rows.filter((_, i) => i !== index))}>×</button>}</div>)}
+                {laborItems.map((row, index) => (
+                  <div className="regie-row labor" key={index}>
+                    <select className="hbz-input" disabled={!canPrepare} value={row.employee_id || ""} onChange={(e) => setLaborEmployee(index, e.target.value)}>
+                      <option value="">Mitarbeiter</option>
+                      {employees.map((employee) => <option value={employee.id} key={employee.id}>{employee.name}</option>)}
+                    </select>
+                    <input className="hbz-input" inputMode="decimal" value={row.hours} onChange={(e) => setLaborItems((rows) => rows.map((item, i) => i === index ? { ...item, hours: e.target.value } : item))} onBlur={(e) => setLaborItems((rows) => rows.map((item, i) => i === index ? { ...item, hours: formatCalculatedNumber(e.target.value) } : item))} placeholder="Std. z. B. 2+1,5" />
+                    <input className="hbz-input" disabled={!canPrepare} value={row.activity || ""} onChange={(e) => setLaborItems((rows) => rows.map((item, i) => i === index ? { ...item, activity: e.target.value } : item))} placeholder="Tätigkeit" />
+                    {canPrepare && <button type="button" className="regie-remove" onClick={() => setLaborItems((rows) => rows.filter((_, i) => i !== index))}>×</button>}
+                  </div>
+                ))}
                 <div className="regie-total">Gesamt: {fmtHours(sumLaborHours(laborItems))}</div>
               </section>
 
               <section className="regie-section">
                 <div className="regie-section-head"><h3>Material und Geräte</h3><button type="button" className="hbz-btn btn-small" onClick={() => setMaterialItems((rows) => [...rows, emptyMaterial()])}>+ Position</button></div>
                 {!!materialTemplates.length && <div className="regie-template-list">{materialTemplates.map((template) => <button type="button" className="hbz-btn btn-small" key={template.id} onClick={() => addMaterialTemplate(template)}>+ {template.description}</button>)}</div>}
-                {materialItems.map((row, index) => <div className="regie-row material" key={index}><input className="hbz-input" value={row.description} onChange={(e) => setMaterialItems((rows) => rows.map((item, i) => i === index ? { ...item, description: e.target.value } : item))} placeholder="Material / Gerät" /><input className="hbz-input" type="number" min="0" step="0.01" value={row.quantity} onChange={(e) => setMaterialItems((rows) => rows.map((item, i) => i === index ? { ...item, quantity: e.target.value } : item))} /><select className="hbz-input" value={row.unit} onChange={(e) => setMaterialItems((rows) => rows.map((item, i) => i === index ? { ...item, unit: e.target.value } : item))}><option>Stk.</option><option>m</option><option>m²</option><option>m³</option><option>kg</option><option>Std.</option><option>pauschal</option></select><button type="button" className="regie-remove" onClick={() => setMaterialItems((rows) => rows.filter((_, i) => i !== index))}>×</button></div>)}
+                {materialItems.map((row, index) => (
+                  <div className="regie-row material" key={index}>
+                    <input className="hbz-input" value={row.description} onChange={(e) => setMaterialItems((rows) => rows.map((item, i) => i === index ? { ...item, description: e.target.value } : item))} placeholder="Material / Gerät" />
+                    <input className="hbz-input" inputMode="decimal" value={row.quantity} onChange={(e) => setMaterialItems((rows) => rows.map((item, i) => i === index ? { ...item, quantity: e.target.value } : item))} onBlur={(e) => setMaterialItems((rows) => rows.map((item, i) => i === index ? { ...item, quantity: formatCalculatedNumber(e.target.value) } : item))} placeholder="Menge z. B. 3*2" />
+                    <select className="hbz-input" value={row.unit} onChange={(e) => setMaterialItems((rows) => rows.map((item, i) => i === index ? { ...item, unit: e.target.value } : item))}><option>Stk.</option><option>m</option><option>m²</option><option>m³</option><option>kg</option><option>Std.</option><option>pauschal</option></select>
+                    <button type="button" className="regie-remove" onClick={() => setMaterialItems((rows) => rows.filter((_, i) => i !== index))}>×</button>
+                  </div>
+                ))}
                 {canPrepare && materialItems.some((row) => row.description?.trim()) && <button type="button" className="hbz-btn btn-small regie-save-template" onClick={() => saveMaterialTemplate(materialItems.find((row) => row.description?.trim()))}>Erste Position als Vorlage speichern</button>}
               </section>
 

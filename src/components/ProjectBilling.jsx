@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { getSession } from "../lib/session";
 import { addPdfFooters, addPdfHeader, brandedTable, PDF_BRAND } from "../utils/pdfBranding";
+import { formatCalculatedNumber, parseCalculatedNumber } from "../utils/calculatedInput";
 
 const STORAGE_KEY = "hbz_project_billing_draft_v2";
 
@@ -11,7 +12,7 @@ const todayISO = () => {
 };
 
 const yearStartISO = () => `${new Date().getFullYear()}-01-01`;
-const parseNumber = (value) => Number(String(value || "").replace(",", ".")) || 0;
+const parseNumber = (value) => parseCalculatedNumber(value, 0);
 const fmtMoney = (value) => `€ ${parseNumber(value).toLocaleString("de-AT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const fmtHours = (minutes) => `${((Number(minutes) || 0) / 60).toLocaleString("de-AT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} h`;
 const getTravel = (row) => Number(row?.travel_minutes ?? row?.travel_min ?? 0) || 0;
@@ -573,8 +574,8 @@ export default function ProjectBilling() {
               <section className="billing-form-card">
                 <h3>Auftrag & Steuer</h3>
                 <div className="billing-editor-grid">
-                  <label>Hauptauftrag netto<input className="hbz-input" inputMode="decimal" value={selectedRow.billing.contractNet || ""} onChange={(e) => updateBilling(selectedRow.project.id, (current) => ({ ...current, contractNet: e.target.value }))} placeholder="z. B. 25000" /></label>
-                  <label>USt-Satz %<input className="hbz-input" inputMode="decimal" value={selectedRow.billing.vatRate ?? "20"} disabled={selectedRow.billing.reverseCharge} onChange={(e) => updateBilling(selectedRow.project.id, (current) => ({ ...current, vatRate: e.target.value }))} /></label>
+                  <label>Hauptauftrag netto<input className="hbz-input" inputMode="decimal" value={selectedRow.billing.contractNet || ""} onChange={(e) => updateBilling(selectedRow.project.id, (current) => ({ ...current, contractNet: e.target.value }))} onBlur={(e) => updateBilling(selectedRow.project.id, (current) => ({ ...current, contractNet: formatCalculatedNumber(e.target.value) }))} placeholder="z. B. 25000 oder 12000+3500" /></label>
+                  <label>USt-Satz %<input className="hbz-input" inputMode="decimal" value={selectedRow.billing.vatRate ?? "20"} disabled={selectedRow.billing.reverseCharge} onChange={(e) => updateBilling(selectedRow.project.id, (current) => ({ ...current, vatRate: e.target.value }))} onBlur={(e) => updateBilling(selectedRow.project.id, (current) => ({ ...current, vatRate: formatCalculatedNumber(e.target.value) }))} /></label>
                 </div>
                 <label className="billing-check"><input type="checkbox" checked={selectedRow.billing.reverseCharge === true} onChange={(e) => updateBilling(selectedRow.project.id, (current) => ({ ...current, reverseCharge: e.target.checked }))} /><span>§19 UStG / Reverse Charge</span></label>
                 <div className="billing-money-box">
@@ -592,27 +593,27 @@ export default function ProjectBilling() {
                 <div className="billing-deduction-grid">
                   <label>
                     Nachlass %
-                    <input className="hbz-input" inputMode="decimal" value={selectedRow.billing.discountPercent || ""} onChange={(e) => updateBilling(selectedRow.project.id, (current) => ({ ...current, discountPercent: e.target.value }))} placeholder="z. B. 3" />
+                    <input className="hbz-input" inputMode="decimal" value={selectedRow.billing.discountPercent || ""} onChange={(e) => updateBilling(selectedRow.project.id, (current) => ({ ...current, discountPercent: e.target.value }))} onBlur={(e) => updateBilling(selectedRow.project.id, (current) => ({ ...current, discountPercent: formatCalculatedNumber(e.target.value) }))} placeholder="z. B. 3 oder 1+2" />
                   </label>
                   <label>
                     Nachlass Betrag netto
-                    <input className="hbz-input" inputMode="decimal" value={selectedRow.billing.discountNet || ""} onChange={(e) => updateBilling(selectedRow.project.id, (current) => ({ ...current, discountNet: e.target.value }))} placeholder="optional" />
+                    <input className="hbz-input" inputMode="decimal" value={selectedRow.billing.discountNet || ""} onChange={(e) => updateBilling(selectedRow.project.id, (current) => ({ ...current, discountNet: e.target.value }))} onBlur={(e) => updateBilling(selectedRow.project.id, (current) => ({ ...current, discountNet: formatCalculatedNumber(e.target.value) }))} placeholder="optional, z. B. 500+250" />
                   </label>
                   <label>
                     Haftrücklass %
-                    <input className="hbz-input" inputMode="decimal" value={selectedRow.billing.retentionPercent || ""} onChange={(e) => updateBilling(selectedRow.project.id, (current) => ({ ...current, retentionPercent: e.target.value }))} placeholder="z. B. 2" />
+                    <input className="hbz-input" inputMode="decimal" value={selectedRow.billing.retentionPercent || ""} onChange={(e) => updateBilling(selectedRow.project.id, (current) => ({ ...current, retentionPercent: e.target.value }))} onBlur={(e) => updateBilling(selectedRow.project.id, (current) => ({ ...current, retentionPercent: formatCalculatedNumber(e.target.value) }))} placeholder="z. B. 2" />
                   </label>
                   <label>
                     Deckungsrücklass %
-                    <input className="hbz-input" inputMode="decimal" value={selectedRow.billing.coverageRetentionPercent || ""} onChange={(e) => updateBilling(selectedRow.project.id, (current) => ({ ...current, coverageRetentionPercent: e.target.value }))} placeholder="z. B. 5" />
+                    <input className="hbz-input" inputMode="decimal" value={selectedRow.billing.coverageRetentionPercent || ""} onChange={(e) => updateBilling(selectedRow.project.id, (current) => ({ ...current, coverageRetentionPercent: e.target.value }))} onBlur={(e) => updateBilling(selectedRow.project.id, (current) => ({ ...current, coverageRetentionPercent: formatCalculatedNumber(e.target.value) }))} placeholder="z. B. 5" />
                   </label>
                   <label>
                     Skonto %
-                    <input className="hbz-input" inputMode="decimal" value={selectedRow.billing.cashDiscountPercent || ""} onChange={(e) => updateBilling(selectedRow.project.id, (current) => ({ ...current, cashDiscountPercent: e.target.value }))} placeholder="z. B. 2" />
+                    <input className="hbz-input" inputMode="decimal" value={selectedRow.billing.cashDiscountPercent || ""} onChange={(e) => updateBilling(selectedRow.project.id, (current) => ({ ...current, cashDiscountPercent: e.target.value }))} onBlur={(e) => updateBilling(selectedRow.project.id, (current) => ({ ...current, cashDiscountPercent: formatCalculatedNumber(e.target.value) }))} placeholder="z. B. 2" />
                   </label>
                   <label>
                     Skonto Tage
-                    <input className="hbz-input" inputMode="numeric" value={selectedRow.billing.cashDiscountDays || ""} onChange={(e) => updateBilling(selectedRow.project.id, (current) => ({ ...current, cashDiscountDays: e.target.value }))} placeholder="z. B. 14" />
+                    <input className="hbz-input" inputMode="numeric" value={selectedRow.billing.cashDiscountDays || ""} onChange={(e) => updateBilling(selectedRow.project.id, (current) => ({ ...current, cashDiscountDays: e.target.value }))} onBlur={(e) => updateBilling(selectedRow.project.id, (current) => ({ ...current, cashDiscountDays: formatCalculatedNumber(e.target.value, 0) }))} placeholder="z. B. 14 oder 7+7" />
                   </label>
                 </div>
                 <div className="billing-money-box deductions">
@@ -634,7 +635,7 @@ export default function ProjectBilling() {
                   {selectedRow.supplements.length === 0 ? <p className="billing-empty">Noch keine Nachträge erfasst.</p> : selectedRow.supplements.map((item) => (
                     <div className="billing-line" key={item.id}>
                       <input className="hbz-input" value={item.title || ""} onChange={(e) => updateListItem(selectedRow.project.id, "supplements", item.id, { title: e.target.value })} placeholder="Nachtrag" />
-                      <input className="hbz-input" inputMode="decimal" value={item.net || ""} onChange={(e) => updateListItem(selectedRow.project.id, "supplements", item.id, { net: e.target.value })} placeholder="Netto" />
+                      <input className="hbz-input" inputMode="decimal" value={item.net || ""} onChange={(e) => updateListItem(selectedRow.project.id, "supplements", item.id, { net: e.target.value })} onBlur={(e) => updateListItem(selectedRow.project.id, "supplements", item.id, { net: formatCalculatedNumber(e.target.value) })} placeholder="Netto, z. B. 1000+250" />
                       <select className="hbz-input" value={item.status || "Offen"} onChange={(e) => updateListItem(selectedRow.project.id, "supplements", item.id, { status: e.target.value })}><option>Offen</option><option>Freigegeben</option><option>Abgerechnet</option><option>Storniert</option></select>
                       <button className="hbz-btn btn-small" type="button" onClick={() => removeListItem(selectedRow.project.id, "supplements", item.id)}>Löschen</button>
                     </div>
@@ -651,7 +652,7 @@ export default function ProjectBilling() {
                       <input className="hbz-input" type="date" value={item.date || ""} onChange={(e) => updateListItem(selectedRow.project.id, "invoices", item.id, { date: e.target.value })} />
                       <input className="hbz-input" value={item.title || ""} onChange={(e) => updateListItem(selectedRow.project.id, "invoices", item.id, { title: e.target.value })} placeholder="Bezeichnung" />
                       <input className="hbz-input" value={item.period || ""} onChange={(e) => updateListItem(selectedRow.project.id, "invoices", item.id, { period: e.target.value })} placeholder="Leistungszeitraum" />
-                      <input className="hbz-input" inputMode="decimal" value={item.net || ""} onChange={(e) => updateListItem(selectedRow.project.id, "invoices", item.id, { net: e.target.value })} placeholder="Netto" />
+                      <input className="hbz-input" inputMode="decimal" value={item.net || ""} onChange={(e) => updateListItem(selectedRow.project.id, "invoices", item.id, { net: e.target.value })} onBlur={(e) => updateListItem(selectedRow.project.id, "invoices", item.id, { net: formatCalculatedNumber(e.target.value) })} placeholder="Netto, z. B. 5000+2500" />
                       <select className="hbz-input" value={item.status || "Entwurf"} onChange={(e) => updateListItem(selectedRow.project.id, "invoices", item.id, { status: e.target.value })}><option>Entwurf</option><option>Gesendet</option><option>Bezahlt</option><option>Storniert</option></select>
                       <input className="hbz-input" type="date" value={item.paidAt || ""} onChange={(e) => updateListItem(selectedRow.project.id, "invoices", item.id, { paidAt: e.target.value })} />
                       <button className="hbz-btn btn-small" type="button" onClick={() => removeListItem(selectedRow.project.id, "invoices", item.id)}>Löschen</button>
@@ -684,7 +685,7 @@ export default function ProjectBilling() {
                         <option>Gegenverrechnung</option>
                         <option>sonstiger AG-Abzug</option>
                       </select>
-                      <input className="hbz-input" inputMode="decimal" value={item.net || ""} onChange={(e) => updateListItem(selectedRow.project.id, "clientDeductions", item.id, { net: e.target.value })} placeholder="Betrag netto" />
+                      <input className="hbz-input" inputMode="decimal" value={item.net || ""} onChange={(e) => updateListItem(selectedRow.project.id, "clientDeductions", item.id, { net: e.target.value })} onBlur={(e) => updateListItem(selectedRow.project.id, "clientDeductions", item.id, { net: formatCalculatedNumber(e.target.value) })} placeholder="Betrag netto, z. B. 300+50" />
                       <select className="hbz-input" value={item.status || "Offen"} onChange={(e) => updateListItem(selectedRow.project.id, "clientDeductions", item.id, { status: e.target.value })}>
                         <option>Offen</option>
                         <option>Akzeptiert</option>
