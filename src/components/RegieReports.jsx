@@ -134,6 +134,7 @@ function SignaturePad({ value, onChange, disabled }) {
 export default function RegieReports() {
   const session = getSession()?.user || {};
   const role = String(session?.role || "mitarbeiter").toLowerCase();
+  const isAdmin = role === "admin";
   const canPrepare = role === "admin" || role === "teamleiter";
   const ownId = String(session?.id || "");
 
@@ -191,10 +192,14 @@ export default function RegieReports() {
   async function loadData() {
     setError("");
     try {
+      let reportQuery = supabase.from("regie_reports").select("*").order("report_date", { ascending: false }).order("created_at", { ascending: false }).limit(100);
+      if (!canPrepare) {
+        reportQuery = reportQuery.eq("is_archived", false).neq("status", "draft").contains("assigned_employee_ids", [ownId]);
+      }
       const [projectResult, employeeResult, reportResult, templateResult] = await Promise.all([
         supabase.from("projects").select("*").eq("active", true).order("name"),
         supabase.from("employees").select("id, code, name, active, disabled, is_test_employee").order("name"),
-        supabase.from("regie_reports").select("*").order("report_date", { ascending: false }).order("created_at", { ascending: false }).limit(100),
+        reportQuery,
         supabase.from("regie_material_templates").select("*").eq("active", true).order("description"),
       ]);
       if (projectResult.error) throw projectResult.error;
@@ -699,8 +704,8 @@ export default function RegieReports() {
                 {voiceListening ? "🎙 Aufnahme läuft …" : "🎙 Beschreibung diktieren"}
               </button>
 
-              {canPrepare && <section className="regie-section">
-                <div className="regie-section-head"><h3>Mitarbeiter zuweisen</h3><button type="button" className="hbz-btn btn-small" onClick={addAssignedEmployeesToLabor}>In Stundenliste übernehmen</button></div>
+              {isAdmin && <section className="regie-section">
+                <div className="regie-section-head"><div><h3>Freigabe für Mitarbeiter</h3><p className="hint">Nur ausgewählte Mitarbeiter sehen diesen Regiebericht nach dem Bereitstellen.</p></div><button type="button" className="hbz-btn btn-small" onClick={addAssignedEmployeesToLabor}>Auswahl in Stundenliste übernehmen</button></div>
                 <div className="regie-assignment-grid">{employees.map((employee) => <label className="regie-assignment" key={employee.id}><input type="checkbox" checked={assignedEmployeeIds.includes(String(employee.id))} onChange={() => toggleAssignment(employee.id)} />{employee.name}</label>)}</div>
               </section>}
             </fieldset>
@@ -750,7 +755,7 @@ export default function RegieReports() {
             </fieldset>
 
             <div className="regie-actions">
-              {!locked && canPrepare && <><button className="hbz-btn" disabled={busy} onClick={() => save("draft")}>Entwurf speichern</button><button className="hbz-btn hbz-btn-primary" disabled={busy} onClick={() => save("prepared")}>Für Mitarbeiter bereitstellen</button></>}
+              {!locked && canPrepare && <><button className="hbz-btn" disabled={busy} onClick={() => save("draft")}>Entwurf speichern</button>{isAdmin && <button className="hbz-btn hbz-btn-primary" disabled={busy} onClick={() => save("prepared")}>Für Mitarbeiter bereitstellen</button>}</>}
               {!locked && canPrepare && selectedId && ["draft", "prepared"].includes(status) && <button className="hbz-btn" disabled={busy} onClick={copyReportAsDraft}>Als Entwurf kopieren</button>}
               {!locked && !canPrepare && <button className="hbz-btn hbz-btn-primary" disabled={busy || status !== "prepared"} onClick={() => save("signed")}>Unterschreiben & abschließen</button>}
               {canPrepare && selectedId && !isArchived && <button className="hbz-btn regie-danger" disabled={busy} onClick={archiveOrDelete}>{status === "signed" ? "Archivieren" : "Löschen"}</button>}
