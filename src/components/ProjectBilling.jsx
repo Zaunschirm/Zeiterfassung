@@ -74,6 +74,7 @@ export default function ProjectBilling() {
   const [from, setFrom] = useState(yearStartISO());
   const [to, setTo] = useState(todayISO());
   const [query, setQuery] = useState("");
+  const [archiveFilter, setArchiveFilter] = useState("active");
   const [statusFilter, setStatusFilter] = useState("all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -271,22 +272,34 @@ export default function ProjectBilling() {
     });
   }, [projects, entries, regieReports, dailyReports, billingByProject]);
 
+  const billingArchivedRows = useMemo(
+    () => rows.filter((row) => row.billing?.closed === true || row.workflowStatus === "Abgeschlossen"),
+    [rows]
+  );
+  const billingActiveRows = useMemo(
+    () => rows.filter((row) => !(row.billing?.closed === true || row.workflowStatus === "Abgeschlossen")),
+    [rows]
+  );
+
   const visibleRows = useMemo(() => {
     const q = query.trim().toLowerCase();
     return rows
       .filter((row) => {
+        const archived = row.billing?.closed === true || row.workflowStatus === "Abgeschlossen";
+        if (archiveFilter === "active" && archived) return false;
+        if (archiveFilter === "archive" && !archived) return false;
         if (statusFilter !== "all" && statusClass(row) !== statusFilter) return false;
         if (!q) return true;
         const p = row.project || {};
         return `${p.name || ""} ${p.cost_center || ""} ${p.external_cost_center || ""} ${p.client_name || ""} ${p.client_contact || ""}`.toLowerCase().includes(q);
       })
       .sort((a, b) => String(a.project?.name || "").localeCompare(String(b.project?.name || ""), "de"));
-  }, [rows, query, statusFilter]);
+  }, [rows, query, archiveFilter, statusFilter]);
 
   const selectedRow = useMemo(() => {
     if (!selectedProjectId) return visibleRows[0] || null;
-    return rows.find((row) => String(row.project.id) === String(selectedProjectId)) || visibleRows[0] || null;
-  }, [rows, selectedProjectId, visibleRows]);
+    return visibleRows.find((row) => String(row.project.id) === String(selectedProjectId)) || visibleRows[0] || null;
+  }, [selectedProjectId, visibleRows]);
 
   const totals = useMemo(() => visibleRows.reduce(
     (sum, row) => {
@@ -410,7 +423,9 @@ export default function ProjectBilling() {
       closedAt: now,
       closedByName: getSession()?.user?.name || getSession()?.user?.code || "",
     }));
-    setMessage("Projektabrechnung abgeschlossen und gesperrt.");
+    setArchiveFilter("archive");
+    setSelectedProjectId(String(row.project.id));
+    setMessage("Projektabrechnung abgeschlossen und in die Ablage verschoben.");
   };
 
   const reopenBilling = (row) => {
@@ -421,7 +436,9 @@ export default function ProjectBilling() {
       persistBilling(id, next, "reopened");
       return { ...prev, [id]: next };
     });
-    setMessage("Projektabrechnung wieder geöffnet.");
+    setArchiveFilter("active");
+    setSelectedProjectId(String(row.project.id));
+    setMessage("Projektabrechnung wieder geöffnet und zurück zu laufenden Aufträgen verschoben.");
   };
 
   async function exportProjectPdf(row) {
@@ -509,24 +526,32 @@ export default function ProjectBilling() {
       </section>
 
       <section className="hbz-card billing-filters">
+        <div className="billing-archive-tabs" aria-label="Abrechnungsablage">
+          <button type="button" className={`billing-archive-tab ${archiveFilter === "active" ? "active" : ""}`} onClick={() => { setArchiveFilter("active"); setSelectedProjectId(""); }}>Laufend <span>{billingActiveRows.length}</span></button>
+          <button type="button" className={`billing-archive-tab ${archiveFilter === "archive" ? "active" : ""}`} onClick={() => { setArchiveFilter("archive"); setSelectedProjectId(""); }}>Ablage <span>{billingArchivedRows.length}</span></button>
+          <button type="button" className={`billing-archive-tab ${archiveFilter === "all" ? "active" : ""}`} onClick={() => { setArchiveFilter("all"); setSelectedProjectId(""); }}>Alle <span>{rows.length}</span></button>
+        </div>
         <div className="billing-filter-grid">
           <label>Von<input className="hbz-input" type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></label>
           <label>Bis<input className="hbz-input" type="date" value={to} onChange={(e) => setTo(e.target.value)} /></label>
-          <label>Status<select className="hbz-input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}><option value="all">Alle Projekte</option><option value="missing">Auftragssumme fehlt</option><option value="open">Offen / Prüfen</option><option value="ready">Bereit</option><option value="partial">Teilabgerechnet</option><option value="done">Abgeschlossen</option></select></label>
+          <label>Ablage<select className="hbz-input" value={archiveFilter} onChange={(e) => { setArchiveFilter(e.target.value); setSelectedProjectId(""); }}><option value="active">Laufende Aufträge</option><option value="archive">Ablage abgeschlossen</option><option value="all">Alle anzeigen</option></select></label>
+          <label>Status<select className="hbz-input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}><option value="all">Alle Status</option><option value="missing">Auftragssumme fehlt</option><option value="open">Offen / Prüfen</option><option value="ready">Bereit</option><option value="partial">Teilabgerechnet</option><option value="done">Abgeschlossen</option></select></label>
           <label>Suche<input className="hbz-input" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Projekt, Kostenstelle, Auftraggeber…" /></label>
         </div>
       </section>
 
       <div className="billing-workspace">
         <aside className="hbz-card billing-project-list">
-          <div className="billing-section-head"><div><div className="eyebrow">Projektliste</div><h2>Auswahl</h2></div><span className="badge">{visibleRows.length}</span></div>
+          <div className="billing-section-head"><div><div className="eyebrow">{archiveFilter === "archive" ? "Ablage" : "Projektliste"}</div><h2>{archiveFilter === "archive" ? "Abgeschlossen" : "Auswahl"}</h2></div><span className="badge">{visibleRows.length}</span></div>
+          {archiveFilter === "archive" ? <p className="billing-archive-hint">Abgeschlossene Aufträge sind abgelegt und bleiben für PDF, Kontrolle und spätere Rückfragen verfügbar.</p> : null}
           <div className="billing-project-items">
+            {visibleRows.length === 0 ? <div className="billing-empty-box">{archiveFilter === "archive" ? "Noch keine abgeschlossenen Aufträge in der Ablage." : "Keine laufenden Aufträge für diese Filter."}</div> : null}
             {visibleRows.map((row) => (
               <button key={row.project.id} type="button" className={`billing-project-item ${String(selectedRow?.project?.id) === String(row.project.id) ? "active" : ""}`} onClick={() => setSelectedProjectId(String(row.project.id))}>
                 <span className={`billing-status ${statusClass(row)}`}>{statusLabel(row)}</span>
                 <b>{row.project.name}</b>
                 <small>{row.project.cost_center || row.project.external_cost_center || row.project.client_name || "Keine Zusatzdaten"}</small>
-                <em>{fmtMoney(row.remainingNet)} offen</em>
+                <em>{row.billing.closed ? "abgelegt" : `${fmtMoney(row.remainingNet)} offen`}</em>
               </button>
             ))}
           </div>
@@ -735,7 +760,7 @@ export default function ProjectBilling() {
       </div>
 
       <style>{`
-        .billing-hero{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:16px;padding:30px 22px;border-radius:24px;color:#fff;background:linear-gradient(135deg,#684027,#b88555);box-shadow:0 18px 42px rgba(71,45,26,.14);overflow:hidden;position:relative}.billing-hero:after{content:"";position:absolute;right:-40px;top:-60px;width:230px;height:230px;border-radius:50%;background:rgba(255,255,255,.12)}.billing-hero h1{margin:2px 0 6px;font-size:34px;letter-spacing:-.04em}.billing-hero p{margin:0;color:rgba(255,255,255,.84)}.billing-summary-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:14px}.billing-summary-card{padding:16px;border:1px solid var(--hbz-border);border-radius:18px;background:rgba(255,252,247,.92);box-shadow:var(--hbz-shadow-sm)}.billing-summary-card span,.billing-summary-card small{display:block;color:#776252}.billing-summary-card strong{display:block;margin:5px 0;font-size:25px;color:#352419}.billing-filter-grid{display:grid;grid-template-columns:150px 150px 190px minmax(220px,1fr);gap:12px}.billing-filter-grid label,.billing-check-panel label{display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:850;color:#5a3a23}.billing-workspace{display:grid;grid-template-columns:260px minmax(0,1fr) 300px;gap:14px;align-items:start}.billing-project-list,.billing-check-panel{position:sticky;top:98px}.billing-section-head,.billing-file-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:12px}.billing-section-head h2,.billing-section-head h3,.billing-file-head h2{margin:0;color:#372519}.billing-file-head p{margin:4px 0 0;color:#776252}.billing-project-items{display:grid;gap:8px;max-height:710px;overflow:auto;padding-right:3px}.billing-project-item{border:1px solid rgba(142,103,70,.18);border-radius:14px;background:#fffaf4;padding:10px;text-align:left;display:grid;gap:4px;cursor:pointer}.billing-project-item.active,.billing-project-item:hover{border-color:#7b4a2d;background:#fff2df}.billing-project-item b,.billing-project-item small,.billing-project-item em{display:block}.billing-project-item em{font-style:normal;font-weight:900;color:#4d3120}.billing-status{display:inline-flex;width:max-content;border-radius:999px;padding:5px 9px;font-size:11px;font-weight:900}.billing-status.missing{background:#fff0df;color:#98520b}.billing-status.open{background:#eef5ff;color:#295a8f}.billing-status.ready{background:#eaf7ec;color:#2f6e3d}.billing-status.partial{background:#fff5d8;color:#7d5700}.billing-status.done{background:#e7f6eb;color:#246a36}.billing-head-actions{display:flex;align-items:center;justify-content:flex-end;gap:7px;flex-wrap:wrap}.billing-workflow{width:auto;min-width:190px}.billing-project-meta{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:12px}.billing-project-meta div,.billing-money-box div{padding:10px;border:1px solid rgba(142,103,70,.18);border-radius:13px;background:#fff8ef}.billing-project-meta span,.billing-project-meta b,.billing-money-box span,.billing-money-box b{display:block}.billing-project-meta span,.billing-money-box span{font-size:11px;color:#7a6656}.billing-project-meta b{font-size:13px}.billing-progress-card,.billing-form-card,.billing-side-box{border:1px solid rgba(142,103,70,.16);border-radius:16px;background:rgba(255,250,244,.86);padding:14px;margin-bottom:12px}.billing-progress-top,.billing-progress-legend{display:flex;justify-content:space-between;gap:12px}.billing-progress-top span,.billing-progress-legend{color:#7a6656;font-size:12px}.billing-progress-top strong{display:block;font-size:24px}.billing-progress-track{height:13px;margin:12px 0;border-radius:999px;background:#ead8c2;overflow:hidden}.billing-progress-track span{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#7b4a2d,#c89154)}.billing-editor-grid{display:grid;grid-template-columns:1fr 120px;gap:10px}.billing-deduction-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:10px}.billing-form-card label{display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:850;color:#5a3a23}.billing-check{margin:12px 0;flex-direction:row!important;align-items:center!important}.billing-check input{width:17px;height:17px;accent-color:#7b4a2d}.billing-money-box{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.billing-money-box.deductions{grid-template-columns:repeat(3,minmax(0,1fr))}.billing-money-box b{font-size:16px}.billing-legal-note{margin-top:10px;padding:10px;border-radius:13px;background:#eef6ff;color:#245278;font-size:12px;font-weight:800}.billing-legal-note.neutral{background:#fff4df;color:#6f4b1f}.billing-lines{display:grid;gap:8px}.billing-line{display:grid;grid-template-columns:minmax(160px,1fr) 110px 120px auto;gap:7px;align-items:center}.billing-line.invoice{grid-template-columns:105px 120px minmax(130px,1fr) minmax(145px,1fr) 100px 105px 120px auto}.billing-line.client-deduction{grid-template-columns:120px minmax(150px,1fr) 110px 120px minmax(140px,1fr) auto}.billing-empty{margin:0;color:#7c6b5d;font-size:13px}.billing-score{display:grid;place-items:center;width:54px;height:54px;border-radius:50%;background:#fff2df;color:#7b4a2d}.billing-checklist{display:grid;gap:7px;margin-bottom:12px}.billing-check-row{display:grid;grid-template-columns:24px 1fr;gap:8px;align-items:center;padding:9px;border-radius:12px;background:#fffaf4}.billing-check-row span{display:grid;place-items:center;width:22px;height:22px;border-radius:50%;font-weight:900}.billing-check-row.ok span{background:#e7f6eb;color:#246a36}.billing-check-row.warn span{background:#fff0df;color:#98520b}.billing-side-box p{margin:7px 0;color:#5d4d41}@media(max-width:1180px){.billing-workspace{grid-template-columns:240px minmax(0,1fr)}.billing-check-panel{position:static;grid-column:1 / -1}.billing-summary-grid,.billing-project-meta,.billing-money-box,.billing-money-box.deductions{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:900px){.billing-workspace,.billing-filter-grid{grid-template-columns:1fr}.billing-project-list{position:static}.billing-project-items{max-height:none}.billing-line,.billing-line.invoice,.billing-line.client-deduction,.billing-editor-grid,.billing-deduction-grid{grid-template-columns:1fr}}@media(max-width:680px){.billing-hero{align-items:stretch;flex-direction:column;padding:22px 16px}.billing-hero h1{font-size:28px}.billing-summary-grid,.billing-project-meta,.billing-money-box,.billing-money-box.deductions{grid-template-columns:1fr}}
+        .billing-hero{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:16px;padding:30px 22px;border-radius:24px;color:#fff;background:linear-gradient(135deg,#684027,#b88555);box-shadow:0 18px 42px rgba(71,45,26,.14);overflow:hidden;position:relative}.billing-hero:after{content:"";position:absolute;right:-40px;top:-60px;width:230px;height:230px;border-radius:50%;background:rgba(255,255,255,.12)}.billing-hero h1{margin:2px 0 6px;font-size:34px;letter-spacing:-.04em}.billing-hero p{margin:0;color:rgba(255,255,255,.84)}.billing-summary-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:14px}.billing-summary-card{padding:16px;border:1px solid var(--hbz-border);border-radius:18px;background:rgba(255,252,247,.92);box-shadow:var(--hbz-shadow-sm)}.billing-summary-card span,.billing-summary-card small{display:block;color:#776252}.billing-summary-card strong{display:block;margin:5px 0;font-size:25px;color:#352419}.billing-archive-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}.billing-archive-tab{border:1px solid rgba(123,74,45,.2);border-radius:999px;background:#fffaf4;color:#5a3a23;padding:8px 12px;font-weight:900;cursor:pointer}.billing-archive-tab.active{background:#7b4a2d;color:#fff;box-shadow:0 8px 18px rgba(71,45,26,.14)}.billing-archive-tab span{display:inline-flex;margin-left:6px;min-width:24px;justify-content:center;border-radius:999px;background:rgba(255,255,255,.24);padding:2px 7px}.billing-filter-grid{display:grid;grid-template-columns:150px 150px 190px 190px minmax(220px,1fr);gap:12px}.billing-filter-grid label,.billing-check-panel label{display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:850;color:#5a3a23}.billing-workspace{display:grid;grid-template-columns:260px minmax(0,1fr) 300px;gap:14px;align-items:start}.billing-project-list,.billing-check-panel{position:sticky;top:98px}.billing-section-head,.billing-file-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:12px}.billing-section-head h2,.billing-section-head h3,.billing-file-head h2{margin:0;color:#372519}.billing-file-head p{margin:4px 0 0;color:#776252}.billing-project-items{display:grid;gap:8px;max-height:710px;overflow:auto;padding-right:3px}.billing-project-item{border:1px solid rgba(142,103,70,.18);border-radius:14px;background:#fffaf4;padding:10px;text-align:left;display:grid;gap:4px;cursor:pointer}.billing-project-item.active,.billing-project-item:hover{border-color:#7b4a2d;background:#fff2df}.billing-project-item b,.billing-project-item small,.billing-project-item em{display:block}.billing-project-item em{font-style:normal;font-weight:900;color:#4d3120}.billing-archive-hint{margin:0 0 10px;color:#776252;font-size:12px;line-height:1.4}.billing-empty-box{padding:12px;border:1px dashed rgba(123,74,45,.25);border-radius:14px;background:#fffaf4;color:#776252;font-size:13px}.billing-status{display:inline-flex;width:max-content;border-radius:999px;padding:5px 9px;font-size:11px;font-weight:900}.billing-status.missing{background:#fff0df;color:#98520b}.billing-status.open{background:#eef5ff;color:#295a8f}.billing-status.ready{background:#eaf7ec;color:#2f6e3d}.billing-status.partial{background:#fff5d8;color:#7d5700}.billing-status.done{background:#e7f6eb;color:#246a36}.billing-head-actions{display:flex;align-items:center;justify-content:flex-end;gap:7px;flex-wrap:wrap}.billing-workflow{width:auto;min-width:190px}.billing-project-meta{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:12px}.billing-project-meta div,.billing-money-box div{padding:10px;border:1px solid rgba(142,103,70,.18);border-radius:13px;background:#fff8ef}.billing-project-meta span,.billing-project-meta b,.billing-money-box span,.billing-money-box b{display:block}.billing-project-meta span,.billing-money-box span{font-size:11px;color:#7a6656}.billing-project-meta b{font-size:13px}.billing-progress-card,.billing-form-card,.billing-side-box{border:1px solid rgba(142,103,70,.16);border-radius:16px;background:rgba(255,250,244,.86);padding:14px;margin-bottom:12px}.billing-progress-top,.billing-progress-legend{display:flex;justify-content:space-between;gap:12px}.billing-progress-top span,.billing-progress-legend{color:#7a6656;font-size:12px}.billing-progress-top strong{display:block;font-size:24px}.billing-progress-track{height:13px;margin:12px 0;border-radius:999px;background:#ead8c2;overflow:hidden}.billing-progress-track span{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#7b4a2d,#c89154)}.billing-editor-grid{display:grid;grid-template-columns:1fr 120px;gap:10px}.billing-deduction-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:10px}.billing-form-card label{display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:850;color:#5a3a23}.billing-check{margin:12px 0;flex-direction:row!important;align-items:center!important}.billing-check input{width:17px;height:17px;accent-color:#7b4a2d}.billing-money-box{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.billing-money-box.deductions{grid-template-columns:repeat(3,minmax(0,1fr))}.billing-money-box b{font-size:16px}.billing-legal-note{margin-top:10px;padding:10px;border-radius:13px;background:#eef6ff;color:#245278;font-size:12px;font-weight:800}.billing-legal-note.neutral{background:#fff4df;color:#6f4b1f}.billing-lines{display:grid;gap:8px}.billing-line{display:grid;grid-template-columns:minmax(160px,1fr) 110px 120px auto;gap:7px;align-items:center}.billing-line.invoice{grid-template-columns:105px 120px minmax(130px,1fr) minmax(145px,1fr) 100px 105px 120px auto}.billing-line.client-deduction{grid-template-columns:120px minmax(150px,1fr) 110px 120px minmax(140px,1fr) auto}.billing-empty{margin:0;color:#7c6b5d;font-size:13px}.billing-score{display:grid;place-items:center;width:54px;height:54px;border-radius:50%;background:#fff2df;color:#7b4a2d}.billing-checklist{display:grid;gap:7px;margin-bottom:12px}.billing-check-row{display:grid;grid-template-columns:24px 1fr;gap:8px;align-items:center;padding:9px;border-radius:12px;background:#fffaf4}.billing-check-row span{display:grid;place-items:center;width:22px;height:22px;border-radius:50%;font-weight:900}.billing-check-row.ok span{background:#e7f6eb;color:#246a36}.billing-check-row.warn span{background:#fff0df;color:#98520b}.billing-side-box p{margin:7px 0;color:#5d4d41}@media(max-width:1180px){.billing-workspace{grid-template-columns:240px minmax(0,1fr)}.billing-check-panel{position:static;grid-column:1 / -1}.billing-summary-grid,.billing-project-meta,.billing-money-box,.billing-money-box.deductions{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:900px){.billing-workspace,.billing-filter-grid{grid-template-columns:1fr}.billing-project-list{position:static}.billing-project-items{max-height:none}.billing-line,.billing-line.invoice,.billing-line.client-deduction,.billing-editor-grid,.billing-deduction-grid{grid-template-columns:1fr}}@media(max-width:680px){.billing-hero{align-items:stretch;flex-direction:column;padding:22px 16px}.billing-hero h1{font-size:28px}.billing-summary-grid,.billing-project-meta,.billing-money-box,.billing-money-box.deductions{grid-template-columns:1fr}}
       `}</style>
     </div>
   );
