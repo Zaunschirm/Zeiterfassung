@@ -22,6 +22,14 @@ const fmtDate = (value) => {
   return y && m && d ? `${d}.${m}.${y}` : "—";
 };
 const fmtHours = (value) => `${Number(value || 0).toLocaleString("de-AT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} h`;
+const localISO = (value) => `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
+const addDays = (value, days) => { const next = new Date(`${value}T12:00:00`); next.setDate(next.getDate() + days); return localISO(next); };
+const weekStartFor = (value) => { const next = new Date(`${value}T12:00:00`); next.setDate(next.getDate() - ((next.getDay() + 6) % 7)); return localISO(next); };
+const entryHours = (row) => {
+  const direct = Number(row.total_hours ?? row.hours);
+  if (Number.isFinite(direct)) return Math.max(0, direct);
+  return Math.max(0, (Number(row.end_min || 0) - Number(row.start_min || row.from_min || 0) - Number(row.break_min || row.pause_min || 0) + Number(row.travel_min || row.travel_minutes || 0)) / 60);
+};
 
 function SignaturePad({ value, onChange, disabled }) {
   const previewRef = useRef(null);
@@ -140,6 +148,7 @@ export default function RegieReports() {
 
   const [projects, setProjects] = useState([]);
   const [employees, setEmployees] = useState([]);
+  const [timeEntries, setTimeEntries] = useState([]);
   const [reports, setReports] = useState([]);
   const [materialTemplates, setMaterialTemplates] = useState([]);
   const [auditRows, setAuditRows] = useState([]);
@@ -198,25 +207,30 @@ export default function RegieReports() {
       if (!canPrepare) {
         reportQuery = reportQuery.eq("is_archived", false).neq("status", "draft").contains("assigned_employee_ids", [ownId]);
       }
-      const [projectResult, employeeResult, reportResult, templateResult] = await Promise.all([
+      const weekStart = weekStartFor(reportDate);
+      const weekEnd = addDays(weekStart, 6);
+      const [projectResult, employeeResult, timeEntryResult, reportResult, templateResult] = await Promise.all([
         supabase.from("projects").select("*").eq("active", true).order("name"),
         supabase.from("employees").select("id, code, name, active, disabled, is_test_employee").order("name"),
+        supabase.from("time_entries").select("*").gte("work_date", weekStart).lte("work_date", weekEnd),
         reportQuery,
         supabase.from("regie_material_templates").select("*").eq("active", true).order("description"),
       ]);
       if (projectResult.error) throw projectResult.error;
       if (employeeResult.error) throw employeeResult.error;
+      if (timeEntryResult.error) throw timeEntryResult.error;
       if (reportResult.error) throw reportResult.error;
       if (templateResult.error) throw templateResult.error;
       setProjects(projectResult.data || []);
       setEmployees(filterVisibleEmployeesForRole(employeeResult.data || [], role, session).filter((e) => e.active !== false && e.disabled !== true));
+      setTimeEntries(timeEntryResult.data || []);
       setReports(reportResult.data || []);
       setMaterialTemplates(templateResult.data || []);
     } catch (e) {
       setError(e?.message || "Regieberichte konnten nicht geladen werden.");
     }
   }
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { loadData(); }, [reportDate]);
   useEffect(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(OFFLINE_DRAFT_KEY) || "null");
@@ -299,6 +313,43 @@ export default function RegieReports() {
   function toggleAssignment(employeeId) {
     const id = String(employeeId);
     setAssignedEmployeeIds((ids) => ids.includes(id) ? ids.filter((value) => value !== id) : [...ids, id]);
+  }
+  function laborItemsFromTimeEntries(nextProjectId = projectId, nextReportDate = reportDate) {
+    const grouped = new Map();
+    const relevant = timeEntries.filter((entry) => String(entry.work_date || "").slice(0, 10) === nextReportDate && String(entry.project_id || "") === String(nextProjectId) && !entry.absence_type);
+    for (const row of relevant) {
+      const id = String(row.employee_id || "");
+      if (!id) continue;
+      const employee = employees.find((item) => String(item.id) === id);
+      const current = grouped.get(id) || { employee_id: id, name: employee?.name || row.employee_name || id, hours: 0, activity: "" };
+      current.hours += entryHours(row);
+      grouped.set(id, current);
+    }
+    return [...grouped.values()].filter((row) => row.hours > 0);
+  }
+  function applyTimeEntryLaborItems(nextProjectId = projectId) {
+    if (!nextProjectId || locked) return;
+    const nextLaborItems = laborItemsFromTimeEntries(nextProjectId, reportDate);
+    if (!nextLaborItems.length) {
+      setMessage("Keine Zeiteinträge für dieses Datum und Projekt gefunden.");
+      return;
+    }
+    setLaborItems(nextLaborItems);
+    setAssignedEmployeeIds(nextLaborItems.map((row) => String(row.employee_id)).filter(Boolean));
+    setMessage("Mitarbeiter und Stunden aus der Zeiterfassung übernommen. Du kannst sie weiter ändern.");
+  }
+  function handleProjectChange(nextProjectId) {
+    setProjectId(nextProjectId);
+    const project = projects.find((item) => String(item.id) === String(nextProjectId));
+    if (project?.address) setLocation(project.address);
+    if (project?.client_name) setClientName(project.client_name);
+    if (project?.client_contact) setClientContact(project.client_contact);
+    const nextLaborItems = laborItemsFromTimeEntries(nextProjectId, reportDate);
+    if (nextLaborItems.length) {
+      setLaborItems(nextLaborItems);
+      setAssignedEmployeeIds(nextLaborItems.map((row) => String(row.employee_id)).filter(Boolean));
+      setMessage("Mitarbeiter und Stunden aus der Zeiterfassung vorgeschlagen. Du kannst sie weiter ändern.");
+    }
   }
   function addAssignedEmployeesToLabor() {
     setLaborItems((rows) => {
@@ -697,7 +748,7 @@ export default function RegieReports() {
             <fieldset disabled={locked || busy}>
               <div className="regie-grid">
                 <label>Datum<input className="hbz-input" disabled={!canPrepare} type="date" value={reportDate} onChange={(e) => setReportDate(e.target.value)} /></label>
-                <label>Projekt / Baustelle<select className="hbz-input" disabled={!canPrepare} value={projectId} onChange={(e) => { setProjectId(e.target.value); const project = projects.find((item) => String(item.id) === String(e.target.value)); if (project?.address) setLocation(project.address); if (project?.client_name) setClientName(project.client_name); if (project?.client_contact) setClientContact(project.client_contact); }}><option value="">Bitte auswählen</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>
+                <label>Projekt / Baustelle<select className="hbz-input" disabled={!canPrepare} value={projectId} onChange={(e) => handleProjectChange(e.target.value)}><option value="">Bitte auswählen</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>
                 <label>Ort / Baustellenadresse<input className="hbz-input" disabled={!canPrepare} value={location} onChange={(e) => setLocation(e.target.value)} /></label>
                 <label>Auftraggeber (Firma/Name)<input className="hbz-input" disabled={!canPrepare} value={clientName} onChange={(e) => setClientName(e.target.value)} /></label>
                 <label>Kontakt / Bauleiter<input className="hbz-input" disabled={!canPrepare} value={clientContact} onChange={(e) => setClientContact(e.target.value)} /></label>
@@ -715,7 +766,7 @@ export default function RegieReports() {
 
             <fieldset disabled={locked || busy}>
               <section className="regie-section">
-                <div className="regie-section-head"><h3>Mitarbeiter und Stunden</h3>{canPrepare && <button type="button" className="hbz-btn btn-small" onClick={() => setLaborItems((rows) => [...rows, { employee_id: "", name: "", hours: 0, activity: "" }])}>+ Mitarbeiter</button>}</div>
+                <div className="regie-section-head"><h3>Mitarbeiter und Stunden</h3>{canPrepare && <div className="regie-section-actions"><button type="button" className="hbz-btn btn-small" onClick={() => applyTimeEntryLaborItems()}>Aus Zeiterfassung übernehmen</button><button type="button" className="hbz-btn btn-small" onClick={() => setLaborItems((rows) => [...rows, { employee_id: "", name: "", hours: 0, activity: "" }])}>+ Mitarbeiter</button></div>}</div>
                 {laborItems.map((row, index) => (
                   <div className="regie-row labor" key={index}>
                     <select className="hbz-input" disabled={!canPrepare} value={row.employee_id || ""} onChange={(e) => setLaborEmployee(index, e.target.value)}>
@@ -781,7 +832,7 @@ export default function RegieReports() {
       {auditOpen && <div className="regie-pdf-overlay" role="dialog" aria-modal="true" aria-label="Änderungsverlauf"><div className="regie-audit-modal"><div className="regie-pdf-head"><strong>Änderungsverlauf · {reportNumber}</strong><button type="button" className="hbz-btn btn-small" onClick={() => setAuditOpen(false)}>Schließen</button></div><div className="regie-audit-list">{!auditRows.length ? <p>Keine Änderungen protokolliert.</p> : auditRows.map((row) => <article key={row.id}><b>{new Date(row.changed_at).toLocaleString("de-AT")} · {row.changed_by_name || row.changed_by || "Unbekannt"}</b><span>{row.action}</span><pre>{JSON.stringify(row.changes, null, 2)}</pre></article>)}</div></div></div>}
 
       <style>{`
-        .regie-header{display:flex;justify-content:space-between;gap:16px;align-items:flex-end;margin-bottom:16px}.regie-header h1{margin:2px 0 4px}.regie-header p{margin:0;color:#6f6259}.regie-layout{display:grid;grid-template-columns:280px minmax(0,1fr));gap:16px}.regie-list{align-self:start;position:sticky;top:82px}.regie-list-item{display:flex;width:100%;flex-direction:column;align-items:flex-start;gap:3px;border:1px solid #eadfd7;background:#fff;padding:10px;margin-top:8px;border-radius:9px;text-align:left;cursor:pointer}.regie-list-item.active{border-color:#7b4a2d;background:#fff8f2}.regie-list-item span{font-size:12px;color:#6f6259}.regie-list-release{display:block;color:#3f6f8c!important;font-weight:800}.regie-list-item small{font-weight:800}.regie-list-item small.signed{color:#28723d}.regie-list-item small.prepared{color:#1f6592}.regie-list-item small.draft{color:#9a6812}.regie-form-head,.regie-section-head{display:flex;align-items:center;justify-content:space-between;gap:12px}.regie-form-head h2{margin:2px 0 6px;font-size:20px}.regie-release-info{margin:0 0 12px;color:#5f7180;font-size:12px;font-weight:850}.regie-status{padding:6px 10px;border-radius:999px;font-size:12px;font-weight:900}.regie-status.signed{background:#e7f6eb;color:#246a36}.regie-status.prepared{background:#e9f4fb;color:#1f6592}.regie-status.draft{background:#fff3d7;color:#875b00}.regie-form fieldset{border:0;padding:0;margin:0;min-width:0}.regie-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.regie-form label{display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:800;color:#5a3a23}.regie-block{margin-top:14px}.regie-section{border-top:1px solid #eadfd7;margin-top:18px;padding-top:16px}.regie-section h3{margin:0 0 10px}.regie-assignment-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.regie-assignment{flex-direction:row!important;align-items:center;padding:8px;border:1px solid #eadfd7;border-radius:8px;background:#fff}.regie-row{display:grid;gap:8px;margin-top:8px;align-items:center}.regie-row.labor{grid-template-columns:minmax(180px,1fr) 110px 34px}.regie-row.material{grid-template-columns:1.6fr 90px 100px 34px}.regie-hours-input{position:relative}.regie-hours-input .hbz-input{width:100%;padding-right:30px}.regie-hours-input span{position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:12px;font-weight:900;color:#6f6259;pointer-events:none}.regie-remove{border:0;background:#fff0ed;color:#a23a2c;border-radius:8px;height:38px;font-size:22px;cursor:pointer}.regie-total{text-align:right;margin-top:10px;font-weight:900}.regie-signature-canvas{display:block;width:100%;height:180px;background:#fff;border:2px dashed #bda99a;border-radius:10px;pointer-events:none}.regie-signature-preview{position:relative;display:block;width:100%;padding:0;border:0;background:transparent;cursor:pointer}.regie-signature-preview:disabled{cursor:default}.regie-signature-preview span{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#765f50;font-weight:800}.regie-signature-overlay{position:fixed;inset:0;z-index:1900;padding:18px;background:rgba(30,24,20,.78);display:flex;align-items:center;justify-content:center}.regie-signature-modal{width:min(1000px,100%);height:min(720px,calc(100vh - 36px));padding:14px;background:#f8f4f0;border-radius:14px;display:flex;flex-direction:column;gap:12px;box-shadow:0 24px 70px rgba(0,0,0,.4)}.regie-signature-head,.regie-signature-actions{display:flex;align-items:center;justify-content:space-between;gap:12px}.regie-signature-head div{display:flex;flex-direction:column;gap:2px}.regie-signature-head small{color:#75675d}.regie-signature-editor{display:block;width:100%;min-height:260px;flex:1;background:#fff;border:3px solid #7b4a2d;border-radius:12px;touch-action:none}.regie-signature-actions{justify-content:flex-end}.regie-actions{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end;margin-top:18px}.regie-empty{text-align:center;padding:40px 20px}
+        .regie-header{display:flex;justify-content:space-between;gap:16px;align-items:flex-end;margin-bottom:16px}.regie-header h1{margin:2px 0 4px}.regie-header p{margin:0;color:#6f6259}.regie-layout{display:grid;grid-template-columns:280px minmax(0,1fr));gap:16px}.regie-list{align-self:start;position:sticky;top:82px}.regie-list-item{display:flex;width:100%;flex-direction:column;align-items:flex-start;gap:3px;border:1px solid #eadfd7;background:#fff;padding:10px;margin-top:8px;border-radius:9px;text-align:left;cursor:pointer}.regie-list-item.active{border-color:#7b4a2d;background:#fff8f2}.regie-list-item span{font-size:12px;color:#6f6259}.regie-list-release{display:block;color:#3f6f8c!important;font-weight:800}.regie-list-item small{font-weight:800}.regie-list-item small.signed{color:#28723d}.regie-list-item small.prepared{color:#1f6592}.regie-list-item small.draft{color:#9a6812}.regie-form-head,.regie-section-head{display:flex;align-items:center;justify-content:space-between;gap:12px}.regie-section-actions{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end}.regie-form-head h2{margin:2px 0 6px;font-size:20px}.regie-release-info{margin:0 0 12px;color:#5f7180;font-size:12px;font-weight:850}.regie-status{padding:6px 10px;border-radius:999px;font-size:12px;font-weight:900}.regie-status.signed{background:#e7f6eb;color:#246a36}.regie-status.prepared{background:#e9f4fb;color:#1f6592}.regie-status.draft{background:#fff3d7;color:#875b00}.regie-form fieldset{border:0;padding:0;margin:0;min-width:0}.regie-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.regie-form label{display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:800;color:#5a3a23}.regie-block{margin-top:14px}.regie-section{border-top:1px solid #eadfd7;margin-top:18px;padding-top:16px}.regie-section h3{margin:0 0 10px}.regie-assignment-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.regie-assignment{flex-direction:row!important;align-items:center;padding:8px;border:1px solid #eadfd7;border-radius:8px;background:#fff}.regie-row{display:grid;gap:8px;margin-top:8px;align-items:center}.regie-row.labor{grid-template-columns:minmax(180px,1fr) 110px 34px}.regie-row.material{grid-template-columns:1.6fr 90px 100px 34px}.regie-hours-input{position:relative}.regie-hours-input .hbz-input{width:100%;padding-right:30px}.regie-hours-input span{position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:12px;font-weight:900;color:#6f6259;pointer-events:none}.regie-remove{border:0;background:#fff0ed;color:#a23a2c;border-radius:8px;height:38px;font-size:22px;cursor:pointer}.regie-total{text-align:right;margin-top:10px;font-weight:900}.regie-signature-canvas{display:block;width:100%;height:180px;background:#fff;border:2px dashed #bda99a;border-radius:10px;pointer-events:none}.regie-signature-preview{position:relative;display:block;width:100%;padding:0;border:0;background:transparent;cursor:pointer}.regie-signature-preview:disabled{cursor:default}.regie-signature-preview span{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#765f50;font-weight:800}.regie-signature-overlay{position:fixed;inset:0;z-index:1900;padding:18px;background:rgba(30,24,20,.78);display:flex;align-items:center;justify-content:center}.regie-signature-modal{width:min(1000px,100%);height:min(720px,calc(100vh - 36px));padding:14px;background:#f8f4f0;border-radius:14px;display:flex;flex-direction:column;gap:12px;box-shadow:0 24px 70px rgba(0,0,0,.4)}.regie-signature-head,.regie-signature-actions{display:flex;align-items:center;justify-content:space-between;gap:12px}.regie-signature-head div{display:flex;flex-direction:column;gap:2px}.regie-signature-head small{color:#75675d}.regie-signature-editor{display:block;width:100%;min-height:260px;flex:1;background:#fff;border:3px solid #7b4a2d;border-radius:12px;touch-action:none}.regie-signature-actions{justify-content:flex-end}.regie-actions{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end;margin-top:18px}.regie-empty{text-align:center;padding:40px 20px}
         .regie-voice{margin-top:8px}.regie-voice.listening{background:#fff0ed;color:#9b3024}.regie-section-head .hint{margin:0}.regie-photo-upload{display:inline-flex!important;flex-direction:row!important;cursor:pointer}.regie-photo-upload input{display:none}.regie-photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;margin-top:12px}.regie-photo-grid figure{position:relative;margin:0;border:1px solid #eadfd7;border-radius:10px;overflow:hidden;background:#fff}.regie-photo-grid img{display:block;width:100%;height:120px;object-fit:cover}.regie-photo-grid figcaption{padding:7px;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.regie-photo-grid button{position:absolute;top:5px;right:5px;width:28px;height:28px;border:0;border-radius:50%;background:rgba(125,34,25,.9);color:#fff;font-size:20px;cursor:pointer}
         .regie-archive-toggle{display:flex!important;flex-direction:row!important;align-items:center;gap:7px;margin-top:9px;font-size:12px!important}.regie-list-item small.archived{color:#666}.regie-status.archived{background:#ececec;color:#555}.regie-danger{color:#9f2f24;border-color:#d9a49d!important}.regie-danger:hover{background:#fff0ed}
         .regie-filters{display:grid;gap:7px;margin-top:9px}.regie-template-list{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}.regie-save-template{margin-top:8px}.regie-photo-caption{width:100%;box-sizing:border-box;border:0;border-top:1px solid #eadfd7;padding:7px;font-size:11px}.regie-audit-modal{width:min(850px,100%);max-height:calc(100vh - 40px);background:#fff;border-radius:12px;overflow:hidden;display:flex;flex-direction:column}.regie-audit-list{padding:14px;overflow:auto}.regie-audit-list article{border-bottom:1px solid #eadfd7;padding:10px 0;display:grid;gap:4px}.regie-audit-list span{color:#6f6259}.regie-audit-list pre{white-space:pre-wrap;font-size:11px;background:#f7f3ef;padding:8px;border-radius:7px}
