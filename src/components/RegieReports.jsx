@@ -481,9 +481,9 @@ export default function RegieReports() {
       const { data: matchingNumbers, error: numberError } = await supabase.from("regie_reports").select("report_number").like("report_number", `${baseNumber}%`);
       if (numberError) throw numberError;
       const used = new Set((matchingNumbers || []).map((item) => item.report_number));
-      let nextNumber = baseNumber;
+      let nextNumber = `${baseNumber}-Kopie`;
       let suffix = 2;
-      while (used.has(nextNumber)) nextNumber = `${baseNumber}-${suffix++}`;
+      while (used.has(nextNumber)) nextNumber = `${baseNumber}-Kopie-${suffix++}`;
 
       const payload = {
         ...makePayload("draft"),
