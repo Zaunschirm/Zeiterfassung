@@ -581,7 +581,19 @@ export default function RegieReports() {
       doc.addImage(signatureData, "PNG", 36, y + 24, 210, 85); doc.line(36, y + 114, 260, y + 114);
       doc.setFontSize(8); doc.text("Unterschrift Auftraggeber", 36, y + 127);
     } else {
-      doc.setFontSize(10); doc.text(status === "prepared" ? "Vorbereiteter Arbeitsauftrag - noch nicht unterschrieben" : "Noch nicht unterschriebener Entwurf", 36, y);
+      if (y > 650) { doc.addPage(); y = 50; }
+      doc.setFontSize(11);
+      doc.text("Bestätigung Auftraggeber", 36, y);
+      doc.setFontSize(8.5);
+      doc.text("Leistungen, Stunden und Materialien wurden erbracht und werden mit Unterschrift bestätigt.", 36, y + 15);
+      doc.setDrawColor(120, 120, 120);
+      doc.line(36, y + 66, 190, y + 66);
+      doc.line(220, y + 66, 374, y + 66);
+      doc.line(404, y + 66, 559, y + 66);
+      doc.setFontSize(8);
+      doc.text("Ort / Datum", 36, y + 79);
+      doc.text("Name in Blockschrift", 220, y + 79);
+      doc.text("Unterschrift Auftraggeber", 404, y + 79);
     }
     doc.setFontSize(8); doc.text(`Gesamtstunden: ${fmtHours(sumLaborHours(laborItems))}`, 559, 810, { align: "right" });
     for (let index = 0; index < photos.length; index += 1) {
