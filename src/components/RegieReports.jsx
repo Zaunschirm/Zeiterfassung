@@ -427,7 +427,6 @@ export default function RegieReports() {
     if (nextStatus === "prepared") {
       if (!clientName.trim()) return "Bitte den Auftraggeber eintragen.";
       if (!assignedEmployeeIds.length) return "Bitte mindestens einen Mitarbeiter zuweisen.";
-      if (!prepareLaborItems(laborItems).length) return "Bitte die zugewiesenen Mitarbeiter in die Stundenliste übernehmen.";
     }
     if (nextStatus === "signed") {
       if (!description.trim()) return "Bitte die ausgeführten Arbeiten beschreiben.";
