@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { getSession } from "../lib/session";
-import { addPdfFooters, addPdfHeader, addPdfWatermark, brandedTable, PDF_BRAND } from "../utils/pdfBranding";
+import { addPdfFooters, addPdfHeader, addPdfWatermarks, brandedTable, PDF_BRAND } from "../utils/pdfBranding";
 import { formatCalculatedNumber, parseCalculatedNumber } from "../utils/calculatedInput";
 
 const STORAGE_KEY = "hbz_project_billing_draft_v2";
@@ -59,6 +59,7 @@ const emptyBilling = () => ({
 const statusClass = (row) => {
   if (!row.contractNet && row.supplementNet <= 0) return "missing";
   if (row.workflowStatus === "Abgeschlossen" || (row.totalOrderNet > 0 && row.remainingNet <= 0)) return "done";
+  if (["In Rechnung", "Verrechnet"].includes(row.workflowStatus)) return "partial";
   if (row.invoicedNet > 0) return "partial";
   if (row.readyScore >= 80) return "ready";
   return "open";
@@ -67,6 +68,7 @@ const statusClass = (row) => {
 const statusLabel = (row) => {
   if (!row.contractNet && row.supplementNet <= 0) return "Auftragssumme fehlt";
   if (statusClass(row) === "done") return "Abgeschlossen";
+  if (["Regie geprüft", "In Rechnung", "Verrechnet"].includes(row.workflowStatus)) return row.workflowStatus;
   if (statusClass(row) === "partial") return "Teilabgerechnet";
   if (statusClass(row) === "ready") return "Bereit zur Prüfung";
   return row.workflowStatus || "Offen";
@@ -490,7 +492,6 @@ export default function ProjectBilling() {
       const { jsPDF, autoTable } = await loadPdfLibs();
       const doc = new jsPDF({ unit: "pt", format: "a4" });
       addPdfHeader(doc, { title: "Projektabrechnung", subtitle: row.project.name, rightTop: todayISO() });
-      await addPdfWatermark(doc);
       autoTable(doc, {
         startY: 86,
         theme: "grid",
@@ -546,11 +547,61 @@ export default function ProjectBilling() {
         doc.setFontSize(9);
         doc.text("Hinweis: Steuerschuld geht gemäß §19 UStG auf den Leistungsempfänger über.", 36, y);
       }
+      await addPdfWatermarks(doc);
       addPdfFooters(doc, { label: "Projektabrechnung", detail: row.project.name });
       doc.save(`Projektabrechnung_${String(row.project.name || "Projekt").replace(/[^\wäöüÄÖÜß-]+/gi, "_")}.pdf`);
     } catch (e) {
       console.error("[ProjectBilling] PDF error:", e);
       setMessage(e?.message || "PDF konnte nicht erstellt werden.");
+    }
+  }
+
+  async function exportProjectMapPdf(row) {
+    try {
+      const { jsPDF, autoTable } = await loadPdfLibs();
+      const doc = new jsPDF({ unit: "pt", format: "a4" });
+      const projectDailyReports = dailyReports.filter((report) => String(report.project_id || "") === String(row.project.id));
+      addPdfHeader(doc, { title: "Projektmappe", subtitle: row.project.name, rightTop: todayISO() });
+      autoTable(doc, {
+        startY: 86,
+        theme: "grid",
+        ...brandedTable,
+        body: [
+          ["Projekt", row.project.name || "—", "Auftraggeber", row.project.client_name || "—"],
+          ["Kostenstelle", row.project.cost_center || "—", "Externe Kostenstelle", row.project.external_cost_center || "—"],
+          ["Bauleiter", row.project.client_contact || "—", "Adresse", row.project.address || "—"],
+          ["Zeitraum", `${from} bis ${to}`, "Status", statusLabel(row)],
+        ],
+      });
+      let y = doc.lastAutoTable.finalY + 16;
+      autoTable(doc, {
+        startY: y,
+        theme: "striped",
+        ...brandedTable,
+        head: [["Bereich", "Stand"]],
+        body: [
+          ["Abrechnung", `${fmtMoney(row.totalOrderNet)} Auftrag netto · ${fmtMoney(row.remainingNet)} offen`],
+          ["Regieberichte", `${row.signedRegieReports.length} unterfertigt · ${row.regieBillableOpen.length} unverrechnet · ${row.regieOpen} offen`],
+          ["Bautagesberichte", `${row.dailyDone} abgeschlossen · ${row.dailyDraft} Entwurf`],
+          ["Arbeitszeiten", `${fmtHours(row.workMinutes)} Arbeit · ${fmtHours(row.travelMinutes)} Fahrzeit · ${row.entries} Einträge`],
+        ],
+      });
+      y = doc.lastAutoTable.finalY + 18;
+      if (row.signedRegieReports.length) {
+        autoTable(doc, { startY: y, theme: "striped", ...brandedTable, head: [["Regiebericht", "Datum", "Stunden", "Status"]], body: row.signedRegieReports.map((report) => [report.report_number || report.id, fmtDate(report.report_date), fmtRegieHours(report.hours), report.billed ? "verrechnet" : "offen"]) });
+        y = doc.lastAutoTable.finalY + 18;
+      }
+      if (projectDailyReports.length) {
+        autoTable(doc, { startY: y, theme: "striped", ...brandedTable, head: [["Bautagesbericht", "Datum", "Status"]], body: projectDailyReports.map((report) => [report.project_name || row.project.name, fmtDate(report.report_date), report.status === "completed" ? "abgeschlossen" : "Entwurf"]) });
+        y = doc.lastAutoTable.finalY + 18;
+      }
+      autoTable(doc, { startY: y, theme: "grid", ...brandedTable, head: [["Prüfpunkt", "Status"]], body: row.checks.map((check) => [check.label, check.ok ? "OK" : "Offen"]) });
+      await addPdfWatermarks(doc);
+      addPdfFooters(doc, { label: "Projektmappe", detail: row.project.name });
+      doc.save(`Projektmappe_${String(row.project.name || "Projekt").replace(/[^\wäöüÄÖÜß-]+/gi, "_")}.pdf`);
+    } catch (e) {
+      console.error("[ProjectBilling] Projektmappe PDF error:", e);
+      setMessage(e?.message || "Projektmappe konnte nicht erstellt werden.");
     }
   }
 
@@ -618,9 +669,10 @@ export default function ProjectBilling() {
                 </div>
                 <div className="billing-head-actions">
                   <select className="hbz-input billing-workflow" disabled={selectedRow.billing.closed === true} value={selectedRow.workflowStatus} onChange={(e) => updateBilling(selectedRow.project.id, (current) => ({ ...current, workflowStatus: e.target.value }))}>
-                    <option>Offen</option><option>Prüfen</option><option>Teilrechnung erstellt</option><option>Schlussrechnung offen</option><option>Abgeschlossen</option>
+                    <option>Offen</option><option>Prüfen</option><option>Regie geprüft</option><option>In Rechnung</option><option>Teilrechnung erstellt</option><option>Verrechnet</option><option>Schlussrechnung offen</option><option>Abgeschlossen</option>
                   </select>
                   <button className="hbz-btn btn-small" type="button" onClick={() => exportProjectPdf(selectedRow)}>PDF</button>
+                  <button className="hbz-btn btn-small" type="button" onClick={() => exportProjectMapPdf(selectedRow)}>Projektmappe</button>
                   {selectedRow.billing.closed ? (
                     <button className="hbz-btn btn-small" type="button" onClick={() => reopenBilling(selectedRow)}>Wieder öffnen</button>
                   ) : (

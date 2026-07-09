@@ -64,6 +64,16 @@ export async function addPdfWatermark(doc, { opacity = 0.10, size = 360, yOffset
   }
 }
 
+export async function addPdfWatermarks(doc, options = {}) {
+  const pages = doc.getNumberOfPages();
+  const currentPage = doc.internal.getCurrentPageInfo?.().pageNumber || pages;
+  for (let page = 1; page <= pages; page += 1) {
+    doc.setPage(page);
+    await addPdfWatermark(doc, options);
+  }
+  doc.setPage(Math.min(currentPage, pages));
+}
+
 export function addPdfFooters(doc, { label, detail = "" }) {
   const pages = doc.getNumberOfPages(); const width = doc.internal.pageSize.getWidth(); const height = doc.internal.pageSize.getHeight();
   for (let page = 1; page <= pages; page += 1) {

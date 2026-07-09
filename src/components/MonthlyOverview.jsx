@@ -33,6 +33,7 @@ import {
 import { filterVisibleEmployeesForRole, isTestEmployee } from "../utils/employeeVisibility";
 import { calculateZaBalanceDelta, calculateZaBalanceForEmployee, isOfficialZaStartAdjustment } from "../utils/overtime";
 import { collectSupabaseRows } from "../utils/pagination";
+import { addPdfWatermarks } from "../utils/pdfBranding";
 
 async function loadPdfLibs() {
   const [{ jsPDF }, autoTableModule] = await Promise.all([
@@ -2277,6 +2278,7 @@ export default function MonthlyOverview() {
         "Berechnung für die Steuerberatung: Lohnstunden gesamt = Arbeit inkl. Fahrzeit + Feiertag + Krankenstand + ZA laut Sollzeit. Urlaubstage werden separat als Tage ausgewiesen und mit 0,00 h gerechnet. Diäten Tage = tatsächliche Arbeitstage. ZA-Abgleich: Stand vorher + Änderung = Stand Monatsende.";
       doc.text(doc.splitTextToSize(calcText, pageWidth - marginX * 2), marginX, currentY);
 
+      await addPdfWatermarks(doc);
       addFooter();
 
       const fileLabel = safePdfText(targetRange.label).replace(/[^\wäöüÄÖÜß-]+/g, "_");

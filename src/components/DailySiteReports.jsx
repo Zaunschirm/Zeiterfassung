@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { getSession } from "../lib/session";
 import { uploadProjectPhoto } from "../utils/uploadProjectPhoto";
-import { addPdfFooters, addPdfHeader, addPdfWatermark, brandedTable, PDF_BRAND } from "../utils/pdfBranding";
+import { addPdfFooters, addPdfHeader, addPdfWatermarks, brandedTable, PDF_BRAND } from "../utils/pdfBranding";
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
 const localISO = (value) => `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
@@ -263,12 +263,12 @@ export default function DailySiteReports() {
     const [{ jsPDF }, autoTableModule] = await Promise.all([import("jspdf"), import("jspdf-autotable")]);
     const doc = new jsPDF({ unit: "pt", format: "a4" }); const autoTable = autoTableModule.default; const brown = PDF_BRAND.brown;
     addPdfHeader(doc, { title: "Bautagesbericht", rightTop: fmtDate(date), subtitle: selectedProject?.name || "Baustelle" });
-    await addPdfWatermark(doc);
     autoTable(doc, { startY: 84, theme: "grid", ...brandedTable, body: [["Baustelle", selectedProject?.name || "—", "Datum", fmtDate(date)], ["Adresse", location || "—", "Wetter", weather || "—"], ["Auftraggeber", clientName || "—", "Bauleiter", clientContact || "—"]] });
     autoTable(doc, { startY: doc.lastAutoTable.finalY + 18, theme: "striped", head: [["Mitarbeiter", "Stunden"]], body: employeeItems.map((item) => [item.name, fmtHours(item.hours)]), headStyles: { fillColor: brown } });
     let y = doc.lastAutoTable.finalY + 20; const blocks = [["Ausgeführte Arbeiten", activities], ["Besondere Vorkommnisse / Behinderungen", incidents], ["Lieferungen", deliveries], ["Material / Geräte (optional)", materialsEquipment]];
     for (const [title, text] of blocks) { if (!text) continue; doc.setFontSize(11); doc.text(title, 36, y); autoTable(doc, { startY: y + 7, theme: "grid", body: [[text]], margin: { left: 36, right: 36 }, styles: { fontSize: 9 } }); y = doc.lastAutoTable.finalY + 18; }
     for (let index = 0; index < photos.length; index += 1) { try { const imageData = await photoDataUrl(photos[index].url); const image = doc.getImageProperties(imageData); const scale = Math.min(523 / image.width, 700 / image.height); doc.addPage(); doc.setFontSize(12); doc.text(`Baustellenfoto ${index + 1} · ${photos[index].caption || "Foto"}`, 36, 45); doc.addImage(imageData, image.fileType || "JPEG", 36, 65, image.width * scale, image.height * scale); } catch { /* Einzelnes Foto überspringen. */ } }
+    await addPdfWatermarks(doc);
     addPdfFooters(doc, { label: "Bautagesbericht", detail: `${selectedProject?.name || "Baustelle"} | ${fmtDate(date)}` });
     return doc;
   }
