@@ -235,7 +235,7 @@ export default function RegieReports() {
     try {
       let reportQuery = supabase.from("regie_reports").select("*").order("report_date", { ascending: false }).order("created_at", { ascending: false }).limit(100);
       if (!canPrepare) {
-        reportQuery = reportQuery.eq("is_archived", false).neq("status", "draft").contains("assigned_employee_ids", [ownId]);
+        reportQuery = reportQuery.eq("is_archived", false).neq("status", "draft").filter("assigned_employee_ids", "cs", JSON.stringify([ownId]));
       }
       const weekStart = weekStartFor(reportDate);
       const weekEnd = addDays(weekStart, 6);
@@ -333,7 +333,8 @@ export default function RegieReports() {
       const after = report?.[field] ?? null;
       if (JSON.stringify(before) !== JSON.stringify(after)) changes[field] = { old: before, new: after };
     }
-    await supabase.from("regie_report_audit_log").insert({ report_id: report.id, report_number: report.report_number, action, changed_by: String(session?.id || session?.code || ""), changed_by_name: session?.name || session?.code || null, changes });
+    const { error: auditError } = await supabase.from("regie_report_audit_log").insert({ report_id: report.id, report_number: report.report_number, action, changed_by: String(session?.id || session?.code || ""), changed_by_name: session?.name || session?.code || null, changes });
+    if (auditError) console.warn("[RegieReports] Audit konnte nicht geschrieben werden:", auditError);
   }
 
   async function loadAudit() {
@@ -552,11 +553,11 @@ export default function RegieReports() {
       originalReportRef.current = result.data;
       localStorage.removeItem(OFFLINE_DRAFT_KEY);
       setSelectedId(result.data.id); setReportNumber(result.data.report_number); setStatus(nextStatus); setSignedAt(result.data.signed_at || "");
-      setMessage(nextStatus === "signed" ? "Regiebericht unterschrieben und abgeschlossen." : nextStatus === "prepared" ? "Auftrag wurde für den Mitarbeiter vorbereitet." : "Entwurf gespeichert.");
+      setMessage(nextStatus === "signed" ? "Regiebericht unterschrieben und abgeschlossen." : nextStatus === "prepared" ? (canPrepare ? "Auftrag wurde für den Mitarbeiter vorbereitet." : "Änderungen wurden gespeichert.") : "Entwurf gespeichert.");
       await loadData();
       return result.data.id;
     } catch (e) {
-      setError(e?.message || "Regiebericht konnte nicht gespeichert werden.");
+      setError(`Regiebericht konnte nicht gespeichert werden: ${e?.message || e}`);
       return null;
     } finally { setBusy(false); }
   }
@@ -758,12 +759,20 @@ export default function RegieReports() {
   async function sharePdf() {
     if (!validatePdf()) return;
     try {
+      setError("");
+      setMessage("");
       const doc = await createPdfDocument();
       const fileName = `Regiebericht_${reportNumber}.pdf`;
       const file = new File([doc.output("blob")], fileName, { type: "application/pdf" });
       if (navigator.share && (!navigator.canShare || navigator.canShare({ files: [file] }))) {
-        await navigator.share({ title: `Regiebericht ${reportNumber}`, text: `Regiebericht ${reportNumber}`, files: [file] });
-        return;
+        try {
+          await navigator.share({ title: `Regiebericht ${reportNumber}`, text: `Regiebericht ${reportNumber}`, files: [file] });
+          setMessage("PDF wurde zum Teilen geöffnet.");
+          return;
+        } catch (shareError) {
+          if (shareError?.name === "AbortError") return;
+          console.warn("[RegieReports] Web Share nicht möglich, PDF wird gespeichert:", shareError);
+        }
       }
       doc.save(fileName);
       setMessage("Die PDF wurde heruntergeladen. Du kannst sie nun in Mail oder WhatsApp anhängen.");
@@ -869,6 +878,7 @@ export default function RegieReports() {
             <div className="regie-actions">
               {!locked && canPrepare && <><button className="hbz-btn" disabled={busy} onClick={() => save("draft")}>Entwurf speichern</button>{isAdmin && <button className="hbz-btn hbz-btn-primary" disabled={busy} onClick={() => save("prepared")}>Für Mitarbeiter bereitstellen</button>}</>}
               {!locked && canPrepare && selectedId && ["draft", "prepared"].includes(status) && <button className="hbz-btn" disabled={busy} onClick={copyReportAsDraft}>Als Entwurf kopieren</button>}
+              {!locked && !canPrepare && status === "prepared" && <button className="hbz-btn" disabled={busy} onClick={() => save("prepared")}>Änderungen speichern</button>}
               {!locked && !canPrepare && <button className="hbz-btn hbz-btn-primary" disabled={busy || status !== "prepared"} onClick={() => save("signed")}>Unterschreiben & abschließen</button>}
               {canPrepare && selectedId && !isArchived && <button className="hbz-btn regie-danger" disabled={busy} onClick={archiveOrDelete}>{status === "signed" ? "Archivieren" : "Löschen"}</button>}
               {canPrepare && selectedId && isArchived && <button className="hbz-btn" disabled={busy} onClick={restoreArchived}>Aus Archiv holen</button>}
