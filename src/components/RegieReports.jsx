@@ -516,6 +516,8 @@ export default function RegieReports() {
 
   function makePayload(nextStatus) {
     const final = nextStatus === "signed";
+    const hasSignature = !!signatureData;
+    const nextSignedAt = hasSignature ? (signedAt || new Date().toISOString()) : null;
     return {
       report_number: reportNumber,
       report_date: reportDate,
@@ -530,9 +532,9 @@ export default function RegieReports() {
       photo_paths: photos.map(({ path, name }) => ({ path, name })),
       assigned_employee_ids: canPrepare ? assignedEmployeeIds : (originalReportRef.current?.assigned_employee_ids || assignedEmployeeIds),
       status: nextStatus,
-      signed_by: final ? signedBy.trim() : null,
-      signature_data: final ? signatureData : null,
-      signed_at: final ? new Date().toISOString() : null,
+      signed_by: hasSignature ? signedBy.trim() : null,
+      signature_data: hasSignature ? signatureData : null,
+      signed_at: final ? (nextSignedAt || new Date().toISOString()) : nextSignedAt,
       prepared_at: nextStatus === "prepared" ? new Date().toISOString() : null,
       prepared_by: nextStatus === "prepared" ? String(session?.id || session?.code || "") : null,
       created_by: String(session?.id || session?.code || ""),
