@@ -417,6 +417,7 @@ export default function MonthlyOverview() {
   const [showPayrollExportDialog, setShowPayrollExportDialog] = useState(false);
   const [payrollExportEmployeeIds, setPayrollExportEmployeeIds] = useState([]);
   const [payrollExportLoading, setPayrollExportLoading] = useState(false);
+  const [payrollPreviewUrl, setPayrollPreviewUrl] = useState("");
   const [monthLockInfo, setMonthLockInfo] = useState(null);
   const [monthLockLoading, setMonthLockLoading] = useState(false);
   const [payrollCloseout, setPayrollCloseout] = useState(null);
@@ -1361,7 +1362,7 @@ export default function MonthlyOverview() {
     );
   }
 
-  async function runPayrollExport(employeeIdsForExport = payrollExportEmployeeIds) {
+  async function runPayrollExport(employeeIdsForExport = payrollExportEmployeeIds, mode = "save") {
     const selectedSet = new Set((employeeIdsForExport || []).map((id) => String(id)));
     const selectedEmployeesForExport = payrollCandidateEmployees.filter((emp) =>
       selectedSet.has(String(emp.id))
@@ -1374,8 +1375,8 @@ export default function MonthlyOverview() {
 
     try {
       setPayrollExportLoading(true);
-      await exportLohnverrechnungPDF(payrollCheckRange, selectedEmployeesForExport);
-      setShowPayrollExportDialog(false);
+      await exportLohnverrechnungPDF(payrollCheckRange, selectedEmployeesForExport, mode);
+      if (mode !== "preview") setShowPayrollExportDialog(false);
     } finally {
       setPayrollExportLoading(false);
     }
@@ -1690,7 +1691,7 @@ export default function MonthlyOverview() {
     return out;
   }
 
-  async function exportLohnverrechnungPDF(exportRange = payrollCheckRange, selectedEmployeesForExport = null) {
+  async function exportLohnverrechnungPDF(exportRange = payrollCheckRange, selectedEmployeesForExport = null, mode = "save") {
     try {
       const { jsPDF, autoTable } = await loadPdfLibs();
       const targetRange = exportRange || payrollCheckRange || activeRange;
@@ -1738,6 +1739,19 @@ export default function MonthlyOverview() {
       const employeeIds = employeesForExport.map((e) => e.id).filter(Boolean);
       const payrollValidation = await buildPayrollCheck(targetRange, employeeIds);
       const payrollWarningCount = payrollValidation?.warnings?.length || 0;
+      const openRequestResult = await supabase
+        .from("time_off_requests")
+        .select("id,entry_type,from_date,to_date,status")
+        .eq("status", "pending")
+        .lte("from_date", targetRange.to)
+        .gte("to_date", targetRange.from);
+      const openRequestCount = openRequestResult.error ? 0 : (openRequestResult.data || []).length;
+      if (openRequestCount > 0) {
+        const proceed = confirm(
+          `Achtung: Es gibt noch ${openRequestCount} offene Urlaub/ZA/Sonderurlaub-AntrÃ¤ge im Zeitraum ${targetRange.label}.\n\nTrotzdem Lohnverrechnung ${mode === "preview" ? "anzeigen" : "exportieren"}?`
+        );
+        if (!proceed) return;
+      }
 
       const payrollRawRows = await collectSupabaseRows(() => supabase
         .from("v_time_entries_expanded")
@@ -2282,7 +2296,12 @@ export default function MonthlyOverview() {
       addFooter();
 
       const fileLabel = safePdfText(targetRange.label).replace(/[^\wäöüÄÖÜß-]+/g, "_");
-      doc.save(`Lohnverrechnung_${fileLabel || "Export"}.pdf`);
+      if (mode === "preview") {
+        if (payrollPreviewUrl) URL.revokeObjectURL(payrollPreviewUrl);
+        setPayrollPreviewUrl(URL.createObjectURL(doc.output("blob")));
+      } else {
+        doc.save(`Lohnverrechnung_${fileLabel || "Export"}.pdf`);
+      }
     } catch (err) {
       console.error("Lohnverrechnung PDF Fehler:", err);
       alert(
@@ -3008,16 +3027,43 @@ export default function MonthlyOverview() {
               <div style={{ fontSize: 12, opacity: 0.75 }}>
                 Ausgewählt: {payrollExportEmployeeIds.length} von {payrollCandidateEmployees.length}
               </div>
-              <button
-                type="button"
-                className="hbz-btn hbz-btn-primary"
-                onClick={() => runPayrollExport(payrollExportEmployeeIds)}
-                disabled={payrollExportLoading || payrollExportEmployeeIds.length === 0}
-              >
-                {payrollExportLoading ? "Erstelle PDF…" : "PDF erstellen"}
-              </button>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                <button
+                  type="button"
+                  className="hbz-btn"
+                  onClick={() => runPayrollExport(payrollExportEmployeeIds, "preview")}
+                  disabled={payrollExportLoading || payrollExportEmployeeIds.length === 0}
+                >
+                  Vorschau
+                </button>
+                <button
+                  type="button"
+                  className="hbz-btn hbz-btn-primary"
+                  onClick={() => runPayrollExport(payrollExportEmployeeIds, "save")}
+                  disabled={payrollExportLoading || payrollExportEmployeeIds.length === 0}
+                >
+                  {payrollExportLoading ? "Erstelle PDF…" : "PDF erstellen"}
+                </button>
+              </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {payrollPreviewUrl && (
+        <div
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 10000, padding: 16, display: "flex", flexDirection: "column", gap: 10 }}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="hbz-card" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+            <b>Lohnverrechnung PDF-Vorschau</b>
+            <div style={{ display: "flex", gap: 8 }}>
+              <a className="hbz-btn btn-small" href={payrollPreviewUrl} target="_blank" rel="noreferrer">In neuem Fenster</a>
+              <button type="button" className="hbz-btn btn-small" onClick={() => { URL.revokeObjectURL(payrollPreviewUrl); setPayrollPreviewUrl(""); }}>Schließen</button>
+            </div>
+          </div>
+          <iframe title="Lohnverrechnung PDF-Vorschau" src={payrollPreviewUrl} style={{ flex: 1, width: "100%", border: 0, borderRadius: 12, background: "#fff" }} />
         </div>
       )}
 
