@@ -229,6 +229,19 @@ export default function RegieReports() {
     if (status !== "signed" || !selectedId) return "";
     return isRegieReportBilled({ id: selectedId, project_id: projectId }) ? "billed" : "open";
   }, [billingByProject, projectId, selectedId, status]);
+  function ensureOwnLaborItem(items = []) {
+    if (canPrepare || !ownId) return Array.isArray(items) ? items : [];
+    const rows = Array.isArray(items) ? items : [];
+    if (rows.some((row) => String(row?.employee_id || "") === ownId)) return rows;
+    const ownEmployee = employees.find((employee) => String(employee.id) === ownId);
+    return [...rows, { employee_id: ownId, name: ownEmployee?.name || session?.name || session?.code || "Mitarbeiter", hours: 0, activity: "" }];
+  }
+  function canEditLaborItem(row) {
+    if (!canEditWorkDetails) return false;
+    if (canPrepare) return true;
+    const rowEmployeeId = String(row?.employee_id || "");
+    return !rowEmployeeId || rowEmployeeId === ownId;
+  }
 
   async function loadData() {
     setError("");
@@ -313,7 +326,7 @@ export default function RegieReports() {
     setSelectedId(report.id); setReportNumber(report.report_number); setReportDate(report.report_date);
     setProjectId(report.project_id || ""); setLocation(report.location || ""); setClientName(report.client_name || "");
     setClientContact(report.client_contact || ""); setDescription(report.description || "");
-    setLaborItems(Array.isArray(report.labor_items) ? report.labor_items : []);
+    setLaborItems(ensureOwnLaborItem(Array.isArray(report.labor_items) ? report.labor_items : []));
     setMaterialItems(Array.isArray(report.material_items) && report.material_items.length ? report.material_items : [emptyMaterial()]);
     setPhotos((Array.isArray(report.photo_paths) ? report.photo_paths : []).map((photo) => {
       const path = typeof photo === "string" ? photo : photo.path;
@@ -326,7 +339,7 @@ export default function RegieReports() {
   }
 
   async function writeAudit(report, action, previous = null) {
-    const fields = ["report_date", "project_name", "location", "client_name", "client_contact", "description", "labor_items", "material_items", "photo_paths", "status", "signed_by", "is_archived"];
+    const fields = ["report_date", "project_name", "location", "client_name", "client_contact", "description", "labor_items", "material_items", "photo_paths", "assigned_employee_ids", "status", "signed_by", "is_archived"];
     const changes = {};
     for (const field of fields) {
       const before = previous?.[field] ?? null;
@@ -497,7 +510,7 @@ export default function RegieReports() {
       report_number: reportNumber,
       report_date: reportDate,
       project_id: projectId || null,
-      project_name: selectedProject?.name || null,
+      project_name: selectedProject?.name || originalReportRef.current?.project_name || null,
       location: location.trim() || selectedProject?.address || null,
       client_name: clientName.trim() || null,
       client_contact: clientContact.trim() || null,
@@ -505,7 +518,7 @@ export default function RegieReports() {
       labor_items: final ? cleanLaborItems(laborItems) : prepareLaborItems(laborItems),
       material_items: final ? cleanMaterialItems(materialItems) : prepareMaterialItems(materialItems),
       photo_paths: photos.map(({ path, name }) => ({ path, name })),
-      assigned_employee_ids: assignedEmployeeIds,
+      assigned_employee_ids: canPrepare ? assignedEmployeeIds : (originalReportRef.current?.assigned_employee_ids || assignedEmployeeIds),
       status: nextStatus,
       signed_by: final ? signedBy.trim() : null,
       signature_data: final ? signatureData : null,
@@ -545,6 +558,14 @@ export default function RegieReports() {
         while (used.has(uniqueReportNumber)) uniqueReportNumber = `${reportNumber}-${suffix++}`;
       }
       const payload = { ...makePayload(nextStatus), report_number: uniqueReportNumber };
+      if (selectedId && originalReportRef.current) {
+        payload.created_by = originalReportRef.current.created_by || payload.created_by;
+        payload.created_by_name = originalReportRef.current.created_by_name || payload.created_by_name;
+        if (!canPrepare && nextStatus === "prepared") {
+          payload.prepared_at = originalReportRef.current.prepared_at || payload.prepared_at;
+          payload.prepared_by = originalReportRef.current.prepared_by || payload.prepared_by;
+        }
+      }
       const result = selectedId
         ? await supabase.from("regie_reports").update(payload).eq("id", selectedId).select().single()
         : await supabase.from("regie_reports").insert(payload).select().single();
@@ -840,7 +861,7 @@ export default function RegieReports() {
                       <option value="">Mitarbeiter</option>
                       {employees.map((employee) => <option value={employee.id} key={employee.id}>{employee.name}</option>)}
                     </select>
-                    <div className="regie-hours-input"><input className="hbz-input" disabled={!canEditWorkDetails} inputMode="decimal" value={row.hours} onChange={(e) => setLaborItems((rows) => rows.map((item, i) => i === index ? { ...item, hours: e.target.value } : item))} onBlur={(e) => setLaborItems((rows) => rows.map((item, i) => i === index ? { ...item, hours: formatCalculatedNumber(e.target.value) } : item))} placeholder="Std." /><span>h</span></div>
+                    <div className="regie-hours-input"><input className="hbz-input" disabled={!canEditLaborItem(row)} inputMode="decimal" value={row.hours} onChange={(e) => setLaborItems((rows) => rows.map((item, i) => i === index ? { ...item, hours: e.target.value } : item))} onBlur={(e) => setLaborItems((rows) => rows.map((item, i) => i === index ? { ...item, hours: formatCalculatedNumber(e.target.value) } : item))} placeholder="Std." /><span>h</span></div>
                     {canPrepare && <button type="button" className="regie-remove" onClick={() => setLaborItems((rows) => rows.filter((_, i) => i !== index))}>×</button>}
                   </div>
                 ))}
