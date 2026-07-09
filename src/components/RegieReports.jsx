@@ -3,7 +3,7 @@ import { supabase } from "../lib/supabase";
 import { getSession } from "../lib/session";
 import { filterVisibleEmployeesForRole } from "../utils/employeeVisibility";
 import { uploadProjectPhoto } from "../utils/uploadProjectPhoto";
-import { addPdfFooters, addPdfHeader, brandedTable, PDF_BRAND } from "../utils/pdfBranding";
+import { addPdfFooters, addPdfHeader, addPdfWatermark, brandedTable, PDF_BRAND } from "../utils/pdfBranding";
 import {
   cleanLaborItems,
   cleanMaterialItems,
@@ -646,6 +646,7 @@ export default function RegieReports() {
     const autoTable = autoTableModule.default;
     const brown = PDF_BRAND.brown;
     addPdfHeader(doc, { title: "Regiebericht", rightTop: reportNumber, subtitle: `${selectedProject?.name || "Ohne Projekt"} | ${fmtDate(reportDate)}` });
+    await addPdfWatermark(doc);
     autoTable(doc, { startY: 84, theme: "grid", ...brandedTable, body: [["Datum", fmtDate(reportDate), "Projekt", selectedProject?.name || "—"], ["Ort", location || selectedProject?.address || "—", "Auftraggeber", clientName || "—"], ["Kontakt", clientContact || "—", "Erstellt von", session?.name || session?.code || "—"]] });
     let y = doc.lastAutoTable.finalY + 22;
     doc.setFontSize(12); doc.text("Ausgeführte Arbeiten", 36, y);

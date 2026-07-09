@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { getSession } from "../lib/session";
-import { addPdfFooters, addPdfHeader, brandedTable, PDF_BRAND } from "../utils/pdfBranding";
+import { addPdfFooters, addPdfHeader, addPdfWatermark, brandedTable, PDF_BRAND } from "../utils/pdfBranding";
 import { formatCalculatedNumber, parseCalculatedNumber } from "../utils/calculatedInput";
 
 const STORAGE_KEY = "hbz_project_billing_draft_v2";
@@ -490,6 +490,7 @@ export default function ProjectBilling() {
       const { jsPDF, autoTable } = await loadPdfLibs();
       const doc = new jsPDF({ unit: "pt", format: "a4" });
       addPdfHeader(doc, { title: "Projektabrechnung", subtitle: row.project.name, rightTop: todayISO() });
+      await addPdfWatermark(doc);
       autoTable(doc, {
         startY: 86,
         theme: "grid",

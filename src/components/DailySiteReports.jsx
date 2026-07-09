@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { getSession } from "../lib/session";
 import { uploadProjectPhoto } from "../utils/uploadProjectPhoto";
-import { addPdfFooters, addPdfHeader, brandedTable, PDF_BRAND } from "../utils/pdfBranding";
+import { addPdfFooters, addPdfHeader, addPdfWatermark, brandedTable, PDF_BRAND } from "../utils/pdfBranding";
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
 const localISO = (value) => `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
@@ -263,6 +263,7 @@ export default function DailySiteReports() {
     const [{ jsPDF }, autoTableModule] = await Promise.all([import("jspdf"), import("jspdf-autotable")]);
     const doc = new jsPDF({ unit: "pt", format: "a4" }); const autoTable = autoTableModule.default; const brown = PDF_BRAND.brown;
     addPdfHeader(doc, { title: "Bautagesbericht", rightTop: fmtDate(date), subtitle: selectedProject?.name || "Baustelle" });
+    await addPdfWatermark(doc);
     autoTable(doc, { startY: 84, theme: "grid", ...brandedTable, body: [["Baustelle", selectedProject?.name || "—", "Datum", fmtDate(date)], ["Adresse", location || "—", "Wetter", weather || "—"], ["Auftraggeber", clientName || "—", "Bauleiter", clientContact || "—"]] });
     autoTable(doc, { startY: doc.lastAutoTable.finalY + 18, theme: "striped", head: [["Mitarbeiter", "Stunden"]], body: employeeItems.map((item) => [item.name, fmtHours(item.hours)]), headStyles: { fillColor: brown } });
     let y = doc.lastAutoTable.finalY + 20; const blocks = [["Ausgeführte Arbeiten", activities], ["Besondere Vorkommnisse / Behinderungen", incidents], ["Lieferungen", deliveries], ["Material / Geräte (optional)", materialsEquipment]];
