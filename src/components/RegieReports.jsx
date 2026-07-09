@@ -156,6 +156,8 @@ export default function RegieReports() {
   const [auditOpen, setAuditOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [projectFilter, setProjectFilter] = useState("all");
+  const [employeeFilter, setEmployeeFilter] = useState("all");
   const [showArchived, setShowArchived] = useState(false);
   const [selectedId, setSelectedId] = useState("");
   const [reportNumber, setReportNumber] = useState(() => createReportNumber("Projekt", new Date()));
@@ -192,6 +194,12 @@ export default function RegieReports() {
       const archivedForWorkList = report.is_archived || doneForBilling;
       if (showArchived ? !archivedForWorkList : archivedForWorkList) return false;
       if (statusFilter !== "all" && report.status !== statusFilter) return false;
+      if (projectFilter !== "all" && String(report.project_id || "") !== String(projectFilter)) return false;
+      if (employeeFilter !== "all") {
+        const assigned = Array.isArray(report.assigned_employee_ids) ? report.assigned_employee_ids.map(String) : [];
+        const labor = Array.isArray(report.labor_items) ? report.labor_items.map((item) => String(item.employee_id || "")).filter(Boolean) : [];
+        if (![...assigned, ...labor].includes(String(employeeFilter))) return false;
+      }
       const haystack = `${report.report_number} ${report.project_name || ""} ${report.client_name || ""}`.toLowerCase();
       return haystack.includes(search.trim().toLowerCase());
     });
@@ -199,7 +207,7 @@ export default function RegieReports() {
       const assigned = Array.isArray(report.assigned_employee_ids) ? report.assigned_employee_ids.map(String) : [];
       return !report.is_archived && !(report.status === "signed" && isRegieReportBilled(report)) && report.status !== "draft" && assigned.includes(ownId);
     });
-  }, [reports, canPrepare, ownId, showArchived, search, statusFilter, billingByProject]);
+  }, [reports, canPrepare, ownId, showArchived, search, statusFilter, projectFilter, employeeFilter, billingByProject]);
   const employeeNamesForIds = (ids = []) => ids.map((id) => employees.find((employee) => String(employee.id) === String(id))?.name || id).filter(Boolean);
   const assignedEmployeeNames = useMemo(() => employeeNamesForIds(assignedEmployeeIds), [assignedEmployeeIds, employees]);
   function isRegieReportBilled(report) {
@@ -778,7 +786,7 @@ export default function RegieReports() {
       <div className="regie-layout">
         <aside className="hbz-card regie-list">
           <div className="month-card-title">{canPrepare ? "Regieberichte" : "Meine Aufträge"}</div>
-          {canPrepare && <div className="regie-filters"><input className="hbz-input" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Projekt, Nummer, Auftraggeber…" /><select className="hbz-input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}><option value="all">Alle Status</option><option value="draft">Entwürfe</option><option value="prepared">Bereit</option><option value="signed">Unterschrieben</option></select></div>}
+          {canPrepare && <div className="regie-filters"><input className="hbz-input" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Projekt, Nummer, Auftraggeber…" /><select className="hbz-input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}><option value="all">Alle Status</option><option value="draft">Entwürfe</option><option value="prepared">Bereit</option><option value="signed">Unterschrieben</option></select><select className="hbz-input" value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)}><option value="all">Alle Projekte</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select><select className="hbz-input" value={employeeFilter} onChange={(e) => setEmployeeFilter(e.target.value)}><option value="all">Alle Mitarbeiter</option>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.name}</option>)}</select></div>}
           {canPrepare && <label className="regie-archive-toggle"><input type="checkbox" checked={showArchived} onChange={(event) => { setShowArchived(event.target.checked); resetReport(); }} />Archivierte / verrechnete anzeigen</label>}
           {!visibleReports.length && <p className="hint">{canPrepare ? "Noch keine Regieberichte vorhanden." : "Derzeit ist dir kein Regieauftrag zugewiesen."}</p>}
           {visibleReports.map((report) => (
