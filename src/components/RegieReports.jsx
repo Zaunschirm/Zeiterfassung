@@ -16,6 +16,7 @@ import { formatCalculatedNumber } from "../utils/calculatedInput";
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
 const OFFLINE_DRAFT_KEY = "hbz_regie_offline_draft_v1";
+const REGIE_PDF_BUCKET = "project-photos";
 const emptyMaterial = () => ({ description: "", quantity: 1, unit: "Stk." });
 const fmtDate = (value) => {
   const [y, m, d] = String(value || "").slice(0, 10).split("-");
@@ -25,6 +26,7 @@ const fmtHours = (value) => `${Number(value || 0).toLocaleString("de-AT", { mini
 const localISO = (value) => `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
 const addDays = (value, days) => { const next = new Date(`${value}T12:00:00`); next.setDate(next.getDate() + days); return localISO(next); };
 const weekStartFor = (value) => { const next = new Date(`${value}T12:00:00`); next.setDate(next.getDate() - ((next.getDay() + 6) % 7)); return localISO(next); };
+const safeFilePart = (value) => String(value || "Regiebericht").trim().replace(/[^a-zA-Z0-9äöüÄÖÜß._-]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 80) || "Regiebericht";
 const entryHours = (row) => {
   const direct = Number(row.total_hours ?? row.hours);
   if (Number.isFinite(direct)) return Math.max(0, direct);
@@ -182,6 +184,8 @@ export default function RegieReports() {
   const [message, setMessage] = useState("");
   const [voiceListening, setVoiceListening] = useState(false);
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState("");
+  const [pdfPath, setPdfPath] = useState("");
+  const [pdfSavedAt, setPdfSavedAt] = useState("");
   const [offlineReady, setOfflineReady] = useState(false);
   const originalReportRef = useRef(null);
 
@@ -229,6 +233,11 @@ export default function RegieReports() {
     if (status !== "signed" || !selectedId) return "";
     return isRegieReportBilled({ id: selectedId, project_id: projectId }) ? "billed" : "open";
   }, [billingByProject, projectId, selectedId, status]);
+  const storedPdfUrl = useMemo(() => {
+    if (!pdfPath) return "";
+    const { data } = supabase.storage.from(REGIE_PDF_BUCKET).getPublicUrl(pdfPath);
+    return data?.publicUrl || "";
+  }, [pdfPath]);
   function ensureOwnLaborItem(items = []) {
     if (canPrepare || !ownId) return Array.isArray(items) ? items : [];
     const rows = Array.isArray(items) ? items : [];
@@ -319,7 +328,7 @@ export default function RegieReports() {
     setSelectedId(""); setReportNumber(createReportNumber("Projekt", new Date())); setReportDate(todayISO()); setProjectId("");
     setLocation(""); setClientName(""); setClientContact(""); setDescription(""); setLaborItems([]);
     setMaterialItems([emptyMaterial()]); setPhotos([]); setAssignedEmployeeIds([]); setSignedBy(""); setSignatureData("");
-    setSignedAt(""); setStatus("draft"); setIsArchived(false); setError(""); setMessage("");
+    setSignedAt(""); setStatus("draft"); setIsArchived(false); setPdfPath(""); setPdfSavedAt(""); setError(""); setMessage("");
   }
   function openReport(report) {
     originalReportRef.current = report;
@@ -335,11 +344,12 @@ export default function RegieReports() {
     }));
     setAssignedEmployeeIds(Array.isArray(report.assigned_employee_ids) ? report.assigned_employee_ids.map(String) : []);
     setSignedBy(report.signed_by || ""); setSignatureData(report.signature_data || ""); setSignedAt(report.signed_at || "");
+    setPdfPath(report.pdf_path || ""); setPdfSavedAt(report.pdf_saved_at || "");
     setStatus(report.status || "draft"); setIsArchived(report.is_archived === true); setError(""); setMessage("");
   }
 
   async function writeAudit(report, action, previous = null) {
-    const fields = ["report_date", "project_name", "location", "client_name", "client_contact", "description", "labor_items", "material_items", "photo_paths", "assigned_employee_ids", "status", "signed_by", "is_archived"];
+    const fields = ["report_date", "project_name", "location", "client_name", "client_contact", "description", "labor_items", "material_items", "photo_paths", "assigned_employee_ids", "status", "signed_by", "is_archived", "pdf_path", "pdf_saved_at"];
     const changes = {};
     for (const field of fields) {
       const before = previous?.[field] ?? null;
@@ -748,21 +758,53 @@ export default function RegieReports() {
 
   async function savePdfFile() {
     if (!validatePdf()) return;
+    setBusy(true);
+    setError("");
+    setMessage("");
+    let uploadedPath = "";
     try {
+      const savedId = locked ? selectedId : await save(status === "signed" ? "signed" : status);
+      if (!savedId) return;
       const doc = await createPdfDocument();
-      const fileName = `Regiebericht_${reportNumber}.pdf`;
-      const url = URL.createObjectURL(doc.output("blob"));
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = fileName;
-      link.rel = "noopener";
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.setTimeout(() => URL.revokeObjectURL(url), 1500);
-      setMessage("PDF wurde zum Speichern vorbereitet.");
+      const storagePath = `regieberichte/${safeFilePart(projectId || "ohne-projekt")}/${safeFilePart(reportNumber)}_${Date.now()}.pdf`;
+      const pdfBlob = doc.output("blob");
+      const { error: uploadError } = await supabase.storage
+        .from(REGIE_PDF_BUCKET)
+        .upload(storagePath, pdfBlob, { contentType: "application/pdf", upsert: false });
+      if (uploadError) throw uploadError;
+      uploadedPath = storagePath;
+
+      const savedAt = new Date().toISOString();
+      const { data, error: updateError } = await supabase
+        .from("regie_reports")
+        .update({ pdf_path: storagePath, pdf_saved_at: savedAt, pdf_saved_by: String(session?.id || session?.code || "") })
+        .eq("id", savedId)
+        .select()
+        .single();
+      if (updateError) throw updateError;
+
+      if (pdfPath && pdfPath !== storagePath) {
+        supabase.storage.from(REGIE_PDF_BUCKET).remove([pdfPath]).catch((storageError) => {
+          console.warn("[RegieReports] Alte gespeicherte PDF konnte nicht entfernt werden:", storageError);
+        });
+      }
+      await writeAudit(data, "pdf_save", originalReportRef.current);
+      originalReportRef.current = data;
+      setSelectedId(data.id);
+      setPdfPath(storagePath);
+      setPdfSavedAt(savedAt);
+      setMessage("PDF wurde beim Regiebericht gespeichert. Du kannst sie jetzt über „Gespeicherte PDF öffnen“ wieder aufrufen.");
+      await loadData();
     } catch (e) {
-      setError(e?.message || "PDF konnte nicht gespeichert werden.");
+      if (uploadedPath) {
+        supabase.storage.from(REGIE_PDF_BUCKET).remove([uploadedPath]).catch((storageError) => {
+          console.warn("[RegieReports] Nicht verknüpfte PDF konnte nicht entfernt werden:", storageError);
+        });
+      }
+      const text = e?.message || String(e || "");
+      setError(text.includes("pdf_path") || text.includes("schema cache") ? "PDF-Ablage ist in der Datenbank noch nicht aktiviert. Bitte zuerst die neue Supabase-Migration ausführen." : (text || "PDF konnte nicht gespeichert werden."));
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -905,10 +947,12 @@ export default function RegieReports() {
               {canPrepare && selectedId && isArchived && <button className="hbz-btn" disabled={busy} onClick={restoreArchived}>Aus Archiv holen</button>}
               {canPrepare && selectedId && <button className="hbz-btn" onClick={loadAudit}>Änderungsverlauf</button>}
               <button className="hbz-btn" onClick={previewPdf}>PDF-Vorschau</button>
-              <button className="hbz-btn hbz-btn-primary" onClick={savePdfFile}>PDF speichern</button>
+              <button className="hbz-btn hbz-btn-primary" disabled={busy} onClick={savePdfFile}>{busy ? "Speichere…" : "PDF speichern"}</button>
+              {storedPdfUrl && <a className="hbz-btn" href={storedPdfUrl} target="_blank" rel="noreferrer">Gespeicherte PDF öffnen</a>}
               <button className="hbz-btn" onClick={exportPdf}>PDF herunterladen</button>
               <button className="hbz-btn" onClick={sharePdf}>PDF teilen</button>
             </div>
+            {pdfPath && <p className="regie-stored-pdf">PDF abgelegt{pdfSavedAt ? ` am ${new Date(pdfSavedAt).toLocaleString("de-AT")}` : ""}.</p>}
           </main>
         ) : <main className="hbz-card regie-empty"><h2>Kein offener Regieauftrag</h2><p>Sobald dir am Desktop ein Auftrag zugewiesen wurde, erscheint er hier automatisch.</p></main>}
       </div>
@@ -923,7 +967,7 @@ export default function RegieReports() {
 
       <style>{`
         .regie-header{display:flex;justify-content:space-between;gap:16px;align-items:flex-end;margin-bottom:16px}.regie-header h1{margin:2px 0 4px}.regie-header p{margin:0;color:#6f6259}.regie-layout{display:grid;grid-template-columns:280px minmax(0,1fr);gap:16px}.regie-list{align-self:start;position:sticky;top:82px}.regie-list-item{display:flex;width:100%;flex-direction:column;align-items:flex-start;gap:3px;border:1px solid #eadfd7;background:#fff;padding:10px;margin-top:8px;border-radius:9px;text-align:left;cursor:pointer}.regie-list-item.active{border-color:#7b4a2d;background:#fff8f2}.regie-list-item span{font-size:12px;color:#6f6259}.regie-list-release{display:block;color:#3f6f8c!important;font-weight:800}.regie-billing-mini,.regie-billing-info{display:inline-flex;align-items:center;width:max-content;border:1px solid transparent;border-radius:999px;font-size:11px;font-weight:900}.regie-billing-mini{margin-top:2px;padding:3px 7px}.regie-billing-info{margin:0 0 8px;padding:5px 9px}.regie-billing-mini.open,.regie-billing-info.open{border-color:#f0c38b;background:#fff3df;color:#92560d}.regie-billing-mini.billed,.regie-billing-info.billed{border-color:#a9d7b2;background:#e7f6eb;color:#246a36}.regie-list-item small{font-weight:800}.regie-list-item small.signed{color:#28723d}.regie-list-item small.prepared{color:#1f6592}.regie-list-item small.draft{color:#9a6812}.regie-form-head,.regie-section-head{display:flex;align-items:center;justify-content:space-between;gap:12px}.regie-section-actions{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end}.regie-form-head h2{margin:2px 0 6px;font-size:20px}.regie-release-info{margin:0 0 12px;color:#5f7180;font-size:12px;font-weight:850}.regie-status{padding:6px 10px;border-radius:999px;font-size:12px;font-weight:900}.regie-status.signed{background:#e7f6eb;color:#246a36}.regie-status.prepared{background:#e9f4fb;color:#1f6592}.regie-status.draft{background:#fff3d7;color:#875b00}.regie-form fieldset{border:0;padding:0;margin:0;min-width:0}.regie-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.regie-form label{display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:800;color:#5a3a23}.regie-block{margin-top:14px}.regie-section{border-top:1px solid #eadfd7;margin-top:18px;padding-top:16px}.regie-section h3{margin:0 0 10px}.regie-assignment-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.regie-assignment{flex-direction:row!important;align-items:center;padding:8px;border:1px solid #eadfd7;border-radius:8px;background:#fff}.regie-row{display:grid;gap:8px;margin-top:8px;align-items:center}.regie-row.labor{grid-template-columns:minmax(180px,1fr) 110px 34px}.regie-row.material{grid-template-columns:1.6fr 90px 100px 34px}.regie-hours-input{position:relative}.regie-hours-input .hbz-input{width:100%;padding-right:30px}.regie-hours-input span{position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:12px;font-weight:900;color:#6f6259;pointer-events:none}.regie-remove{border:0;background:#fff0ed;color:#a23a2c;border-radius:8px;height:38px;font-size:22px;cursor:pointer}.regie-total{text-align:right;margin-top:10px;font-weight:900}.regie-signature-canvas{display:block;width:100%;height:180px;background:#fff;border:2px dashed #bda99a;border-radius:10px;pointer-events:none}.regie-signature-preview{position:relative;display:block;width:100%;padding:0;border:0;background:transparent;cursor:pointer}.regie-signature-preview:disabled{cursor:default}.regie-signature-preview span{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#765f50;font-weight:800}.regie-signature-overlay{position:fixed;inset:0;z-index:1900;padding:18px;background:rgba(30,24,20,.78);display:flex;align-items:center;justify-content:center}.regie-signature-modal{width:min(1000px,100%);height:min(720px,calc(100vh - 36px));padding:14px;background:#f8f4f0;border-radius:14px;display:flex;flex-direction:column;gap:12px;box-shadow:0 24px 70px rgba(0,0,0,.4)}.regie-signature-head,.regie-signature-actions{display:flex;align-items:center;justify-content:space-between;gap:12px}.regie-signature-head div{display:flex;flex-direction:column;gap:2px}.regie-signature-head small{color:#75675d}.regie-signature-editor{display:block;width:100%;min-height:260px;flex:1;background:#fff;border:3px solid #7b4a2d;border-radius:12px;touch-action:none}.regie-signature-actions{justify-content:flex-end}.regie-actions{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end;margin-top:18px}.regie-empty{text-align:center;padding:40px 20px}
-        .regie-voice{margin-top:8px}.regie-voice.listening{background:#fff0ed;color:#9b3024}.regie-section-head .hint{margin:0}.regie-photo-upload{display:inline-flex!important;flex-direction:row!important;cursor:pointer}.regie-photo-upload input{display:none}.regie-photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;margin-top:12px}.regie-photo-grid figure{position:relative;margin:0;border:1px solid #eadfd7;border-radius:10px;overflow:hidden;background:#fff}.regie-photo-grid img{display:block;width:100%;height:120px;object-fit:cover}.regie-photo-grid figcaption{padding:7px;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.regie-photo-grid button{position:absolute;top:5px;right:5px;width:28px;height:28px;border:0;border-radius:50%;background:rgba(125,34,25,.9);color:#fff;font-size:20px;cursor:pointer}
+        .regie-voice{margin-top:8px}.regie-voice.listening{background:#fff0ed;color:#9b3024}.regie-section-head .hint{margin:0}.regie-stored-pdf{margin:10px 0 0;text-align:right;color:#39734a;font-size:12px;font-weight:850}.regie-photo-upload{display:inline-flex!important;flex-direction:row!important;cursor:pointer}.regie-photo-upload input{display:none}.regie-photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;margin-top:12px}.regie-photo-grid figure{position:relative;margin:0;border:1px solid #eadfd7;border-radius:10px;overflow:hidden;background:#fff}.regie-photo-grid img{display:block;width:100%;height:120px;object-fit:cover}.regie-photo-grid figcaption{padding:7px;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.regie-photo-grid button{position:absolute;top:5px;right:5px;width:28px;height:28px;border:0;border-radius:50%;background:rgba(125,34,25,.9);color:#fff;font-size:20px;cursor:pointer}
         .regie-archive-toggle{display:flex!important;flex-direction:row!important;align-items:center;gap:7px;margin-top:9px;font-size:12px!important}.regie-list-item small.archived{color:#666}.regie-status.archived{background:#ececec;color:#555}.regie-danger{color:#9f2f24;border-color:#d9a49d!important}.regie-danger:hover{background:#fff0ed}
         .regie-filters{display:grid;gap:7px;margin-top:9px}.regie-template-list{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}.regie-save-template{margin-top:8px}.regie-photo-caption{width:100%;box-sizing:border-box;border:0;border-top:1px solid #eadfd7;padding:7px;font-size:11px}.regie-audit-modal{width:min(850px,100%);max-height:calc(100vh - 40px);background:#fff;border-radius:12px;overflow:hidden;display:flex;flex-direction:column}.regie-audit-list{padding:14px;overflow:auto}.regie-audit-list article{border-bottom:1px solid #eadfd7;padding:10px 0;display:grid;gap:4px}.regie-audit-list span{color:#6f6259}.regie-audit-list pre{white-space:pre-wrap;font-size:11px;background:#f7f3ef;padding:8px;border-radius:7px}
         .regie-pdf-overlay{position:fixed;inset:0;z-index:1800;background:rgba(30,24,20,.72);padding:20px;display:flex;align-items:center;justify-content:center}.regie-pdf-modal{width:min(960px,100%);height:min(900px,calc(100vh - 40px));background:#fff;border-radius:12px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 24px 70px rgba(0,0,0,.35)}.regie-pdf-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 14px;border-bottom:1px solid #eadfd7}.regie-pdf-modal iframe{width:100%;flex:1;border:0;background:#eee}
