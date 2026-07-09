@@ -188,22 +188,35 @@ export default function RegieReports() {
   const canEditWorkDetails = !locked && (canPrepare || status === "prepared");
   const visibleReports = useMemo(() => {
     if (canPrepare) return reports.filter((report) => {
-      if (showArchived ? !report.is_archived : report.is_archived) return false;
+      const doneForBilling = report.status === "signed" && isRegieReportBilled(report);
+      const archivedForWorkList = report.is_archived || doneForBilling;
+      if (showArchived ? !archivedForWorkList : archivedForWorkList) return false;
       if (statusFilter !== "all" && report.status !== statusFilter) return false;
       const haystack = `${report.report_number} ${report.project_name || ""} ${report.client_name || ""}`.toLowerCase();
       return haystack.includes(search.trim().toLowerCase());
     });
     return reports.filter((report) => {
       const assigned = Array.isArray(report.assigned_employee_ids) ? report.assigned_employee_ids.map(String) : [];
-      return !report.is_archived && report.status !== "draft" && assigned.includes(ownId);
+      return !report.is_archived && !(report.status === "signed" && isRegieReportBilled(report)) && report.status !== "draft" && assigned.includes(ownId);
     });
-  }, [reports, canPrepare, ownId, showArchived, search, statusFilter]);
+  }, [reports, canPrepare, ownId, showArchived, search, statusFilter, billingByProject]);
   const employeeNamesForIds = (ids = []) => ids.map((id) => employees.find((employee) => String(employee.id) === String(id))?.name || id).filter(Boolean);
   const assignedEmployeeNames = useMemo(() => employeeNamesForIds(assignedEmployeeIds), [assignedEmployeeIds, employees]);
-  const isRegieReportBilled = (report) => {
+  function isRegieReportBilled(report) {
     const billedIds = billingByProject[String(report?.project_id || "")] || [];
     return billedIds.map(String).includes(String(report?.id || ""));
-  };
+  }
+  function getRegieListStatusLabel(report) {
+    if (isRegieReportBilled(report)) return "Verrechnet";
+    if (report.is_archived) return "Archiviert";
+    if (report.status === "signed") return "Unterfertigt";
+    if (report.status === "prepared") return "Bereit";
+    return "Entwurf";
+  }
+  function getRegieListStatusClass(report) {
+    if (report.is_archived || isRegieReportBilled(report)) return "archived";
+    return report.status;
+  }
   const selectedRegieBillingState = useMemo(() => {
     if (status !== "signed" || !selectedId) return "";
     return isRegieReportBilled({ id: selectedId, project_id: projectId }) ? "billed" : "open";
@@ -765,13 +778,13 @@ export default function RegieReports() {
         <aside className="hbz-card regie-list">
           <div className="month-card-title">{canPrepare ? "Regieberichte" : "Meine Aufträge"}</div>
           {canPrepare && <div className="regie-filters"><input className="hbz-input" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Projekt, Nummer, Auftraggeber…" /><select className="hbz-input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}><option value="all">Alle Status</option><option value="draft">Entwürfe</option><option value="prepared">Bereit</option><option value="signed">Unterschrieben</option></select></div>}
-          {canPrepare && <label className="regie-archive-toggle"><input type="checkbox" checked={showArchived} onChange={(event) => { setShowArchived(event.target.checked); resetReport(); }} />Archivierte anzeigen</label>}
+          {canPrepare && <label className="regie-archive-toggle"><input type="checkbox" checked={showArchived} onChange={(event) => { setShowArchived(event.target.checked); resetReport(); }} />Archivierte / verrechnete anzeigen</label>}
           {!visibleReports.length && <p className="hint">{canPrepare ? "Noch keine Regieberichte vorhanden." : "Derzeit ist dir kein Regieauftrag zugewiesen."}</p>}
           {visibleReports.map((report) => (
             <button type="button" key={report.id} className={`regie-list-item ${String(selectedId) === String(report.id) ? "active" : ""}`} onClick={() => openReport(report)}>
               <b>{report.report_number}</b><span>{fmtDate(report.report_date)} · {report.project_name || "Ohne Projekt"}</span>
               {isAdmin && report.status !== "draft" && <span className="regie-list-release">Freigegeben für: {employeeNamesForIds(report.assigned_employee_ids || []).join(", ") || "keine Mitarbeiter ausgewählt"}</span>}
-              <small className={report.is_archived ? "archived" : report.status}>{report.is_archived ? "Archiviert" : report.status === "signed" ? "Unterfertigt" : report.status === "prepared" ? "Bereit" : "Entwurf"}</small>
+              <small className={getRegieListStatusClass(report)}>{getRegieListStatusLabel(report)}</small>
               {report.status === "signed" && <span className={`regie-billing-mini ${isRegieReportBilled(report) ? "billed" : "open"}`}>Abrechnung: {isRegieReportBilled(report) ? "verrechnet" : "offen"}</span>}
             </button>
           ))}
