@@ -60,10 +60,11 @@ export default function App() {
     return pendingTimeOffRequests.reduce(
       (summary, request) => {
         if (request.entry_type === "za") summary.za += 1;
+        else if (request.entry_type === "sonderurlaub") summary.special += 1;
         else summary.vacation += 1;
         return summary;
       },
-      { vacation: 0, za: 0 }
+      { vacation: 0, special: 0, za: 0 }
     );
   }, [pendingTimeOffRequests]);
 
@@ -292,6 +293,7 @@ export default function App() {
                     <div className="admin-approval-summary" aria-label="Freigabe-Zähler">
                       <span className="admin-approval-count all">{pendingTimeOffRequestCount}</span>
                       <span className="admin-approval-count vac">{pendingTimeOffSummary.vacation} Urlaub</span>
+                      <span className="admin-approval-count vac">{pendingTimeOffSummary.special} Sonderurlaub</span>
                       <span className="admin-approval-count za">{pendingTimeOffSummary.za} ZA</span>
                     </div>
                   </div>
@@ -299,7 +301,7 @@ export default function App() {
                   {pendingTimeOffRequests.length > 0 && (
                     <div className="admin-approval-list">
                       {pendingTimeOffRequests.slice(0, 3).map((request) => {
-                        const requestTypeLabel = request.entry_type === "za" ? "ZA" : "Urlaub";
+                        const requestTypeLabel = request.entry_type === "za" ? "ZA" : request.entry_type === "sonderurlaub" ? "Sonderurlaub" : "Urlaub";
                         const employeeLabel = request.employee
                           ? [request.employee.name, request.employee.code ? `(${request.employee.code})` : ""].filter(Boolean).join(" ")
                           : `MA ${request.employee_id}`;

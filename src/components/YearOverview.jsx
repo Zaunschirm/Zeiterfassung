@@ -11,6 +11,7 @@ import {
   calcEmployeeSollHoursForRange,
 } from "../utils/time";
 import {
+  isSpecialLeaveEntry,
   isSickEntry,
   isTimeCompEntry,
   isVacationEntry,
@@ -134,6 +135,10 @@ function isVacationRow(r) {
   return isVacationEntry(r);
 }
 
+function isSpecialLeaveRow(r) {
+  return isSpecialLeaveEntry(r);
+}
+
 function isSickRow(r) {
   return isSickEntry(r);
 }
@@ -143,7 +148,7 @@ function isTimeCompRow(r) {
 }
 
 function isAbsenceRow(r) {
-  return isVacationRow(r) || isSickRow(r) || isTimeCompRow(r);
+  return isVacationRow(r) || isSpecialLeaveRow(r) || isSickRow(r) || isTimeCompRow(r);
 }
 
 function formatDateAT(value) {
@@ -175,7 +180,7 @@ function buildPayrollMonthlySummary(sourceRows, monthList, selectedEmployees = [
       const employee = employeeInfo.name || employeeInfo.code || "—";
       const key = `${employee}||${ym}`;
       if (!employeeMonthMap.has(key)) {
-        employeeMonthMap.set(key, { key, employee, month: ym, totalMinutes: 0, workDays: new Set(), entryDates: new Set(), vacationDates: [], sickDates: [], timeCompDates: [], timeCompHours: 0, holidayRows: [], holidayExtraHours: 0 });
+        employeeMonthMap.set(key, { key, employee, month: ym, totalMinutes: 0, workDays: new Set(), entryDates: new Set(), vacationDates: [], specialLeaveDates: [], sickDates: [], timeCompDates: [], timeCompHours: 0, holidayRows: [], holidayExtraHours: 0 });
       }
     }
 
@@ -185,13 +190,14 @@ function buildPayrollMonthlySummary(sourceRows, monthList, selectedEmployees = [
       if (!date || !String(date).startsWith(`${ym}-`)) continue;
 
       const key = `${employee}||${ym}`;
-      const current = employeeMonthMap.get(key) || { key, employee, month: ym, totalMinutes: 0, workDays: new Set(), entryDates: new Set(), vacationDates: [], sickDates: [], timeCompDates: [], timeCompHours: 0, holidayRows: [], holidayExtraHours: 0 };
+      const current = employeeMonthMap.get(key) || { key, employee, month: ym, totalMinutes: 0, workDays: new Set(), entryDates: new Set(), vacationDates: [], specialLeaveDates: [], sickDates: [], timeCompDates: [], timeCompHours: 0, holidayRows: [], holidayExtraHours: 0 };
 
       const { total } = splitMinutes(r);
       current.totalMinutes += total || 0;
       current.entryDates.add(date);
 
       if (isVacationRow(r)) current.vacationDates.push(date);
+      else if (isSpecialLeaveRow(r)) current.specialLeaveDates.push(date);
       else if (isSickRow(r)) current.sickDates.push(date);
       else if (isTimeCompRow(r)) {
         current.timeCompDates.push(date);
@@ -241,6 +247,7 @@ function buildPayrollMonthlySummary(sourceRows, monthList, selectedEmployees = [
       overtime,
       holidayRows: item.holidayRows || [],
       vacationDates: item.vacationDates.sort((a, b) => a.localeCompare(b)).map(formatDateAT),
+      specialLeaveDates: item.specialLeaveDates.sort((a, b) => a.localeCompare(b)).map(formatDateAT),
       sickDates: item.sickDates.sort((a, b) => a.localeCompare(b)).map(formatDateAT),
       timeCompDates: item.timeCompDates.sort((a, b) => a.localeCompare(b)).map(formatDateAT),
     };
@@ -1256,6 +1263,7 @@ export default function YearOverview() {
             "Zeitausgleich (h)",
             "Überstunden nach ZA",
             "Urlaub (Datum)",
+            "Sonderurlaub (Datum)",
             "Zeitausgleich (Datum)",
             "Krankenstand (Datum)",
           ]],
@@ -1270,6 +1278,7 @@ export default function YearOverview() {
             (row.timeCompHours || 0).toFixed(2),
             row.overtime.toFixed(2),
             row.vacationDates.length ? row.vacationDates.join(", ") : "—",
+            row.specialLeaveDates.length ? row.specialLeaveDates.join(", ") : "—",
             row.timeCompDates.length ? row.timeCompDates.join(", ") : "—",
             row.sickDates.length ? row.sickDates.join(", ") : "—",
           ]),

@@ -355,17 +355,77 @@ export default function VacationEntry({ currentUser = null } = {}) {
     if (!specialLeaveReasons.includes(specialLeaveReason)) setSpecialLeaveReason(specialLeaveReasons[0] || "");
   }, [specialLeaveReasons, specialLeaveReason]);
 
-  function addSpecialLeaveReason() {
-    const value = specialLeaveReasonDraft.trim();
-    if (!value) return;
-    setSpecialLeaveReasons((rows) => (rows.includes(value) ? rows : [...rows, value]));
-    setSpecialLeaveReason(value);
-    setSpecialLeaveReasonDraft("");
+  async function loadSpecialLeaveReasons() {
+    try {
+      const { data, error: specialError } = await supabase
+        .from("special_leave_types")
+        .select("id, name, active, sort_order")
+        .eq("active", true)
+        .order("sort_order", { ascending: true })
+        .order("name", { ascending: true });
+      if (specialError) throw specialError;
+      const names = (data || []).map((row) => String(row.name || "").trim()).filter(Boolean);
+      if (names.length) setSpecialLeaveReasons(names);
+    } catch (e) {
+      console.warn("[VacationEntry] Sonderurlaub-Arten konnten nicht geladen werden:", e?.message || e);
+    }
   }
 
-  function removeSpecialLeaveReason(value) {
+  useEffect(() => {
+    loadSpecialLeaveReasons();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function addSpecialLeaveReason() {
+    const value = specialLeaveReasonDraft.trim();
+    if (!value) return;
+    try {
+      setError("");
+      const nextSortOrder = (specialLeaveReasons.length + 1) * 10;
+      const { data: existingRows, error: existingError } = await supabase
+        .from("special_leave_types")
+        .select("id, name")
+        .ilike("name", value)
+        .limit(1);
+      if (existingError) throw existingError;
+      const existing = existingRows?.[0] || null;
+      if (existing?.id) {
+        const { error: updateError } = await supabase
+          .from("special_leave_types")
+          .update({ active: true, sort_order: nextSortOrder, updated_at: new Date().toISOString() })
+          .eq("id", existing.id);
+        if (updateError) throw updateError;
+      } else {
+        const { error: insertError } = await supabase
+          .from("special_leave_types")
+          .insert({ name: value, sort_order: nextSortOrder, active: true });
+        if (insertError) throw insertError;
+      }
+      setSpecialLeaveReasons((rows) => (rows.includes(value) ? rows : [...rows, value]));
+      setSpecialLeaveReason(value);
+      setSpecialLeaveReasonDraft("");
+      await loadSpecialLeaveReasons();
+    } catch (e) {
+      console.warn("[VacationEntry] Sonderurlaub-Art konnte nicht gespeichert werden:", e?.message || e);
+      setError(e?.message || "Sonderurlaub-Art konnte nicht gespeichert werden.");
+    }
+  }
+
+  async function removeSpecialLeaveReason(value) {
     const next = specialLeaveReasons.filter((item) => item !== value);
-    setSpecialLeaveReasons(next.length ? next : DEFAULT_SPECIAL_LEAVE_REASONS);
+    try {
+      setError("");
+      const { error: updateError } = await supabase
+        .from("special_leave_types")
+        .update({ active: false, updated_at: new Date().toISOString() })
+        .ilike("name", value);
+      if (updateError) throw updateError;
+      setSpecialLeaveReasons(next.length ? next : DEFAULT_SPECIAL_LEAVE_REASONS);
+      if (specialLeaveReason === value) setSpecialLeaveReason(next[0] || DEFAULT_SPECIAL_LEAVE_REASONS[0]);
+    } catch (e) {
+      console.warn("[VacationEntry] Sonderurlaub-Art konnte nicht entfernt werden:", e?.message || e);
+      setError(e?.message || "Sonderurlaub-Art konnte nicht entfernt werden.");
+    }
   }
 
   useEffect(() => {

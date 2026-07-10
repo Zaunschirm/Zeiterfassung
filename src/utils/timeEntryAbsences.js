@@ -43,6 +43,9 @@ export function getTimeEntryAbsenceKind(entry) {
 export const isVacationEntry = (entry) =>
   getTimeEntryAbsenceType(entry) === "urlaub";
 
+export const isSpecialLeaveEntry = (entry) =>
+  getTimeEntryAbsenceType(entry) === "sonderurlaub";
+
 export const isSickEntry = (entry) =>
   getTimeEntryAbsenceType(entry) === "krank";
 

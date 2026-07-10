@@ -473,6 +473,11 @@ export default function DaySlider() {
     setTravelMin(0);
   }
 
+  function applySonderurlaubDefaults() {
+    applyUrlaubDefaults();
+    setAbsenceType("sonderurlaub");
+  }
+
   function applyZeitausgleichDefaults() {
     const d = getEmployeeWorkDay(defaultTimeEmployee, date);
     const start = d?.active ? hmToMinutes(d.start) : 7 * 60;
@@ -500,7 +505,7 @@ export default function DaySlider() {
 
 
   async function loadWeatherForCurrentBooking(force = false) {
-    if (absenceType === "krank" || absenceType === "urlaub") {
+    if (absenceType === "krank" || absenceType === "urlaub" || absenceType === "sonderurlaub") {
       setWeatherAuto("");
       setWeatherCode(null);
       setTemperature(null);
@@ -1180,7 +1185,7 @@ export default function DaySlider() {
     setError("");
     setSuccessMessage("");
 
-    const isAbsence = absenceType === "krank" || absenceType === "urlaub" || zaUsed;
+    const isAbsence = absenceType === "krank" || absenceType === "urlaub" || absenceType === "sonderurlaub" || zaUsed;
 
     if (!isAbsence && !projectId) {
       setError("Bitte Projekt auswählen.");
@@ -1718,7 +1723,7 @@ export default function DaySlider() {
             <select
               className="hbz-select"
               value={projectId ?? ""}
-              disabled={absenceType === "krank" || absenceType === "urlaub"}
+              disabled={absenceType === "krank" || absenceType === "urlaub" || absenceType === "sonderurlaub"}
               onChange={(e) => setProjectId(e.target.value || null)}
             >
               <option value="">— ohne Projekt —</option>
@@ -1731,7 +1736,7 @@ export default function DaySlider() {
           </div>
         </div>
 
-        {assignmentSuggestions.length > 0 && absenceType !== "krank" && absenceType !== "urlaub" && (
+        {assignmentSuggestions.length > 0 && absenceType !== "krank" && absenceType !== "urlaub" && absenceType !== "sonderurlaub" && (
           <div className="assignment-prefill-box">
             <div className="assignment-prefill-head">
               <strong>Arbeitseinteilung</strong>
@@ -1770,7 +1775,7 @@ export default function DaySlider() {
           />
         ) : null}
 
-        {projectAddress && absenceType !== "krank" && absenceType !== "urlaub" && (
+        {projectAddress && absenceType !== "krank" && absenceType !== "urlaub" && absenceType !== "sonderurlaub" && (
           <div
             className="help"
             style={{
@@ -1817,9 +1822,9 @@ export default function DaySlider() {
           </div>
         )}
 
-        {(absenceType === "krank" || absenceType === "urlaub") && (
+        {(absenceType === "krank" || absenceType === "urlaub" || absenceType === "sonderurlaub") && (
           <div className="help" style={{ marginTop: 8 }}>
-            Bei Krank/Urlaub ist kein Projekt nötig.
+            Bei Krank/Urlaub/Sonderurlaub ist kein Projekt nötig.
           </div>
         )}
 
@@ -1850,10 +1855,11 @@ export default function DaySlider() {
               </div>
               <div className="mobile-chip-section"><div className="month-card-title">Pause</div><div className="hbz-chipbar">{PAUSE_OPTIONS.map((m) => (<button key={m} type="button" className={`hbz-chip ${breakMin === m ? "active" : ""}`} onClick={() => { if (absenceType) setAbsenceType(null); setBreakMin(m); }}>{formatTravelLabel(m)}</button>))}</div></div>
             </details>
-            <details className="mobile-accordion"><summary>👷 Abwesenheit <span>{zaUsed ? "Zeitausgleich" : absenceType ? (absenceType === "krank" ? "Krank" : "Urlaub") : badWeather ? "Schlechtwetter" : "Normal"}</span></summary>
+            <details className="mobile-accordion"><summary>👷 Abwesenheit <span>{zaUsed ? "Zeitausgleich" : absenceType ? (absenceType === "krank" ? "Krank" : absenceType === "sonderurlaub" ? "Sonderurlaub" : "Urlaub") : badWeather ? "Schlechtwetter" : "Normal"}</span></summary>
               <div className="hbz-chipbar">
                 <button type="button" className={`hbz-chip ${absenceType === "krank" ? "active" : ""}`} onClick={applyKrankDefaults}>Krank</button>
                 <button type="button" className={`hbz-chip ${absenceType === "urlaub" ? "active" : ""}`} onClick={applyUrlaubDefaults}>Urlaub</button>
+                <button type="button" className={`hbz-chip ${absenceType === "sonderurlaub" ? "active" : ""}`} onClick={applySonderurlaubDefaults}>Sonderurlaub</button>
                 <button type="button" className={`hbz-chip ${zaUsed ? "active" : ""}`} onClick={applyZeitausgleichDefaults}>Zeitausgleich</button>
                 <button type="button" className={`hbz-chip ${badWeather ? "active" : ""}`} onClick={() => { setAbsenceType(null); setZaUsed(false); setZaHours(0); setBadWeather((v) => !v); }}>Schlechtwetter</button>
                 {(absenceType || badWeather || zaUsed) && <button type="button" className="hbz-chip" onClick={clearAbsenceAndZa}>Normal</button>}
@@ -1998,6 +2004,16 @@ onClick={applyKrankDefaults}
 onClick={applyUrlaubDefaults}
               >
                 Urlaub
+              </button>
+
+              <button
+                type="button"
+                className={`hbz-chip ${
+                  absenceType === "sonderurlaub" ? "active" : ""
+                }`}
+onClick={applySonderurlaubDefaults}
+              >
+                Sonderurlaub
               </button>
 
               <button

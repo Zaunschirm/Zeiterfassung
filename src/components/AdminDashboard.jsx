@@ -193,7 +193,7 @@ export default function AdminDashboard() {
       const day = String(row.work_date || "").slice(0, 10);
       const project = String(row.project_id || "");
       const note = String(row.note || "").toLowerCase();
-      const isAbsence = /^\s*\[(urlaub|krank|krankenstand|zeitausgleich|za)\]/i.test(String(row.note || "")) || Number(row.za_hours || 0) > 0 || note === "urlaub" || note === "krank";
+      const isAbsence = /^\s*\[(urlaub|sonderurlaub|krank|krankenstand|zeitausgleich|za)\]/i.test(String(row.note || "")) || Number(row.za_hours || 0) > 0 || note === "urlaub" || note === "sonderurlaub" || note === "krank";
       if (!day || !project || isAbsence) continue;
       const key = `${day}__${project}`;
       const state = badOnly.get(key) || { normal: false, bad: false };
@@ -219,14 +219,15 @@ export default function AdminDashboard() {
     const billingOpen = data.billing.filter((record) => !isBillingClosed(record));
     const auditTotal = data.audits.length + data.regieAudits.length + data.dailyAudits.length + data.billingAudits.length;
     const priorityItems = [
-      ...data.pending.slice(0, 3).map((row) => ({ title: row.entry_type === "za" ? "ZA-Antrag offen" : "Urlaub/Sonderurlaub offen", detail: `${fmtDate(row.from_date)} bis ${fmtDate(row.to_date)}`, path: "/urlaub", tone: "warning" })),
+      ...data.pending.slice(0, 3).map((row) => ({ title: row.entry_type === "za" ? "ZA-Antrag offen" : row.entry_type === "sonderurlaub" ? "Sonderurlaub offen" : "Urlaub offen", detail: `${fmtDate(row.from_date)} bis ${fmtDate(row.to_date)}`, path: "/urlaub", tone: "warning" })),
       ...signedRegieOpen.slice(0, 3).map((row) => ({ title: "Regiebericht unterfertigt, noch offen", detail: `${row.report_number || row.id} · ${row.project_name || "ohne Projekt"}`, path: "/abrechnung", tone: "blue" })),
       ...missingDailyItems.slice(0, 3).map((row) => ({ title: "Bautagesbericht fehlt", detail: `${fmtDate(row.day)} · Projekt ${row.project}`, path: "/bautagesberichte", tone: "danger" })),
     ].slice(0, 7);
 
     return {
       pending: data.pending.length,
-      vacation: data.pending.filter((row) => row.entry_type !== "za").length,
+      vacation: data.pending.filter((row) => row.entry_type === "urlaub").length,
+      special: data.pending.filter((row) => row.entry_type === "sonderurlaub").length,
       za: data.pending.filter((row) => row.entry_type === "za").length,
       regie: data.regie.filter((row) => row.status !== "signed").length,
       signedRegieOpen: signedRegieOpen.length,
@@ -241,7 +242,7 @@ export default function AdminDashboard() {
   }, [data]);
 
   const cards = [
-    { label: "Offene Freigaben", value: summary.pending, detail: `${summary.vacation} Urlaub · ${summary.za} ZA`, tone: "warning", path: "/urlaub" },
+    { label: "Offene Freigaben", value: summary.pending, detail: `${summary.vacation} Urlaub · ${summary.special} Sonderurlaub · ${summary.za} ZA`, tone: "warning", path: "/urlaub" },
     { label: "Regieberichte", value: summary.regie + summary.signedRegieOpen, detail: `${summary.regie} in Arbeit · ${summary.signedRegieOpen} unterfertigt offen`, tone: "blue", path: "/regieberichte" },
     { label: "Bautagesberichte", value: summary.missingDaily + summary.dailyDrafts, detail: `${summary.missingDaily} fehlen · ${summary.dailyDrafts} Entwürfe`, tone: "danger", path: "/bautagesberichte" },
     { label: "Abrechnung", value: summary.billingOpen + summary.signedRegieOpen, detail: `${summary.billingOpen} Projekte offen · ${summary.signedRegieOpen} Regieberichte unverrechnet`, tone: "purple", path: "/abrechnung" },

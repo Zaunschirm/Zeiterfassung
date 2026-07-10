@@ -8,6 +8,7 @@ const decimalOrZero = (value) =>
 const getNotePrefix = ({ absenceType, zaUsed, badWeather }) => {
   if (absenceType === "krank") return "[Krank] ";
   if (absenceType === "urlaub") return "[Urlaub] ";
+  if (absenceType === "sonderurlaub") return "[Sonderurlaub] ";
   if (zaUsed) return "[Zeitausgleich] ";
   if (badWeather) return "[Schlechtwetter] ";
   return "";

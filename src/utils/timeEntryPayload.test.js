@@ -56,6 +56,24 @@ describe("time entry payload helpers", () => {
     });
   });
 
+  it("adds a special leave prefix", () => {
+    const payload = buildNewTimeEntryPayload({
+      date: "2026-06-17",
+      projectId: null,
+      fromMin: 420,
+      toMin: 435,
+      breakMin: 15,
+      travelMin: 0,
+      absenceType: "sonderurlaub",
+      note: "Hochzeit",
+    });
+
+    expect(payload).toMatchObject({
+      absence_type: "sonderurlaub",
+      note: "[Sonderurlaub] Hochzeit",
+    });
+  });
+
   it("calculates bad weather minutes without going below zero", () => {
     const payload = buildNewTimeEntryPayload({
       fromMin: 480,

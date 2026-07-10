@@ -4,6 +4,7 @@ import {
   getTimeEntryAbsenceKind,
   getTimeEntryAbsenceType,
   isAbsenceEntry,
+  isSpecialLeaveEntry,
   isSickEntry,
   isTimeCompEntry,
   isVacationEntry,
@@ -21,6 +22,7 @@ describe("time entry absence checks", () => {
     expect(getTimeEntryAbsenceType({ absence_type: "krank" })).toBe("krank");
     expect(isSickEntry({ absence_type: "krankenstand" })).toBe(true);
     expect(isVacationEntry({ note: "[Urlaub] Altbestand" })).toBe(true);
+    expect(isSpecialLeaveEntry({ note: "[Sonderurlaub: Hochzeit] Altbestand" })).toBe(true);
     expect(isTimeCompEntry({ absence_type: "za" })).toBe(true);
     expect(isAbsenceEntry({ note: "Montage" })).toBe(false);
   });

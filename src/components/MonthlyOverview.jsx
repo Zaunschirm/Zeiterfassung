@@ -19,6 +19,7 @@ import {
 } from "../utils/monthLock";
 import {
   isAbsenceEntry,
+  isSpecialLeaveEntry,
   isSickEntry,
   isTimeCompEntry,
   isVacationEntry,
@@ -338,7 +339,7 @@ const isPayrollCheckEmployee = () => true;
 const isBadWeatherRow = (r) => r?.bad_weather === true || r?.bad_weather === "true";
 const stripAbsencePrefix = (note) =>
   String(note || "")
-    .replace(/^\s*\[(Urlaub|Krank|Zeitausgleich|Schlechtwetter)\]\s*/i, "")
+    .replace(/^\s*\[(Urlaub|Sonderurlaub[^\]]*|Krank|Zeitausgleich|Schlechtwetter)\]\s*/i, "")
     .trim();
 const rowWorkMinutes = (r) => Math.max((r.start_min ?? r.from_min ?? 0) - 0, 0) && Math.max((r.end_min ?? r.to_min ?? 0) - (r.start_min ?? r.from_min ?? 0) - (r.break_min || 0), 0);
 const getProjectAddress = (r, projects = []) => {
@@ -347,6 +348,7 @@ const getProjectAddress = (r, projects = []) => {
 };
 
 const isVacationRow = isVacationEntry;
+const isSpecialLeaveRow = isSpecialLeaveEntry;
 const isSickRow = isSickEntry;
 const isTimeCompRow = isTimeCompEntry;
 
@@ -1793,6 +1795,7 @@ export default function MonthlyOverview() {
           rows: [],
           datesWithAnyEntry: new Set(),
           datesWithWorkEntry: new Set(),
+          specialLeaveDates: [],
         };
       });
 
@@ -1802,6 +1805,7 @@ export default function MonthlyOverview() {
 
         const note = (r.note || "").toString();
         const isVacation = isVacationRow(r);
+        const isSpecialLeave = isSpecialLeaveRow(r);
         const isSick = isSickRow(r);
         const isTimeComp = isTimeCompRow(r);
         const mins = entryMinutes(r);
@@ -1812,6 +1816,11 @@ export default function MonthlyOverview() {
 
         if (isVacation) {
           d.vacationDates.push(r.work_date);
+          return;
+        }
+
+        if (isSpecialLeave) {
+          d.specialLeaveDates.push({ date: r.work_date, note: stripAbsencePrefix(note) });
           return;
         }
 
@@ -1854,6 +1863,9 @@ export default function MonthlyOverview() {
 
       Object.values(payrollByEmployee).forEach((d) => {
         d.vacationDates = uniqueSortedDates(d.vacationDates);
+        d.specialLeaveDates = (d.specialLeaveDates || [])
+          .filter((row) => row?.date)
+          .sort((a, b) => String(a.date).localeCompare(String(b.date)));
         d.sickDates = uniqueSortedDates(d.sickDates);
         d.timeCompDates = uniqueSortedDates(d.timeCompDates);
 
@@ -1867,12 +1879,13 @@ export default function MonthlyOverview() {
           if (soll <= 0) return;
           const hasWorkEntry = d.datesWithWorkEntry.has(h.date);
           const isVacation = d.vacationDates.includes(h.date);
+          const isSpecialLeave = (d.specialLeaveDates || []).some((row) => row.date === h.date);
           const isSick = d.sickDates.includes(h.date);
           const isTimeComp = d.timeCompDates.includes(h.date);
 
           // Feiertag wird bezahlt, wenn er auf einen Arbeitstag laut Arbeitszeitmodell fällt
           // und für diesen Tag keine echte Arbeitsbuchung, kein Urlaub, kein Krankenstand und kein Zeitausgleich eingetragen ist.
-          if (!hasWorkEntry && !isVacation && !isSick && !isTimeComp) {
+          if (!hasWorkEntry && !isVacation && !isSpecialLeave && !isSick && !isTimeComp) {
             d.holidayRows.push({ ...h, soll });
             d.holidayHours += soll;
           }
@@ -1973,6 +1986,7 @@ export default function MonthlyOverview() {
         sickHours: 0,
         zaTaken: 0,
         vacationDays: 0,
+        specialLeaveDays: 0,
         sickDays: 0,
         dietDays: 0,
         badWeatherHours: 0,
@@ -2016,6 +2030,17 @@ export default function MonthlyOverview() {
             safePdfText(d.name),
             "Urlaub",
             d.vacationDates.map(formatDateAT).join(", "),
+            "0,00 h",
+          ]);
+        }
+
+        if (d.specialLeaveDates?.length) {
+          detailRows.push([
+            safePdfText(d.name),
+            "Sonderurlaub",
+            d.specialLeaveDates
+              .map((row) => `${formatDateAT(row.date)}${row.note ? ` (${safePdfText(row.note)})` : ""}`)
+              .join(", "),
             "0,00 h",
           ]);
         }
@@ -2066,6 +2091,7 @@ export default function MonthlyOverview() {
         totals.sickHours += d.sickHours;
         totals.zaTaken += zaTaken;
         totals.vacationDays += d.vacationDates.length;
+        totals.specialLeaveDays += d.specialLeaveDates?.length || 0;
         totals.sickDays += d.sickDates.length;
         totals.dietDays += d.workDays.size;
         totals.badWeatherHours += d.badWeatherHours;
@@ -2081,6 +2107,7 @@ export default function MonthlyOverview() {
           formatHoursAT(d.sickHours),
           formatHoursAT(zaTaken),
           formatDaysAT(d.vacationDates.length),
+          formatDaysAT(d.specialLeaveDates?.length || 0),
           formatDaysAT(d.sickDates.length),
           formatDaysAT(d.workDays.size),
           formatHoursAT(d.badWeatherHours),
@@ -2098,6 +2125,7 @@ export default function MonthlyOverview() {
         formatHoursAT(totals.sickHours),
         formatHoursAT(totals.zaTaken),
         formatDaysAT(totals.vacationDays),
+        formatDaysAT(totals.specialLeaveDays),
         formatDaysAT(totals.sickDays),
         formatDaysAT(totals.dietDays),
         formatHoursAT(totals.badWeatherHours),
@@ -2116,6 +2144,7 @@ export default function MonthlyOverview() {
         "Krank",
         "ZA",
         "Urlaub Tage",
+        "Sonderurlaub Tage",
         "Krank Tage",
         "Diäten Tage",
         ...(showBadWeatherColumn ? ["Schlechtwetter"] : []),
@@ -2126,11 +2155,11 @@ export default function MonthlyOverview() {
 
       const payrollBody = employeeBody.map((row) => {
         const base = [
-          ...row.slice(0, 9),
-          ...(showBadWeatherColumn ? [row[9]] : []),
-          row[10],
+          ...row.slice(0, 10),
+          ...(showBadWeatherColumn ? [row[10]] : []),
           row[11],
-          ...(showPrivatePkwColumn ? [row[12]] : []),
+          row[12],
+          ...(showPrivatePkwColumn ? [row[13]] : []),
         ];
         return base;
       });
