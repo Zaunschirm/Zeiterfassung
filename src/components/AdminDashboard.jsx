@@ -65,6 +65,7 @@ const fmtDate = (value) => {
   const date = new Date(`${raw}T12:00:00`);
   return Number.isNaN(date.getTime()) ? raw : date.toLocaleDateString("de-AT");
 };
+const isMissingOptionalTableError = (error) => error?.code === "PGRST205" || /Could not find the table/i.test(error?.message || "");
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
@@ -115,7 +116,8 @@ export default function AdminDashboard() {
       supabase.from("daily_site_report_audit_log").select("id,changed_at").gte("changed_at", since.toISOString()).limit(500),
       supabase.from("project_billing_audit_log").select("id,changed_at").gte("changed_at", since.toISOString()).limit(500),
     ]);
-    const firstError = pending.error || regie.error || daily.error || entries.error || assignments.error || billing.error || audits.error || regieAudits.error || dailyAudits.error || billingAudits.error;
+    const dailyAuditError = isMissingOptionalTableError(dailyAudits.error) ? null : dailyAudits.error;
+    const firstError = pending.error || regie.error || daily.error || entries.error || assignments.error || billing.error || audits.error || regieAudits.error || dailyAuditError || billingAudits.error;
     if (firstError) setError(firstError.message);
     setData({
       pending: pending.data || [],
