@@ -161,6 +161,7 @@ export default function RegieReports() {
   const [projectFilter, setProjectFilter] = useState("all");
   const [employeeFilter, setEmployeeFilter] = useState("all");
   const [showArchived, setShowArchived] = useState(false);
+  const [selectedArchiveReportIds, setSelectedArchiveReportIds] = useState([]);
   const [selectedId, setSelectedId] = useState("");
   const [reportNumber, setReportNumber] = useState(() => createReportNumber("Projekt", new Date()));
   const [reportDate, setReportDate] = useState(todayISO());
@@ -190,12 +191,15 @@ export default function RegieReports() {
   const originalReportRef = useRef(null);
 
   const selectedProject = useMemo(() => projects.find((p) => String(p.id) === String(projectId)), [projects, projectId]);
-  const locked = status === "signed" || isArchived;
+  const selectedHasSignature = !!signatureData || !!signedBy || !!signedAt;
+  const selectedIsFinished = status === "signed" || selectedHasSignature;
+  const locked = selectedIsFinished || isArchived;
   const canEditWorkDetails = !locked && (canPrepare || status === "prepared");
   const visibleReports = useMemo(() => {
     if (canPrepare) return reports.filter((report) => {
-      const doneForBilling = report.status === "signed" && isRegieReportBilled(report);
-      const archivedForWorkList = report.is_archived || doneForBilling;
+      const finished = isRegieReportFinished(report);
+      const doneForBilling = finished && isRegieReportBilled(report);
+      const archivedForWorkList = report.is_archived || doneForBilling || finished;
       if (showArchived ? !archivedForWorkList : archivedForWorkList) return false;
       if (statusFilter !== "all" && report.status !== statusFilter) return false;
       if (projectFilter !== "all" && String(report.project_id || "") !== String(projectFilter)) return false;
@@ -209,30 +213,108 @@ export default function RegieReports() {
     });
     return reports.filter((report) => {
       const assigned = Array.isArray(report.assigned_employee_ids) ? report.assigned_employee_ids.map(String) : [];
-      return !report.is_archived && !(report.status === "signed" && isRegieReportBilled(report)) && report.status !== "draft" && assigned.includes(ownId);
+      return !report.is_archived && !(isRegieReportFinished(report) && isRegieReportBilled(report)) && report.status !== "draft" && assigned.includes(ownId);
     });
   }, [reports, canPrepare, ownId, showArchived, search, statusFilter, projectFilter, employeeFilter, billingByProject]);
+  const projectFilterOptions = useMemo(() => {
+    if (!canPrepare) return [];
+    const ids = new Set();
+    const searchText = search.trim().toLowerCase();
+    for (const report of reports) {
+      const finished = isRegieReportFinished(report);
+      const doneForBilling = finished && isRegieReportBilled(report);
+      const archivedForWorkList = report.is_archived || doneForBilling || finished;
+      if (showArchived ? !archivedForWorkList : archivedForWorkList) continue;
+      if (statusFilter !== "all" && report.status !== statusFilter) continue;
+      if (employeeFilter !== "all") {
+        const assigned = Array.isArray(report.assigned_employee_ids) ? report.assigned_employee_ids.map(String) : [];
+        const labor = Array.isArray(report.labor_items) ? report.labor_items.map((item) => String(item.employee_id || "")).filter(Boolean) : [];
+        if (![...assigned, ...labor].includes(String(employeeFilter))) continue;
+      }
+      const haystack = `${report.report_number} ${report.project_name || ""} ${report.client_name || ""}`.toLowerCase();
+      if (searchText && !haystack.includes(searchText)) continue;
+      const id = String(report.project_id || "");
+      if (id) ids.add(id);
+    }
+    return projects
+      .filter((project) => ids.has(String(project.id)))
+      .sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "de"));
+  }, [reports, projects, canPrepare, showArchived, statusFilter, employeeFilter, search, billingByProject]);
+  useEffect(() => {
+    if (projectFilter === "all") return;
+    if (!projectFilterOptions.some((project) => String(project.id) === String(projectFilter))) {
+      setProjectFilter("all");
+    }
+  }, [projectFilter, projectFilterOptions]);
+  const regieStatusSummary = useMemo(() => {
+    const summary = { active: 0, draft: 0, prepared: 0, signedOpen: 0, archive: 0 };
+    for (const report of reports) {
+      const finished = isRegieReportFinished(report);
+      const billed = finished && isRegieReportBilled(report);
+      const archived = report.is_archived || billed || finished;
+      if (archived) {
+        summary.archive += 1;
+        continue;
+      }
+      summary.active += 1;
+      if (report.status === "prepared") summary.prepared += 1;
+      else if (report.status === "signed") summary.signedOpen += 1;
+      else summary.draft += 1;
+    }
+    return summary;
+  }, [reports, billingByProject]);
+  const groupedArchiveReports = useMemo(() => {
+    if (!canPrepare || !showArchived) return [];
+    const groups = new Map();
+    for (const report of visibleReports) {
+      const key = String(report.project_id || report.project_name || "ohne-projekt");
+      const label = report.project_name || projects.find((project) => String(project.id) === String(report.project_id))?.name || "Ohne Projekt";
+      const group = groups.get(key) || { key, label, reports: [] };
+      group.reports.push(report);
+      groups.set(key, group);
+    }
+    return [...groups.values()].sort((a, b) => a.label.localeCompare(b.label, "de"));
+  }, [canPrepare, showArchived, visibleReports, projects]);
+  const selectedArchiveReports = useMemo(() => {
+    const selectedIds = new Set(selectedArchiveReportIds.map(String));
+    return visibleReports.filter((report) => selectedIds.has(String(report.id)));
+  }, [visibleReports, selectedArchiveReportIds]);
   const employeeNamesForIds = (ids = []) => ids.map((id) => employees.find((employee) => String(employee.id) === String(id))?.name || id).filter(Boolean);
   const assignedEmployeeNames = useMemo(() => employeeNamesForIds(assignedEmployeeIds), [assignedEmployeeIds, employees]);
+  function isRegieReportFinished(report) {
+    return report?.status === "signed" || !!report?.signature_data || !!report?.signed_by || !!report?.signed_at;
+  }
   function isRegieReportBilled(report) {
     const billedIds = billingByProject[String(report?.project_id || "")] || [];
     return billedIds.map(String).includes(String(report?.id || ""));
   }
+  function toggleArchiveReportSelection(reportId) {
+    setSelectedArchiveReportIds((current) => current.map(String).includes(String(reportId))
+      ? current.filter((id) => String(id) !== String(reportId))
+      : [...current, reportId]);
+  }
+  function selectVisibleArchiveReports() {
+    setSelectedArchiveReportIds(visibleReports.map((report) => report.id).filter(Boolean));
+  }
+  function clearArchiveReportSelection() {
+    setSelectedArchiveReportIds([]);
+  }
   function getRegieListStatusLabel(report) {
     if (isRegieReportBilled(report)) return "Verrechnet";
     if (report.is_archived) return "Archiviert";
-    if (report.status === "signed") return "Unterfertigt";
+    if (isRegieReportFinished(report)) return "Unterfertigt";
     if (report.status === "prepared") return "Bereit";
     return "Entwurf";
   }
   function getRegieListStatusClass(report) {
     if (report.is_archived || isRegieReportBilled(report)) return "archived";
+    if (isRegieReportFinished(report)) return "signed";
     return report.status;
   }
   const selectedRegieBillingState = useMemo(() => {
-    if (status !== "signed" || !selectedId) return "";
+    if (!selectedIsFinished || !selectedId) return "";
     return isRegieReportBilled({ id: selectedId, project_id: projectId }) ? "billed" : "open";
-  }, [billingByProject, projectId, selectedId, status]);
+  }, [billingByProject, projectId, selectedId, selectedIsFinished]);
   const storedPdfUrl = useMemo(() => {
     if (!pdfPath) return "";
     const { data } = supabase.storage.from(REGIE_PDF_BUCKET).getPublicUrl(pdfPath);
@@ -634,7 +716,7 @@ export default function RegieReports() {
 
   async function archiveOrDelete() {
     if (!canPrepare || !selectedId) return;
-    if (status === "signed") {
+    if (selectedIsFinished) {
       if (!window.confirm("Diesen unterschriebenen Regiebericht archivieren? Er bleibt vollständig erhalten und kann später wieder angezeigt werden.")) return;
       setBusy(true); setError("");
       try {
@@ -758,6 +840,116 @@ export default function RegieReports() {
     doc.save(`Regiebericht_${reportNumber}.pdf`);
   }
 
+  async function exportSelectedReportsPdf() {
+    if (!selectedArchiveReports.length) {
+      setError("Bitte zuerst mindestens einen Regiebericht in der Ablage auswählen.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      const [{ jsPDF }, autoTableModule] = await Promise.all([import("jspdf"), import("jspdf-autotable")]);
+      const doc = new jsPDF({ unit: "pt", format: "a4" });
+      const autoTable = autoTableModule.default;
+      const brown = PDF_BRAND.brown;
+      const reportsForPdf = [...selectedArchiveReports].sort((a, b) => {
+        const projectCompare = String(a.project_name || "").localeCompare(String(b.project_name || ""), "de");
+        if (projectCompare) return projectCompare;
+        return String(a.report_date || "").localeCompare(String(b.report_date || ""));
+      });
+
+      reportsForPdf.forEach((report, index) => {
+        if (index > 0) doc.addPage();
+        const projectName = report.project_name || projects.find((project) => String(project.id) === String(report.project_id))?.name || "Ohne Projekt";
+        const title = report.report_number || createReportNumber(projectName, report.report_date || new Date());
+        addPdfHeader(doc, { title: "Regiebericht", rightTop: title, subtitle: `${projectName} | ${fmtDate(report.report_date)}` });
+        autoTable(doc, {
+          startY: 84,
+          theme: "grid",
+          ...brandedTable,
+          body: [
+            ["Datum", fmtDate(report.report_date), "Projekt", projectName],
+            ["Ort", report.location || "—", "Auftraggeber", report.client_name || "—"],
+            ["Kontakt", report.client_contact || "—", "Status", getRegieListStatusLabel(report)],
+          ],
+        });
+        let y = doc.lastAutoTable.finalY + 22;
+        doc.setFontSize(12);
+        doc.text("Ausgeführte Arbeiten", 36, y);
+        autoTable(doc, {
+          startY: y + 10,
+          theme: "grid",
+          styles: { fontSize: 9, cellPadding: 6 },
+          body: [[report.description || "—"]],
+          margin: { left: 36, right: 36 },
+        });
+        y = doc.lastAutoTable.finalY + 20;
+        const reportLabor = prepareLaborItems(report.labor_items || []);
+        autoTable(doc, {
+          startY: y,
+          theme: "striped",
+          head: [["Mitarbeiter", "Stunden"]],
+          body: reportLabor.length ? reportLabor.map((row) => [row.name || "—", fmtHours(row.hours)]) : [["—", fmtHours(0)]],
+          headStyles: { fillColor: brown },
+          styles: { fontSize: 9 },
+        });
+        y = doc.lastAutoTable.finalY + 18;
+        const reportMaterials = prepareMaterialItems(report.material_items || []);
+        if (reportMaterials.length) {
+          autoTable(doc, {
+            startY: y,
+            theme: "striped",
+            head: [["Material / Gerät", "Menge", "Einheit"]],
+            body: reportMaterials.map((row) => [row.description || "—", Number(row.quantity || 0).toLocaleString("de-AT"), row.unit || "—"]),
+            headStyles: { fillColor: brown },
+            styles: { fontSize: 9 },
+          });
+          y = doc.lastAutoTable.finalY + 20;
+        }
+        if (y > 630) {
+          doc.addPage();
+          y = 50;
+        }
+        if (report.signature_data) {
+          const signedLabel = report.signed_at ? new Date(report.signed_at).toLocaleString("de-AT") : "Zeitpunkt nicht verfügbar";
+          doc.setFontSize(11);
+          doc.text(`Bestätigt durch: ${report.signed_by || report.client_name || "—"}`, 36, y);
+          doc.setFontSize(8.5);
+          doc.text(`Leistungen, Stunden und Materialien bestätigt. Unterschrieben am ${signedLabel}.`, 36, y + 15);
+          doc.addImage(report.signature_data, "PNG", 36, y + 24, 210, 85);
+          doc.line(36, y + 114, 260, y + 114);
+          doc.setFontSize(8);
+          doc.text("Unterschrift Auftraggeber", 36, y + 127);
+        } else {
+          doc.setFontSize(11);
+          doc.text("Bestätigung Auftraggeber", 36, y);
+          doc.setFontSize(8.5);
+          doc.text("Leistungen, Stunden und Materialien wurden erbracht und werden mit Unterschrift bestätigt.", 36, y + 15);
+          doc.setDrawColor(120, 120, 120);
+          doc.line(36, y + 66, 190, y + 66);
+          doc.line(220, y + 66, 374, y + 66);
+          doc.line(404, y + 66, 559, y + 66);
+          doc.setFontSize(8);
+          doc.text("Ort / Datum", 36, y + 79);
+          doc.text("Name in Blockschrift", 220, y + 79);
+          doc.text("Unterschrift Auftraggeber", 404, y + 79);
+        }
+        doc.setFontSize(8);
+        doc.text(`Gesamtstunden: ${fmtHours(sumLaborHours(report.labor_items || []))}`, 559, 810, { align: "right" });
+      });
+
+      await addPdfWatermarks(doc);
+      addPdfFooters(doc, { label: "Regieberichte Sammel-PDF", detail: `${reportsForPdf.length} Berichte` });
+      doc.save(`Regieberichte_${safeFilePart(reportsForPdf[0]?.project_name || "Auswahl")}_${reportsForPdf.length}_Berichte.pdf`);
+      setMessage(`${reportsForPdf.length} Regieberichte wurden als Sammel-PDF gespeichert.`);
+    } catch (e) {
+      setError(e?.message || "Sammel-PDF konnte nicht erstellt werden.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function savePdfFile() {
     if (!validatePdf()) return;
     setBusy(true);
@@ -846,8 +1038,17 @@ export default function RegieReports() {
     }
   }
 
-  const statusLabel = isArchived ? "Archiviert" : status === "signed" ? "✓ Unterfertigt" : status === "prepared" ? "Für Mitarbeiter bereit" : "Entwurf";
+  const statusLabel = isArchived ? "Archiviert" : selectedIsFinished ? "✓ Unterfertigt" : status === "prepared" ? "Für Mitarbeiter bereit" : "Entwurf";
   const hasOpenReport = canPrepare || !!selectedId;
+  const renderReportListItem = (report) => (
+    <button type="button" key={report.id} className={`regie-list-item ${String(selectedId) === String(report.id) ? "active" : ""}`} onClick={() => openReport(report)}>
+      <div className="regie-list-item-top"><b>{report.report_number}</b><small className={getRegieListStatusClass(report)}>{getRegieListStatusLabel(report)}</small></div>
+      <span className="regie-list-project">{report.project_name || "Ohne Projekt"}</span>
+      <span>{fmtDate(report.report_date)}{report.client_name ? ` · ${report.client_name}` : ""}</span>
+      {isAdmin && report.status !== "draft" && <span className="regie-list-release">Freigegeben für: {employeeNamesForIds(report.assigned_employee_ids || []).join(", ") || "keine Mitarbeiter ausgewählt"}</span>}
+      {isRegieReportFinished(report) && <span className={`regie-billing-mini ${isRegieReportBilled(report) ? "billed" : "open"}`}>Abrechnung: {isRegieReportBilled(report) ? "verrechnet" : "offen"}</span>}
+    </button>
+  );
 
   return (
     <div className="hbz-container regie-page">
@@ -859,23 +1060,53 @@ export default function RegieReports() {
       {message && <div className="hbz-alert hbz-alert-success">{message}</div>}
       <div className="regie-layout">
         <aside className="hbz-card regie-list">
-          <div className="month-card-title">{canPrepare ? "Regieberichte" : "Meine Aufträge"}</div>
-          {canPrepare && <div className="regie-filters"><input className="hbz-input" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Projekt, Nummer, Auftraggeber…" /><select className="hbz-input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}><option value="all">Alle Status</option><option value="draft">Entwürfe</option><option value="prepared">Bereit</option><option value="signed">Unterschrieben</option></select><select className="hbz-input" value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)}><option value="all">Alle Projekte</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select><select className="hbz-input" value={employeeFilter} onChange={(e) => setEmployeeFilter(e.target.value)}><option value="all">Alle Mitarbeiter</option>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.name}</option>)}</select></div>}
-          {canPrepare && <label className="regie-archive-toggle"><input type="checkbox" checked={showArchived} onChange={(event) => { setShowArchived(event.target.checked); resetReport(); }} />Archivierte / verrechnete anzeigen</label>}
-          {!visibleReports.length && <p className="hint">{canPrepare ? "Noch keine Regieberichte vorhanden." : "Derzeit ist dir kein Regieauftrag zugewiesen."}</p>}
-          {visibleReports.map((report) => (
+          <div className="regie-list-head">
+            <div>
+              <div className="month-card-title">{canPrepare ? "Regieberichte" : "Meine Aufträge"}</div>
+              {canPrepare && <small>{showArchived ? `${regieStatusSummary.archive} in der Ablage` : `${regieStatusSummary.active} offene / vorbereitete Berichte`}</small>}
+            </div>
+            {canPrepare && <button type="button" className={`regie-archive-pill ${showArchived ? "active" : ""}`} onClick={() => { setShowArchived((value) => !value); setStatusFilter("all"); clearArchiveReportSelection(); resetReport(); }}>{showArchived ? "Arbeitsliste" : "Ablage nach Projekt"}</button>}
+          </div>
+          {canPrepare && !showArchived && <div className="regie-status-tabs">
+            <button type="button" className={statusFilter === "all" ? "active" : ""} onClick={() => setStatusFilter("all")}><span>Alle</span><b>{regieStatusSummary.active}</b></button>
+            <button type="button" className={statusFilter === "draft" ? "active draft" : "draft"} onClick={() => setStatusFilter("draft")}><span>Entwurf</span><b>{regieStatusSummary.draft}</b></button>
+            <button type="button" className={statusFilter === "prepared" ? "active prepared" : "prepared"} onClick={() => setStatusFilter("prepared")}><span>Bereit</span><b>{regieStatusSummary.prepared}</b></button>
+          </div>}
+          {canPrepare && <div className="regie-filters"><input className="hbz-input" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Suchen: Projekt, Nummer, Auftraggeber…" /><select className="hbz-input" value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)}><option value="all">Alle Projekte mit Berichten</option>{projectFilterOptions.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select><select className="hbz-input" value={employeeFilter} onChange={(e) => setEmployeeFilter(e.target.value)}><option value="all">Alle Mitarbeiter</option>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.name}</option>)}</select></div>}
+          {showArchived && canPrepare && !!visibleReports.length && <div className="regie-bulk-actions">
+            <div><b>{selectedArchiveReports.length}</b><span> ausgewählt</span></div>
+            <button type="button" className="hbz-btn btn-small" onClick={selectVisibleArchiveReports}>Alle sichtbaren</button>
+            <button type="button" className="hbz-btn btn-small" onClick={clearArchiveReportSelection} disabled={!selectedArchiveReports.length}>Auswahl löschen</button>
+            <button type="button" className="hbz-btn hbz-btn-primary btn-small" onClick={exportSelectedReportsPdf} disabled={!selectedArchiveReports.length || busy}>Auswahl als PDF speichern</button>
+          </div>}
+          {!visibleReports.length && <p className="hint">{showArchived && canPrepare ? "Noch keine unterfertigten, verrechneten oder archivierten Regieberichte in der Ablage." : canPrepare ? "Noch keine Regieberichte in dieser Arbeitsliste vorhanden." : "Derzeit ist dir kein Regieauftrag zugewiesen."}</p>}
+          {showArchived && canPrepare && groupedArchiveReports.map((group) => (
+            <section className="regie-archive-project" key={group.key}>
+              <div className="regie-archive-project-head"><b>{group.label}</b><span>{group.reports.length}</span></div>
+              {group.reports.map((report) => (
+                <div className={`regie-archive-select-row ${selectedArchiveReportIds.map(String).includes(String(report.id)) ? "selected" : ""}`} key={report.id}>
+                  <label className="regie-archive-check" title="Für Sammel-PDF auswählen">
+                    <input type="checkbox" checked={selectedArchiveReportIds.map(String).includes(String(report.id))} onChange={() => toggleArchiveReportSelection(report.id)} />
+                  </label>
+                  {renderReportListItem(report)}
+                </div>
+              ))}
+            </section>
+          ))}
+          {!(showArchived && canPrepare) && visibleReports.map((report) => (
             <button type="button" key={report.id} className={`regie-list-item ${String(selectedId) === String(report.id) ? "active" : ""}`} onClick={() => openReport(report)}>
-              <b>{report.report_number}</b><span>{fmtDate(report.report_date)} · {report.project_name || "Ohne Projekt"}</span>
+              <div className="regie-list-item-top"><b>{report.report_number}</b><small className={getRegieListStatusClass(report)}>{getRegieListStatusLabel(report)}</small></div>
+              <span className="regie-list-project">{report.project_name || "Ohne Projekt"}</span>
+              <span>{fmtDate(report.report_date)}{report.client_name ? ` · ${report.client_name}` : ""}</span>
               {isAdmin && report.status !== "draft" && <span className="regie-list-release">Freigegeben für: {employeeNamesForIds(report.assigned_employee_ids || []).join(", ") || "keine Mitarbeiter ausgewählt"}</span>}
-              <small className={getRegieListStatusClass(report)}>{getRegieListStatusLabel(report)}</small>
-              {report.status === "signed" && <span className={`regie-billing-mini ${isRegieReportBilled(report) ? "billed" : "open"}`}>Abrechnung: {isRegieReportBilled(report) ? "verrechnet" : "offen"}</span>}
+              {isRegieReportFinished(report) && <span className={`regie-billing-mini ${isRegieReportBilled(report) ? "billed" : "open"}`}>Abrechnung: {isRegieReportBilled(report) ? "verrechnet" : "offen"}</span>}
             </button>
           ))}
         </aside>
 
         {hasOpenReport ? (
           <main className="hbz-card regie-form">
-            <div className="regie-form-head"><div><div className="eyebrow">{isArchived ? "Archiv" : locked ? "Abgeschlossen" : canPrepare ? "Desktop-Vorbereitung" : "Handy-Erfassung"}</div><h2>{reportNumber}</h2>{status === "signed" && selectedRegieBillingState && <p className={`regie-billing-info ${selectedRegieBillingState}`}>Abrechnung: {selectedRegieBillingState === "billed" ? "verrechnet" : "offen"}</p>}{isAdmin && status !== "draft" && <p className="regie-release-info">Freigegeben für: {assignedEmployeeNames.length ? assignedEmployeeNames.join(", ") : "keine Mitarbeiter ausgewählt"}</p>}</div><span className={`regie-status ${isArchived ? "archived" : status}`}>{statusLabel}</span></div>
+            <div className="regie-form-head"><div><div className="eyebrow">{isArchived ? "Archiv" : locked ? "Abgeschlossen" : canPrepare ? "Desktop-Vorbereitung" : "Handy-Erfassung"}</div><h2>{reportNumber}</h2>{selectedIsFinished && selectedRegieBillingState && <p className={`regie-billing-info ${selectedRegieBillingState}`}>Abrechnung: {selectedRegieBillingState === "billed" ? "verrechnet" : "offen"}</p>}{isAdmin && status !== "draft" && <p className="regie-release-info">Freigegeben für: {assignedEmployeeNames.length ? assignedEmployeeNames.join(", ") : "keine Mitarbeiter ausgewählt"}</p>}</div><span className={`regie-status ${isArchived ? "archived" : selectedIsFinished ? "signed" : status}`}>{statusLabel}</span></div>
 
             <fieldset disabled={locked || busy}>
               <div className="regie-grid">
@@ -945,7 +1176,7 @@ export default function RegieReports() {
               {!locked && canPrepare && selectedId && ["draft", "prepared"].includes(status) && <button className="hbz-btn" disabled={busy} onClick={copyReportAsDraft}>Als Entwurf kopieren</button>}
               {!locked && !canPrepare && status === "prepared" && <button className="hbz-btn" disabled={busy} onClick={() => save("prepared")}>Änderungen speichern</button>}
               {!locked && !canPrepare && <button className="hbz-btn hbz-btn-primary" disabled={busy || status !== "prepared"} onClick={() => save("signed")}>Unterschreiben & abschließen</button>}
-              {canPrepare && selectedId && !isArchived && <button className="hbz-btn regie-danger" disabled={busy} onClick={archiveOrDelete}>{status === "signed" ? "Archivieren" : "Löschen"}</button>}
+              {canPrepare && selectedId && !isArchived && <button className="hbz-btn regie-danger" disabled={busy} onClick={archiveOrDelete}>{selectedIsFinished ? "Archivieren" : "Löschen"}</button>}
               {canPrepare && selectedId && isArchived && <button className="hbz-btn" disabled={busy} onClick={restoreArchived}>Aus Archiv holen</button>}
               {canPrepare && selectedId && <button className="hbz-btn" onClick={loadAudit}>Änderungsverlauf</button>}
               <button className="hbz-btn" onClick={previewPdf}>PDF-Vorschau</button>
@@ -968,6 +1199,8 @@ export default function RegieReports() {
       {auditOpen && <div className="regie-pdf-overlay" role="dialog" aria-modal="true" aria-label="Änderungsverlauf"><div className="regie-audit-modal"><div className="regie-pdf-head"><strong>Änderungsverlauf · {reportNumber}</strong><button type="button" className="hbz-btn btn-small" onClick={() => setAuditOpen(false)}>Schließen</button></div><div className="regie-audit-list">{!auditRows.length ? <p>Keine Änderungen protokolliert.</p> : auditRows.map((row) => <article key={row.id}><b>{new Date(row.changed_at).toLocaleString("de-AT")} · {row.changed_by_name || row.changed_by || "Unbekannt"}</b><span>{row.action}</span><pre>{JSON.stringify(row.changes, null, 2)}</pre></article>)}</div></div></div>}
 
       <style>{`
+        .regie-list-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:10px}.regie-list-head small{display:block;margin-top:2px;color:#75675d;font-size:12px;font-weight:800}.regie-archive-pill{border:1px solid #d8c5b4;border-radius:999px;background:#fff8f2;color:#6d4228;padding:7px 10px;font-size:12px;font-weight:900;cursor:pointer;white-space:nowrap}.regie-archive-pill.active{background:#6d4228;color:#fff;border-color:#6d4228}.regie-status-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin:8px 0 10px}.regie-status-tabs button{display:flex;align-items:center;justify-content:space-between;gap:8px;border:1px solid #eadfd7;border-radius:10px;background:#fff;padding:9px 10px;color:#5a3a23;cursor:pointer;text-align:left}.regie-status-tabs button span{font-size:12px;font-weight:900}.regie-status-tabs button b{font-size:18px}.regie-status-tabs button.active{border-color:#7b4a2d;background:#fff8f2;box-shadow:0 0 0 1px #7b4a2d}.regie-status-tabs button.prepared b{color:#1f6592}.regie-status-tabs button.signed b{color:#28723d}.regie-status-tabs button.draft b{color:#9a6812}.regie-archive-project{margin-top:12px;padding:9px;border:1px solid #eadfd7;border-radius:12px;background:#fffaf5}.regie-archive-project-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:7px;color:#5a3a23}.regie-archive-project-head b{font-size:13px}.regie-archive-project-head span{min-width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;border-radius:999px;background:#7b4a2d;color:#fff;font-size:12px;font-weight:900}.regie-archive-project .regie-list-item{margin-top:6px}.regie-list-item-top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;width:100%}.regie-list-item-top b{font-size:13px;line-height:1.25}.regie-list-project{font-weight:900;color:#2f251f!important;font-size:13px!important}.regie-list-item-top small{border-radius:999px;padding:3px 7px;background:#f4eee8;font-size:11px;white-space:nowrap}.regie-list-item-top small.signed{background:#e7f6eb;color:#28723d}.regie-list-item-top small.prepared{background:#e9f4fb;color:#1f6592}.regie-list-item-top small.draft{background:#fff3d7;color:#9a6812}.regie-list-item-top small.archived{background:#ececec;color:#666}
+        .regie-bulk-actions{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:10px 0;padding:9px;border:1px solid #eadfd7;border-radius:12px;background:#fff8f2}.regie-bulk-actions div{margin-right:auto;color:#5a3a23;font-size:12px;font-weight:850}.regie-bulk-actions b{font-size:18px}.regie-archive-select-row{display:grid;grid-template-columns:34px minmax(0,1fr);align-items:stretch;gap:7px;margin-top:7px;border-radius:11px}.regie-archive-select-row .regie-list-item{margin-top:0}.regie-archive-select-row.selected .regie-list-item{border-color:#7b4a2d;background:#fff8f2}.regie-archive-check{display:flex!important;align-items:center!important;justify-content:center!important;min-height:64px;border:1px solid #eadfd7;border-radius:9px;background:#fff;cursor:pointer}.regie-archive-check input{width:18px;height:18px;accent-color:#7b4a2d}
         .regie-header{display:flex;justify-content:space-between;gap:16px;align-items:flex-end;margin-bottom:16px}.regie-header h1{margin:2px 0 4px}.regie-header p{margin:0;color:#6f6259}.regie-layout{display:grid;grid-template-columns:280px minmax(0,1fr);gap:16px}.regie-list{align-self:start;position:sticky;top:82px}.regie-list-item{display:flex;width:100%;flex-direction:column;align-items:flex-start;gap:3px;border:1px solid #eadfd7;background:#fff;padding:10px;margin-top:8px;border-radius:9px;text-align:left;cursor:pointer}.regie-list-item.active{border-color:#7b4a2d;background:#fff8f2}.regie-list-item span{font-size:12px;color:#6f6259}.regie-list-release{display:block;color:#3f6f8c!important;font-weight:800}.regie-billing-mini,.regie-billing-info{display:inline-flex;align-items:center;width:max-content;border:1px solid transparent;border-radius:999px;font-size:11px;font-weight:900}.regie-billing-mini{margin-top:2px;padding:3px 7px}.regie-billing-info{margin:0 0 8px;padding:5px 9px}.regie-billing-mini.open,.regie-billing-info.open{border-color:#f0c38b;background:#fff3df;color:#92560d}.regie-billing-mini.billed,.regie-billing-info.billed{border-color:#a9d7b2;background:#e7f6eb;color:#246a36}.regie-list-item small{font-weight:800}.regie-list-item small.signed{color:#28723d}.regie-list-item small.prepared{color:#1f6592}.regie-list-item small.draft{color:#9a6812}.regie-form-head,.regie-section-head{display:flex;align-items:center;justify-content:space-between;gap:12px}.regie-section-actions{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end}.regie-form-head h2{margin:2px 0 6px;font-size:20px}.regie-release-info{margin:0 0 12px;color:#5f7180;font-size:12px;font-weight:850}.regie-status{padding:6px 10px;border-radius:999px;font-size:12px;font-weight:900}.regie-status.signed{background:#e7f6eb;color:#246a36}.regie-status.prepared{background:#e9f4fb;color:#1f6592}.regie-status.draft{background:#fff3d7;color:#875b00}.regie-form fieldset{border:0;padding:0;margin:0;min-width:0}.regie-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.regie-form label{display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:800;color:#5a3a23}.regie-block{margin-top:14px}.regie-section{border-top:1px solid #eadfd7;margin-top:18px;padding-top:16px}.regie-section h3{margin:0 0 10px}.regie-assignment-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.regie-assignment{flex-direction:row!important;align-items:center;padding:8px;border:1px solid #eadfd7;border-radius:8px;background:#fff}.regie-row{display:grid;gap:8px;margin-top:8px;align-items:center}.regie-row.labor{grid-template-columns:minmax(180px,1fr) 110px 34px}.regie-row.material{grid-template-columns:1.6fr 90px 100px 34px}.regie-hours-input{position:relative}.regie-hours-input .hbz-input{width:100%;padding-right:30px}.regie-hours-input span{position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:12px;font-weight:900;color:#6f6259;pointer-events:none}.regie-remove{border:0;background:#fff0ed;color:#a23a2c;border-radius:8px;height:38px;font-size:22px;cursor:pointer}.regie-total{text-align:right;margin-top:10px;font-weight:900}.regie-signature-canvas{display:block;width:100%;height:180px;background:#fff;border:2px dashed #bda99a;border-radius:10px;pointer-events:none}.regie-signature-preview{position:relative;display:block;width:100%;padding:0;border:0;background:transparent;cursor:pointer}.regie-signature-preview:disabled{cursor:default}.regie-signature-preview span{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#765f50;font-weight:800}.regie-signature-overlay{position:fixed;inset:0;z-index:1900;padding:18px;background:rgba(30,24,20,.78);display:flex;align-items:center;justify-content:center}.regie-signature-modal{width:min(1000px,100%);height:min(720px,calc(100vh - 36px));padding:14px;background:#f8f4f0;border-radius:14px;display:flex;flex-direction:column;gap:12px;box-shadow:0 24px 70px rgba(0,0,0,.4)}.regie-signature-head,.regie-signature-actions{display:flex;align-items:center;justify-content:space-between;gap:12px}.regie-signature-head div{display:flex;flex-direction:column;gap:2px}.regie-signature-head small{color:#75675d}.regie-signature-editor{display:block;width:100%;min-height:260px;flex:1;background:#fff;border:3px solid #7b4a2d;border-radius:12px;touch-action:none}.regie-signature-actions{justify-content:flex-end}.regie-actions{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end;margin-top:18px}.regie-empty{text-align:center;padding:40px 20px}
         .regie-voice{margin-top:8px}.regie-voice.listening{background:#fff0ed;color:#9b3024}.regie-section-head .hint{margin:0}.regie-stored-pdf{margin:10px 0 0;text-align:right;color:#39734a;font-size:12px;font-weight:850}.regie-photo-upload{display:inline-flex!important;flex-direction:row!important;cursor:pointer}.regie-photo-upload input{display:none}.regie-photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;margin-top:12px}.regie-photo-grid figure{position:relative;margin:0;border:1px solid #eadfd7;border-radius:10px;overflow:hidden;background:#fff}.regie-photo-grid img{display:block;width:100%;height:120px;object-fit:cover}.regie-photo-grid figcaption{padding:7px;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.regie-photo-grid button{position:absolute;top:5px;right:5px;width:28px;height:28px;border:0;border-radius:50%;background:rgba(125,34,25,.9);color:#fff;font-size:20px;cursor:pointer}
         .regie-archive-toggle{display:flex!important;flex-direction:row!important;align-items:center;gap:7px;margin-top:9px;font-size:12px!important}.regie-list-item small.archived{color:#666}.regie-status.archived{background:#ececec;color:#555}.regie-danger{color:#9f2f24;border-color:#d9a49d!important}.regie-danger:hover{background:#fff0ed}
