@@ -8,6 +8,8 @@ const todayISO = () => new Date().toISOString().slice(0, 10);
 const localISO = (value) => `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
 const addDays = (value, days) => { const next = new Date(`${value}T12:00:00`); next.setDate(next.getDate() + days); return localISO(next); };
 const weekStartFor = (value) => { const next = new Date(`${value}T12:00:00`); next.setDate(next.getDate() - ((next.getDay() + 6) % 7)); return localISO(next); };
+const monthStartFor = (value) => { const next = new Date(`${value}T12:00:00`); return localISO(new Date(next.getFullYear(), next.getMonth(), 1)); };
+const monthEndFor = (value) => { const next = new Date(`${value}T12:00:00`); return localISO(new Date(next.getFullYear(), next.getMonth() + 1, 0)); };
 const fmtDate = (value) => { const [y, m, d] = String(value || "").slice(0, 10).split("-"); return y && m && d ? `${d}.${m}.${y}` : "—"; };
 const fmtHours = (value) => `${Number(value || 0).toLocaleString("de-AT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} h`;
 const safeFilePart = (value) => String(value || "Bautagesberichte").trim().replace(/[^a-zA-Z0-9äöüÄÖÜß._-]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 80) || "Bautagesberichte";
@@ -29,6 +31,7 @@ export default function DailySiteReports() {
   const [entries, setEntries] = useState([]);
   const [assignments, setAssignments] = useState([]);
   const [reports, setReports] = useState([]);
+  const [archiveReports, setArchiveReports] = useState([]);
   const [projectId, setProjectId] = useState("");
   const [selectedId, setSelectedId] = useState("");
   const [location, setLocation] = useState("");
@@ -53,6 +56,9 @@ export default function DailySiteReports() {
   const [listStatusFilter, setListStatusFilter] = useState("all");
   const [listProjectFilter, setListProjectFilter] = useState("all");
   const [selectedArchiveReportIds, setSelectedArchiveReportIds] = useState([]);
+  const [archiveRange, setArchiveRange] = useState("month");
+  const [archiveFrom, setArchiveFrom] = useState(monthStartFor(todayISO()));
+  const [archiveTo, setArchiveTo] = useState(todayISO());
 
   const selectedProject = useMemo(() => projects.find((p) => String(p.id) === String(projectId)), [projects, projectId]);
   const dateReports = useMemo(() => reports.filter((r) => String(r.report_date).slice(0, 10) === date), [reports, date]);
@@ -96,7 +102,8 @@ export default function DailySiteReports() {
     return [...map.values()];
   }, [entries, assignments, badWeatherOnlyKeys]);
   const openReports = useMemo(() => expectedReports.filter((item) => item.day <= todayISO() && !reports.some((r) => String(r.report_date).slice(0, 10) === item.day && String(r.project_id) === item.projectId && r.status === "completed")), [expectedReports, reports]);
-  const completedReports = useMemo(() => reports.filter((report) => report.status === "completed"), [reports]);
+  const completedReports = useMemo(() => archiveReports.filter((report) => report.status === "completed"), [archiveReports]);
+  const archiveRangeLabel = archiveRange === "all" ? "alle abgeschlossenen Berichte" : `${fmtDate(archiveFrom)} bis ${fmtDate(archiveTo)}`;
   const selectedArchiveReports = useMemo(() => {
     const ids = new Set(selectedArchiveReportIds.map(String));
     return completedReports.filter((report) => ids.has(String(report.id)));
@@ -129,6 +136,17 @@ export default function DailySiteReports() {
     setSelectedArchiveReportIds([]);
   }
 
+  function applyArchiveRange(nextRange) {
+    const today = todayISO();
+    setArchiveRange(nextRange);
+    clearArchiveReportSelection();
+    if (nextRange === "week") { setArchiveFrom(weekStart); setArchiveTo(addDays(weekStart, 6)); }
+    if (nextRange === "month") { setArchiveFrom(monthStartFor(date)); setArchiveTo(monthEndFor(date)); }
+    if (nextRange === "3months") { setArchiveFrom(addDays(monthStartFor(date), -62)); setArchiveTo(monthEndFor(date)); }
+    if (nextRange === "custom") { setArchiveFrom(archiveFrom || monthStartFor(date)); setArchiveTo(archiveTo || today); }
+    if (nextRange === "all") { setArchiveFrom(""); setArchiveTo(""); }
+  }
+
   async function load() {
     setError("");
     const firstDay = addDays(weekStart, -1); const lastDay = addDays(weekStart, 6);
@@ -144,6 +162,19 @@ export default function DailySiteReports() {
     setProjects(p.data || []); setEmployees(e.data || []); setEntries(t.data || []); setAssignments(a.data || []); setReports(r.data || []);
   }
   useEffect(() => { load(); }, [date]);
+
+  async function loadArchiveReports() {
+    if (!canManage) return;
+    let query = supabase.from("daily_site_reports").select("*").eq("status", "completed").order("report_date", { ascending: false });
+    if (archiveRange !== "all") {
+      if (archiveFrom) query = query.gte("report_date", archiveFrom);
+      if (archiveTo) query = query.lte("report_date", archiveTo);
+    }
+    const { data, error: archiveError } = await query.limit(5000);
+    if (archiveError) { setError(archiveError.message); return; }
+    setArchiveReports(data || []);
+  }
+  useEffect(() => { loadArchiveReports(); }, [canManage, archiveRange, archiveFrom, archiveTo]);
 
   useEffect(() => {
     try {
@@ -415,7 +446,7 @@ export default function DailySiteReports() {
 
   const locked = status === "completed";
   return <div className="hbz-container daily-page">
-    {canManage && !!completedReports.length && <section className="hbz-card daily-archive"><div className="daily-archive-head"><div><b>Ablage abgeschlossene Bautagesberichte</b><small>{completedReports.length} in dieser Woche</small></div><div className="daily-bulk-actions"><span><b>{selectedArchiveReports.length}</b> ausgewÃ¤hlt</span><button type="button" className="hbz-btn btn-small" onClick={selectAllCompletedReports}>Alle</button><button type="button" className="hbz-btn btn-small" onClick={clearArchiveReportSelection} disabled={!selectedArchiveReports.length}>LÃ¶schen</button><button type="button" className="hbz-btn hbz-btn-primary btn-small" onClick={exportSelectedReportsPdf} disabled={!selectedArchiveReports.length || busy}>Auswahl als PDF</button></div></div><div className="daily-archive-grid">{groupedCompletedReports.map((group) => <article className="daily-archive-project" key={group.key}><div className="daily-archive-project-head"><b>{group.label}</b><button type="button" className="hbz-btn btn-small" onClick={() => exportReportsPdf(group.reports, group.label)} disabled={busy}>Projekt als PDF</button></div>{group.reports.map((report) => { const checked = selectedArchiveReportIds.map(String).includes(String(report.id)); return <div className={`daily-archive-row ${checked ? "selected" : ""}`} key={report.id}><label><input type="checkbox" checked={checked} onChange={() => toggleArchiveReportSelection(report.id)} /></label><button type="button" onClick={() => openReport(report)}><strong>{fmtDate(report.report_date)}</strong><span>{report.completed_by_name || "abgeschlossen"}</span></button></div>; })}</article>)}</div></section>}
+    {canManage && <section className="hbz-card daily-archive"><div className="daily-archive-head"><div><b>Ablage abgeschlossene Bautagesberichte</b><small>{completedReports.length} · {archiveRangeLabel}</small></div><div className="daily-bulk-actions"><span><b>{selectedArchiveReports.length}</b> ausgewÃ¤hlt</span><button type="button" className="hbz-btn btn-small" onClick={selectAllCompletedReports} disabled={!completedReports.length}>Alle</button><button type="button" className="hbz-btn btn-small" onClick={clearArchiveReportSelection} disabled={!selectedArchiveReports.length}>LÃ¶schen</button><button type="button" className="hbz-btn hbz-btn-primary btn-small" onClick={exportSelectedReportsPdf} disabled={!selectedArchiveReports.length || busy}>Auswahl als PDF</button></div></div><div className="daily-archive-ranges"><button type="button" className={archiveRange === "week" ? "active" : ""} onClick={() => applyArchiveRange("week")}>Woche</button><button type="button" className={archiveRange === "month" ? "active" : ""} onClick={() => applyArchiveRange("month")}>Monat</button><button type="button" className={archiveRange === "3months" ? "active" : ""} onClick={() => applyArchiveRange("3months")}>Letzte 3 Monate</button><button type="button" className={archiveRange === "all" ? "active" : ""} onClick={() => applyArchiveRange("all")}>Alle</button><button type="button" className={archiveRange === "custom" ? "active" : ""} onClick={() => applyArchiveRange("custom")}>Auswahl</button>{archiveRange === "custom" && <><input className="hbz-input" type="date" value={archiveFrom} onChange={(e) => { setArchiveRange("custom"); setArchiveFrom(e.target.value); clearArchiveReportSelection(); }} /><input className="hbz-input" type="date" value={archiveTo} onChange={(e) => { setArchiveRange("custom"); setArchiveTo(e.target.value); clearArchiveReportSelection(); }} /></>}</div>{!completedReports.length && <p className="hint">Keine abgeschlossenen Bautagesberichte im gewÃ¤hlten Zeitraum.</p>}<div className="daily-archive-grid">{groupedCompletedReports.map((group) => <article className="daily-archive-project" key={group.key}><div className="daily-archive-project-head"><b>{group.label}</b><button type="button" className="hbz-btn btn-small" onClick={() => exportReportsPdf(group.reports, group.label)} disabled={busy}>Projekt als PDF</button></div>{group.reports.map((report) => { const checked = selectedArchiveReportIds.map(String).includes(String(report.id)); return <div className={`daily-archive-row ${checked ? "selected" : ""}`} key={report.id}><label><input type="checkbox" checked={checked} onChange={() => toggleArchiveReportSelection(report.id)} /></label><button type="button" onClick={() => openReport(report)}><strong>{fmtDate(report.report_date)}</strong><span>{report.completed_by_name || "abgeschlossen"}</span></button></div>; })}</article>)}</div></section>}
     <div className="daily-head"><div><div className="eyebrow">Tägliche Baustellendokumentation</div><h1>Bautagesberichte</h1><p>Aus Zeiterfassung und Arbeitseinteilung vorbereitet, abends kontrollieren und abschließen.</p></div><div className="daily-date-nav"><button className="hbz-btn" onClick={() => shiftReportDate(-1)} aria-label="Vorheriger Tag">←</button><label>Datum<input className="hbz-input" type="date" value={date} onChange={(e) => { setDate(e.target.value); setProjectId(""); setSelectedId(""); }} /></label><button className="hbz-btn" onClick={() => shiftReportDate(1)} aria-label="Nächster Tag">→</button></div></div>
     {error && <div className="hbz-alert hbz-alert-error">{error}</div>}{message && <div className="hbz-alert hbz-alert-success">{message}</div>}{draftRestored && <div className="daily-draft-note">Automatisch lokal gesichert, bis du den Entwurf speicherst.</div>}
     {canManage && openReports.length > 0 && <div className="hbz-alert daily-reminder"><b>{openReports.length} Bautagesbericht{openReports.length === 1 ? " ist" : "e sind"} noch offen.</b><span>Bitte prüfen und abschließen.</span></div>}
