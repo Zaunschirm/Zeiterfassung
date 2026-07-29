@@ -10,6 +10,7 @@ const addDays = (value, days) => { const next = new Date(`${value}T12:00:00`); n
 const weekStartFor = (value) => { const next = new Date(`${value}T12:00:00`); next.setDate(next.getDate() - ((next.getDay() + 6) % 7)); return localISO(next); };
 const fmtDate = (value) => { const [y, m, d] = String(value || "").slice(0, 10).split("-"); return y && m && d ? `${d}.${m}.${y}` : "—"; };
 const fmtHours = (value) => `${Number(value || 0).toLocaleString("de-AT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} h`;
+const safeFilePart = (value) => String(value || "Bautagesberichte").trim().replace(/[^a-zA-Z0-9äöüÄÖÜß._-]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 80) || "Bautagesberichte";
 const entryHours = (row) => {
   const direct = Number(row.total_hours ?? row.hours);
   if (Number.isFinite(direct)) return Math.max(0, direct);
@@ -51,6 +52,7 @@ export default function DailySiteReports() {
   const [listSearch, setListSearch] = useState("");
   const [listStatusFilter, setListStatusFilter] = useState("all");
   const [listProjectFilter, setListProjectFilter] = useState("all");
+  const [selectedArchiveReportIds, setSelectedArchiveReportIds] = useState([]);
 
   const selectedProject = useMemo(() => projects.find((p) => String(p.id) === String(projectId)), [projects, projectId]);
   const dateReports = useMemo(() => reports.filter((r) => String(r.report_date).slice(0, 10) === date), [reports, date]);
@@ -94,6 +96,38 @@ export default function DailySiteReports() {
     return [...map.values()];
   }, [entries, assignments, badWeatherOnlyKeys]);
   const openReports = useMemo(() => expectedReports.filter((item) => item.day <= todayISO() && !reports.some((r) => String(r.report_date).slice(0, 10) === item.day && String(r.project_id) === item.projectId && r.status === "completed")), [expectedReports, reports]);
+  const completedReports = useMemo(() => reports.filter((report) => report.status === "completed"), [reports]);
+  const selectedArchiveReports = useMemo(() => {
+    const ids = new Set(selectedArchiveReportIds.map(String));
+    return completedReports.filter((report) => ids.has(String(report.id)));
+  }, [completedReports, selectedArchiveReportIds]);
+  const groupedCompletedReports = useMemo(() => {
+    const groups = new Map();
+    for (const report of completedReports) {
+      const key = String(report.project_id || report.project_name || "ohne-projekt");
+      const project = projects.find((item) => String(item.id) === String(report.project_id));
+      const label = report.project_name || project?.name || "Ohne Projekt";
+      const group = groups.get(key) || { key, label, reports: [] };
+      group.reports.push(report);
+      groups.set(key, group);
+    }
+    return [...groups.values()].map((group) => ({
+      ...group,
+      reports: group.reports.sort((a, b) => String(a.report_date || "").localeCompare(String(b.report_date || ""))),
+    })).sort((a, b) => a.label.localeCompare(b.label, "de"));
+  }, [completedReports, projects]);
+
+  function toggleArchiveReportSelection(reportId) {
+    setSelectedArchiveReportIds((current) => current.map(String).includes(String(reportId))
+      ? current.filter((id) => String(id) !== String(reportId))
+      : [...current, reportId]);
+  }
+  function selectAllCompletedReports() {
+    setSelectedArchiveReportIds(completedReports.map((report) => report.id).filter(Boolean));
+  }
+  function clearArchiveReportSelection() {
+    setSelectedArchiveReportIds([]);
+  }
 
   async function load() {
     setError("");
@@ -302,6 +336,62 @@ export default function DailySiteReports() {
     doc.save(`Bautagesbericht_${selectedProject?.name || "Projekt"}_${date}.pdf`);
   }
 
+  async function exportReportsPdf(reportsToExport, fileLabel = "Auswahl") {
+    if (!reportsToExport.length) {
+      setError("Bitte zuerst mindestens einen abgeschlossenen Bautagesbericht auswÃ¤hlen.");
+      return;
+    }
+    setBusy(true); setError(""); setMessage("");
+    try {
+      const [{ jsPDF }, autoTableModule] = await Promise.all([import("jspdf"), import("jspdf-autotable")]);
+      const doc = new jsPDF({ unit: "pt", format: "a4" }); const autoTable = autoTableModule.default; const brown = PDF_BRAND.brown;
+      const reportsForPdf = [...reportsToExport].sort((a, b) => String(a.report_date || "").localeCompare(String(b.report_date || "")));
+      for (let reportIndex = 0; reportIndex < reportsForPdf.length; reportIndex += 1) {
+        const report = reportsForPdf[reportIndex];
+        if (reportIndex > 0) doc.addPage();
+        const project = projects.find((item) => String(item.id) === String(report.project_id));
+        const projectName = report.project_name || project?.name || "Baustelle";
+        const reportDate = String(report.report_date || "").slice(0, 10);
+        addPdfHeader(doc, { title: "Bautagesbericht", rightTop: fmtDate(reportDate), subtitle: projectName });
+        autoTable(doc, { startY: 84, theme: "grid", ...brandedTable, body: [["Baustelle", projectName, "Datum", fmtDate(reportDate)], ["Adresse", report.location || "â€”", "Wetter", report.weather || "â€”"], ["Auftraggeber", report.client_name || "â€”", "Bauleiter", report.client_contact || "â€”"]] });
+        autoTable(doc, { startY: doc.lastAutoTable.finalY + 18, theme: "striped", head: [["Mitarbeiter", "Stunden"]], body: Array.isArray(report.employee_items) && report.employee_items.length ? report.employee_items.map((item) => [item.name || "â€”", fmtHours(item.hours)]) : [["â€”", fmtHours(0)]], headStyles: { fillColor: brown } });
+        let y = doc.lastAutoTable.finalY + 20;
+        const blocks = [["AusgefÃ¼hrte Arbeiten", report.activities], ["Besondere Vorkommnisse / Behinderungen", report.incidents], ["Lieferungen", report.deliveries], ["Material / GerÃ¤te (optional)", report.materials_equipment]];
+        for (const [title, text] of blocks) {
+          if (!text) continue;
+          if (y > 700) { doc.addPage(); y = 50; }
+          doc.setFontSize(11); doc.text(title, 36, y);
+          autoTable(doc, { startY: y + 7, theme: "grid", body: [[text]], margin: { left: 36, right: 36 }, styles: { fontSize: 9 } });
+          y = doc.lastAutoTable.finalY + 18;
+        }
+        const reportPhotos = Array.isArray(report.photo_paths) ? report.photo_paths : [];
+        for (let index = 0; index < reportPhotos.length; index += 1) {
+          try {
+            const { data } = supabase.storage.from("project-photos").getPublicUrl(reportPhotos[index].path);
+            if (!data?.publicUrl) continue;
+            const imageData = await photoDataUrl(data.publicUrl); const image = doc.getImageProperties(imageData);
+            const scale = Math.min(523 / image.width, 700 / image.height);
+            doc.addPage(); doc.setFontSize(12);
+            doc.text(`Baustellenfoto ${index + 1} Â· ${reportPhotos[index].caption || "Foto"}`, 36, 45);
+            doc.addImage(imageData, image.fileType || "JPEG", 36, 65, image.width * scale, image.height * scale);
+          } catch { /* Einzelnes Foto Ã¼berspringen. */ }
+        }
+      }
+      await addPdfWatermarks(doc);
+      addPdfFooters(doc, { label: "Bautagesberichte Sammel-PDF", detail: `${reportsForPdf.length} Berichte` });
+      doc.save(`Bautagesberichte_${safeFilePart(fileLabel)}_${reportsForPdf.length}_Berichte.pdf`);
+      setMessage(`${reportsForPdf.length} Bautagesberichte wurden als Sammel-PDF gespeichert.`);
+    } catch (e) {
+      setError(e?.message || "Sammel-PDF konnte nicht erstellt werden.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function exportSelectedReportsPdf() {
+    await exportReportsPdf(selectedArchiveReports, selectedArchiveReports[0]?.project_name || "Auswahl");
+  }
+
   async function previewPdf() {
     try { const doc = await createPdfDocument(); if (!doc) return; setPdfPreviewUrl(URL.createObjectURL(doc.output("blob"))); }
     catch (e) { setError(e?.message || "PDF-Vorschau konnte nicht erstellt werden."); }
@@ -325,6 +415,7 @@ export default function DailySiteReports() {
 
   const locked = status === "completed";
   return <div className="hbz-container daily-page">
+    {canManage && !!completedReports.length && <section className="hbz-card daily-archive"><div className="daily-archive-head"><div><b>Ablage abgeschlossene Bautagesberichte</b><small>{completedReports.length} in dieser Woche</small></div><div className="daily-bulk-actions"><span><b>{selectedArchiveReports.length}</b> ausgewÃ¤hlt</span><button type="button" className="hbz-btn btn-small" onClick={selectAllCompletedReports}>Alle</button><button type="button" className="hbz-btn btn-small" onClick={clearArchiveReportSelection} disabled={!selectedArchiveReports.length}>LÃ¶schen</button><button type="button" className="hbz-btn hbz-btn-primary btn-small" onClick={exportSelectedReportsPdf} disabled={!selectedArchiveReports.length || busy}>Auswahl als PDF</button></div></div><div className="daily-archive-grid">{groupedCompletedReports.map((group) => <article className="daily-archive-project" key={group.key}><div className="daily-archive-project-head"><b>{group.label}</b><button type="button" className="hbz-btn btn-small" onClick={() => exportReportsPdf(group.reports, group.label)} disabled={busy}>Projekt als PDF</button></div>{group.reports.map((report) => { const checked = selectedArchiveReportIds.map(String).includes(String(report.id)); return <div className={`daily-archive-row ${checked ? "selected" : ""}`} key={report.id}><label><input type="checkbox" checked={checked} onChange={() => toggleArchiveReportSelection(report.id)} /></label><button type="button" onClick={() => openReport(report)}><strong>{fmtDate(report.report_date)}</strong><span>{report.completed_by_name || "abgeschlossen"}</span></button></div>; })}</article>)}</div></section>}
     <div className="daily-head"><div><div className="eyebrow">Tägliche Baustellendokumentation</div><h1>Bautagesberichte</h1><p>Aus Zeiterfassung und Arbeitseinteilung vorbereitet, abends kontrollieren und abschließen.</p></div><div className="daily-date-nav"><button className="hbz-btn" onClick={() => shiftReportDate(-1)} aria-label="Vorheriger Tag">←</button><label>Datum<input className="hbz-input" type="date" value={date} onChange={(e) => { setDate(e.target.value); setProjectId(""); setSelectedId(""); }} /></label><button className="hbz-btn" onClick={() => shiftReportDate(1)} aria-label="Nächster Tag">→</button></div></div>
     {error && <div className="hbz-alert hbz-alert-error">{error}</div>}{message && <div className="hbz-alert hbz-alert-success">{message}</div>}{draftRestored && <div className="daily-draft-note">Automatisch lokal gesichert, bis du den Entwurf speicherst.</div>}
     {canManage && openReports.length > 0 && <div className="hbz-alert daily-reminder"><b>{openReports.length} Bautagesbericht{openReports.length === 1 ? " ist" : "e sind"} noch offen.</b><span>Bitte prüfen und abschließen.</span></div>}
@@ -337,6 +428,6 @@ export default function DailySiteReports() {
     {projectId && <div className="regie-actions">{!locked && <><button className="hbz-btn" onClick={refreshEmployeeItemsFromTimeEntries}>Stunden aktualisieren</button><button className="hbz-btn" onClick={refreshActivitiesFromTimeEntries}>Notizen übernehmen</button><button className="hbz-btn" onClick={copyPreviousDay}>Vortag kopieren</button><button className="hbz-btn" onClick={() => save("draft")}>Entwurf speichern</button><button className="hbz-btn hbz-btn-primary" onClick={() => save("completed")}>Bautagesbericht abschließen</button></>}{locked && canManage && <button className="hbz-btn" onClick={reopenReport}>Mit Begründung korrigieren</button>}{selectedId && canManage && <button className="hbz-btn" onClick={showAudit}>Änderungsverlauf</button>}<button className="hbz-btn" onClick={previewPdf}>PDF-Vorschau</button><button className="hbz-btn" onClick={exportPdf}>PDF laden</button><button className="hbz-btn" onClick={() => sharePdf("mail")}>Per E-Mail</button><button className="hbz-btn" onClick={() => sharePdf("whatsapp")}>Per WhatsApp</button></div>}</main></div>
     {pdfPreviewUrl && <div className="daily-modal" role="dialog" aria-modal="true"><div className="daily-pdf"><div><b>PDF-Vorschau</b><button className="hbz-btn btn-small" onClick={() => { URL.revokeObjectURL(pdfPreviewUrl); setPdfPreviewUrl(""); }}>Schließen</button></div><iframe title="PDF-Vorschau Bautagesbericht" src={pdfPreviewUrl} /></div></div>}
     {auditOpen && <div className="daily-modal" role="dialog" aria-modal="true"><div className="daily-audit"><div className="daily-modal-head"><b>Änderungsverlauf</b><button className="hbz-btn btn-small" onClick={() => setAuditOpen(false)}>Schließen</button></div>{!auditRows.length ? <p>Keine Änderungen protokolliert.</p> : auditRows.map((row) => <article key={row.id}><b>{new Date(row.changed_at).toLocaleString("de-AT")} · {row.changed_by_name || row.changed_by || "Unbekannt"}</b><span>{row.action}{row.reason ? ` – ${row.reason}` : ""}</span></article>)}</div></div>}
-    <style>{`.daily-head{display:flex;justify-content:space-between;align-items:end;gap:16px;margin-bottom:16px}.daily-head h1{margin:2px 0}.daily-head p{margin:0;color:#6f6259}.daily-date-nav{display:flex;align-items:end;gap:7px}.daily-draft-note{font-size:12px;color:#39734a;margin:-6px 0 10px}.daily-reminder{display:flex;justify-content:space-between;background:#fff1cd;border-color:#e8bf59;color:#654800}.daily-week{margin-bottom:16px}.daily-week-head{display:flex;align-items:center;justify-content:space-between;gap:8px}.daily-week-days{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-top:10px}.daily-week-day{border:1px solid #eadfd7;border-radius:9px;background:#fff;padding:8px;display:grid;gap:3px;text-align:left;cursor:pointer}.daily-week-day.active{border-color:#7b4a2d;box-shadow:0 0 0 2px #ead8cc}.daily-week-day span,.daily-week-day small{font-size:11px}.daily-week-day .done{color:#28743a}.daily-week-day .draft{color:#9b6600}.daily-week-day .missing{color:#a12626;font-weight:700}.daily-week-day .empty{color:#8a817b}.daily-layout{display:grid;grid-template-columns:300px minmax(0,1fr);gap:16px}.daily-list{align-self:start}.daily-filters{display:grid;gap:7px;margin-top:10px}.daily-list-item{display:flex;flex-direction:column;width:100%;text-align:left;gap:4px;margin-top:8px;padding:10px;border:1px solid #eadfd7;border-radius:9px;background:#fff;cursor:pointer}.daily-list-item span{font-size:12px;color:#6f6259}.daily-form fieldset{border:0;padding:0;margin:0}.daily-form-head{display:flex;justify-content:space-between;align-items:center}.daily-form-head h2{margin:0}.daily-empty{text-align:center;padding:60px 15px}.daily-employee{display:flex;justify-content:space-between;border-bottom:1px solid #eee;padding:8px}.daily-upload{display:inline-flex!important;flex-direction:row!important}.daily-upload input{display:none}.daily-photos{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px}.daily-photos figure{position:relative;margin:0}.daily-photos img{width:100%;height:120px;object-fit:cover;border-radius:8px}.daily-photos input{width:100%;box-sizing:border-box}.daily-photos button{position:absolute;right:4px;top:4px;border:0;border-radius:50%;background:#9f2f24;color:#fff;width:28px;height:28px}.daily-modal{position:fixed;inset:0;z-index:1600;background:#0009;display:flex;align-items:center;justify-content:center;padding:20px}.daily-pdf,.daily-audit{width:min(1000px,100%);height:min(90vh,850px);background:#fff;border-radius:12px;padding:12px;box-sizing:border-box}.daily-pdf>div,.daily-modal-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}.daily-pdf iframe{width:100%;height:calc(100% - 44px);border:0}.daily-audit{height:auto;max-height:85vh;overflow:auto;max-width:760px}.daily-audit article{display:grid;gap:4px;padding:10px 0;border-bottom:1px solid #eadfd7}.daily-audit span{color:#6f6259}@media(max-width:800px){.daily-head{align-items:stretch;flex-direction:column}.daily-date-nav{align-items:end}.daily-date-nav label{flex:1}.daily-week-days{display:flex;overflow:auto;padding-bottom:3px}.daily-week-day{min-width:118px}.daily-layout{grid-template-columns:1fr}.daily-list{max-height:300px;overflow:auto}.daily-form{padding:13px}.daily-form-head{align-items:flex-start;gap:8px;flex-wrap:wrap}.daily-reminder{display:grid}.daily-upload{width:100%;justify-content:center;min-height:44px}.daily-photos{grid-template-columns:repeat(2,minmax(0,1fr))}.daily-pdf{height:95dvh;padding:7px;border-radius:10px}.daily-modal{padding:8px}.daily-page .regie-actions{position:sticky;bottom:6px;z-index:35;background:rgba(248,244,240,.96);padding:9px calc(9px + env(safe-area-inset-right)) calc(9px + env(safe-area-inset-bottom)) calc(9px + env(safe-area-inset-left));border-radius:12px;box-shadow:0 -8px 24px rgba(70,43,29,.12);max-height:42vh;overflow:auto}.daily-page .regie-actions .hbz-btn{min-height:44px;flex:1 1 150px}.daily-page textarea{font-size:16px}}@media(max-width:430px){.daily-date-nav{display:grid;grid-template-columns:44px 1fr 44px}.daily-photos{grid-template-columns:1fr}.daily-employee{align-items:flex-start;gap:8px;flex-direction:column}.daily-page .regie-actions .hbz-btn{flex-basis:100%}}`}</style>
+    <style>{`.daily-archive{margin-bottom:16px}.daily-archive-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:10px}.daily-archive-head small{display:block;margin-top:2px;color:#75675d;font-size:12px;font-weight:800}.daily-bulk-actions{display:flex;gap:7px;align-items:center;flex-wrap:wrap}.daily-bulk-actions span{margin-right:4px;color:#5a3a23;font-size:12px;font-weight:850}.daily-bulk-actions b{font-size:18px}.daily-archive-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px}.daily-archive-project{border:1px solid #eadfd7;border-radius:12px;background:#fffaf5;padding:10px}.daily-archive-project-head{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;color:#5a3a23}.daily-archive-row{display:grid;grid-template-columns:32px minmax(0,1fr);gap:7px;align-items:stretch;margin-top:7px}.daily-archive-row label{display:flex;align-items:center;justify-content:center;border:1px solid #eadfd7;border-radius:9px;background:#fff}.daily-archive-row input{width:18px;height:18px;accent-color:#7b4a2d}.daily-archive-row button{display:flex;flex-direction:column;align-items:flex-start;gap:2px;border:1px solid #eadfd7;border-radius:9px;background:#fff;padding:8px;text-align:left;cursor:pointer}.daily-archive-row.selected button{border-color:#7b4a2d;background:#fff8f2}.daily-archive-row span{font-size:12px;color:#6f6259}.daily-head{display:flex;justify-content:space-between;align-items:end;gap:16px;margin-bottom:16px}.daily-head h1{margin:2px 0}.daily-head p{margin:0;color:#6f6259}.daily-date-nav{display:flex;align-items:end;gap:7px}.daily-draft-note{font-size:12px;color:#39734a;margin:-6px 0 10px}.daily-reminder{display:flex;justify-content:space-between;background:#fff1cd;border-color:#e8bf59;color:#654800}.daily-week{margin-bottom:16px}.daily-week-head{display:flex;align-items:center;justify-content:space-between;gap:8px}.daily-week-days{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-top:10px}.daily-week-day{border:1px solid #eadfd7;border-radius:9px;background:#fff;padding:8px;display:grid;gap:3px;text-align:left;cursor:pointer}.daily-week-day.active{border-color:#7b4a2d;box-shadow:0 0 0 2px #ead8cc}.daily-week-day span,.daily-week-day small{font-size:11px}.daily-week-day .done{color:#28743a}.daily-week-day .draft{color:#9b6600}.daily-week-day .missing{color:#a12626;font-weight:700}.daily-week-day .empty{color:#8a817b}.daily-layout{display:grid;grid-template-columns:300px minmax(0,1fr);gap:16px}.daily-list{align-self:start}.daily-filters{display:grid;gap:7px;margin-top:10px}.daily-list-item{display:flex;flex-direction:column;width:100%;text-align:left;gap:4px;margin-top:8px;padding:10px;border:1px solid #eadfd7;border-radius:9px;background:#fff;cursor:pointer}.daily-list-item span{font-size:12px;color:#6f6259}.daily-form fieldset{border:0;padding:0;margin:0}.daily-form-head{display:flex;justify-content:space-between;align-items:center}.daily-form-head h2{margin:0}.daily-empty{text-align:center;padding:60px 15px}.daily-employee{display:flex;justify-content:space-between;border-bottom:1px solid #eee;padding:8px}.daily-upload{display:inline-flex!important;flex-direction:row!important}.daily-upload input{display:none}.daily-photos{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px}.daily-photos figure{position:relative;margin:0}.daily-photos img{width:100%;height:120px;object-fit:cover;border-radius:8px}.daily-photos input{width:100%;box-sizing:border-box}.daily-photos button{position:absolute;right:4px;top:4px;border:0;border-radius:50%;background:#9f2f24;color:#fff;width:28px;height:28px}.daily-modal{position:fixed;inset:0;z-index:1600;background:#0009;display:flex;align-items:center;justify-content:center;padding:20px}.daily-pdf,.daily-audit{width:min(1000px,100%);height:min(90vh,850px);background:#fff;border-radius:12px;padding:12px;box-sizing:border-box}.daily-pdf>div,.daily-modal-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}.daily-pdf iframe{width:100%;height:calc(100% - 44px);border:0}.daily-audit{height:auto;max-height:85vh;overflow:auto;max-width:760px}.daily-audit article{display:grid;gap:4px;padding:10px 0;border-bottom:1px solid #eadfd7}.daily-audit span{color:#6f6259}@media(max-width:800px){.daily-head{align-items:stretch;flex-direction:column}.daily-date-nav{align-items:end}.daily-date-nav label{flex:1}.daily-week-days{display:flex;overflow:auto;padding-bottom:3px}.daily-week-day{min-width:118px}.daily-layout{grid-template-columns:1fr}.daily-list{max-height:300px;overflow:auto}.daily-form{padding:13px}.daily-form-head{align-items:flex-start;gap:8px;flex-wrap:wrap}.daily-reminder{display:grid}.daily-upload{width:100%;justify-content:center;min-height:44px}.daily-photos{grid-template-columns:repeat(2,minmax(0,1fr))}.daily-pdf{height:95dvh;padding:7px;border-radius:10px}.daily-modal{padding:8px}.daily-page .regie-actions{position:sticky;bottom:6px;z-index:35;background:rgba(248,244,240,.96);padding:9px calc(9px + env(safe-area-inset-right)) calc(9px + env(safe-area-inset-bottom)) calc(9px + env(safe-area-inset-left));border-radius:12px;box-shadow:0 -8px 24px rgba(70,43,29,.12);max-height:42vh;overflow:auto}.daily-page .regie-actions .hbz-btn{min-height:44px;flex:1 1 150px}.daily-page textarea{font-size:16px}}@media(max-width:430px){.daily-date-nav{display:grid;grid-template-columns:44px 1fr 44px}.daily-photos{grid-template-columns:1fr}.daily-employee{align-items:flex-start;gap:8px;flex-direction:column}.daily-page .regie-actions .hbz-btn{flex-basis:100%}}`}</style>
   </div>;
 }
