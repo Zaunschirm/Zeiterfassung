@@ -1,0 +1,627 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Lagererfassung</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div>
+          <p class="eyebrow">Lager</p>
+          <h1>Material & Befestigung</h1>
+        </div>
+
+        <nav class="nav-tabs" aria-label="Ansichten">
+          <button class="nav-tab active" data-view="inventory" type="button">Befestigungsmittel</button>
+          <button class="nav-tab" data-view="wood" type="button">Holz</button>
+          <button class="nav-tab" data-view="movement" type="button">Buchen</button>
+          <button class="nav-tab" data-view="history" type="button">Verlauf</button>
+        </nav>
+
+        <div class="summary-panel">
+          <span>Artikel gesamt</span>
+          <strong id="totalItems">0</strong>
+          <span>Unter Mindestbestand</span>
+          <strong id="lowItems">0</strong>
+        </div>
+      </aside>
+
+      <main class="workspace">
+        <section class="toolbar">
+          <div class="search-wrap">
+            <label for="searchInput">Suche</label>
+            <input id="searchInput" type="search" placeholder="Artikel, Nummer, QR-Code..." />
+          </div>
+          <div class="toolbar-actions">
+            <button id="scanSearchBtn" class="secondary" type="button">QR scannen</button>
+            <button id="resetInventoryBtn" class="secondary" type="button">Liste neu aufbauen</button>
+            <button id="importCatalogBtn" class="secondary" type="button">Katalog als Vorlage laden</button>
+            <button id="qrLabelsBtn" class="secondary" type="button">QR-Etiketten</button>
+            <button id="exportCsvBtn" class="secondary" type="button">CSV Export</button>
+            <label class="file-button">
+              CSV Import
+              <input id="importCsvInput" type="file" accept=".csv,text/csv" />
+            </label>
+          </div>
+        </section>
+
+        <section class="view active" id="inventoryView">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Befestigungsmittel</p>
+              <h2>Artikel verwalten</h2>
+            </div>
+            <button id="newItemBtn" type="button">Neuer Artikel</button>
+          </div>
+
+          <form id="itemForm" class="item-form hidden" autocomplete="off">
+            <input type="hidden" id="itemId" />
+            <div class="form-grid">
+              <label>
+                Artikelname
+                <input id="itemName" required placeholder="z. B. Spanplattenschraube TX20" />
+              </label>
+              <label>
+                Kürzel
+                <input id="itemShortCode" placeholder="z. B. VG SK 8x180" />
+              </label>
+              <label>
+                Artikelnummer
+                <input id="itemSku" placeholder="z. B. BFS-0040" />
+              </label>
+              <label>
+                QR-/Barcode
+                <div class="input-action">
+                  <input id="itemCode" placeholder="Code eingeben oder scannen" />
+                  <button id="scanItemCodeBtn" class="secondary" type="button">Scan</button>
+                </div>
+              </label>
+              <label>
+                Kategorie
+                <select id="itemCategory">
+                  <option>Material</option>
+                  <option>Befestigungsmittel</option>
+                  <option>Werkzeug</option>
+                  <option>Verbrauchsmaterial</option>
+                </select>
+              </label>
+              <label>
+                Unterkategorie
+                <select id="itemSubcategory">
+                  <option>Terrassenschrauben</option>
+                  <option>Holzbauschrauben Senkkopf</option>
+                  <option>Holzbauschrauben Tellerkopf</option>
+                  <option>Vollgewindeschrauben</option>
+                  <option>Dämmplattenschrauben</option>
+                  <option>Anker / Betonschrauben</option>
+                  <option>Nägel / Klammern</option>
+                  <option>Verbinder / Winkel</option>
+                  <option>Kleber / Bänder</option>
+                  <option>Bahnen / Folien</option>
+                  <option>Werkzeug / Ersatzteil</option>
+                  <option>Sonstiges</option>
+                </select>
+              </label>
+              <label>
+                Einheit
+                <select id="itemUnit">
+                  <option>Stk</option>
+                  <option>Pkg</option>
+                  <option>m</option>
+                  <option>m2</option>
+                  <option>kg</option>
+                  <option>l</option>
+                </select>
+              </label>
+              <label>
+                Durchmesser mm
+                <input id="itemDiameter" inputmode="decimal" placeholder="z. B. 6" />
+              </label>
+              <label>
+                Länge mm
+                <input id="itemLength" inputmode="numeric" placeholder="z. B. 60" />
+              </label>
+              <label>
+                Bestand
+                <input id="itemQuantity" type="number" min="0" step="0.01" required />
+              </label>
+              <label>
+                Mindestbestand
+                <input id="itemMinimum" type="number" min="0" step="0.01" required />
+              </label>
+              <label class="price-only">
+                Listenpreis
+                <input id="itemListPrice" inputmode="decimal" placeholder="z. B. 12,79" />
+              </label>
+              <label class="price-only">
+                Einkaufspreis
+                <input id="itemPurchasePrice" inputmode="decimal" placeholder="z. B. 3,84" />
+              </label>
+              <label class="price-only">
+                Rabatt %
+                <input id="itemDiscount" inputmode="decimal" placeholder="z. B. 70,0" />
+              </label>
+              <label>
+                Lieferant
+                <input id="itemSupplier" placeholder="z. B. Würth" />
+              </label>
+            </div>
+            <label>
+              Notiz
+              <textarea id="itemNote" rows="2" placeholder="Größe, Qualität, Einsatzbereich..."></textarea>
+            </label>
+            <label class="check-row">
+              <input id="itemListed" type="checkbox" />
+              In Befestigungsmittel fuehren
+            </label>
+            <div class="form-actions">
+              <button type="submit">Speichern</button>
+              <button id="cancelItemBtn" class="secondary" type="button">Abbrechen</button>
+            </div>
+          </form>
+
+          <section class="filter-panel" aria-label="Befestigungsmittel-Filter">
+            <div class="filter-grid">
+              <label>
+                Kategorie
+                <select id="categoryFilter">
+                  <option value="all">Alle Kategorien</option>
+                </select>
+              </label>
+              <label>
+                Unterkategorie
+                <select id="subcategoryFilter">
+                  <option value="all">Alle Unterkategorien</option>
+                </select>
+              </label>
+              <label>
+                Durchmesser
+                <select id="diameterFilter">
+                  <option value="all">Alle Durchmesser</option>
+                </select>
+              </label>
+              <label>
+                Länge
+                <select id="lengthFilter">
+                  <option value="all">Alle Längen</option>
+                </select>
+              </label>
+              <label>
+                Lieferant
+                <select id="supplierFilter">
+                  <option value="all">Alle Lieferanten</option>
+                </select>
+              </label>
+              <label>
+                Einheit
+                <select id="unitFilter">
+                  <option value="all">Alle Einheiten</option>
+                </select>
+              </label>
+              <label>
+                Sortieren
+                <select id="sortSelect">
+                  <option value="name">Name A-Z</option>
+                  <option value="sku">Artikelnummer</option>
+                  <option value="category">Kategorie</option>
+                  <option value="subcategory">Unterkategorie</option>
+                  <option value="diameter">Durchmesser</option>
+                  <option value="length">Länge</option>
+                  <option value="quantityDesc">Bestand hoch</option>
+                  <option value="quantityAsc">Bestand niedrig</option>
+                </select>
+              </label>
+            </div>
+            <div class="quick-filter-row">
+              <button class="quick-filter active" data-quick-filter="all" type="button">Alle</button>
+              <button class="quick-filter" data-quick-filter="schrauben" type="button">Schrauben</button>
+              <button class="quick-filter" data-quick-filter="naegel" type="button">Nägel/Klammern</button>
+              <button class="quick-filter" data-quick-filter="bahnen" type="button">Bahnen/Folien</button>
+              <button class="quick-filter" data-quick-filter="kleber" type="button">Kleber/Bänder</button>
+              <button class="quick-filter" data-quick-filter="verbinder" type="button">Verbinder/Anker</button>
+            </div>
+            <div class="screw-filter-panel" id="screwFilterPanel">
+              <div class="screw-filter-row">
+                <span>Gewinde</span>
+                <button class="screw-filter active" data-screw-filter="thread" data-screw-value="all" type="button">Alle</button>
+                <button class="screw-filter" data-screw-filter="thread" data-screw-value="VG" type="button">VG</button>
+                <button class="screw-filter" data-screw-filter="thread" data-screw-value="TG" type="button">TG</button>
+              </div>
+              <div class="screw-filter-row">
+                <span>Kopf</span>
+                <button class="screw-filter active" data-screw-filter="head" data-screw-value="all" type="button">Alle</button>
+                <button class="screw-filter" data-screw-filter="head" data-screw-value="SK" type="button">SK</button>
+                <button class="screw-filter" data-screw-filter="head" data-screw-value="TK" type="button">TK</button>
+              </div>
+              <div class="screw-filter-row" id="screwDiameterButtons">
+                <span>Ø</span>
+              </div>
+              <div class="screw-filter-row" id="screwLengthButtons">
+                <span>Länge</span>
+              </div>
+              <span>Schrauben</span>
+              <button class="sub-filter" data-subcategory-filter="Holzbauschrauben Senkkopf" type="button">Senkkopf</button>
+              <button class="sub-filter" data-subcategory-filter="Holzbauschrauben Tellerkopf" type="button">Tellerkopf</button>
+              <button class="sub-filter" data-subcategory-filter="Terrassenschrauben" type="button">Terrasse</button>
+              <button class="sub-filter" data-subcategory-filter="Vollgewindeschrauben" type="button">Vollgewinde</button>
+              <button class="sub-filter" data-subcategory-filter="DÃ¤mmplattenschrauben" type="button">DÃ¤mmplatten</button>
+            </div>
+            <div class="filter-status">
+              <strong id="visibleItems">0</strong>
+              <span>Artikel sichtbar</span>
+              <label class="toggle-row">
+                <input id="showBackgroundItems" type="checkbox" />
+                Hintergrundartikel anzeigen
+              </label>
+              <button id="resetFiltersBtn" class="secondary" type="button">Filter zurücksetzen</button>
+            </div>
+          </section>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Kürzel</th>
+                  <th>Gefuehrt</th>
+                  <th>Artikel</th>
+                  <th>Kategorie</th>
+                  <th>Unterkategorie</th>
+                  <th>Abmessung</th>
+                  <th>Bestand</th>
+                  <th>Mindestbestand</th>
+                  <th class="price-only">Preis</th>
+                  <th>Lieferant</th>
+                  <th>Aktion</th>
+                </tr>
+              </thead>
+              <tbody id="inventoryTable"></tbody>
+            </table>
+            <p id="emptyState" class="empty-state hidden">Noch keine Artikel vorhanden.</p>
+          </div>
+        </section>
+
+        <section class="view" id="woodView">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Holzbestand</p>
+              <h2>Holz separat verwalten</h2>
+            </div>
+            <button id="newWoodBtn" type="button">Neuer Holzposten</button>
+          </div>
+
+          <div class="wood-summary">
+            <article>
+              <span>Holzposten</span>
+              <strong id="totalWoodItems">0</strong>
+            </article>
+            <article>
+              <span>Unter Mindestbestand</span>
+              <strong id="lowWoodItems">0</strong>
+            </article>
+            <article>
+              <span>Gesamt m3</span>
+              <strong id="woodVolumeTotal">0</strong>
+            </article>
+          </div>
+
+          <form id="woodForm" class="item-form hidden" autocomplete="off">
+            <input type="hidden" id="woodId" />
+            <div class="form-grid">
+              <label>
+                Holzart
+                <select id="woodSpecies">
+                  <option>Fichte</option>
+                  <option>Tanne</option>
+                  <option>Laerche</option>
+                  <option>Thermo</option>
+                  <option>Sonstiges</option>
+                </select>
+              </label>
+              <label>
+                OG
+                <select id="woodGroup">
+                  <option>Kantholz</option>
+                  <option>BSH</option>
+                  <option>Platten</option>
+                  <option>Daemmungen</option>
+                  <option>Hobelware</option>
+                  <option>Sonstiges</option>
+                </select>
+              </label>
+              <label>
+                UG
+                <select id="woodSubgroup"></select>
+              </label>
+              <label>
+                Artikel / Bezeichnung
+                <input id="woodName" required placeholder="z. B. KVH, BSH, OSB, Pavatex" />
+              </label>
+              <label>
+                Qualitaet
+                <input id="woodQuality" placeholder="z. B. C24, Sicht, rau" />
+              </label>
+              <label>
+                Breite (cm)
+                <input id="woodWidth" inputmode="decimal" placeholder="z. B. 12" />
+              </label>
+              <label>
+                Hoehe (cm)
+                <input id="woodThickness" inputmode="decimal" placeholder="z. B. 6" />
+              </label>
+              <label>
+                Laenge (cm)
+                <input id="woodLength" inputmode="decimal" placeholder="z. B. 500" />
+              </label>
+              <label>
+                Stueck
+                <input id="woodPieces" type="number" min="0" step="1" required />
+              </label>
+              <label>
+                Mindestbestand
+                <input id="woodMinimum" type="number" min="0" step="1" required />
+              </label>
+              <label>
+                Einheit
+                <select id="woodUnit">
+                  <option>Stk</option>
+                  <option>lfm</option>
+                  <option>m3</option>
+                  <option>m2</option>
+                </select>
+              </label>
+              <label>
+                Lieferant
+                <input id="woodSupplier" placeholder="z. B. Sägewerk, Holzhandel" />
+              </label>
+            </div>
+            <label>
+              Notiz
+              <textarea id="woodNote" rows="2" placeholder="z. B. trocken, gehobelt, fuer Dachstuhl"></textarea>
+            </label>
+            <div class="form-actions">
+              <button type="submit">Speichern</button>
+              <button id="cancelWoodBtn" class="secondary" type="button">Abbrechen</button>
+            </div>
+          </form>
+
+          <section class="filter-panel wood-filter-panel" aria-label="Holzfilter">
+            <div class="filter-grid">
+              <label>
+                Holzart
+                <select id="woodSpeciesFilter">
+                  <option value="all">Alle Holzarten</option>
+                </select>
+              </label>
+              <label>
+                OG
+                <select id="woodGroupFilter">
+                  <option value="all">Alle OG</option>
+                </select>
+              </label>
+              <label>
+                UG
+                <select id="woodSubgroupFilter">
+                  <option value="all">Alle UG</option>
+                </select>
+              </label>
+              <label>
+                Breite (cm)
+                <select id="woodWidthFilter">
+                  <option value="all">Alle Breiten</option>
+                </select>
+              </label>
+              <label>
+                Hoehe (cm)
+                <select id="woodThicknessFilter">
+                  <option value="all">Alle Hoehen</option>
+                </select>
+              </label>
+              <label>
+                Laenge (cm)
+                <select id="woodLengthFilter">
+                  <option value="all">Alle Laengen</option>
+                </select>
+              </label>
+              <label>
+                Lieferant
+                <select id="woodSupplierFilter">
+                  <option value="all">Alle Lieferanten</option>
+                </select>
+              </label>
+              <label>
+                Sortieren
+                <select id="woodSortSelect">
+                  <option value="group">Holzart / OG / UG</option>
+                  <option value="name">Name A-Z</option>
+                  <option value="width">Breite</option>
+                  <option value="thickness">Hoehe</option>
+                  <option value="length">Laenge</option>
+                  <option value="stock">Bestand</option>
+                </select>
+              </label>
+            </div>
+            <div class="quick-filter-row" aria-label="Holz Schnellfilter">
+              <button class="quick-filter wood-quick-filter active" data-wood-quick-filter="all" type="button">Alle</button>
+              <button class="quick-filter wood-quick-filter" data-wood-quick-filter="Kantholz" type="button">Kantholz</button>
+              <button class="quick-filter wood-quick-filter" data-wood-quick-filter="BSH" type="button">BSH</button>
+              <button class="quick-filter wood-quick-filter" data-wood-quick-filter="Platten" type="button">Platten</button>
+              <button class="quick-filter wood-quick-filter" data-wood-quick-filter="Daemmungen" type="button">Daemmungen</button>
+              <button class="quick-filter wood-quick-filter" data-wood-quick-filter="Hobelware" type="button">Hobelware</button>
+            </div>
+            <div class="guided-filter-panel" id="woodGuidedFilters" aria-label="Gefuehrte Holzfilter"></div>
+          </section>
+
+          <div class="filter-status wood-status">
+            <strong id="visibleWoodItems">0</strong>
+            <span>Holzposten sichtbar</span>
+            <label class="toggle-row">
+              <input id="showBackgroundWoodItems" type="checkbox" />
+              Hintergrund-Holz anzeigen
+            </label>
+            <button id="resetWoodFiltersBtn" class="secondary" type="button">Holzfilter zuruecksetzen</button>
+          </div>
+
+          <div class="table-wrap">
+            <table class="wood-table">
+              <thead>
+                <tr>
+                  <th>Holzart</th>
+                  <th>OG</th>
+                  <th>UG</th>
+                  <th>Holz</th>
+                  <th>Qualitaet</th>
+                  <th><button class="sort-header wood-sort-trigger" data-wood-sort="width" type="button">Breite (cm) <span data-sort-indicator="width"></span></button></th>
+                  <th><button class="sort-header wood-sort-trigger" data-wood-sort="thickness" type="button">Hoehe (cm) <span data-sort-indicator="thickness"></span></button></th>
+                  <th><button class="sort-header wood-sort-trigger" data-wood-sort="length" type="button">Laenge (cm) <span data-sort-indicator="length"></span></button></th>
+                  <th><button class="sort-header wood-sort-trigger" data-wood-sort="stock" type="button">Stueck <span data-sort-indicator="stock"></span></button></th>
+                  <th>Mindestbestand</th>
+                  <th>lfm</th>
+                  <th>m3</th>
+                  <th>Lieferant</th>
+                  <th>Aktion</th>
+                </tr>
+              </thead>
+              <tbody id="woodTable"></tbody>
+            </table>
+            <p id="woodEmptyState" class="empty-state hidden">Noch kein Holzbestand vorhanden.</p>
+          </div>
+        </section>
+
+        <section class="view" id="movementView">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Schnellbuchung</p>
+              <h2>Wareneingang oder Verbrauch erfassen</h2>
+            </div>
+          </div>
+
+          <form id="movementForm" class="movement-form" autocomplete="off">
+            <label>
+              Artikel
+              <div class="input-action">
+                <select id="movementItem" required></select>
+                <button id="scanMovementBtn" class="secondary" type="button">Scan</button>
+              </div>
+            </label>
+            <label>
+              Buchungsart
+              <select id="movementType">
+                <option value="in">Zugang</option>
+                <option value="out">Abgang</option>
+              </select>
+            </label>
+            <label>
+              Menge
+              <input id="movementQuantity" type="number" min="0.01" step="0.01" required />
+            </label>
+            <label>
+              Grund / Projekt
+              <input id="movementReason" placeholder="z. B. Baustelle, Einkauf, Korrektur" />
+            </label>
+            <button type="submit">Buchung speichern</button>
+          </form>
+        </section>
+
+        <section class="view" id="historyView">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Protokoll</p>
+              <h2>Letzte Buchungen</h2>
+            </div>
+            <button id="clearHistoryBtn" class="secondary danger" type="button">Verlauf leeren</button>
+          </div>
+          <div id="historyList" class="history-list"></div>
+        </section>
+      </main>
+    </div>
+
+    <dialog id="scannerDialog" class="scanner-dialog">
+      <div class="scanner-head">
+        <div>
+          <p class="eyebrow">QR / Barcode</p>
+          <h2 id="scannerTitle">Code scannen</h2>
+        </div>
+        <button id="closeScannerBtn" class="secondary" type="button">Schliessen</button>
+      </div>
+      <div class="scanner-stage">
+        <video id="scannerVideo" playsinline muted></video>
+        <div class="scanner-frame" aria-hidden="true"></div>
+      </div>
+      <p id="scannerStatus" class="scanner-status">Kamera wird gestartet...</p>
+      <div class="manual-code">
+        <label>
+          Code manuell eingeben
+          <input id="manualCodeInput" placeholder="QR- oder Barcode-Wert" />
+        </label>
+        <button id="useManualCodeBtn" type="button">Uebernehmen</button>
+      </div>
+    </dialog>
+
+    <dialog id="correctionDialog" class="correction-dialog">
+      <form id="correctionForm" method="dialog">
+        <div class="scanner-head">
+          <div>
+            <p class="eyebrow">Inventur / Korrektur</p>
+            <h2 id="correctionTitle">Bestand korrigieren</h2>
+          </div>
+          <button id="cancelCorrectionBtn" class="secondary" type="button">Schliessen</button>
+        </div>
+        <input id="correctionItemId" type="hidden" />
+        <div class="correction-summary">
+          <span>Aktueller Bestand</span>
+          <strong id="correctionCurrent">0</strong>
+          <span>Differenz</span>
+          <strong id="correctionDifference">0</strong>
+        </div>
+        <label>
+          Gezaehlter Bestand
+          <input id="correctionQuantity" type="number" min="0" step="0.01" required />
+        </label>
+        <label>
+          Grund
+          <select id="correctionReason">
+            <option>Inventur</option>
+            <option>Fehlbestand</option>
+            <option>Nachtrag</option>
+            <option>Falsch gebucht</option>
+          </select>
+        </label>
+        <label>
+          Notiz
+          <textarea id="correctionNote" rows="2" placeholder="z. B. Inventur Lager, Nachzaehlung, Verpackung geoeffnet"></textarea>
+        </label>
+        <div class="form-actions">
+          <button type="submit">Bestand korrigieren</button>
+          <button id="cancelCorrectionBtnBottom" class="secondary" type="button">Abbrechen</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="qrLabelsDialog" class="qr-labels-dialog">
+      <div class="scanner-head">
+        <div>
+          <p class="eyebrow">QR-Etiketten</p>
+          <h2>Alle QR-Codes</h2>
+        </div>
+        <button id="closeQrLabelsBtn" class="secondary" type="button">Schliessen</button>
+      </div>
+      <div class="qr-label-controls">
+        <label>
+          Auswahl
+          <select id="qrLabelScope">
+            <option value="all">Alle</option>
+            <option value="items">Befestigungsmittel</option>
+            <option value="wood">Holz</option>
+          </select>
+        </label>
+        <button id="printQrLabelsBtn" type="button">Drucken</button>
+      </div>
+      <div id="qrLabelsGrid" class="qr-label-grid"></div>
+    </dialog>
+
+    <script src="app.js"></script>
+  </body>
+</html>

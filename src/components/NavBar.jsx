@@ -23,6 +23,7 @@ export default function NavBar({ onLogout, currentUser, role }) {
     { to: "/arbeitseinteilung", label: "Arbeitseinteilung" },
     { to: "/regieberichte", label: "Regieberichte" },
     { to: "/bautagesberichte", label: "Bautagesberichte" },
+    { to: "/lagerverwaltung", label: "Lagerverwaltung" },
     ...(isAdmin ? [{ to: "/abrechnung", label: "Abrechnung" }] : []),
   ];
 

@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Lagererfassung</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div>
+          <p class="eyebrow">Lager</p>
+          <h1>Material & Befestigung</h1>
+        </div>
+
+        <nav class="nav-tabs" aria-label="Ansichten">
+          <button class="nav-tab active" data-view="inventory" type="button">Bestand</button>
+          <button class="nav-tab" data-view="movement" type="button">Buchen</button>
+          <button class="nav-tab" data-view="history" type="button">Verlauf</button>
+        </nav>
+
+        <div class="summary-panel">
+          <span>Artikel gesamt</span>
+          <strong id="totalItems">0</strong>
+          <span>Unter Mindestbestand</span>
+          <strong id="lowItems">0</strong>
+        </div>
+      </aside>
+
+      <main class="workspace">
+        <section class="toolbar">
+          <div class="search-wrap">
+            <label for="searchInput">Suche</label>
+            <input id="searchInput" type="search" placeholder="Artikel, Nummer, QR-Code, Lagerort..." />
+          </div>
+          <div class="toolbar-actions">
+            <button id="scanSearchBtn" class="secondary" type="button">QR scannen</button>
+            <button id="exportCsvBtn" class="secondary" type="button">CSV Export</button>
+            <label class="file-button">
+              CSV Import
+              <input id="importCsvInput" type="file" accept=".csv,text/csv" />
+            </label>
+          </div>
+        </section>
+
+        <section class="view active" id="inventoryView">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Bestandsliste</p>
+              <h2>Artikel verwalten</h2>
+            </div>
+            <button id="newItemBtn" type="button">Neuer Artikel</button>
+          </div>
+
+          <form id="itemForm" class="item-form hidden" autocomplete="off">
+            <input type="hidden" id="itemId" />
+            <div class="form-grid">
+              <label>
+                Artikelname
+                <input id="itemName" required placeholder="z. B. Spanplattenschraube TX20" />
+              </label>
+              <label>
+                Artikelnummer
+                <input id="itemSku" placeholder="z. B. BFS-0040" />
+              </label>
+              <label>
+                QR-/Barcode
+                <div class="input-action">
+                  <input id="itemCode" placeholder="Code eingeben oder scannen" />
+                  <button id="scanItemCodeBtn" class="secondary" type="button">Scan</button>
+                </div>
+              </label>
+              <label>
+                Kategorie
+                <select id="itemCategory">
+                  <option>Material</option>
+                  <option>Befestigungsmittel</option>
+                  <option>Werkzeug</option>
+                  <option>Verbrauchsmaterial</option>
+                </select>
+              </label>
+              <label>
+                Einheit
+                <select id="itemUnit">
+                  <option>Stk</option>
+                  <option>Pkg</option>
+                  <option>m</option>
+                  <option>m2</option>
+                  <option>kg</option>
+                  <option>l</option>
+                </select>
+              </label>
+              <label>
+                Bestand
+                <input id="itemQuantity" type="number" min="0" step="0.01" required />
+              </label>
+              <label>
+                Mindestbestand
+                <input id="itemMinimum" type="number" min="0" step="0.01" required />
+              </label>
+              <label>
+                Lagerort
+                <input id="itemLocation" placeholder="z. B. Regal A2" />
+              </label>
+              <label>
+                Lieferant
+                <input id="itemSupplier" placeholder="z. B. Würth" />
+              </label>
+            </div>
+            <label>
+              Notiz
+              <textarea id="itemNote" rows="2" placeholder="Größe, Qualität, Einsatzbereich..."></textarea>
+            </label>
+            <div class="form-actions">
+              <button type="submit">Speichern</button>
+              <button id="cancelItemBtn" class="secondary" type="button">Abbrechen</button>
+            </div>
+          </form>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Artikel</th>
+                  <th>Kategorie</th>
+                  <th>Bestand</th>
+                  <th>Mindestbestand</th>
+                  <th>Lagerort</th>
+                  <th>Lieferant</th>
+                  <th>Aktion</th>
+                </tr>
+              </thead>
+              <tbody id="inventoryTable"></tbody>
+            </table>
+            <p id="emptyState" class="empty-state hidden">Noch keine Artikel vorhanden.</p>
+          </div>
+        </section>
+
+        <section class="view" id="movementView">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Schnellbuchung</p>
+              <h2>Wareneingang oder Verbrauch erfassen</h2>
+            </div>
+          </div>
+
+          <form id="movementForm" class="movement-form" autocomplete="off">
+            <label>
+              Artikel
+              <div class="input-action">
+                <select id="movementItem" required></select>
+                <button id="scanMovementBtn" class="secondary" type="button">Scan</button>
+              </div>
+            </label>
+            <label>
+              Buchungsart
+              <select id="movementType">
+                <option value="in">Zugang</option>
+                <option value="out">Abgang</option>
+              </select>
+            </label>
+            <label>
+              Menge
+              <input id="movementQuantity" type="number" min="0.01" step="0.01" required />
+            </label>
+            <label>
+              Grund / Projekt
+              <input id="movementReason" placeholder="z. B. Baustelle, Einkauf, Korrektur" />
+            </label>
+            <button type="submit">Buchung speichern</button>
+          </form>
+        </section>
+
+        <section class="view" id="historyView">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Protokoll</p>
+              <h2>Letzte Buchungen</h2>
+            </div>
+            <button id="clearHistoryBtn" class="secondary danger" type="button">Verlauf leeren</button>
+          </div>
+          <div id="historyList" class="history-list"></div>
+        </section>
+      </main>
+    </div>
+
+    <dialog id="scannerDialog" class="scanner-dialog">
+      <div class="scanner-head">
+        <div>
+          <p class="eyebrow">QR / Barcode</p>
+          <h2 id="scannerTitle">Code scannen</h2>
+        </div>
+        <button id="closeScannerBtn" class="secondary" type="button">Schliessen</button>
+      </div>
+      <div class="scanner-stage">
+        <video id="scannerVideo" playsinline muted></video>
+        <div class="scanner-frame" aria-hidden="true"></div>
+      </div>
+      <p id="scannerStatus" class="scanner-status">Kamera wird gestartet...</p>
+      <div class="manual-code">
+        <label>
+          Code manuell eingeben
+          <input id="manualCodeInput" placeholder="QR- oder Barcode-Wert" />
+        </label>
+        <button id="useManualCodeBtn" type="button">Uebernehmen</button>
+      </div>
+    </dialog>
+
+    <script src="app.js"></script>
+  </body>
+</html>

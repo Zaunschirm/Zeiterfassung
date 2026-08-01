@@ -15,6 +15,7 @@ import RegieReports from "./components/RegieReports.jsx";
 import DailySiteReports from "./components/DailySiteReports.jsx";
 import AdminDashboard from "./components/AdminDashboard.jsx";
 import ProjectBilling from "./components/ProjectBilling.jsx";
+import InventoryLauncher from "./components/InventoryLauncher.jsx";
 
 import { getSession, setSession, clearSession } from "./lib/session";
 import { APP_VERSION } from "./version";
@@ -344,6 +345,7 @@ export default function App() {
                 <Route path="/projektfotos" element={<ProjectPhotos />} />
                 <Route path="/regieberichte" element={<RegieReports />} />
                 <Route path="/bautagesberichte" element={<DailySiteReports />} />
+                <Route path="/lagerverwaltung" element={<InventoryLauncher currentUser={currentUser} role={role} />} />
                 <Route path="/urlaub" element={<VacationEntry currentUser={currentUser} />} />
                 <Route path="/mitarbeiter" element={canManageEmployees ? <EmployeeList /> : <Navigate to="/zeiterfassung" replace />} />
                 <Route path="/" element={<Navigate to={isAdmin ? "/dashboard" : "/zeiterfassung"} replace />} />
