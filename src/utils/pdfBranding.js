@@ -79,21 +79,7 @@ export function addPdfHeader(doc, { title, subtitle = "", rightTop = "" }) {
   doc.setTextColor(...PDF_BRAND.darkBrown);
 }
 
-function addPdfTextWatermark(doc) {
-  const width = doc.internal.pageSize.getWidth();
-  const height = doc.internal.pageSize.getHeight();
-  const centerX = width / 2;
-  const centerY = height / 2 + 90;
-
-  doc.setTextColor(239, 232, 226);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(112);
-  doc.text("HZ", centerX, centerY, { align: "center", angle: -28 });
-  doc.setFontSize(24);
-  doc.text("HOLZBAU ZAUNSCHIRM", centerX, centerY + 56, { align: "center", angle: -28 });
-}
-
-export async function addPdfWatermark(doc, { opacity = 0.16, size = 410, yOffset = -4 } = {}) {
+export async function addPdfWatermark(doc, { opacity = 0.24, size = 470, yOffset = 18 } = {}) {
   const logoDataUrl = await getFadedPdfLogoDataUrl(opacity);
 
   const width = doc.internal.pageSize.getWidth();
@@ -102,7 +88,6 @@ export async function addPdfWatermark(doc, { opacity = 0.16, size = 410, yOffset
   const y = (height - size) / 2 + yOffset;
 
   try {
-    addPdfTextWatermark(doc);
     if (logoDataUrl) doc.addImage(logoDataUrl, "PNG", x, y, size, size, undefined, "FAST");
   } catch (error) {
     console.warn("[pdfBranding] Wasserzeichen konnte nicht eingefügt werden:", error?.message || error);
