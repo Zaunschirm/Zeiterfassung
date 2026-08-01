@@ -16,6 +16,7 @@ import DailySiteReports from "./components/DailySiteReports.jsx";
 import AdminDashboard from "./components/AdminDashboard.jsx";
 import ProjectBilling from "./components/ProjectBilling.jsx";
 import InventoryLauncher from "./components/InventoryLauncher.jsx";
+import AppUpdateNotice from "./components/AppUpdateNotice.jsx";
 
 import { getSession, setSession, clearSession } from "./lib/session";
 import { APP_VERSION } from "./version";
@@ -358,6 +359,7 @@ export default function App() {
             <div>Holzbau Zaunschirm · Zeiterfassung</div>
             <div>Version: {APP_VERSION}</div>
           </footer>
+          <AppUpdateNotice />
         </>
       ) : (
         <Routes>

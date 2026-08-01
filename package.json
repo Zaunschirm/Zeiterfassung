@@ -5,9 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "node scripts/generate-version.mjs && vite build",
     "preview": "vite preview",
-    "vercel-build": "vite build",
+    "vercel-build": "node scripts/generate-version.mjs && vite build",
     "test": "vitest run"
   },
   "dependencies": {

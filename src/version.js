@@ -1,5 +1,4 @@
-// src/version.js
-// Version + Zeitstempel für die Anzeige im Footer
+import { GENERATED_APP_VERSION } from "./generatedVersion";
 
 function buildFallbackVersion() {
   const d = new Date();
@@ -21,10 +20,7 @@ function buildFallbackVersion() {
   );
 }
 
-/**
- * APP_VERSION:
- * - In Produktion: Wert aus VITE_APP_VERSION (z. B. "1.0.3 – 14.11.2025 12:45")
- * - Lokal/ohne Env: "dev JJJJ.MM.TT – hh:mm:ss"
- */
 export const APP_VERSION =
-  import.meta.env.VITE_APP_VERSION || buildFallbackVersion();
+  GENERATED_APP_VERSION && GENERATED_APP_VERSION !== "dev"
+    ? GENERATED_APP_VERSION
+    : import.meta.env.VITE_APP_VERSION || buildFallbackVersion();
