@@ -10,6 +10,12 @@ const weekStartISO = () => {
   d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
   return localISO(d);
 };
+const daysAgoISO = (days) => {
+  const d = new Date();
+  d.setHours(12, 0, 0, 0);
+  d.setDate(d.getDate() - days);
+  return localISO(d);
+};
 const isBadWeather = (row) => row?.bad_weather === true || String(row?.bad_weather).toLowerCase() === "true";
 const isBillingClosed = (record) => record?.is_closed === true || record?.billing_data?.closed === true || record?.billing_data?.workflowStatus === "Abgeschlossen";
 const billedRegieIdsFromRecords = (records = []) => new Set(records.flatMap((record) => Array.isArray(record?.billing_data?.regieBilledIds) ? record.billing_data.regieBilledIds.map(String) : []));
@@ -76,6 +82,7 @@ export default function AdminDashboard() {
     entries: [],
     assignments: [],
     billing: [],
+    projects: [],
     audits: [],
     regieAudits: [],
     dailyAudits: [],
@@ -100,24 +107,26 @@ export default function AdminDashboard() {
       entries,
       assignments,
       billing,
+      projects,
       audits,
       regieAudits,
       dailyAudits,
       billingAudits,
     ] = await Promise.all([
       supabase.from("time_off_requests").select("id,entry_type,employee_id,from_date,to_date,status").eq("status", "pending"),
-      supabase.from("regie_reports").select("id,status,is_archived,report_number,report_date,project_id,project_name").eq("is_archived", false),
+      supabase.from("regie_reports").select("id,status,is_archived,report_number,report_date,project_id,project_name,pdf_path,pdf_saved_at,signature_data,signed_at,created_at").eq("is_archived", false),
       supabase.from("daily_site_reports").select("id,status,report_date,project_id,project_name").gte("report_date", weekStart).lte("report_date", today),
       supabase.from("time_entries").select("id,work_date,project_id,bad_weather,note,za_hours").gte("work_date", weekStart).lte("work_date", today),
       supabase.from("work_assignments").select("id,assignment_date,project_id").gte("assignment_date", weekStart).lte("assignment_date", today),
       supabase.from("project_billing_records").select("project_id,billing_data,is_closed,closed_at"),
+      supabase.from("projects").select("id,name,active,client_name,client_contact").eq("active", true),
       supabase.from("time_entry_audit_log").select("id,changed_at").gte("changed_at", since.toISOString()).limit(500),
       supabase.from("regie_report_audit_log").select("id,changed_at").gte("changed_at", since.toISOString()).limit(500),
       supabase.from("daily_site_report_audit_log").select("id,changed_at").gte("changed_at", since.toISOString()).limit(500),
       supabase.from("project_billing_audit_log").select("id,changed_at").gte("changed_at", since.toISOString()).limit(500),
     ]);
     const dailyAuditError = isMissingOptionalTableError(dailyAudits.error) ? null : dailyAudits.error;
-    const firstError = pending.error || regie.error || daily.error || entries.error || assignments.error || billing.error || audits.error || regieAudits.error || dailyAuditError || billingAudits.error;
+    const firstError = pending.error || regie.error || daily.error || entries.error || assignments.error || billing.error || projects.error || audits.error || regieAudits.error || dailyAuditError || billingAudits.error;
     if (firstError) setError(firstError.message);
     setData({
       pending: pending.data || [],
@@ -126,6 +135,7 @@ export default function AdminDashboard() {
       entries: entries.data || [],
       assignments: assignments.data || [],
       billing: billing.data || [],
+      projects: projects.data || [],
       audits: audits.data || [],
       regieAudits: regieAudits.data || [],
       dailyAudits: dailyAudits.data || [],
@@ -216,15 +226,34 @@ export default function AdminDashboard() {
 
     const missingDailyItems = [...expected].filter(([key]) => !data.daily.some((row) => `${String(row.report_date).slice(0, 10)}__${String(row.project_id)}` === key)).map(([, item]) => item);
     const billedIds = billedRegieIdsFromRecords(data.billing);
-    const signedRegieOpen = data.regie.filter((row) => row.status === "signed" && !billedIds.has(String(row.id)));
-    const signedRegieDone = data.regie.filter((row) => row.status === "signed" && billedIds.has(String(row.id)));
+    const isSignedRegie = (row) => row.status === "signed" || !!row.signature_data || !!row.signed_at;
+    const signedRegieOpen = data.regie.filter((row) => isSignedRegie(row) && !billedIds.has(String(row.id)));
+    const signedRegieDone = data.regie.filter((row) => isSignedRegie(row) && billedIds.has(String(row.id)));
+    const signedRegieWithoutPdf = data.regie.filter((row) => isSignedRegie(row) && !row.pdf_path);
+    const unsignedPreparedRegie = data.regie.filter((row) => row.status === "prepared" && !isSignedRegie(row));
+    const oldDraftLimit = daysAgoISO(3);
+    const oldRegieDrafts = data.regie.filter((row) => row.status === "draft" && String(row.created_at || row.report_date || "").slice(0, 10) <= oldDraftLimit);
+    const oldDailyDrafts = data.daily.filter((row) => row.status !== "completed" && String(row.report_date || "").slice(0, 10) <= oldDraftLimit);
+    const projectsMissingContact = data.projects.filter((project) => !String(project.client_name || "").trim() || !String(project.client_contact || "").trim());
     const billingOpen = data.billing.filter((record) => !isBillingClosed(record));
     const auditTotal = data.audits.length + data.regieAudits.length + data.dailyAudits.length + data.billingAudits.length;
     const priorityItems = [
       ...data.pending.slice(0, 3).map((row) => ({ title: row.entry_type === "za" ? "ZA-Antrag offen" : row.entry_type === "sonderurlaub" ? "Sonderurlaub offen" : "Urlaub offen", detail: `${fmtDate(row.from_date)} bis ${fmtDate(row.to_date)}`, path: "/urlaub", tone: "warning" })),
+      ...signedRegieWithoutPdf.slice(0, 3).map((row) => ({ title: "Regiebericht: PDF noch nicht gespeichert", detail: `${row.report_number || row.id} · ${row.project_name || "ohne Projekt"}`, path: "/regieberichte", tone: "danger" })),
+      ...unsignedPreparedRegie.slice(0, 3).map((row) => ({ title: "Regiebericht wartet auf Unterschrift", detail: `${row.report_number || row.id} · ${row.project_name || "ohne Projekt"}`, path: "/regieberichte", tone: "warning" })),
+      ...oldRegieDrafts.slice(0, 2).map((row) => ({ title: "Alter Regiebericht-Entwurf", detail: `${fmtDate(row.report_date || row.created_at)} · ${row.project_name || "ohne Projekt"}`, path: "/regieberichte", tone: "warning" })),
+      ...projectsMissingContact.slice(0, 2).map((project) => ({ title: "Projekt-Stammdaten fehlen", detail: `${project.name || `Projekt ${project.id}`} · Auftraggeber/Bauleiter prüfen`, path: "/projekte", tone: "purple" })),
       ...signedRegieOpen.slice(0, 3).map((row) => ({ title: "Regiebericht unterfertigt, noch offen", detail: `${row.report_number || row.id} · ${row.project_name || "ohne Projekt"}`, path: "/abrechnung", tone: "blue" })),
       ...missingDailyItems.slice(0, 3).map((row) => ({ title: "Bautagesbericht fehlt", detail: `${fmtDate(row.day)} · Projekt ${row.project}`, path: "/bautagesberichte", tone: "danger" })),
-    ].slice(0, 7);
+    ].slice(0, 9);
+
+    const checkGroups = [
+      { label: "Unterschrift offen", value: unsignedPreparedRegie.length, detail: "bereitgestellte Regieberichte", path: "/regieberichte", tone: "warning" },
+      { label: "PDF fehlt", value: signedRegieWithoutPdf.length, detail: "unterfertigt, aber nicht gespeichert", path: "/regieberichte", tone: "danger" },
+      { label: "Bautagesberichte fehlen", value: missingDailyItems.length, detail: "aus Stunden/Arbeitseinteilung", path: "/bautagesberichte", tone: "danger" },
+      { label: "Alte Entwürfe", value: oldRegieDrafts.length + oldDailyDrafts.length, detail: "älter als 3 Tage", path: "/regieberichte", tone: "warning" },
+      { label: "Projekt-Daten fehlen", value: projectsMissingContact.length, detail: "Auftraggeber/Bauleiter", path: "/projekte", tone: "purple" },
+    ];
 
     return {
       pending: data.pending.length,
@@ -234,12 +263,17 @@ export default function AdminDashboard() {
       regie: data.regie.filter((row) => row.status !== "signed").length,
       signedRegieOpen: signedRegieOpen.length,
       signedRegieDone: signedRegieDone.length,
+      signedRegieWithoutPdf: signedRegieWithoutPdf.length,
+      unsignedPreparedRegie: unsignedPreparedRegie.length,
       dailyDrafts: data.daily.filter((row) => row.status !== "completed").length,
       missingDaily: missingDailyItems.length,
+      oldDrafts: oldRegieDrafts.length + oldDailyDrafts.length,
+      projectsMissingContact: projectsMissingContact.length,
       billingOpen: billingOpen.length,
       billingClosed: data.billing.length - billingOpen.length,
       audits: auditTotal,
       priorityItems,
+      checkGroups,
     };
   }, [data]);
 
@@ -262,6 +296,21 @@ export default function AdminDashboard() {
     {error && <div className="hbz-alert hbz-alert-error">{error}</div>}
     {message && <div className="hbz-alert hbz-alert-success">{message}</div>}
     <section className="dashboard-grid">{cards.map((card) => <button type="button" key={card.label} className={`dashboard-card ${card.tone}`} onClick={() => navigate(card.path)}><span>{card.label}</span><strong>{loading ? "…" : card.value}</strong><small>{card.detail}</small><b>Öffnen →</b></button>)}</section>
+    <section className="hbz-card dashboard-checklist">
+      <div className="dashboard-checklist-head">
+        <div><div className="eyebrow">Was fehlt noch?</div><h2>Prüfpunkte vor Abrechnung</h2></div>
+        <button type="button" className="hbz-btn btn-small" onClick={load} disabled={loading}>{loading ? "Prüfe..." : "Neu prüfen"}</button>
+      </div>
+      <div className="dashboard-check-grid">
+        {summary.checkGroups.map((item) => (
+          <button type="button" key={item.label} className={`dashboard-check-card ${item.tone}`} onClick={() => navigate(item.path)}>
+            <strong>{loading ? "…" : item.value}</strong>
+            <span>{item.label}</span>
+            <small>{item.detail}</small>
+          </button>
+        ))}
+      </div>
+    </section>
     <section className="dashboard-columns">
       <div className="hbz-card dashboard-priority">
         <div className="eyebrow">Chef-Liste</div><h2>Als nächstes prüfen</h2>
@@ -277,6 +326,6 @@ export default function AdminDashboard() {
       <div><div className="eyebrow">Schnellzugriff</div><h2>Was möchtest du prüfen?</h2></div>
       <div><button className="hbz-btn hbz-btn-primary" onClick={() => navigate("/abrechnung")}>Abrechnung</button><button className="hbz-btn" onClick={() => navigate("/monatsuebersicht")}>Lohncheck</button><button className="hbz-btn" onClick={() => navigate("/arbeitseinteilung")}>Arbeitseinteilung</button><button className="hbz-btn" onClick={() => navigate("/projekte")}>Projekte</button></div>
     </section>
-    <style>{`.dashboard-hero{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;margin-bottom:18px}.dashboard-hero h1{margin:3px 0}.dashboard-hero p{margin:0;color:#6f6259}.dashboard-hero-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}.dashboard-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:14px}.dashboard-card{border:1px solid #e4d7cd;border-top:5px solid #7b4a2d;border-radius:13px;background:#fff;padding:18px;text-align:left;display:grid;gap:7px;cursor:pointer;box-shadow:0 10px 28px rgba(75,47,30,.07)}.dashboard-card span{font-weight:800;color:#604735}.dashboard-card strong{font-size:34px;color:#2f2119}.dashboard-card small{color:#74675e;min-height:30px}.dashboard-card b{font-size:12px;color:#7b4a2d}.dashboard-card.warning{border-top-color:#d18a20}.dashboard-card.blue{border-top-color:#397ba8}.dashboard-card.danger{border-top-color:#b94a40}.dashboard-card.green{border-top-color:#438557}.dashboard-card.purple{border-top-color:#7b5aa6}.dashboard-columns{display:grid;grid-template-columns:1.35fr .9fr;gap:14px;margin-top:18px}.dashboard-priority h2{margin:4px 0 12px}.dashboard-priority-row{width:100%;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:3px 12px;align-items:center;border:1px solid #eadfd7;border-left:5px solid #7b4a2d;border-radius:10px;background:#fff;padding:10px 12px;margin-top:8px;text-align:left;cursor:pointer}.dashboard-priority-row span{font-weight:900;color:#3b2a20}.dashboard-priority-row small{color:#6f6259}.dashboard-priority-row b{grid-row:1/3;grid-column:2;color:#7b4a2d;font-size:12px}.dashboard-priority-row.warning{border-left-color:#d18a20}.dashboard-priority-row.blue{border-left-color:#397ba8}.dashboard-priority-row.danger{border-left-color:#b94a40}.dashboard-done-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.dashboard-done-grid div{border:1px solid #eadfd7;border-radius:12px;background:#fbf7f2;padding:14px}.dashboard-done-grid span{display:block;font-size:12px;font-weight:800;color:#6f6259}.dashboard-done-grid b{font-size:28px}.dashboard-actions{margin-top:18px;display:flex;align-items:center;justify-content:space-between;gap:16px}.dashboard-actions h2{margin:3px 0}.dashboard-actions>div:last-child{display:flex;gap:8px;flex-wrap:wrap}@media(max-width:1100px){.dashboard-grid{grid-template-columns:repeat(3,1fr)}.dashboard-columns{grid-template-columns:1fr}}@media(max-width:700px){.dashboard-grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:600px){.dashboard-hero,.dashboard-actions{align-items:stretch;flex-direction:column}.dashboard-hero-actions{display:grid;justify-content:stretch}.dashboard-grid{grid-template-columns:1fr}.dashboard-card{min-height:135px}.dashboard-actions>div:last-child{display:grid}.dashboard-actions .hbz-btn{min-height:46px}}`}</style>
+    <style>{`.dashboard-hero{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;margin-bottom:18px}.dashboard-hero h1{margin:3px 0}.dashboard-hero p{margin:0;color:#6f6259}.dashboard-hero-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}.dashboard-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:14px}.dashboard-card{border:1px solid #e4d7cd;border-top:5px solid #7b4a2d;border-radius:13px;background:#fff;padding:18px;text-align:left;display:grid;gap:7px;cursor:pointer;box-shadow:0 10px 28px rgba(75,47,30,.07)}.dashboard-card span{font-weight:800;color:#604735}.dashboard-card strong{font-size:34px;color:#2f2119}.dashboard-card small{color:#74675e;min-height:30px}.dashboard-card b{font-size:12px;color:#7b4a2d}.dashboard-card.warning{border-top-color:#d18a20}.dashboard-card.blue{border-top-color:#397ba8}.dashboard-card.danger{border-top-color:#b94a40}.dashboard-card.green{border-top-color:#438557}.dashboard-card.purple{border-top-color:#7b5aa6}.dashboard-checklist{margin-top:14px}.dashboard-checklist-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:12px}.dashboard-checklist h2{margin:3px 0 0}.dashboard-check-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}.dashboard-check-card{border:1px solid #eadfd7;border-left:5px solid #7b4a2d;border-radius:13px;background:#fffaf5;padding:12px;text-align:left;display:grid;gap:4px;cursor:pointer}.dashboard-check-card strong{font-size:26px;color:#2f2119}.dashboard-check-card span{font-weight:900;color:#3b2a20}.dashboard-check-card small{color:#6f6259}.dashboard-check-card.warning{border-left-color:#d18a20}.dashboard-check-card.danger{border-left-color:#b94a40}.dashboard-check-card.purple{border-left-color:#7b5aa6}.dashboard-columns{display:grid;grid-template-columns:1.35fr .9fr;gap:14px;margin-top:18px}.dashboard-priority h2{margin:4px 0 12px}.dashboard-priority-row{width:100%;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:3px 12px;align-items:center;border:1px solid #eadfd7;border-left:5px solid #7b4a2d;border-radius:10px;background:#fff;padding:10px 12px;margin-top:8px;text-align:left;cursor:pointer}.dashboard-priority-row span{font-weight:900;color:#3b2a20}.dashboard-priority-row small{color:#6f6259}.dashboard-priority-row b{grid-row:1/3;grid-column:2;color:#7b4a2d;font-size:12px}.dashboard-priority-row.warning{border-left-color:#d18a20}.dashboard-priority-row.blue{border-left-color:#397ba8}.dashboard-priority-row.danger{border-left-color:#b94a40}.dashboard-priority-row.purple{border-left-color:#7b5aa6}.dashboard-done-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.dashboard-done-grid div{border:1px solid #eadfd7;border-radius:12px;background:#fbf7f2;padding:14px}.dashboard-done-grid span{display:block;font-size:12px;font-weight:800;color:#6f6259}.dashboard-done-grid b{font-size:28px}.dashboard-actions{margin-top:18px;display:flex;align-items:center;justify-content:space-between;gap:16px}.dashboard-actions h2{margin:3px 0}.dashboard-actions>div:last-child{display:flex;gap:8px;flex-wrap:wrap}@media(max-width:1100px){.dashboard-grid{grid-template-columns:repeat(3,1fr)}.dashboard-check-grid{grid-template-columns:repeat(3,1fr)}.dashboard-columns{grid-template-columns:1fr}}@media(max-width:700px){.dashboard-grid,.dashboard-check-grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:600px){.dashboard-hero,.dashboard-actions,.dashboard-checklist-head{align-items:stretch;flex-direction:column}.dashboard-hero-actions{display:grid;justify-content:stretch}.dashboard-grid,.dashboard-check-grid{grid-template-columns:1fr}.dashboard-card{min-height:135px}.dashboard-actions>div:last-child{display:grid}.dashboard-actions .hbz-btn{min-height:46px}}`}</style>
   </div>;
 }
