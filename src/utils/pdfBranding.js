@@ -35,7 +35,8 @@ async function getFadedPdfLogoDataUrl(opacity = 0.10) {
   const logoDataUrl = await getPdfLogoDataUrl();
   if (!logoDataUrl) return "";
 
-  const cacheKey = String(opacity);
+  const effectiveOpacity = Math.max(0.70, Number(opacity) || 0);
+  const cacheKey = String(effectiveOpacity);
   if (fadedLogoCache.has(cacheKey)) return fadedLogoCache.get(cacheKey);
 
   const fadedPromise = new Promise((resolve) => {
@@ -52,7 +53,7 @@ async function getFadedPdfLogoDataUrl(opacity = 0.10) {
         canvas.height = image.naturalHeight || image.height;
         const context = canvas.getContext("2d");
         context.clearRect(0, 0, canvas.width, canvas.height);
-        context.globalAlpha = opacity;
+        context.globalAlpha = effectiveOpacity;
         context.drawImage(image, 0, 0, canvas.width, canvas.height);
         resolve(canvas.toDataURL("image/png"));
       } catch (error) {
@@ -79,7 +80,7 @@ export function addPdfHeader(doc, { title, subtitle = "", rightTop = "" }) {
   doc.setTextColor(...PDF_BRAND.darkBrown);
 }
 
-export async function addPdfWatermark(doc, { opacity = 0.24, size = 470, yOffset = 18 } = {}) {
+export async function addPdfWatermark(doc, { opacity = 0.70, size = 470, yOffset = 18 } = {}) {
   const logoDataUrl = await getFadedPdfLogoDataUrl(opacity);
 
   const width = doc.internal.pageSize.getWidth();
