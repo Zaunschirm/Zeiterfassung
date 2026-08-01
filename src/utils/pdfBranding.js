@@ -6,6 +6,7 @@ export const PDF_BRAND = {
 };
 
 let pdfLogoDataUrlPromise = null;
+const fadedLogoCache = new Map();
 
 async function getPdfLogoDataUrl() {
   if (!pdfLogoDataUrlPromise) {
@@ -30,6 +31,43 @@ async function getPdfLogoDataUrl() {
   return pdfLogoDataUrlPromise;
 }
 
+async function getFadedPdfLogoDataUrl(opacity = 0.10) {
+  const logoDataUrl = await getPdfLogoDataUrl();
+  if (!logoDataUrl) return "";
+
+  const cacheKey = String(opacity);
+  if (fadedLogoCache.has(cacheKey)) return fadedLogoCache.get(cacheKey);
+
+  const fadedPromise = new Promise((resolve) => {
+    if (typeof document === "undefined" || typeof Image === "undefined") {
+      resolve(logoDataUrl);
+      return;
+    }
+
+    const image = new Image();
+    image.onload = () => {
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = image.naturalWidth || image.width;
+        canvas.height = image.naturalHeight || image.height;
+        const context = canvas.getContext("2d");
+        context.clearRect(0, 0, canvas.width, canvas.height);
+        context.globalAlpha = opacity;
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL("image/png"));
+      } catch (error) {
+        console.warn("[pdfBranding] Wasserzeichen-Transparenz konnte nicht vorbereitet werden:", error?.message || error);
+        resolve(logoDataUrl);
+      }
+    };
+    image.onerror = () => resolve(logoDataUrl);
+    image.src = logoDataUrl;
+  });
+
+  fadedLogoCache.set(cacheKey, fadedPromise);
+  return fadedPromise;
+}
+
 export function addPdfHeader(doc, { title, subtitle = "", rightTop = "" }) {
   const width = doc.internal.pageSize.getWidth();
   doc.setFillColor(...PDF_BRAND.darkBrown); doc.rect(0, 0, width, 68, "F");
@@ -41,8 +79,8 @@ export function addPdfHeader(doc, { title, subtitle = "", rightTop = "" }) {
   doc.setTextColor(...PDF_BRAND.darkBrown);
 }
 
-export async function addPdfWatermark(doc, { opacity = 0.10, size = 360, yOffset = -10 } = {}) {
-  const logoDataUrl = await getPdfLogoDataUrl();
+export async function addPdfWatermark(doc, { opacity = 0.16, size = 410, yOffset = -4 } = {}) {
+  const logoDataUrl = await getFadedPdfLogoDataUrl(opacity);
   if (!logoDataUrl) return;
 
   const width = doc.internal.pageSize.getWidth();
@@ -51,15 +89,10 @@ export async function addPdfWatermark(doc, { opacity = 0.10, size = 360, yOffset
   const y = (height - size) / 2 + yOffset;
 
   try {
-    if (typeof doc.saveGraphicsState === "function") doc.saveGraphicsState();
-    if (typeof doc.setGState === "function" && typeof doc.GState === "function") {
-      doc.setGState(new doc.GState({ opacity }));
-    }
     doc.addImage(logoDataUrl, "PNG", x, y, size, size, undefined, "FAST");
   } catch (error) {
     console.warn("[pdfBranding] Wasserzeichen konnte nicht eingefügt werden:", error?.message || error);
   } finally {
-    if (typeof doc.restoreGraphicsState === "function") doc.restoreGraphicsState();
     doc.setTextColor(...PDF_BRAND.darkBrown);
   }
 }
