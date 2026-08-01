@@ -362,7 +362,7 @@ export default function DailySiteReports() {
     const [{ jsPDF }, autoTableModule] = await Promise.all([import("jspdf"), import("jspdf-autotable")]);
     const doc = new jsPDF({ unit: "pt", format: "a4" }); const autoTable = autoTableModule.default; const brown = PDF_BRAND.brown;
     addPdfHeader(doc, { title: "Bautagesbericht", rightTop: fmtDate(date), subtitle: selectedProject?.name || "Baustelle" });
-    await addPdfWatermark(doc, { opacity: 0.13, size: 470, yOffset: 18 });
+    await addPdfWatermark(doc);
     autoTable(doc, { startY: 84, theme: "grid", ...brandedTable, body: [["Baustelle", selectedProject?.name || "—", "Datum", fmtDate(date)], ["Adresse", location || "—", "Wetter", weather || "—"], ["Auftraggeber", clientName || "—", "Bauleiter", clientContact || "—"]] });
     autoTable(doc, { startY: doc.lastAutoTable.finalY + 18, theme: "striped", ...brandedTable, head: [["Mitarbeiter", "Stunden"]], body: employeeItems.map((item) => [item.name, fmtHours(item.hours)]), headStyles: { fillColor: brown, textColor: 255, fontStyle: "bold" } });
     let y = doc.lastAutoTable.finalY + 20; const blocks = [["Ausgeführte Arbeiten", activities], ["Besondere Vorkommnisse / Behinderungen", incidents], ["Lieferungen", deliveries], ["Material / Geräte (optional)", materialsEquipment]];
@@ -394,7 +394,7 @@ export default function DailySiteReports() {
         const projectName = report.project_name || project?.name || "Baustelle";
         const reportDate = String(report.report_date || "").slice(0, 10);
         addPdfHeader(doc, { title: "Bautagesbericht", rightTop: fmtDate(reportDate), subtitle: projectName });
-        await addPdfWatermark(doc, { opacity: 0.13, size: 470, yOffset: 18 });
+        await addPdfWatermark(doc);
         autoTable(doc, { startY: 84, theme: "grid", ...brandedTable, body: [["Baustelle", projectName, "Datum", fmtDate(reportDate)], ["Adresse", report.location || "—", "Wetter", report.weather || "—"], ["Auftraggeber", report.client_name || "—", "Bauleiter", report.client_contact || "—"]] });
         autoTable(doc, { startY: doc.lastAutoTable.finalY + 18, theme: "striped", ...brandedTable, head: [["Mitarbeiter", "Stunden"]], body: Array.isArray(report.employee_items) && report.employee_items.length ? report.employee_items.map((item) => [item.name || "—", fmtHours(item.hours)]) : [["—", fmtHours(0)]], headStyles: { fillColor: brown, textColor: 255, fontStyle: "bold" } });
         let y = doc.lastAutoTable.finalY + 20;

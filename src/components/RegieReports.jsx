@@ -770,7 +770,7 @@ export default function RegieReports() {
     const autoTable = autoTableModule.default;
     const brown = PDF_BRAND.brown;
     addPdfHeader(doc, { title: "Regiebericht", rightTop: reportNumber, subtitle: `${selectedProject?.name || "Ohne Projekt"} | ${fmtDate(reportDate)}` });
-    await addPdfWatermark(doc, { opacity: 0.13, size: 470, yOffset: 18 });
+    await addPdfWatermark(doc);
     autoTable(doc, { startY: 84, theme: "grid", ...brandedTable, body: [["Datum", fmtDate(reportDate), "Projekt", selectedProject?.name || "—"], ["Ort", location || selectedProject?.address || "—", "Auftraggeber", clientName || "—"], ["Kontakt", clientContact || "—", "Erstellt von", session?.name || session?.code || "—"]] });
     let y = doc.lastAutoTable.finalY + 22;
     doc.setFontSize(12); doc.text("Ausgeführte Arbeiten", 36, y);
@@ -865,7 +865,7 @@ export default function RegieReports() {
         const projectName = report.project_name || projects.find((project) => String(project.id) === String(report.project_id))?.name || "Ohne Projekt";
         const title = report.report_number || createReportNumber(projectName, report.report_date || new Date());
         addPdfHeader(doc, { title: "Regiebericht", rightTop: title, subtitle: `${projectName} | ${fmtDate(report.report_date)}` });
-        await addPdfWatermark(doc, { opacity: 0.13, size: 470, yOffset: 18 });
+        await addPdfWatermark(doc);
         autoTable(doc, {
           startY: 84,
           theme: "grid",
