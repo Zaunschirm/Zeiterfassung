@@ -6,7 +6,7 @@ export const PDF_BRAND = {
 };
 
 let pdfLogoDataUrlPromise = null;
-const fadedLogoCache = new Map();
+const watermarkLogoCache = new Map();
 
 async function getPdfLogoDataUrl() {
   if (!pdfLogoDataUrlPromise) {
@@ -31,15 +31,15 @@ async function getPdfLogoDataUrl() {
   return pdfLogoDataUrlPromise;
 }
 
-async function getFadedPdfLogoDataUrl(opacity = 0.10) {
+async function getWatermarkLogoDataUrl(opacity = 0.18) {
   const logoDataUrl = await getPdfLogoDataUrl();
   if (!logoDataUrl) return "";
 
-  const effectiveOpacity = Math.max(0.70, Number(opacity) || 0);
+  const effectiveOpacity = Math.min(0.28, Math.max(0.12, Number(opacity) || 0.18));
   const cacheKey = String(effectiveOpacity);
-  if (fadedLogoCache.has(cacheKey)) return fadedLogoCache.get(cacheKey);
+  if (watermarkLogoCache.has(cacheKey)) return watermarkLogoCache.get(cacheKey);
 
-  const fadedPromise = new Promise((resolve) => {
+  const watermarkPromise = new Promise((resolve) => {
     if (typeof document === "undefined" || typeof Image === "undefined") {
       resolve(logoDataUrl);
       return;
@@ -53,8 +53,29 @@ async function getFadedPdfLogoDataUrl(opacity = 0.10) {
         canvas.height = image.naturalHeight || image.height;
         const context = canvas.getContext("2d");
         context.clearRect(0, 0, canvas.width, canvas.height);
-        context.globalAlpha = effectiveOpacity;
         context.drawImage(image, 0, 0, canvas.width, canvas.height);
+        const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+        const pixels = imageData.data;
+        const [brownR, brownG, brownB] = PDF_BRAND.brown;
+
+        for (let index = 0; index < pixels.length; index += 4) {
+          const red = pixels[index];
+          const green = pixels[index + 1];
+          const blue = pixels[index + 2];
+          const alpha = pixels[index + 3];
+          const brightness = (red + green + blue) / 3;
+          const ink = Math.max(0, Math.min(1, (255 - brightness) / 70));
+          if (alpha < 10 || ink < 0.03) {
+            pixels[index + 3] = 0;
+          } else {
+            pixels[index] = brownR;
+            pixels[index + 1] = brownG;
+            pixels[index + 2] = brownB;
+            pixels[index + 3] = Math.round(255 * effectiveOpacity * ink);
+          }
+        }
+
+        context.putImageData(imageData, 0, 0);
         resolve(canvas.toDataURL("image/png"));
       } catch (error) {
         console.warn("[pdfBranding] Wasserzeichen-Transparenz konnte nicht vorbereitet werden:", error?.message || error);
@@ -65,8 +86,8 @@ async function getFadedPdfLogoDataUrl(opacity = 0.10) {
     image.src = logoDataUrl;
   });
 
-  fadedLogoCache.set(cacheKey, fadedPromise);
-  return fadedPromise;
+  watermarkLogoCache.set(cacheKey, watermarkPromise);
+  return watermarkPromise;
 }
 
 export function addPdfHeader(doc, { title, subtitle = "", rightTop = "" }) {
@@ -80,8 +101,8 @@ export function addPdfHeader(doc, { title, subtitle = "", rightTop = "" }) {
   doc.setTextColor(...PDF_BRAND.darkBrown);
 }
 
-export async function addPdfWatermark(doc, { opacity = 0.70, size = 470, yOffset = 18 } = {}) {
-  const logoDataUrl = await getFadedPdfLogoDataUrl(opacity);
+export async function addPdfWatermark(doc, { opacity = 0.18, size = 470, yOffset = 18 } = {}) {
+  const logoDataUrl = await getWatermarkLogoDataUrl(opacity);
 
   const width = doc.internal.pageSize.getWidth();
   const height = doc.internal.pageSize.getHeight();
