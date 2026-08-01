@@ -3,7 +3,7 @@ import { supabase } from "../lib/supabase";
 import { getSession } from "../lib/session";
 import { filterVisibleEmployeesForRole } from "../utils/employeeVisibility";
 import { uploadProjectPhoto } from "../utils/uploadProjectPhoto";
-import { addPdfFooters, addPdfHeader, addPdfWatermarks, brandedTable, PDF_BRAND } from "../utils/pdfBranding";
+import { addPdfFooters, addPdfHeader, addPdfWatermark, brandedTable, PDF_BRAND } from "../utils/pdfBranding";
 import {
   cleanLaborItems,
   cleanMaterialItems,
@@ -770,6 +770,7 @@ export default function RegieReports() {
     const autoTable = autoTableModule.default;
     const brown = PDF_BRAND.brown;
     addPdfHeader(doc, { title: "Regiebericht", rightTop: reportNumber, subtitle: `${selectedProject?.name || "Ohne Projekt"} | ${fmtDate(reportDate)}` });
+    await addPdfWatermark(doc, { opacity: 0.13, size: 470, yOffset: 18 });
     autoTable(doc, { startY: 84, theme: "grid", ...brandedTable, body: [["Datum", fmtDate(reportDate), "Projekt", selectedProject?.name || "—"], ["Ort", location || selectedProject?.address || "—", "Auftraggeber", clientName || "—"], ["Kontakt", clientContact || "—", "Erstellt von", session?.name || session?.code || "—"]] });
     let y = doc.lastAutoTable.finalY + 22;
     doc.setFontSize(12); doc.text("Ausgeführte Arbeiten", 36, y);
@@ -823,7 +824,6 @@ export default function RegieReports() {
         // Ein einzelnes nicht erreichbares Foto soll die PDF-Erstellung nicht verhindern.
       }
     }
-    await addPdfWatermarks(doc);
     addPdfFooters(doc, { label: "Regiebericht", detail: reportNumber });
     return doc;
   }
@@ -859,11 +859,13 @@ export default function RegieReports() {
         return String(a.report_date || "").localeCompare(String(b.report_date || ""));
       });
 
-      reportsForPdf.forEach((report, index) => {
+      for (let index = 0; index < reportsForPdf.length; index += 1) {
+        const report = reportsForPdf[index];
         if (index > 0) doc.addPage();
         const projectName = report.project_name || projects.find((project) => String(project.id) === String(report.project_id))?.name || "Ohne Projekt";
         const title = report.report_number || createReportNumber(projectName, report.report_date || new Date());
         addPdfHeader(doc, { title: "Regiebericht", rightTop: title, subtitle: `${projectName} | ${fmtDate(report.report_date)}` });
+        await addPdfWatermark(doc, { opacity: 0.13, size: 470, yOffset: 18 });
         autoTable(doc, {
           startY: 84,
           theme: "grid",
@@ -937,9 +939,8 @@ export default function RegieReports() {
         }
         doc.setFontSize(8);
         doc.text(`Gesamtstunden: ${fmtHours(sumLaborHours(report.labor_items || []))}`, 559, 810, { align: "right" });
-      });
+      }
 
-      await addPdfWatermarks(doc);
       addPdfFooters(doc, { label: "Regieberichte Sammel-PDF", detail: `${reportsForPdf.length} Berichte` });
       doc.save(`Regieberichte_${safeFilePart(fileLabel || reportsForPdf[0]?.project_name || "Auswahl")}_${reportsForPdf.length}_Berichte.pdf`);
       setMessage(`${reportsForPdf.length} Regieberichte wurden als Sammel-PDF gespeichert.`);
