@@ -347,17 +347,27 @@ export default function DailySiteReports() {
     return await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = reject; reader.readAsDataURL(blob); });
   }
 
+  function drawDailyPdfSection(doc, title, y) {
+    doc.setFillColor(...PDF_BRAND.brown);
+    doc.roundedRect(36, y - 12, 523, 20, 4, 4, "F");
+    doc.setTextColor(255);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9.5);
+    doc.text(title, 44, y + 2);
+    doc.setTextColor(...PDF_BRAND.darkBrown);
+  }
+
   async function createPdfDocument() {
     if (!projectId) return;
     const [{ jsPDF }, autoTableModule] = await Promise.all([import("jspdf"), import("jspdf-autotable")]);
     const doc = new jsPDF({ unit: "pt", format: "a4" }); const autoTable = autoTableModule.default; const brown = PDF_BRAND.brown;
     addPdfHeader(doc, { title: "Bautagesbericht", rightTop: fmtDate(date), subtitle: selectedProject?.name || "Baustelle" });
     autoTable(doc, { startY: 84, theme: "grid", ...brandedTable, body: [["Baustelle", selectedProject?.name || "—", "Datum", fmtDate(date)], ["Adresse", location || "—", "Wetter", weather || "—"], ["Auftraggeber", clientName || "—", "Bauleiter", clientContact || "—"]] });
-    autoTable(doc, { startY: doc.lastAutoTable.finalY + 18, theme: "striped", head: [["Mitarbeiter", "Stunden"]], body: employeeItems.map((item) => [item.name, fmtHours(item.hours)]), headStyles: { fillColor: brown } });
+    autoTable(doc, { startY: doc.lastAutoTable.finalY + 18, theme: "striped", ...brandedTable, head: [["Mitarbeiter", "Stunden"]], body: employeeItems.map((item) => [item.name, fmtHours(item.hours)]), headStyles: { fillColor: brown, textColor: 255, fontStyle: "bold" } });
     let y = doc.lastAutoTable.finalY + 20; const blocks = [["Ausgeführte Arbeiten", activities], ["Besondere Vorkommnisse / Behinderungen", incidents], ["Lieferungen", deliveries], ["Material / Geräte (optional)", materialsEquipment]];
-    for (const [title, text] of blocks) { if (!text) continue; doc.setFontSize(11); doc.text(title, 36, y); autoTable(doc, { startY: y + 7, theme: "grid", body: [[text]], margin: { left: 36, right: 36 }, styles: { fontSize: 9 } }); y = doc.lastAutoTable.finalY + 18; }
+    for (const [title, text] of blocks) { if (!text) continue; drawDailyPdfSection(doc, title, y); autoTable(doc, { startY: y + 14, theme: "grid", ...brandedTable, body: [[text]], margin: { left: 36, right: 36 }, styles: { ...brandedTable.styles, fontSize: 9.5, cellPadding: 7 } }); y = doc.lastAutoTable.finalY + 24; }
     for (let index = 0; index < photos.length; index += 1) { try { const imageData = await photoDataUrl(photos[index].url); const image = doc.getImageProperties(imageData); const scale = Math.min(523 / image.width, 700 / image.height); doc.addPage(); doc.setFontSize(12); doc.text(`Baustellenfoto ${index + 1} · ${photos[index].caption || "Foto"}`, 36, 45); doc.addImage(imageData, image.fileType || "JPEG", 36, 65, image.width * scale, image.height * scale); } catch { /* Einzelnes Foto überspringen. */ } }
-    await addPdfWatermarks(doc);
+    await addPdfWatermarks(doc, { opacity: 0.13, size: 430, yOffset: 18 });
     addPdfFooters(doc, { label: "Bautagesbericht", detail: `${selectedProject?.name || "Baustelle"} | ${fmtDate(date)}` });
     return doc;
   }
@@ -369,7 +379,7 @@ export default function DailySiteReports() {
 
   async function exportReportsPdf(reportsToExport, fileLabel = "Auswahl") {
     if (!reportsToExport.length) {
-      setError("Bitte zuerst mindestens einen abgeschlossenen Bautagesbericht auswÃ¤hlen.");
+      setError("Bitte zuerst mindestens einen abgeschlossenen Bautagesbericht auswählen.");
       return;
     }
     setBusy(true); setError(""); setMessage("");
@@ -384,16 +394,16 @@ export default function DailySiteReports() {
         const projectName = report.project_name || project?.name || "Baustelle";
         const reportDate = String(report.report_date || "").slice(0, 10);
         addPdfHeader(doc, { title: "Bautagesbericht", rightTop: fmtDate(reportDate), subtitle: projectName });
-        autoTable(doc, { startY: 84, theme: "grid", ...brandedTable, body: [["Baustelle", projectName, "Datum", fmtDate(reportDate)], ["Adresse", report.location || "â€”", "Wetter", report.weather || "â€”"], ["Auftraggeber", report.client_name || "â€”", "Bauleiter", report.client_contact || "â€”"]] });
-        autoTable(doc, { startY: doc.lastAutoTable.finalY + 18, theme: "striped", head: [["Mitarbeiter", "Stunden"]], body: Array.isArray(report.employee_items) && report.employee_items.length ? report.employee_items.map((item) => [item.name || "â€”", fmtHours(item.hours)]) : [["â€”", fmtHours(0)]], headStyles: { fillColor: brown } });
+        autoTable(doc, { startY: 84, theme: "grid", ...brandedTable, body: [["Baustelle", projectName, "Datum", fmtDate(reportDate)], ["Adresse", report.location || "—", "Wetter", report.weather || "—"], ["Auftraggeber", report.client_name || "—", "Bauleiter", report.client_contact || "—"]] });
+        autoTable(doc, { startY: doc.lastAutoTable.finalY + 18, theme: "striped", ...brandedTable, head: [["Mitarbeiter", "Stunden"]], body: Array.isArray(report.employee_items) && report.employee_items.length ? report.employee_items.map((item) => [item.name || "—", fmtHours(item.hours)]) : [["—", fmtHours(0)]], headStyles: { fillColor: brown, textColor: 255, fontStyle: "bold" } });
         let y = doc.lastAutoTable.finalY + 20;
-        const blocks = [["AusgefÃ¼hrte Arbeiten", report.activities], ["Besondere Vorkommnisse / Behinderungen", report.incidents], ["Lieferungen", report.deliveries], ["Material / GerÃ¤te (optional)", report.materials_equipment]];
+        const blocks = [["Ausgeführte Arbeiten", report.activities], ["Besondere Vorkommnisse / Behinderungen", report.incidents], ["Lieferungen", report.deliveries], ["Material / Geräte (optional)", report.materials_equipment]];
         for (const [title, text] of blocks) {
           if (!text) continue;
           if (y > 700) { doc.addPage(); y = 50; }
-          doc.setFontSize(11); doc.text(title, 36, y);
-          autoTable(doc, { startY: y + 7, theme: "grid", body: [[text]], margin: { left: 36, right: 36 }, styles: { fontSize: 9 } });
-          y = doc.lastAutoTable.finalY + 18;
+          drawDailyPdfSection(doc, title, y);
+          autoTable(doc, { startY: y + 14, theme: "grid", ...brandedTable, body: [[text]], margin: { left: 36, right: 36 }, styles: { ...brandedTable.styles, fontSize: 9.5, cellPadding: 7 } });
+          y = doc.lastAutoTable.finalY + 24;
         }
         const reportPhotos = Array.isArray(report.photo_paths) ? report.photo_paths : [];
         for (let index = 0; index < reportPhotos.length; index += 1) {
@@ -403,12 +413,12 @@ export default function DailySiteReports() {
             const imageData = await photoDataUrl(data.publicUrl); const image = doc.getImageProperties(imageData);
             const scale = Math.min(523 / image.width, 700 / image.height);
             doc.addPage(); doc.setFontSize(12);
-            doc.text(`Baustellenfoto ${index + 1} Â· ${reportPhotos[index].caption || "Foto"}`, 36, 45);
+            doc.text(`Baustellenfoto ${index + 1} · ${reportPhotos[index].caption || "Foto"}`, 36, 45);
             doc.addImage(imageData, image.fileType || "JPEG", 36, 65, image.width * scale, image.height * scale);
-          } catch { /* Einzelnes Foto Ã¼berspringen. */ }
+          } catch { /* Einzelnes Foto überspringen. */ }
         }
       }
-      await addPdfWatermarks(doc);
+      await addPdfWatermarks(doc, { opacity: 0.13, size: 430, yOffset: 18 });
       addPdfFooters(doc, { label: "Bautagesberichte Sammel-PDF", detail: `${reportsForPdf.length} Berichte` });
       doc.save(`Bautagesberichte_${safeFilePart(fileLabel)}_${reportsForPdf.length}_Berichte.pdf`);
       setMessage(`${reportsForPdf.length} Bautagesberichte wurden als Sammel-PDF gespeichert.`);
@@ -446,7 +456,7 @@ export default function DailySiteReports() {
 
   const locked = status === "completed";
   return <div className="hbz-container daily-page">
-    {canManage && <section className="hbz-card daily-archive"><div className="daily-archive-head"><div><b>Ablage abgeschlossene Bautagesberichte</b><small>{completedReports.length} · {archiveRangeLabel}</small></div><div className="daily-bulk-actions"><span><b>{selectedArchiveReports.length}</b> ausgewÃ¤hlt</span><button type="button" className="hbz-btn btn-small" onClick={selectAllCompletedReports} disabled={!completedReports.length}>Alle</button><button type="button" className="hbz-btn btn-small" onClick={clearArchiveReportSelection} disabled={!selectedArchiveReports.length}>LÃ¶schen</button><button type="button" className="hbz-btn hbz-btn-primary btn-small" onClick={exportSelectedReportsPdf} disabled={!selectedArchiveReports.length || busy}>Auswahl als PDF</button></div></div><div className="daily-archive-ranges"><button type="button" className={archiveRange === "week" ? "active" : ""} onClick={() => applyArchiveRange("week")}>Woche</button><button type="button" className={archiveRange === "month" ? "active" : ""} onClick={() => applyArchiveRange("month")}>Monat</button><button type="button" className={archiveRange === "3months" ? "active" : ""} onClick={() => applyArchiveRange("3months")}>Letzte 3 Monate</button><button type="button" className={archiveRange === "all" ? "active" : ""} onClick={() => applyArchiveRange("all")}>Alle</button><button type="button" className={archiveRange === "custom" ? "active" : ""} onClick={() => applyArchiveRange("custom")}>Auswahl</button>{archiveRange === "custom" && <><input className="hbz-input" type="date" value={archiveFrom} onChange={(e) => { setArchiveRange("custom"); setArchiveFrom(e.target.value); clearArchiveReportSelection(); }} /><input className="hbz-input" type="date" value={archiveTo} onChange={(e) => { setArchiveRange("custom"); setArchiveTo(e.target.value); clearArchiveReportSelection(); }} /></>}</div>{!completedReports.length && <p className="hint">Keine abgeschlossenen Bautagesberichte im gewÃ¤hlten Zeitraum.</p>}<div className="daily-archive-grid">{groupedCompletedReports.map((group) => <article className="daily-archive-project" key={group.key}><div className="daily-archive-project-head"><b>{group.label}</b><button type="button" className="hbz-btn btn-small" onClick={() => exportReportsPdf(group.reports, group.label)} disabled={busy}>Projekt als PDF</button></div>{group.reports.map((report) => { const checked = selectedArchiveReportIds.map(String).includes(String(report.id)); return <div className={`daily-archive-row ${checked ? "selected" : ""}`} key={report.id}><label><input type="checkbox" checked={checked} onChange={() => toggleArchiveReportSelection(report.id)} /></label><button type="button" onClick={() => openReport(report)}><strong>{fmtDate(report.report_date)}</strong><span>{report.completed_by_name || "abgeschlossen"}</span></button></div>; })}</article>)}</div></section>}
+    {canManage && <section className="hbz-card daily-archive"><div className="daily-archive-head"><div><b>Ablage abgeschlossene Bautagesberichte</b><small>{completedReports.length} · {archiveRangeLabel}</small></div><div className="daily-bulk-actions"><span><b>{selectedArchiveReports.length}</b> ausgewählt</span><button type="button" className="hbz-btn btn-small" onClick={selectAllCompletedReports} disabled={!completedReports.length}>Alle</button><button type="button" className="hbz-btn btn-small" onClick={clearArchiveReportSelection} disabled={!selectedArchiveReports.length}>Löschen</button><button type="button" className="hbz-btn hbz-btn-primary btn-small" onClick={exportSelectedReportsPdf} disabled={!selectedArchiveReports.length || busy}>Auswahl als PDF</button></div></div><div className="daily-archive-ranges"><button type="button" className={archiveRange === "week" ? "active" : ""} onClick={() => applyArchiveRange("week")}>Woche</button><button type="button" className={archiveRange === "month" ? "active" : ""} onClick={() => applyArchiveRange("month")}>Monat</button><button type="button" className={archiveRange === "3months" ? "active" : ""} onClick={() => applyArchiveRange("3months")}>Letzte 3 Monate</button><button type="button" className={archiveRange === "all" ? "active" : ""} onClick={() => applyArchiveRange("all")}>Alle</button><button type="button" className={archiveRange === "custom" ? "active" : ""} onClick={() => applyArchiveRange("custom")}>Auswahl</button>{archiveRange === "custom" && <><input className="hbz-input" type="date" value={archiveFrom} onChange={(e) => { setArchiveRange("custom"); setArchiveFrom(e.target.value); clearArchiveReportSelection(); }} /><input className="hbz-input" type="date" value={archiveTo} onChange={(e) => { setArchiveRange("custom"); setArchiveTo(e.target.value); clearArchiveReportSelection(); }} /></>}</div>{!completedReports.length && <p className="hint">Keine abgeschlossenen Bautagesberichte im gewählten Zeitraum.</p>}<div className="daily-archive-grid">{groupedCompletedReports.map((group) => <article className="daily-archive-project" key={group.key}><div className="daily-archive-project-head"><b>{group.label}</b><button type="button" className="hbz-btn btn-small" onClick={() => exportReportsPdf(group.reports, group.label)} disabled={busy}>Projekt als PDF</button></div>{group.reports.map((report) => { const checked = selectedArchiveReportIds.map(String).includes(String(report.id)); return <div className={`daily-archive-row ${checked ? "selected" : ""}`} key={report.id}><label><input type="checkbox" checked={checked} onChange={() => toggleArchiveReportSelection(report.id)} /></label><button type="button" onClick={() => openReport(report)}><strong>{fmtDate(report.report_date)}</strong><span>{report.completed_by_name || "abgeschlossen"}</span></button></div>; })}</article>)}</div></section>}
     <div className="daily-head"><div><div className="eyebrow">Tägliche Baustellendokumentation</div><h1>Bautagesberichte</h1><p>Aus Zeiterfassung und Arbeitseinteilung vorbereitet, abends kontrollieren und abschließen.</p></div><div className="daily-date-nav"><button className="hbz-btn" onClick={() => shiftReportDate(-1)} aria-label="Vorheriger Tag">←</button><label>Datum<input className="hbz-input" type="date" value={date} onChange={(e) => { setDate(e.target.value); setProjectId(""); setSelectedId(""); }} /></label><button className="hbz-btn" onClick={() => shiftReportDate(1)} aria-label="Nächster Tag">→</button></div></div>
     {error && <div className="hbz-alert hbz-alert-error">{error}</div>}{message && <div className="hbz-alert hbz-alert-success">{message}</div>}{draftRestored && <div className="daily-draft-note">Automatisch lokal gesichert, bis du den Entwurf speicherst.</div>}
     {canManage && openReports.length > 0 && <div className="hbz-alert daily-reminder"><b>{openReports.length} Bautagesbericht{openReports.length === 1 ? " ist" : "e sind"} noch offen.</b><span>Bitte prüfen und abschließen.</span></div>}
