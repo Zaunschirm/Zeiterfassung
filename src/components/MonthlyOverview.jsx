@@ -306,6 +306,61 @@ function formatDateAT(ymd) {
   return `${d}.${m}.${y}`;
 }
 
+function formatDateRangesAT(dates) {
+  const sortedDates = uniqueSortedDates((dates || []).map(dateOnly));
+  const ranges = [];
+  let rangeStart = "";
+  let rangeEnd = "";
+
+  const pushRange = () => {
+    if (!rangeStart) return;
+    ranges.push(
+      rangeStart === rangeEnd
+        ? formatDateAT(rangeStart)
+        : `${formatDateAT(rangeStart)} bis ${formatDateAT(rangeEnd)}`
+    );
+  };
+
+  sortedDates.forEach((date) => {
+    if (!rangeStart) {
+      rangeStart = date;
+      rangeEnd = date;
+      return;
+    }
+
+    if (dateToDayNumber(date) === dateToDayNumber(rangeEnd) + 1) {
+      rangeEnd = date;
+      return;
+    }
+
+    pushRange();
+    rangeStart = date;
+    rangeEnd = date;
+  });
+
+  pushRange();
+  return ranges.join(", ");
+}
+
+function formatDatedNotesAsRangesAT(rows) {
+  const grouped = new Map();
+  (rows || []).forEach((row) => {
+    const date = dateOnly(row?.date);
+    if (!date) return;
+    const note = safePdfText(row?.note || "");
+    if (!grouped.has(note)) grouped.set(note, []);
+    grouped.get(note).push(date);
+  });
+
+  return Array.from(grouped.entries())
+    .map(([note, dates]) => {
+      const range = formatDateRangesAT(dates);
+      return note ? `${range} (${note})` : range;
+    })
+    .filter(Boolean)
+    .join(", ");
+}
+
 function formatDateTimeAT(value) {
   if (!value) return "—";
   try {
@@ -2029,7 +2084,7 @@ export default function MonthlyOverview() {
           detailRows.push([
             safePdfText(d.name),
             "Urlaub",
-            d.vacationDates.map(formatDateAT).join(", "),
+            formatDateRangesAT(d.vacationDates),
             "0,00 h",
           ]);
         }
@@ -2038,9 +2093,7 @@ export default function MonthlyOverview() {
           detailRows.push([
             safePdfText(d.name),
             "Sonderurlaub",
-            d.specialLeaveDates
-              .map((row) => `${formatDateAT(row.date)}${row.note ? ` (${safePdfText(row.note)})` : ""}`)
-              .join(", "),
+            formatDatedNotesAsRangesAT(d.specialLeaveDates),
             "0,00 h",
           ]);
         }
@@ -2049,7 +2102,7 @@ export default function MonthlyOverview() {
           detailRows.push([
             safePdfText(d.name),
             "Krankenstand",
-            d.sickDates.map(formatDateAT).join(", "),
+            formatDateRangesAT(d.sickDates),
             `${formatHoursAT(d.sickHours)} bezahlt`,
           ]);
         }
@@ -2058,7 +2111,7 @@ export default function MonthlyOverview() {
           detailRows.push([
             safePdfText(d.name),
             "Zeitausgleich",
-            d.timeCompDates.map(formatDateAT).join(", "),
+            formatDateRangesAT(d.timeCompDates),
             `${formatHoursAT(d.timeCompHours || 0)} ZA-Verbrauch`,
           ]);
         }
