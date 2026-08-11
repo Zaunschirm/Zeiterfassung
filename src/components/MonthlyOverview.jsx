@@ -2164,16 +2164,40 @@ export default function MonthlyOverview() {
         return base;
       });
       const paidHoursColumnIndex = payrollHead.indexOf("Lohnstunden gesamt");
+      const payrollAvailableWidth = pageWidth - marginX * 2;
+      const payrollColumnWeights = payrollHead.map((label) => {
+        if (label === "Mitarbeiter") return 110;
+        if (label === "Arbeit inkl. Fahrzeit") return 72;
+        if (label === "davon Fahrzeit") return 56;
+        if (label === "Sonderurlaub Tage") return 62;
+        if (label === "Schlechtwetter") return 66;
+        if (label === "Sollstunden") return 70;
+        if (label === "Lohnstunden gesamt") return 82;
+        if (label === "Privat-PKW") return 62;
+        if (label.includes("Tage")) return 50;
+        return 52;
+      });
+      const payrollWeightSum = payrollColumnWeights.reduce((sum, width) => sum + width, 0);
+      const payrollScale = Math.min(1, payrollAvailableWidth / payrollWeightSum);
+      const payrollColumnStyles = Object.fromEntries(
+        payrollColumnWeights.map((width, index) => [
+          index,
+          {
+            cellWidth: Math.max(index === 0 ? 86 : 38, Math.floor(width * payrollScale)),
+            halign: index === 0 ? "left" : "right",
+          },
+        ])
+      );
 
       autoTable(doc, {
         head: [payrollHead],
         body: payrollBody,
         startY,
-        tableWidth: "wrap",
+        tableWidth: payrollAvailableWidth,
         theme: "striped",
         styles: {
-          fontSize: 7,
-          cellPadding: { top: 4, right: 2, bottom: 4, left: 2 },
+          fontSize: payrollHead.length > 12 ? 6.2 : 6.6,
+          cellPadding: { top: 3.5, right: 1.6, bottom: 3.5, left: 1.6 },
           overflow: "linebreak",
           valign: "middle",
           lineColor: [230, 230, 230],
@@ -2184,23 +2208,10 @@ export default function MonthlyOverview() {
           textColor: 255,
           fontStyle: "bold",
           halign: "center",
-          fontSize: 7,
+          fontSize: payrollHead.length > 12 ? 6.1 : 6.5,
         },
         alternateRowStyles: { fillColor: lightGray },
-        columnStyles: {
-          0: { cellWidth: showPrivatePkwColumn ? 116 : 132, halign: "left" },
-          1: { cellWidth: showPrivatePkwColumn ? 72 : 78, halign: "right" },
-          2: { cellWidth: showPrivatePkwColumn ? 58 : 62, halign: "right" },
-          3: { cellWidth: showPrivatePkwColumn ? 54 : 58, halign: "right" },
-          4: { cellWidth: showPrivatePkwColumn ? 54 : 58, halign: "right" },
-          5: { cellWidth: showPrivatePkwColumn ? 50 : 54, halign: "right" },
-          6: { cellWidth: showPrivatePkwColumn ? 50 : 54, halign: "right" },
-          7: { cellWidth: showPrivatePkwColumn ? 50 : 54, halign: "right" },
-          8: { cellWidth: showPrivatePkwColumn ? 52 : 56, halign: "right" },
-          9: { cellWidth: showPrivatePkwColumn ? 64 : 70, halign: "right" },
-          10: { cellWidth: showPrivatePkwColumn ? 76 : 84, halign: "right" },
-          11: { cellWidth: 60, halign: "right" },
-        },
+        columnStyles: payrollColumnStyles,
         didParseCell: (data) => {
           if (data.section === "body" && data.row.index === employeeBody.length - 1) {
             data.cell.styles.fontStyle = "bold";
