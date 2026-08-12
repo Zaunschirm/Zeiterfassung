@@ -1346,6 +1346,9 @@ export default function MonthlyOverview() {
       sick: rawRows.filter(isSickRow).length,
       timeComp: rawRows.filter(isTimeCompRow).length,
       privatePkw: rawRows.filter((r) => parsePrivatePkwKm(r.private_pkw_km) > 0).length,
+      privatePkwKm: Math.round(
+        rawRows.reduce((sum, r) => sum + parsePrivatePkwKm(r.private_pkw_km), 0) * 10
+      ) / 10,
       travel: rawRows.filter((r) => (getTravel(r) || 0) > 0).length,
     };
 
@@ -3304,10 +3307,18 @@ export default function MonthlyOverview() {
                   <div className="month-summary-label">Änderungen 45 Tage</div>
                   <div className="month-summary-value">{payrollCheck.auditRows?.length || 0}</div>
                 </div>
+                <div className="month-summary-card">
+                  <div className="month-summary-label">Privat-PKW</div>
+                  <div className="month-summary-value">{formatNumberAT(payrollCheck.special?.privatePkwKm || 0, 1)} km</div>
+                </div>
               </div>
 
               <div style={{ marginTop: 12, fontSize: 12 }}>
                 <b>Zusammenfassung:</b> {payrollCheck.entriesCount || 0} Einträge, {payrollCheck.employeesCount || 0} geprüfte Mitarbeiter, Urlaub {payrollCheck.special?.vacation || 0}, Krank {payrollCheck.special?.sick || 0}, ZA {payrollCheck.special?.timeComp || 0}, Privat-PKW {payrollCheck.special?.privatePkw || 0}, Fahrzeit {payrollCheck.special?.travel || 0}.
+              </div>
+
+              <div style={{ marginTop: 6, fontSize: 12 }}>
+                <b>Privat-PKW gesamt:</b> {formatNumberAT(payrollCheck.special?.privatePkwKm || 0, 1)} km aus {payrollCheck.special?.privatePkw || 0} Einträgen.
               </div>
 
               {(payrollCheck.missingResult?.missing || []).length > 0 && (
