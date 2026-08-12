@@ -2036,6 +2036,7 @@ export default function MonthlyOverview() {
       let startY = hintY + 5 + wrappedEmployees.length * 11 + 12;
 
       const detailRows = [];
+      const privatePkwDetailRows = [];
       const zaReconcileRows = [];
       const totals = {
         recordedHours: 0,
@@ -2058,6 +2059,16 @@ export default function MonthlyOverview() {
         const recordedHours = h2(d.recordedMinutes);
         const travelHours = h2(d.travelMinutes);
         const privatePkwKm = (d.rows || []).reduce((sum, row) => sum + parsePrivatePkwKm(row.private_pkw_km), 0);
+        (d.rows || []).forEach((row) => {
+          const km = parsePrivatePkwKm(row.private_pkw_km);
+          if (km <= 0) return;
+          privatePkwDetailRows.push([
+            safePdfText(d.name),
+            formatDateAT(row.work_date),
+            safePdfText(row.project_name || row.project_code || getProjectNameById(row.project_id)),
+            `${formatNumberAT(km, 1)} km`,
+          ]);
+        });
         const zaTaken = d.timeCompHours || 0;
         const paidHours = recordedHours + d.holidayHours + d.sickHours + zaTaken;
         const sollHoursInRange = calcEmployeeSollHoursForRange(d.emp, targetRange.from, targetRange.to, true);
@@ -2376,6 +2387,49 @@ export default function MonthlyOverview() {
         doc.setFontSize(10);
         doc.text("Details Abwesenheiten & bezahlte Feiertage: keine Einträge im Zeitraum.", marginX, currentY);
         currentY += 18;
+      }
+
+      if (privatePkwDetailRows.length > 0) {
+        if (currentY > pageHeight - 130) {
+          doc.addPage();
+          currentY = 38;
+        }
+
+        doc.setFontSize(13);
+        doc.text("Privat-PKW Kilometer", marginX, currentY);
+        currentY += 10;
+
+        autoTable(doc, {
+          head: [["Mitarbeiter", "Datum", "Projekt", "Kilometer"]],
+          body: privatePkwDetailRows,
+          startY: currentY + 6,
+          tableWidth: "wrap",
+          theme: "striped",
+          styles: {
+            fontSize: 7.8,
+            cellPadding: { top: 4, right: 3, bottom: 4, left: 3 },
+            overflow: "linebreak",
+            valign: "top",
+            lineColor: [230, 230, 230],
+            lineWidth: 0.2,
+          },
+          headStyles: {
+            fillColor: brown,
+            textColor: 255,
+            fontStyle: "bold",
+            fontSize: 7.5,
+          },
+          alternateRowStyles: { fillColor: lightGray },
+          columnStyles: {
+            0: { cellWidth: 170 },
+            1: { cellWidth: 90 },
+            2: { cellWidth: 370 },
+            3: { cellWidth: 95, halign: "right" },
+          },
+          margin: { left: marginX, right: marginX },
+        });
+
+        currentY = (doc.lastAutoTable?.finalY || currentY) + 16;
       }
 
       if (currentY > pageHeight - 52) {
