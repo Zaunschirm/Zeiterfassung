@@ -632,7 +632,7 @@ export default function MonthlyOverview() {
         if (error?.code !== "42703") throw error;
         loadedRows = await collectSupabaseRows(() => buildMonthQuery(false));
       }
-      setRows(loadedRows);
+      setRows(await enrichRowsWithPrivatePkwKm(loadedRows));
     } catch (e) {
       console.error("month load error:", e);
       setRows([]);
@@ -1247,6 +1247,36 @@ export default function MonthlyOverview() {
     return found?.code ? `${found.code} · ${found.name}` : found?.name || String(id).slice(0, 8);
   };
 
+  async function enrichRowsWithPrivatePkwKm(rowsToEnrich) {
+    const inputRows = rowsToEnrich || [];
+    const ids = Array.from(new Set(inputRows.map((row) => row?.id).filter(Boolean)));
+    if (!ids.length) return inputRows;
+
+    const kmById = new Map();
+    const chunkSize = 250;
+    for (let i = 0; i < ids.length; i += chunkSize) {
+      const chunk = ids.slice(i, i + chunkSize);
+      const { data, error } = await supabase
+        .from("time_entries")
+        .select("id, private_pkw_km")
+        .in("id", chunk);
+      if (error) {
+        console.warn("[MonthlyOverview] Privat-PKW km konnten nicht nachgeladen werden:", error?.message || error);
+        return inputRows;
+      }
+      (data || []).forEach((row) => {
+        kmById.set(String(row.id), parsePrivatePkwKm(row.private_pkw_km));
+      });
+    }
+
+    return inputRows.map((row) => ({
+      ...row,
+      private_pkw_km: kmById.has(String(row.id))
+        ? kmById.get(String(row.id))
+        : row.private_pkw_km,
+    }));
+  }
+
   const formatAuditValueForCheck = (field, value) => {
     if (value == null || value === "") return "—";
     if (["start_min", "end_min", "from_min", "to_min"].includes(field)) return toHM(Number(value) || 0);
@@ -1278,6 +1308,7 @@ export default function MonthlyOverview() {
         .in("employee_id", employeeIds)
         .order("work_date", { ascending: true })
         .order("id", { ascending: true }));
+      rawRows = await enrichRowsWithPrivatePkwKm(rawRows);
     }
 
     const dayMap = {};
@@ -1813,7 +1844,7 @@ export default function MonthlyOverview() {
         if (!proceed) return;
       }
 
-      const payrollRawRows = await collectSupabaseRows(() => supabase
+      let payrollRawRows = await collectSupabaseRows(() => supabase
         .from("v_time_entries_expanded")
         .select("*")
         .gte("work_date", targetRange.from)
@@ -1821,6 +1852,7 @@ export default function MonthlyOverview() {
         .in("employee_id", employeeIds)
         .order("work_date", { ascending: true })
         .order("id", { ascending: true }));
+      payrollRawRows = await enrichRowsWithPrivatePkwKm(payrollRawRows);
 
       const zaBalancesAtMonthEnd = await getZaBalancesAtMonthEnd(employeesForExport, targetRange.to);
       const dayBeforeRangeStart = Number.isFinite(dateToDayNumber(targetRange.from))
