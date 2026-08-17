@@ -22,8 +22,8 @@ export default function NavBar({ onLogout, currentUser, role }) {
   const canSeeAdmin = role === "admin" || role === "teamleiter";
   const isGateManager = role === "admin" || role === "teamleiter";
   const gateUrl = "http://192.168.1.106/rpc/Switch.Set?id=0&on=true&toggle_after=1";
+  const gateLocalStatusUrl = "http://192.168.1.106/rpc/Switch.GetStatus?id=0";
   const gateCloudUrl = "/api/shelly-gate";
-  const gateStatusStorageKey = "hbz_gate_status_v1";
 
   const initials = useMemo(() => {
     const name = currentUser?.name || "HB";
@@ -87,11 +87,17 @@ export default function NavBar({ onLogout, currentUser, role }) {
   }
 
   function normalizeGateState(value) {
-    return String(value || "").toLowerCase() === "open" ? "open" : "closed";
+    const state = String(value || "").toLowerCase();
+    if (state === "open" || state === "offen") return "open";
+    if (state === "closed" || state === "geschlossen") return "closed";
+    return "unknown";
   }
 
   function gateStateLabel(state) {
-    return normalizeGateState(state) === "open" ? "Offen" : "Geschlossen";
+    const normalizedState = normalizeGateState(state);
+    if (normalizedState === "open") return "Offen";
+    if (normalizedState === "closed") return "Geschlossen";
+    return "Unbekannt";
   }
 
   function applyGateStatus(state, options = {}) {
@@ -102,28 +108,28 @@ export default function NavBar({ onLogout, currentUser, role }) {
       label: gateStateLabel(normalizedState),
       error: "",
       updatedAt: new Date().toISOString(),
+      source: options.source || "shelly",
     };
 
     setGateStatus(nextStatus);
 
-    if (options.persistLocal !== false) {
-      try {
-        window.localStorage.setItem(gateStatusStorageKey, JSON.stringify(nextStatus));
-      } catch (_) {
-        // localStorage kann im Privatmodus blockiert sein.
-      }
-    }
-
     return nextStatus;
   }
 
-  function getLocalGateStatus() {
-    try {
-      const saved = JSON.parse(window.localStorage.getItem(gateStatusStorageKey) || "{}");
-      return normalizeGateState(saved?.state || "closed");
-    } catch {
-      return "closed";
-    }
+  function readShellyOutput(data) {
+    if (typeof data?.output === "boolean") return data.output;
+    if (typeof data?.["switch:0"]?.output === "boolean") return data["switch:0"].output;
+    if (typeof data?.switch?.[0]?.output === "boolean") return data.switch[0].output;
+    if (typeof data?.switch?.output === "boolean") return data.switch.output;
+    return null;
+  }
+
+  async function loadLocalShellyStatus() {
+    const response = await fetch(gateLocalStatusUrl, { method: "GET", cache: "no-store" });
+    const data = await response.json().catch(() => ({}));
+    const output = readShellyOutput(data);
+    if (output === null) throw new Error("Shelly-Status konnte lokal nicht gelesen werden.");
+    applyGateStatus(output ? "open" : "closed", { source: "shelly-local" });
   }
 
   async function loadGateStatus() {
@@ -132,7 +138,13 @@ export default function NavBar({ onLogout, currentUser, role }) {
 
       if (window.location.protocol === "https:") {
         if (!currentUser?.gateToken) {
-          applyGateStatus(getLocalGateStatus(), { persistLocal: false });
+          setGateStatus((prev) => ({
+            ...prev,
+            loading: false,
+            state: "unknown",
+            label: "Unbekannt",
+            error: "Bitte neu einloggen.",
+          }));
           return;
         }
 
@@ -148,11 +160,11 @@ export default function NavBar({ onLogout, currentUser, role }) {
           throw new Error(result?.error || "Status nicht erreichbar.");
         }
 
-        applyGateStatus(result?.state || "closed");
+        applyGateStatus(result?.state || "unknown", { source: result?.source || "shelly" });
         return;
       }
 
-      applyGateStatus(getLocalGateStatus(), { persistLocal: false });
+      await loadLocalShellyStatus();
     } catch (error) {
       console.warn("[NavBar] gate status error:", error);
       setGateStatus((prev) => ({
@@ -213,10 +225,9 @@ export default function NavBar({ onLogout, currentUser, role }) {
         mode: "no-cors",
         cache: "no-store",
       });
-      const nextState = getLocalGateStatus() === "open" ? "closed" : "open";
-      applyGateStatus(nextState);
       setGateMessage("Schiebetor-Impuls gesendet.");
       startGateMotionHint();
+      window.setTimeout(loadGateStatus, 1200);
       window.setTimeout(() => setGateMessage(""), 3500);
     } catch (error) {
       console.error("[NavBar] Shelly gate error:", error);
@@ -258,8 +269,7 @@ export default function NavBar({ onLogout, currentUser, role }) {
         throw new Error(result?.error || "Shelly Cloud konnte nicht schalten.");
       }
 
-      const nextState = result?.gateStatus?.state || (gateStatus.state === "open" ? "closed" : "open");
-      applyGateStatus(nextState);
+      applyGateStatus(result?.gateStatus?.state || "unknown", { source: result?.gateStatus?.source || "shelly" });
       setGatePin("");
       setGatePinOpen(false);
       setGateMessage("Schiebetor-Impuls über Cloud gesendet.");
@@ -276,40 +286,6 @@ export default function NavBar({ onLogout, currentUser, role }) {
       setGatePinError(error?.message || "Schiebetor nicht erreichbar.");
     } finally {
       setGateBusy(false);
-    }
-  }
-
-  async function correctGateStatus(nextState) {
-    if (!isAdmin) return;
-
-    if (!window.confirm(`Torstatus wirklich auf "${gateStateLabel(nextState)}" setzen?`)) return;
-
-    try {
-      setGateMessage("");
-
-      if (window.location.protocol === "https:" && currentUser?.gateToken) {
-        const response = await fetch(`${gateCloudUrl}?action=status`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${currentUser.gateToken}`,
-          },
-          body: JSON.stringify({ state: nextState }),
-        });
-        const result = await response.json().catch(() => ({}));
-        if (!response.ok || result?.ok === false) {
-          throw new Error(result?.error || "Status konnte nicht gespeichert werden.");
-        }
-        applyGateStatus(result?.gateStatus?.state || nextState);
-      } else {
-        applyGateStatus(nextState);
-      }
-
-      setGateMessage(`Torstatus auf ${gateStateLabel(nextState)} gesetzt.`);
-      window.setTimeout(() => setGateMessage(""), 3000);
-    } catch (error) {
-      console.error("[NavBar] gate status correction error:", error);
-      setGateMessage(error?.message || "Torstatus konnte nicht gespeichert werden.");
     }
   }
 
@@ -414,14 +390,8 @@ export default function NavBar({ onLogout, currentUser, role }) {
           title="Torstatus aktualisieren"
         >
           <span>{gateStatus.loading ? "Prüfe…" : `Status: ${gateStatus.label}`}</span>
-          <small>{gateStatus.error ? "nicht synchron" : "App-Status"}</small>
+          <small>{gateStatus.error ? "nicht synchron" : "Shelly-Status"}</small>
         </button>
-        {isAdmin && (
-          <div className="app-gate-admin-correction" aria-label="Torstatus korrigieren">
-            <button type="button" onClick={() => correctGateStatus("open")}>als offen setzen</button>
-            <button type="button" onClick={() => correctGateStatus("closed")}>als geschlossen setzen</button>
-          </div>
-        )}
         {gateMessage && <span className="app-gate-message">{gateMessage}</span>}
       </div>
 
