@@ -99,12 +99,12 @@ export default function NavBar({ onLogout, currentUser, role }) {
   const renderGateButton = () => (
     <button
       type="button"
-      className="hbz-btn"
+      className="hbz-btn app-gate-top-button"
       onClick={triggerSlidingGate}
       disabled={gateBusy}
       title="Schiebetor per Shelly-Impuls auslösen"
     >
-      {gateBusy ? "Tor…" : "Schiebetor"}
+      {gateBusy ? "Tor wird ausgelöst…" : "Schiebetor öffnen / schließen"}
     </button>
   );
 
@@ -140,8 +140,6 @@ export default function NavBar({ onLogout, currentUser, role }) {
         </div>
 
         <div className="app-nav-right">
-          {renderGateButton()}
-          {gateMessage && <span className="app-gate-message">{gateMessage}</span>}
           <div className="app-user-badge">
             <div className="app-user-initial">{initials}</div>
             <span className="app-user-name">
@@ -174,14 +172,21 @@ export default function NavBar({ onLogout, currentUser, role }) {
             {moreLinks.map((link) => renderNavLink(link.to, link.label))}
             {adminLinks.length > 0 && <div className="app-nav-mobile-heading">Verwaltung</div>}
             {adminLinks.map((link) => renderNavLink(link.to, link.label))}
-            {renderGateButton()}
-            {gateMessage && <div className="app-gate-message mobile">{gateMessage}</div>}
             <button type="button" className="app-nav-btn" onClick={onLogout}>
               <span className="app-nav-label">Logout</span>
             </button>
           </div>
         </div>
       )}
+
+      <div className="app-gate-quickbar" aria-label="Schiebetor Schnellzugriff">
+        <div>
+          <span>Torsteuerung</span>
+          <small>Shelly 1 Gen4 · Impuls 1 Sekunde</small>
+        </div>
+        {renderGateButton()}
+        {gateMessage && <span className="app-gate-message">{gateMessage}</span>}
+      </div>
     </>
   );
 }
