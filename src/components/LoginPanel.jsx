@@ -80,12 +80,26 @@ export default function LoginPanel({ onLogin }) {
         return;
       }
 
+      let gateToken = "";
+      try {
+        const tokenResponse = await fetch("/api/app-session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code: codeValue, pin: pinValue }),
+        });
+        const tokenResult = await tokenResponse.json().catch(() => ({}));
+        if (tokenResponse.ok && tokenResult?.token) gateToken = tokenResult.token;
+      } catch (tokenError) {
+        console.warn("[LoginPanel] gate session token not available:", tokenError);
+      }
+
       onLogin?.(
         {
           id: data.id,
           code: data.code,
           name: getDisplayName(data),
           role: userRole,
+          gateToken,
         },
         rememberMe
       );

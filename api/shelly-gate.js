@@ -1,4 +1,5 @@
 const DEFAULT_DEVICE_ID = "e4b3233fd228";
+import crypto from "node:crypto";
 
 function json(res, statusCode, payload) {
   res.statusCode = statusCode;
@@ -8,6 +9,32 @@ function json(res, statusCode, payload) {
 
 function normalizeHost(host) {
   return String(host || "").trim().replace(/\/+$/, "");
+}
+
+function getSessionSecret() {
+  return process.env.APP_SESSION_SECRET || process.env.SHELLY_CLOUD_AUTH_KEY || "";
+}
+
+function verifySessionToken(req) {
+  const header = String(req.headers.authorization || "");
+  const token = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
+  const secret = getSessionSecret();
+  if (!token || !secret || !token.includes(".")) return null;
+
+  const [encodedPayload, signature] = token.split(".");
+  const expected = crypto.createHmac("sha256", secret).update(encodedPayload).digest("base64url");
+  if (signature.length !== expected.length) return null;
+
+  const valid = crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
+  if (!valid) return null;
+
+  try {
+    const payload = JSON.parse(Buffer.from(encodedPayload, "base64url").toString("utf-8"));
+    if (!payload?.exp || payload.exp < Math.floor(Date.now() / 1000)) return null;
+    return payload;
+  } catch {
+    return null;
+  }
 }
 
 function readBody(req) {
@@ -57,11 +84,16 @@ export default async function handler(req, res) {
   const channel = Number(process.env.SHELLY_GATE_CHANNEL || 0);
   const toggleAfter = Number(process.env.SHELLY_GATE_TOGGLE_AFTER || 1);
 
-  if (!host || !authKey || !gatePin || !deviceId) {
+  if (!host || !authKey || !deviceId || !getSessionSecret()) {
     return json(res, 500, {
       ok: false,
       error: "Shelly Cloud ist noch nicht vollständig konfiguriert.",
     });
+  }
+
+  const session = verifySessionToken(req);
+  if (!session) {
+    return json(res, 401, { ok: false, error: "Bitte neu einloggen." });
   }
 
   let body;
@@ -71,7 +103,10 @@ export default async function handler(req, res) {
     return json(res, 400, { ok: false, error: error.message || "Ungültige Anfrage." });
   }
 
-  if (!timingSafeEqualText(body?.pin, gatePin)) {
+  const role = String(session.role || "mitarbeiter").toLowerCase();
+  const needsGatePin = role !== "admin" && role !== "teamleiter";
+
+  if (needsGatePin && !timingSafeEqualText(body?.pin, gatePin)) {
     return json(res, 401, { ok: false, error: "Tor-PIN ist falsch." });
   }
 
@@ -106,7 +141,7 @@ export default async function handler(req, res) {
       });
     }
 
-    return json(res, 200, { ok: true });
+    return json(res, 200, { ok: true, triggeredBy: session.name || session.code || "Unbekannt" });
   } catch (error) {
     console.error("[shelly-gate] Cloud error:", error);
     return json(res, 502, {

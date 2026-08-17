@@ -11,6 +11,7 @@ export default function NavBar({ onLogout, currentUser, role }) {
   const [gatePinError, setGatePinError] = useState("");
   const isAdmin = role === "admin";
   const canSeeAdmin = role === "admin" || role === "teamleiter";
+  const isGateManager = role === "admin" || role === "teamleiter";
   const gateUrl = "http://192.168.1.106/rpc/Switch.Set?id=0&on=true&toggle_after=1";
   const gateCloudUrl = "/api/shelly-gate";
 
@@ -75,9 +76,14 @@ export default function NavBar({ onLogout, currentUser, role }) {
     setGateMessage("");
     setGatePinError("");
 
-    if (!window.confirm("Schiebetor wirklich auslösen? Bitte vorher Sichtkontakt prüfen.")) return;
+    if (!isGateManager && !window.confirm("Schiebetor wirklich auslösen? Bitte vorher Sichtkontakt prüfen.")) return;
 
     if (window.location.protocol === "https:") {
+      if (isGateManager) {
+        await triggerSlidingGateCloud();
+        return;
+      }
+
       setGatePin("");
       setGatePinOpen(true);
       return;
@@ -106,7 +112,7 @@ export default function NavBar({ onLogout, currentUser, role }) {
     if (gateBusy) return;
 
     const pin = gatePin.trim();
-    if (!pin) {
+    if (!isGateManager && !pin) {
       setGatePinError("Bitte Tor-PIN eingeben.");
       return;
     }
@@ -117,9 +123,12 @@ export default function NavBar({ onLogout, currentUser, role }) {
 
       const response = await fetch(gateCloudUrl, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: currentUser?.gateToken ? `Bearer ${currentUser.gateToken}` : "",
+        },
         body: JSON.stringify({
-          pin,
+          pin: isGateManager ? "" : pin,
           user: currentUser?.name || currentUser?.code || "unbekannt",
         }),
       });
@@ -132,6 +141,12 @@ export default function NavBar({ onLogout, currentUser, role }) {
       setGatePin("");
       setGatePinOpen(false);
       setGateMessage("Schiebetor-Impuls über Cloud gesendet.");
+      if (role === "admin" && "Notification" in window && Notification.permission === "granted") {
+        new Notification("Schiebetor ausgelöst", {
+          body: `${currentUser?.name || currentUser?.code || "Unbekannt"} hat das Schiebetor ausgelöst.`,
+          icon: "/icons/icon-192.png",
+        });
+      }
       window.setTimeout(() => setGateMessage(""), 3500);
     } catch (error) {
       console.error("[NavBar] Shelly cloud gate error:", error);
