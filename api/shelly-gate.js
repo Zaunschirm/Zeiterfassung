@@ -132,6 +132,55 @@ function readSwitchOutputFromStatus(data, channel = 0) {
   return null;
 }
 
+function normalizeGateState(value) {
+  const state = String(value || "").trim().toLowerCase();
+  return state === "open" || state === "offen" ? "open" : "closed";
+}
+
+function gateStateLabel(state) {
+  return normalizeGateState(state) === "open" ? "Offen" : "Geschlossen";
+}
+
+async function getStoredGateState() {
+  try {
+    const data = await supabaseFetch("app_state?select=key,value&key=eq.gate_status&limit=1");
+    const row = Array.isArray(data) ? data[0] : null;
+    const state = normalizeGateState(row?.value?.state || "closed");
+    return {
+      state,
+      label: gateStateLabel(state),
+      source: "app",
+    };
+  } catch (error) {
+    console.warn("[shelly-gate] stored status fallback:", error);
+    return { state: "closed", label: "Geschlossen", source: "fallback" };
+  }
+}
+
+async function saveStoredGateState(state) {
+  const normalizedState = normalizeGateState(state);
+  const value = {
+    state: normalizedState,
+    label: gateStateLabel(normalizedState),
+    updated_at: new Date().toISOString(),
+  };
+
+  await supabaseFetch("app_state", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Prefer: "resolution=merge-duplicates,return=representation",
+    },
+    body: JSON.stringify({
+      key: "gate_status",
+      value,
+      updated_at: value.updated_at,
+    }),
+  });
+
+  return { ...value, source: "app" };
+}
+
 async function getShellyGateStatus({ host, authKey, deviceId, channel }) {
   const response = await fetch(
     `${host}/v2/devices/api/get?auth_key=${encodeURIComponent(authKey)}`,
@@ -253,13 +302,13 @@ export default async function handler(req, res) {
 
   if (req.method === "GET") {
     try {
-      const status = await getShellyGateStatus({ host, authKey, deviceId, channel });
+      const status = await getStoredGateState();
       return json(res, 200, { ok: true, ...status });
     } catch (error) {
       console.error("[shelly-gate] status error:", error);
       return json(res, 502, {
         ok: false,
-        error: error?.message || "Shelly Status konnte nicht geladen werden.",
+        error: error?.message || "Torstatus konnte nicht geladen werden.",
       });
     }
   }
@@ -307,6 +356,9 @@ export default async function handler(req, res) {
     }
 
     const triggeredBy = session.name || session.code || "Unbekannt";
+    const currentGateStatus = await getStoredGateState();
+    const nextGateState = currentGateStatus.state === "open" ? "closed" : "open";
+    const savedGateStatus = await saveStoredGateState(nextGateState);
     let adminPush = null;
     try {
       adminPush = await notifyAdminsAboutGate({ triggeredBy });
@@ -315,7 +367,7 @@ export default async function handler(req, res) {
       adminPush = { attempted: true, sent: 0, error: pushError?.message || "Push fehlgeschlagen." };
     }
 
-    return json(res, 200, { ok: true, triggeredBy, adminPush });
+    return json(res, 200, { ok: true, triggeredBy, adminPush, gateStatus: savedGateStatus });
   } catch (error) {
     console.error("[shelly-gate] Cloud error:", error);
     return json(res, 502, {

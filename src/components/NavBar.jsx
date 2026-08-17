@@ -23,6 +23,7 @@ export default function NavBar({ onLogout, currentUser, role }) {
   const isGateManager = role === "admin" || role === "teamleiter";
   const gateUrl = "http://192.168.1.106/rpc/Switch.Set?id=0&on=true&toggle_after=1";
   const gateCloudUrl = "/api/shelly-gate";
+  const gateStatusStorageKey = "hbz_gate_status_v1";
 
   const initials = useMemo(() => {
     const name = currentUser?.name || "HB";
@@ -85,13 +86,56 @@ export default function NavBar({ onLogout, currentUser, role }) {
     setGateMotionUntil(Date.now() + 10000);
   }
 
-  async function loadGateStatus() {
-    if (!currentUser?.gateToken) return;
+  function normalizeGateState(value) {
+    return String(value || "").toLowerCase() === "open" ? "open" : "closed";
+  }
 
+  function gateStateLabel(state) {
+    return normalizeGateState(state) === "open" ? "Offen" : "Geschlossen";
+  }
+
+  function applyGateStatus(state, options = {}) {
+    const normalizedState = normalizeGateState(state);
+    const nextStatus = {
+      loading: false,
+      state: normalizedState,
+      label: gateStateLabel(normalizedState),
+      error: "",
+      updatedAt: new Date().toISOString(),
+    };
+
+    setGateStatus(nextStatus);
+
+    if (options.persistLocal !== false) {
+      try {
+        window.localStorage.setItem(gateStatusStorageKey, JSON.stringify(nextStatus));
+      } catch (_) {
+        // localStorage kann im Privatmodus blockiert sein.
+      }
+    }
+
+    return nextStatus;
+  }
+
+  function getLocalGateStatus() {
+    try {
+      const saved = JSON.parse(window.localStorage.getItem(gateStatusStorageKey) || "{}");
+      return normalizeGateState(saved?.state || "closed");
+    } catch {
+      return "closed";
+    }
+  }
+
+  async function loadGateStatus() {
     try {
       setGateStatus((prev) => ({ ...prev, loading: true, error: "" }));
 
       if (window.location.protocol === "https:") {
+        if (!currentUser?.gateToken) {
+          applyGateStatus(getLocalGateStatus(), { persistLocal: false });
+          return;
+        }
+
         const response = await fetch(gateCloudUrl, {
           method: "GET",
           headers: {
@@ -104,48 +148,29 @@ export default function NavBar({ onLogout, currentUser, role }) {
           throw new Error(result?.error || "Status nicht erreichbar.");
         }
 
-        setGateStatus({
-          loading: false,
-          state: result?.state || "unknown",
-          label: result?.label || "Unbekannt",
-          error: "",
-          updatedAt: new Date().toISOString(),
-        });
+        applyGateStatus(result?.state || "closed");
         return;
       }
 
-      const response = await fetch("http://192.168.1.106/rpc/Switch.GetStatus?id=0", {
-        cache: "no-store",
-      });
-      const result = await response.json();
-      const output = result?.output;
-      setGateStatus({
-        loading: false,
-        state: output === true ? "open" : output === false ? "closed" : "unknown",
-        label: output === true ? "Offen" : output === false ? "Geschlossen" : "Unbekannt",
-        error: "",
-        updatedAt: new Date().toISOString(),
-      });
+      applyGateStatus(getLocalGateStatus(), { persistLocal: false });
     } catch (error) {
       console.warn("[NavBar] gate status error:", error);
       setGateStatus((prev) => ({
         ...prev,
         loading: false,
-        state: "unknown",
-        label: "Unbekannt",
+        state: normalizeGateState(prev.state),
+        label: gateStateLabel(prev.state),
         error: error?.message || "Status nicht erreichbar.",
       }));
     }
   }
 
   useEffect(() => {
-    if (!currentUser?.gateToken) return undefined;
-
     loadGateStatus();
     const intervalId = window.setInterval(loadGateStatus, 30000);
     return () => window.clearInterval(intervalId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentUser?.gateToken]);
+  }, [currentUser?.gateToken, currentUser?.code]);
 
   const renderNavLink = (to, label) => (
     <NavLink
@@ -188,9 +213,10 @@ export default function NavBar({ onLogout, currentUser, role }) {
         mode: "no-cors",
         cache: "no-store",
       });
+      const nextState = getLocalGateStatus() === "open" ? "closed" : "open";
+      applyGateStatus(nextState);
       setGateMessage("Schiebetor-Impuls gesendet.");
       startGateMotionHint();
-      window.setTimeout(loadGateStatus, 1800);
       window.setTimeout(() => setGateMessage(""), 3500);
     } catch (error) {
       console.error("[NavBar] Shelly gate error:", error);
@@ -232,11 +258,12 @@ export default function NavBar({ onLogout, currentUser, role }) {
         throw new Error(result?.error || "Shelly Cloud konnte nicht schalten.");
       }
 
+      const nextState = result?.gateStatus?.state || (gateStatus.state === "open" ? "closed" : "open");
+      applyGateStatus(nextState);
       setGatePin("");
       setGatePinOpen(false);
       setGateMessage("Schiebetor-Impuls über Cloud gesendet.");
       startGateMotionHint();
-      window.setTimeout(loadGateStatus, 1800);
       if (role === "admin" && "Notification" in window && Notification.permission === "granted") {
         new Notification("Schiebetor ausgelöst", {
           body: `${currentUser?.name || currentUser?.code || "Unbekannt"} hat das Schiebetor ausgelöst.`,
@@ -350,10 +377,10 @@ export default function NavBar({ onLogout, currentUser, role }) {
           type="button"
           className={`app-gate-status app-gate-status-${gateStatus.state}`}
           onClick={loadGateStatus}
-          title="Torstatus laut Shelly aktualisieren"
+          title="Torstatus aktualisieren"
         >
           <span>{gateStatus.loading ? "Prüfe…" : `Status: ${gateStatus.label}`}</span>
-          <small>{gateStatus.error ? "nicht erreichbar" : "laut Shelly"}</small>
+          <small>{gateStatus.error ? "nicht synchron" : "App-Status"}</small>
         </button>
         {gateMessage && <span className="app-gate-message">{gateMessage}</span>}
       </div>
