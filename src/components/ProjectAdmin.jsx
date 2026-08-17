@@ -18,23 +18,19 @@ const emptyForm = {
   active: true,
 };
 
-function getNextCostCenter(projects = []) {
-  const numericCenters = (projects || [])
+function getNextCostCenter(projects = [], year = new Date().getFullYear()) {
+  const yearPrefix = String(year);
+  const existingNumbersForYear = (projects || [])
     .map((project) => String(project?.cost_center || "").trim())
-    .filter((value) => /^\d+$/.test(value))
-    .map((value) => ({
-      value,
-      number: Number(value),
-    }))
-    .filter((item) => Number.isSafeInteger(item.number));
+    .filter((value) => new RegExp(`^${yearPrefix}\\d+$`).test(value))
+    .map((value) => Number(value.slice(yearPrefix.length)))
+    .filter((value) => Number.isSafeInteger(value));
 
-  if (!numericCenters.length) return "";
+  const nextNumber = existingNumbersForYear.length
+    ? Math.max(...existingNumbersForYear) + 1
+    : 1;
 
-  const highest = numericCenters.reduce((max, item) =>
-    item.number > max.number ? item : max
-  );
-
-  return String(highest.number + 1).padStart(highest.value.length, "0");
+  return `${yearPrefix}${String(nextNumber).padStart(3, "0")}`;
 }
 
 function formatDateTime(value) {
@@ -326,7 +322,7 @@ export default function ProjectAdmin() {
             />
             {!editId && nextCostCenter && (
               <div className="help" style={{ marginTop: 6 }}>
-                Wird automatisch als nächste freie Kostenstelle vorgeschlagen.
+                Wird automatisch als nächste freie Kostenstelle für das aktuelle Jahr vorgeschlagen.
               </div>
             )}
           </div>
