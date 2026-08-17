@@ -104,7 +104,7 @@ export default function NavBar({ onLogout, currentUser, role }) {
       disabled={gateBusy}
       title="Schiebetor per Shelly-Impuls auslösen"
     >
-      {gateBusy ? "Tor wird ausgelöst…" : "Schiebetor öffnen / schließen"}
+      {gateBusy ? "Tor wird ausgelöst…" : "Tor öffnen / schließen"}
     </button>
   );
 

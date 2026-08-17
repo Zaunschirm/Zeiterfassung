@@ -396,22 +396,22 @@ body::-webkit-scrollbar-thumb {
 
 .app-gate-quickbar {
   width: min(1220px, calc(100% - 24px));
-  margin: 10px auto 0;
-  padding: 10px 12px;
+  margin: 6px auto 0;
+  padding: 6px 10px;
   border: 1px solid rgba(123, 74, 45, 0.22);
-  border-radius: 18px;
+  border-radius: 14px;
   background: linear-gradient(135deg, rgba(255, 248, 239, 0.98), rgba(244, 230, 214, 0.94));
-  box-shadow: 0 12px 32px rgba(70, 43, 29, 0.09);
+  box-shadow: 0 7px 18px rgba(70, 43, 29, 0.07);
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
-  gap: 10px;
+  gap: 8px;
   align-items: center;
 }
 
 .app-gate-quickbar span {
   display: block;
   color: #5f3922;
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 950;
   letter-spacing: 0.03em;
   text-transform: uppercase;
@@ -419,14 +419,16 @@ body::-webkit-scrollbar-thumb {
 
 .app-gate-quickbar small {
   display: block;
-  margin-top: 2px;
+  margin-top: 1px;
   color: #78665a;
-  font-size: 11px;
+  font-size: 9px;
   font-weight: 750;
 }
 
 .app-gate-top-button {
-  min-height: 42px;
+  min-height: 32px;
+  padding: 6px 14px;
+  font-size: 11px;
   border-color: rgba(123, 74, 45, 0.32);
   background: #7b4a2d;
   color: #fff8ef;
@@ -2949,17 +2951,17 @@ body::-webkit-scrollbar-thumb {
 @media (max-width: 768px) {
   .app-gate-quickbar {
     width: calc(100% - 16px);
-    margin-top: 8px;
+    margin-top: 6px;
     grid-template-columns: 1fr;
-    gap: 7px;
-    padding: 10px;
-    border-radius: 14px;
+    gap: 6px;
+    padding: 8px;
+    border-radius: 12px;
   }
 
   .app-gate-top-button {
     width: 100%;
-    min-height: 50px;
-    font-size: 15px;
+    min-height: 42px;
+    font-size: 14px;
   }
 
   .app-gate-quickbar .app-gate-message {
