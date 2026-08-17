@@ -1,5 +1,7 @@
-const DEFAULT_DEVICE_ID = "e4b3233fd228";
 import crypto from "node:crypto";
+import webpush from "web-push";
+
+const DEFAULT_DEVICE_ID = "e4b3233fd228";
 
 function json(res, statusCode, payload) {
   res.statusCode = statusCode;
@@ -69,6 +71,105 @@ function timingSafeEqualText(left, right) {
     diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
   }
   return diff === 0;
+}
+
+function getSupabaseConfig() {
+  return {
+    url: process.env.VITE_SUPABASE_URL,
+    key: process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY,
+  };
+}
+
+async function supabaseFetch(path, options = {}) {
+  const { url, key } = getSupabaseConfig();
+  if (!url || !key) throw new Error("Supabase Server-Konfiguration fehlt.");
+
+  const response = await fetch(`${url}/rest/v1/${path}`, {
+    ...options,
+    headers: {
+      apikey: key,
+      Authorization: `Bearer ${key}`,
+      ...(options.headers || {}),
+    },
+  });
+
+  const text = await response.text();
+  let data = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = text;
+  }
+
+  if (!response.ok) {
+    throw new Error(typeof data === "string" ? data : data?.message || "Supabase-Abfrage fehlgeschlagen.");
+  }
+
+  return data;
+}
+
+function configureWebPush() {
+  const publicKey = process.env.VAPID_PUBLIC_KEY || process.env.VITE_VAPID_PUBLIC_KEY;
+  const privateKey = process.env.VAPID_PRIVATE_KEY;
+  const subject = process.env.VAPID_SUBJECT || "mailto:stefan.zaunschirm@gmx.at";
+
+  if (!publicKey || !privateKey) return false;
+
+  webpush.setVapidDetails(subject, publicKey, privateKey);
+  return true;
+}
+
+async function notifyAdminsAboutGate({ triggeredBy }) {
+  if (!configureWebPush()) {
+    return { attempted: false, sent: 0, reason: "VAPID-Schlüssel fehlen." };
+  }
+
+  const employees = await supabaseFetch("employees?select=id,name,role,active,disabled");
+  const adminIds = (employees || [])
+    .filter((employee) => {
+      const role = String(employee?.role || "").trim().toLowerCase();
+      return role === "admin" && employee?.disabled !== true && employee?.active !== false;
+    })
+    .map((employee) => String(employee.id));
+
+  if (!adminIds.length) return { attempted: true, sent: 0, reason: "Keine Admins gefunden." };
+
+  const subscriptions = await supabaseFetch("push_subscriptions?select=id,employee_id,employee_name,endpoint,p256dh,auth,push_enabled");
+  const adminSubscriptions = (subscriptions || []).filter(
+    (subscription) =>
+      subscription?.push_enabled !== false &&
+      adminIds.includes(String(subscription?.employee_id)) &&
+      subscription?.endpoint &&
+      subscription?.p256dh &&
+      subscription?.auth
+  );
+
+  const payload = JSON.stringify({
+    title: "Schiebetor ausgelöst",
+    body: `${triggeredBy || "Unbekannt"} hat das Schiebetor geöffnet/geschlossen.`,
+    icon: "/icons/icon-192.png",
+    badge: "/icons/icon-192.png",
+    url: "/dashboard",
+  });
+
+  let sent = 0;
+  await Promise.allSettled(
+    adminSubscriptions.map(async (subscription) => {
+      await webpush.sendNotification(
+        {
+          endpoint: subscription.endpoint,
+          keys: {
+            p256dh: subscription.p256dh,
+            auth: subscription.auth,
+          },
+        },
+        payload
+      );
+      sent += 1;
+    })
+  );
+
+  return { attempted: true, sent, total: adminSubscriptions.length };
 }
 
 export default async function handler(req, res) {
@@ -141,7 +242,16 @@ export default async function handler(req, res) {
       });
     }
 
-    return json(res, 200, { ok: true, triggeredBy: session.name || session.code || "Unbekannt" });
+    const triggeredBy = session.name || session.code || "Unbekannt";
+    let adminPush = null;
+    try {
+      adminPush = await notifyAdminsAboutGate({ triggeredBy });
+    } catch (pushError) {
+      console.warn("[shelly-gate] admin push failed:", pushError);
+      adminPush = { attempted: true, sent: 0, error: pushError?.message || "Push fehlgeschlagen." };
+    }
+
+    return json(res, 200, { ok: true, triggeredBy, adminPush });
   } catch (error) {
     console.error("[shelly-gate] Cloud error:", error);
     return json(res, 502, {
