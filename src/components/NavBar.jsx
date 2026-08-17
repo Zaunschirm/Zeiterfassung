@@ -6,6 +6,9 @@ export default function NavBar({ onLogout, currentUser, role }) {
   const [openMenu, setOpenMenu] = useState(null);
   const [gateBusy, setGateBusy] = useState(false);
   const [gateMessage, setGateMessage] = useState("");
+  const [gatePinOpen, setGatePinOpen] = useState(false);
+  const [gatePin, setGatePin] = useState("");
+  const [gatePinError, setGatePinError] = useState("");
   const isAdmin = role === "admin";
   const canSeeAdmin = role === "admin" || role === "teamleiter";
   const gateUrl = "http://192.168.1.106/rpc/Switch.Set?id=0&on=true&toggle_after=1";
@@ -70,46 +73,69 @@ export default function NavBar({ onLogout, currentUser, role }) {
   async function triggerSlidingGate() {
     if (gateBusy) return;
     setGateMessage("");
+    setGatePinError("");
 
     if (!window.confirm("Schiebetor wirklich auslösen? Bitte vorher Sichtkontakt prüfen.")) return;
 
+    if (window.location.protocol === "https:") {
+      setGatePin("");
+      setGatePinOpen(true);
+      return;
+    }
+
     try {
       setGateBusy(true);
-      if (window.location.protocol === "https:") {
-        const pin = window.prompt("Tor-PIN eingeben");
-        if (!pin) {
-          setGateBusy(false);
-          return;
-        }
-
-        const response = await fetch(gateCloudUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            pin,
-            user: currentUser?.name || currentUser?.code || "unbekannt",
-          }),
-        });
-
-        const result = await response.json().catch(() => ({}));
-        if (!response.ok || result?.ok === false) {
-          throw new Error(result?.error || "Shelly Cloud konnte nicht schalten.");
-        }
-
-        setGateMessage("Schiebetor-Impuls über Cloud gesendet.");
-      } else {
-        await fetch(gateUrl, {
-          method: "GET",
-          mode: "no-cors",
-          cache: "no-store",
-        });
-        setGateMessage("Schiebetor-Impuls gesendet.");
-      }
+      await fetch(gateUrl, {
+        method: "GET",
+        mode: "no-cors",
+        cache: "no-store",
+      });
+      setGateMessage("Schiebetor-Impuls gesendet.");
       window.setTimeout(() => setGateMessage(""), 3500);
     } catch (error) {
       console.error("[NavBar] Shelly gate error:", error);
       setGateMessage("Schiebetor nicht erreichbar.");
       alert(`Schiebetor konnte nicht ausgelöst werden. ${error?.message || "Bitte prüfen: Shelly online und Cloud verbunden."}`);
+    } finally {
+      setGateBusy(false);
+    }
+  }
+
+  async function triggerSlidingGateCloud(event) {
+    event?.preventDefault?.();
+    if (gateBusy) return;
+
+    const pin = gatePin.trim();
+    if (!pin) {
+      setGatePinError("Bitte Tor-PIN eingeben.");
+      return;
+    }
+
+    try {
+      setGateBusy(true);
+      setGatePinError("");
+
+      const response = await fetch(gateCloudUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pin,
+          user: currentUser?.name || currentUser?.code || "unbekannt",
+        }),
+      });
+
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result?.ok === false) {
+        throw new Error(result?.error || "Shelly Cloud konnte nicht schalten.");
+      }
+
+      setGatePin("");
+      setGatePinOpen(false);
+      setGateMessage("Schiebetor-Impuls über Cloud gesendet.");
+      window.setTimeout(() => setGateMessage(""), 3500);
+    } catch (error) {
+      console.error("[NavBar] Shelly cloud gate error:", error);
+      setGatePinError(error?.message || "Schiebetor nicht erreichbar.");
     } finally {
       setGateBusy(false);
     }
@@ -206,6 +232,45 @@ export default function NavBar({ onLogout, currentUser, role }) {
         {renderGateButton()}
         {gateMessage && <span className="app-gate-message">{gateMessage}</span>}
       </div>
+
+      {gatePinOpen && (
+        <div className="app-gate-modal-backdrop" role="presentation">
+          <form className="app-gate-modal" onSubmit={triggerSlidingGateCloud}>
+            <h2>Tor-PIN eingeben</h2>
+            <p>Der Shelly wird über die Cloud ausgelöst. Bitte nur bei Sichtkontakt schalten.</p>
+            <input
+              autoFocus
+              inputMode="numeric"
+              type="password"
+              value={gatePin}
+              onChange={(event) => {
+                setGatePin(event.target.value);
+                setGatePinError("");
+              }}
+              placeholder="PIN"
+              aria-label="Tor-PIN"
+            />
+            {gatePinError && <div className="app-gate-pin-error">{gatePinError}</div>}
+            <div className="app-gate-modal-actions">
+              <button
+                type="button"
+                className="hbz-btn secondary"
+                onClick={() => {
+                  setGatePinOpen(false);
+                  setGatePin("");
+                  setGatePinError("");
+                }}
+                disabled={gateBusy}
+              >
+                Abbrechen
+              </button>
+              <button type="submit" className="hbz-btn" disabled={gateBusy}>
+                {gateBusy ? "Wird ausgelöst…" : "Tor auslösen"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
     </>
   );
 }

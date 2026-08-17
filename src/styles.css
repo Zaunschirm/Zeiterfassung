@@ -441,6 +441,69 @@ body::-webkit-scrollbar-thumb {
   color: #fff;
 }
 
+.app-gate-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  background: rgba(42, 28, 18, 0.42);
+}
+
+.app-gate-modal {
+  width: min(420px, 100%);
+  padding: 20px;
+  border: 1px solid rgba(123, 74, 45, 0.25);
+  border-radius: 20px;
+  background: #fffaf4;
+  box-shadow: 0 24px 70px rgba(42, 28, 18, 0.26);
+}
+
+.app-gate-modal h2 {
+  margin: 0 0 8px;
+  color: #2d2118;
+  font-size: 22px;
+}
+
+.app-gate-modal p {
+  margin: 0 0 14px;
+  color: #6d5a4c;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.app-gate-modal input {
+  width: 100%;
+  min-height: 46px;
+  padding: 10px 14px;
+  border: 1px solid rgba(123, 74, 45, 0.28);
+  border-radius: 14px;
+  background: #fff;
+  color: #2d2118;
+  font-size: 18px;
+  font-weight: 900;
+  letter-spacing: 0.18em;
+}
+
+.app-gate-pin-error {
+  margin-top: 10px;
+  padding: 9px 10px;
+  border-radius: 12px;
+  background: #fff0ee;
+  color: #a53125;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.app-gate-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 16px;
+}
+
 .app-user-badge {
   display: inline-flex;
   align-items: center;
