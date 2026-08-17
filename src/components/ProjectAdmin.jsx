@@ -18,6 +18,25 @@ const emptyForm = {
   active: true,
 };
 
+function getNextCostCenter(projects = []) {
+  const numericCenters = (projects || [])
+    .map((project) => String(project?.cost_center || "").trim())
+    .filter((value) => /^\d+$/.test(value))
+    .map((value) => ({
+      value,
+      number: Number(value),
+    }))
+    .filter((item) => Number.isSafeInteger(item.number));
+
+  if (!numericCenters.length) return "";
+
+  const highest = numericCenters.reduce((max, item) =>
+    item.number > max.number ? item : max
+  );
+
+  return String(highest.number + 1).padStart(highest.value.length, "0");
+}
+
 function formatDateTime(value) {
   if (!value) return "—";
   const d = new Date(value);
@@ -49,6 +68,22 @@ export default function ProjectAdmin() {
     fetchProjects();
   }, []);
 
+  const nextCostCenter = useMemo(() => getNextCostCenter(projects), [projects]);
+
+  useEffect(() => {
+    if (editId || !nextCostCenter) return;
+    setForm((current) =>
+      current.cost_center ? current : { ...current, cost_center: nextCostCenter }
+    );
+  }, [editId, nextCostCenter]);
+
+  function getEmptyFormWithNextCostCenter(projectList = projects) {
+    return {
+      ...emptyForm,
+      cost_center: getNextCostCenter(projectList),
+    };
+  }
+
   async function fetchProjects() {
     setLoading(true);
 
@@ -78,6 +113,7 @@ export default function ProjectAdmin() {
     setProjects(projectsData || []);
     setPhotoRows(photosData || []);
     setLoading(false);
+    return projectsData || [];
   }
 
   const photoStats = useMemo(() => {
@@ -197,8 +233,11 @@ export default function ProjectAdmin() {
       setMessage("❌ Fehler: " + res.error.message);
     } else {
       setMessage(editId ? "✅ Projekt aktualisiert." : "✅ Projekt angelegt.");
-      setForm(emptyForm);
       setEditId(null);
+      const nextProjectList = editId
+        ? projects.map((project) => String(project.id) === String(editId) ? res.data : project)
+        : [...projects, res.data];
+      setForm(getEmptyFormWithNextCostCenter(nextProjectList));
       fetchProjects();
     }
 
@@ -217,7 +256,7 @@ export default function ProjectAdmin() {
       setMessage("🗑️ Projekt gelöscht.");
       if (editId === id) {
         setEditId(null);
-        setForm(emptyForm);
+        setForm(getEmptyFormWithNextCostCenter(projects.filter((project) => project.id !== id)));
       }
     }
   }
@@ -285,6 +324,11 @@ export default function ProjectAdmin() {
               onChange={onChange}
               placeholder="optional"
             />
+            {!editId && nextCostCenter && (
+              <div className="help" style={{ marginTop: 6 }}>
+                Wird automatisch als nächste freie Kostenstelle vorgeschlagen.
+              </div>
+            )}
           </div>
 
           <div>
@@ -345,8 +389,8 @@ export default function ProjectAdmin() {
                 type="button"
                 className="hbz-btn"
                 onClick={() => {
-                  setForm(emptyForm);
                   setEditId(null);
+                  setForm(getEmptyFormWithNextCostCenter());
                 }}
               >
                 Abbrechen
