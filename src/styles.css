@@ -394,6 +394,22 @@ body::-webkit-scrollbar-thumb {
   text-align: center;
 }
 
+.app-gate-motion-hint {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 5px 10px;
+  border: 1px solid rgba(210, 146, 49, 0.32);
+  border-radius: 999px;
+  background: #fff6df;
+  color: #8a5d15;
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: 0;
+  text-transform: none;
+  box-shadow: 0 7px 18px rgba(70, 43, 29, 0.05);
+}
+
 .app-gate-quickbar {
   width: min(1220px, calc(100% - 24px));
   margin: 6px auto 0;
@@ -3074,6 +3090,13 @@ body::-webkit-scrollbar-thumb {
   .app-gate-status {
     width: 100%;
     min-height: 40px;
+  }
+
+  .app-gate-motion-hint {
+    width: 100%;
+    justify-content: center;
+    min-height: 38px;
+    text-align: center;
   }
 
   .app-gate-quickbar .app-gate-message {

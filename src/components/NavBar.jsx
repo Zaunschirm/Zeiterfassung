@@ -9,6 +9,8 @@ export default function NavBar({ onLogout, currentUser, role }) {
   const [gatePinOpen, setGatePinOpen] = useState(false);
   const [gatePin, setGatePin] = useState("");
   const [gatePinError, setGatePinError] = useState("");
+  const [gateMotionUntil, setGateMotionUntil] = useState(0);
+  const [gateMotionSeconds, setGateMotionSeconds] = useState(0);
   const [gateStatus, setGateStatus] = useState({
     loading: false,
     state: "unknown",
@@ -61,6 +63,27 @@ export default function NavBar({ onLogout, currentUser, role }) {
     document.addEventListener("pointerdown", closeOnOutsideClick);
     return () => document.removeEventListener("pointerdown", closeOnOutsideClick);
   }, []);
+
+  useEffect(() => {
+    if (!gateMotionUntil) {
+      setGateMotionSeconds(0);
+      return undefined;
+    }
+
+    const updateMotionHint = () => {
+      const seconds = Math.max(0, Math.ceil((gateMotionUntil - Date.now()) / 1000));
+      setGateMotionSeconds(seconds);
+      if (seconds <= 0) setGateMotionUntil(0);
+    };
+
+    updateMotionHint();
+    const intervalId = window.setInterval(updateMotionHint, 250);
+    return () => window.clearInterval(intervalId);
+  }, [gateMotionUntil]);
+
+  function startGateMotionHint() {
+    setGateMotionUntil(Date.now() + 10000);
+  }
 
   async function loadGateStatus() {
     if (!currentUser?.gateToken) return;
@@ -166,6 +189,7 @@ export default function NavBar({ onLogout, currentUser, role }) {
         cache: "no-store",
       });
       setGateMessage("Schiebetor-Impuls gesendet.");
+      startGateMotionHint();
       window.setTimeout(loadGateStatus, 1800);
       window.setTimeout(() => setGateMessage(""), 3500);
     } catch (error) {
@@ -211,6 +235,7 @@ export default function NavBar({ onLogout, currentUser, role }) {
       setGatePin("");
       setGatePinOpen(false);
       setGateMessage("Schiebetor-Impuls über Cloud gesendet.");
+      startGateMotionHint();
       window.setTimeout(loadGateStatus, 1800);
       if (role === "admin" && "Notification" in window && Notification.permission === "granted") {
         new Notification("Schiebetor ausgelöst", {
@@ -316,6 +341,11 @@ export default function NavBar({ onLogout, currentUser, role }) {
           <small>Shelly 1 Gen4 · Impuls 1 Sekunde</small>
         </div>
         {renderGateButton()}
+        {gateMotionSeconds > 0 && (
+          <span className="app-gate-motion-hint">
+            Tor bewegt sich · vor wenigen Sekunden ausgelöst · {gateMotionSeconds}s
+          </span>
+        )}
         <button
           type="button"
           className={`app-gate-status app-gate-status-${gateStatus.state}`}
