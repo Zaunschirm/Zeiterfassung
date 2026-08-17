@@ -9,6 +9,7 @@ export default function NavBar({ onLogout, currentUser, role }) {
   const isAdmin = role === "admin";
   const canSeeAdmin = role === "admin" || role === "teamleiter";
   const gateUrl = "http://192.168.1.106/rpc/Switch.Set?id=0&on=true&toggle_after=1";
+  const gateCloudUrl = "/api/shelly-gate";
 
   const initials = useMemo(() => {
     const name = currentUser?.name || "HB";
@@ -72,25 +73,43 @@ export default function NavBar({ onLogout, currentUser, role }) {
 
     if (!window.confirm("Schiebetor wirklich auslösen? Bitte vorher Sichtkontakt prüfen.")) return;
 
-    if (window.location.protocol === "https:") {
-      setGateMessage("Schiebetor nur im lokalen WLAN/HTTP steuerbar.");
-      alert("Der Shelly ist lokal per HTTP erreichbar. Über HTTPS/Vercel blockiert der Browser diesen lokalen Aufruf meist. Bitte im lokalen WLAN/über die Desktop-App öffnen.");
-      return;
-    }
-
     try {
       setGateBusy(true);
-      await fetch(gateUrl, {
-        method: "GET",
-        mode: "no-cors",
-        cache: "no-store",
-      });
-      setGateMessage("Schiebetor-Impuls gesendet.");
+      if (window.location.protocol === "https:") {
+        const pin = window.prompt("Tor-PIN eingeben");
+        if (!pin) {
+          setGateBusy(false);
+          return;
+        }
+
+        const response = await fetch(gateCloudUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            pin,
+            user: currentUser?.name || currentUser?.code || "unbekannt",
+          }),
+        });
+
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || result?.ok === false) {
+          throw new Error(result?.error || "Shelly Cloud konnte nicht schalten.");
+        }
+
+        setGateMessage("Schiebetor-Impuls über Cloud gesendet.");
+      } else {
+        await fetch(gateUrl, {
+          method: "GET",
+          mode: "no-cors",
+          cache: "no-store",
+        });
+        setGateMessage("Schiebetor-Impuls gesendet.");
+      }
       window.setTimeout(() => setGateMessage(""), 3500);
     } catch (error) {
       console.error("[NavBar] Shelly gate error:", error);
       setGateMessage("Schiebetor nicht erreichbar.");
-      alert("Schiebetor konnte nicht ausgelöst werden. Bitte prüfen: gleiches WLAN, Shelly-IP 192.168.1.106, Gerät online.");
+      alert(`Schiebetor konnte nicht ausgelöst werden. ${error?.message || "Bitte prüfen: Shelly online und Cloud verbunden."}`);
     } finally {
       setGateBusy(false);
     }
