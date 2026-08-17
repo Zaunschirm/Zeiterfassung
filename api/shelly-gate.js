@@ -2,9 +2,25 @@ import crypto from "node:crypto";
 import webpush from "web-push";
 
 const DEFAULT_DEVICE_ID = "e4b3233fd228";
+const ALLOWED_ORIGINS = new Set([
+  "https://zeiterfassung-rho.vercel.app",
+  "http://127.0.0.1:5180",
+  "http://localhost:5180",
+]);
 
-function json(res, statusCode, payload) {
+function setCors(req, res) {
+  const origin = String(req.headers.origin || "");
+  if (ALLOWED_ORIGINS.has(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Vary", "Origin");
+  }
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type");
+}
+
+function json(req, res, statusCode, payload) {
   res.statusCode = statusCode;
+  setCors(req, res);
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   res.end(JSON.stringify(payload));
 }
@@ -310,9 +326,15 @@ async function notifyAdminsAboutGate({ triggeredBy }) {
 }
 
 export default async function handler(req, res) {
+  if (req.method === "OPTIONS") {
+    setCors(req, res);
+    res.statusCode = 204;
+    return res.end();
+  }
+
   if (!["GET", "POST"].includes(req.method)) {
-    res.setHeader("Allow", "GET, POST");
-    return json(res, 405, { ok: false, error: "Nur GET oder POST erlaubt." });
+    res.setHeader("Allow", "GET, POST, OPTIONS");
+    return json(req, res, 405, { ok: false, error: "Nur GET oder POST erlaubt." });
   }
 
   const host = normalizeHost(process.env.SHELLY_CLOUD_HOST);
@@ -323,7 +345,7 @@ export default async function handler(req, res) {
   const toggleAfter = Number(process.env.SHELLY_GATE_TOGGLE_AFTER || 1);
 
   if (!host || !authKey || !deviceId || !getSessionSecret()) {
-    return json(res, 500, {
+    return json(req, res, 500, {
       ok: false,
       error: "Shelly Cloud ist noch nicht vollständig konfiguriert.",
     });
@@ -331,7 +353,7 @@ export default async function handler(req, res) {
 
   const session = verifySessionToken(req);
   if (!session) {
-    return json(res, 401, { ok: false, error: "Bitte neu einloggen." });
+    return json(req, res, 401, { ok: false, error: "Bitte neu einloggen." });
   }
 
   const role = String(session.role || "mitarbeiter").toLowerCase();
@@ -340,10 +362,10 @@ export default async function handler(req, res) {
   if (req.method === "GET") {
     try {
       const status = await getStoredGateState();
-      return json(res, 200, { ok: true, ...status });
+      return json(req, res, 200, { ok: true, ...status });
     } catch (error) {
       console.error("[shelly-gate] status error:", error);
-      return json(res, 502, {
+      return json(req, res, 502, {
         ok: false,
         error: error?.message || "Torstatus konnte nicht geladen werden.",
       });
@@ -354,20 +376,20 @@ export default async function handler(req, res) {
   try {
     body = await readBody(req);
   } catch (error) {
-    return json(res, 400, { ok: false, error: error.message || "Ungültige Anfrage." });
+    return json(req, res, 400, { ok: false, error: error.message || "Ungültige Anfrage." });
   }
 
   if (getQuery(req).get("action") === "status") {
     if (role !== "admin") {
-      return json(res, 403, { ok: false, error: "Nur Admin darf den Torstatus korrigieren." });
+      return json(req, res, 403, { ok: false, error: "Nur Admin darf den Torstatus korrigieren." });
     }
 
     try {
       const savedGateStatus = await saveStoredGateState(body?.state, { source: "admin" });
-      return json(res, 200, { ok: true, gateStatus: savedGateStatus });
+      return json(req, res, 200, { ok: true, gateStatus: savedGateStatus });
     } catch (error) {
       console.error("[shelly-gate] status correction error:", error);
-      return json(res, 502, {
+      return json(req, res, 502, {
         ok: false,
         error: error?.message || "Torstatus konnte nicht gespeichert werden.",
       });
@@ -375,7 +397,7 @@ export default async function handler(req, res) {
   }
 
   if (needsGatePin && !timingSafeEqualText(body?.pin, gatePin)) {
-    return json(res, 401, { ok: false, error: "Tor-PIN ist falsch." });
+    return json(req, res, 401, { ok: false, error: "Tor-PIN ist falsch." });
   }
 
   try {
@@ -402,7 +424,7 @@ export default async function handler(req, res) {
     }
 
     if (!shellyRes.ok) {
-      return json(res, 502, {
+      return json(req, res, 502, {
         ok: false,
         error: "Shelly Cloud hat den Befehl abgelehnt.",
         details: data,
@@ -430,10 +452,10 @@ export default async function handler(req, res) {
       adminPush = { attempted: true, sent: 0, error: pushError?.message || "Push fehlgeschlagen." };
     }
 
-    return json(res, 200, { ok: true, triggeredBy, adminPush, gateStatus });
+    return json(req, res, 200, { ok: true, triggeredBy, adminPush, gateStatus });
   } catch (error) {
     console.error("[shelly-gate] Cloud error:", error);
-    return json(res, 502, {
+    return json(req, res, 502, {
       ok: false,
       error: "Shelly Cloud ist derzeit nicht erreichbar.",
     });

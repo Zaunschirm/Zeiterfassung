@@ -23,7 +23,8 @@ export default function NavBar({ onLogout, currentUser, role }) {
   const isGateManager = role === "admin" || role === "teamleiter";
   const gateUrl = "http://192.168.1.106/rpc/Switch.Set?id=0&on=true&toggle_after=1";
   const gateLocalStatusUrl = "http://192.168.1.106/rpc/Switch.GetStatus?id=0";
-  const gateCloudUrl = "/api/shelly-gate";
+  const isLocalPreview = window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost";
+  const gateCloudUrl = isLocalPreview ? "https://zeiterfassung-rho.vercel.app/api/shelly-gate" : "/api/shelly-gate";
 
   const initials = useMemo(() => {
     const name = currentUser?.name || "HB";
@@ -124,8 +125,21 @@ export default function NavBar({ onLogout, currentUser, role }) {
     return null;
   }
 
+  async function fetchWithTimeout(url, options = {}, timeoutMs = 6000) {
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await fetch(url, {
+        ...options,
+        signal: controller.signal,
+      });
+    } finally {
+      window.clearTimeout(timeoutId);
+    }
+  }
+
   async function loadLocalShellyStatus() {
-    const response = await fetch(gateLocalStatusUrl, { method: "GET", cache: "no-store" });
+    const response = await fetchWithTimeout(gateLocalStatusUrl, { method: "GET", cache: "no-store" }, 3500);
     const data = await response.json().catch(() => ({}));
     const output = readShellyOutput(data);
     if (output === null) throw new Error("Shelly-Status konnte lokal nicht gelesen werden.");
@@ -136,19 +150,8 @@ export default function NavBar({ onLogout, currentUser, role }) {
     try {
       setGateStatus((prev) => ({ ...prev, loading: true, error: "" }));
 
-      if (window.location.protocol === "https:") {
-        if (!currentUser?.gateToken) {
-          setGateStatus((prev) => ({
-            ...prev,
-            loading: false,
-            state: "unknown",
-            label: "Unbekannt",
-            error: "Bitte neu einloggen.",
-          }));
-          return;
-        }
-
-        const response = await fetch(gateCloudUrl, {
+      if (currentUser?.gateToken) {
+        const response = await fetchWithTimeout(gateCloudUrl, {
           method: "GET",
           headers: {
             Authorization: `Bearer ${currentUser.gateToken}`,
@@ -220,11 +223,11 @@ export default function NavBar({ onLogout, currentUser, role }) {
 
     try {
       setGateBusy(true);
-      await fetch(gateUrl, {
+      await fetchWithTimeout(gateUrl, {
         method: "GET",
         mode: "no-cors",
         cache: "no-store",
-      });
+      }, 5000);
       setGateMessage("Schiebetor-Impuls gesendet.");
       startGateMotionHint();
       window.setTimeout(loadGateStatus, 1200);
@@ -252,7 +255,7 @@ export default function NavBar({ onLogout, currentUser, role }) {
       setGateBusy(true);
       setGatePinError("");
 
-      const response = await fetch(gateCloudUrl, {
+      const response = await fetchWithTimeout(gateCloudUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -262,7 +265,7 @@ export default function NavBar({ onLogout, currentUser, role }) {
           pin: isGateManager ? "" : pin,
           user: currentUser?.name || currentUser?.code || "unbekannt",
         }),
-      });
+      }, 9000);
 
       const result = await response.json().catch(() => ({}));
       if (!response.ok || result?.ok === false) {
@@ -298,14 +301,14 @@ export default function NavBar({ onLogout, currentUser, role }) {
       setGateMessage("");
 
       if (window.location.protocol === "https:" && currentUser?.gateToken) {
-        const response = await fetch(`${gateCloudUrl}?action=status`, {
+        const response = await fetchWithTimeout(`${gateCloudUrl}?action=status`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${currentUser.gateToken}`,
           },
           body: JSON.stringify({ state: nextState }),
-        });
+        }, 9000);
         const result = await response.json().catch(() => ({}));
         if (!response.ok || result?.ok === false) {
           throw new Error(result?.error || "Status konnte nicht gespeichert werden.");
