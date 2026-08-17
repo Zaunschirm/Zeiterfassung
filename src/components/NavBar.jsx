@@ -279,6 +279,40 @@ export default function NavBar({ onLogout, currentUser, role }) {
     }
   }
 
+  async function correctGateStatus(nextState) {
+    if (!isAdmin) return;
+
+    if (!window.confirm(`Torstatus wirklich auf "${gateStateLabel(nextState)}" setzen?`)) return;
+
+    try {
+      setGateMessage("");
+
+      if (window.location.protocol === "https:" && currentUser?.gateToken) {
+        const response = await fetch(`${gateCloudUrl}?action=status`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${currentUser.gateToken}`,
+          },
+          body: JSON.stringify({ state: nextState }),
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || result?.ok === false) {
+          throw new Error(result?.error || "Status konnte nicht gespeichert werden.");
+        }
+        applyGateStatus(result?.gateStatus?.state || nextState);
+      } else {
+        applyGateStatus(nextState);
+      }
+
+      setGateMessage(`Torstatus auf ${gateStateLabel(nextState)} gesetzt.`);
+      window.setTimeout(() => setGateMessage(""), 3000);
+    } catch (error) {
+      console.error("[NavBar] gate status correction error:", error);
+      setGateMessage(error?.message || "Torstatus konnte nicht gespeichert werden.");
+    }
+  }
+
   const renderGateButton = () => (
     <button
       type="button"
@@ -382,6 +416,12 @@ export default function NavBar({ onLogout, currentUser, role }) {
           <span>{gateStatus.loading ? "Prüfe…" : `Status: ${gateStatus.label}`}</span>
           <small>{gateStatus.error ? "nicht synchron" : "App-Status"}</small>
         </button>
+        {isAdmin && (
+          <div className="app-gate-admin-correction" aria-label="Torstatus korrigieren">
+            <button type="button" onClick={() => correctGateStatus("open")}>als offen setzen</button>
+            <button type="button" onClick={() => correctGateStatus("closed")}>als geschlossen setzen</button>
+          </div>
+        )}
         {gateMessage && <span className="app-gate-message">{gateMessage}</span>}
       </div>
 

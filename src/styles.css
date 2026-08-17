@@ -501,6 +501,29 @@ body::-webkit-scrollbar-thumb {
   color: #7b531e;
 }
 
+.app-gate-admin-correction {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.app-gate-admin-correction button {
+  min-height: 28px;
+  padding: 4px 8px;
+  border: 1px solid rgba(123, 74, 45, 0.22);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.62);
+  color: #6a4933;
+  font-size: 9px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.app-gate-admin-correction button:hover {
+  background: #fff;
+  color: #4a2d1a;
+}
+
 .app-gate-modal-backdrop {
   position: fixed;
   inset: 0;
@@ -3090,6 +3113,16 @@ body::-webkit-scrollbar-thumb {
   .app-gate-status {
     width: 100%;
     min-height: 40px;
+  }
+
+  .app-gate-admin-correction {
+    width: 100%;
+  }
+
+  .app-gate-admin-correction button {
+    flex: 1;
+    min-height: 36px;
+    font-size: 11px;
   }
 
   .app-gate-motion-hint {

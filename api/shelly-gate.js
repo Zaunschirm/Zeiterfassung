@@ -13,6 +13,15 @@ function normalizeHost(host) {
   return String(host || "").trim().replace(/\/+$/, "");
 }
 
+function getQuery(req) {
+  try {
+    const url = new URL(req.url || "", "https://app.local");
+    return url.searchParams;
+  } catch {
+    return new URLSearchParams();
+  }
+}
+
 function getSessionSecret() {
   return process.env.APP_SESSION_SECRET || process.env.SHELLY_CLOUD_AUTH_KEY || "";
 }
@@ -165,7 +174,7 @@ async function saveStoredGateState(state) {
     updated_at: new Date().toISOString(),
   };
 
-  await supabaseFetch("app_state", {
+  await supabaseFetch("app_state?on_conflict=key", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -320,6 +329,23 @@ export default async function handler(req, res) {
     return json(res, 400, { ok: false, error: error.message || "Ungültige Anfrage." });
   }
 
+  if (getQuery(req).get("action") === "status") {
+    if (role !== "admin") {
+      return json(res, 403, { ok: false, error: "Nur Admin darf den Torstatus korrigieren." });
+    }
+
+    try {
+      const savedGateStatus = await saveStoredGateState(body?.state);
+      return json(res, 200, { ok: true, gateStatus: savedGateStatus });
+    } catch (error) {
+      console.error("[shelly-gate] status correction error:", error);
+      return json(res, 502, {
+        ok: false,
+        error: error?.message || "Torstatus konnte nicht gespeichert werden.",
+      });
+    }
+  }
+
   if (needsGatePin && !timingSafeEqualText(body?.pin, gatePin)) {
     return json(res, 401, { ok: false, error: "Tor-PIN ist falsch." });
   }
@@ -356,9 +382,20 @@ export default async function handler(req, res) {
     }
 
     const triggeredBy = session.name || session.code || "Unbekannt";
-    const currentGateStatus = await getStoredGateState();
-    const nextGateState = currentGateStatus.state === "open" ? "closed" : "open";
-    const savedGateStatus = await saveStoredGateState(nextGateState);
+    let savedGateStatus = null;
+    try {
+      const currentGateStatus = await getStoredGateState();
+      const nextGateState = currentGateStatus.state === "open" ? "closed" : "open";
+      savedGateStatus = await saveStoredGateState(nextGateState);
+    } catch (statusError) {
+      console.warn("[shelly-gate] status update failed after trigger:", statusError);
+      savedGateStatus = {
+        state: "unknown",
+        label: "Unbekannt",
+        source: "error",
+        error: statusError?.message || "Tor wurde ausgelöst, Status konnte nicht gespeichert werden.",
+      };
+    }
     let adminPush = null;
     try {
       adminPush = await notifyAdminsAboutGate({ triggeredBy });
