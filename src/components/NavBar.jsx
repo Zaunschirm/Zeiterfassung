@@ -9,6 +9,13 @@ export default function NavBar({ onLogout, currentUser, role }) {
   const [gatePinOpen, setGatePinOpen] = useState(false);
   const [gatePin, setGatePin] = useState("");
   const [gatePinError, setGatePinError] = useState("");
+  const [gateStatus, setGateStatus] = useState({
+    loading: false,
+    state: "unknown",
+    label: "Unbekannt",
+    error: "",
+    updatedAt: null,
+  });
   const isAdmin = role === "admin";
   const canSeeAdmin = role === "admin" || role === "teamleiter";
   const isGateManager = role === "admin" || role === "teamleiter";
@@ -55,6 +62,68 @@ export default function NavBar({ onLogout, currentUser, role }) {
     return () => document.removeEventListener("pointerdown", closeOnOutsideClick);
   }, []);
 
+  async function loadGateStatus() {
+    if (!currentUser?.gateToken) return;
+
+    try {
+      setGateStatus((prev) => ({ ...prev, loading: true, error: "" }));
+
+      if (window.location.protocol === "https:") {
+        const response = await fetch(gateCloudUrl, {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${currentUser.gateToken}`,
+          },
+          cache: "no-store",
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || result?.ok === false) {
+          throw new Error(result?.error || "Status nicht erreichbar.");
+        }
+
+        setGateStatus({
+          loading: false,
+          state: result?.state || "unknown",
+          label: result?.label || "Unbekannt",
+          error: "",
+          updatedAt: new Date().toISOString(),
+        });
+        return;
+      }
+
+      const response = await fetch("http://192.168.1.106/rpc/Switch.GetStatus?id=0", {
+        cache: "no-store",
+      });
+      const result = await response.json();
+      const output = result?.output;
+      setGateStatus({
+        loading: false,
+        state: output === true ? "open" : output === false ? "closed" : "unknown",
+        label: output === true ? "Offen" : output === false ? "Geschlossen" : "Unbekannt",
+        error: "",
+        updatedAt: new Date().toISOString(),
+      });
+    } catch (error) {
+      console.warn("[NavBar] gate status error:", error);
+      setGateStatus((prev) => ({
+        ...prev,
+        loading: false,
+        state: "unknown",
+        label: "Unbekannt",
+        error: error?.message || "Status nicht erreichbar.",
+      }));
+    }
+  }
+
+  useEffect(() => {
+    if (!currentUser?.gateToken) return undefined;
+
+    loadGateStatus();
+    const intervalId = window.setInterval(loadGateStatus, 30000);
+    return () => window.clearInterval(intervalId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser?.gateToken]);
+
   const renderNavLink = (to, label) => (
     <NavLink
       key={to}
@@ -97,6 +166,7 @@ export default function NavBar({ onLogout, currentUser, role }) {
         cache: "no-store",
       });
       setGateMessage("Schiebetor-Impuls gesendet.");
+      window.setTimeout(loadGateStatus, 1800);
       window.setTimeout(() => setGateMessage(""), 3500);
     } catch (error) {
       console.error("[NavBar] Shelly gate error:", error);
@@ -141,6 +211,7 @@ export default function NavBar({ onLogout, currentUser, role }) {
       setGatePin("");
       setGatePinOpen(false);
       setGateMessage("Schiebetor-Impuls über Cloud gesendet.");
+      window.setTimeout(loadGateStatus, 1800);
       if (role === "admin" && "Notification" in window && Notification.permission === "granted") {
         new Notification("Schiebetor ausgelöst", {
           body: `${currentUser?.name || currentUser?.code || "Unbekannt"} hat das Schiebetor ausgelöst.`,
@@ -245,6 +316,15 @@ export default function NavBar({ onLogout, currentUser, role }) {
           <small>Shelly 1 Gen4 · Impuls 1 Sekunde</small>
         </div>
         {renderGateButton()}
+        <button
+          type="button"
+          className={`app-gate-status app-gate-status-${gateStatus.state}`}
+          onClick={loadGateStatus}
+          title="Torstatus laut Shelly aktualisieren"
+        >
+          <span>{gateStatus.loading ? "Prüfe…" : `Status: ${gateStatus.label}`}</span>
+          <small>{gateStatus.error ? "nicht erreichbar" : "laut Shelly"}</small>
+        </button>
         {gateMessage && <span className="app-gate-message">{gateMessage}</span>}
       </div>
 

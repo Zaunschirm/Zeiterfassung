@@ -119,6 +119,57 @@ function configureWebPush() {
   return true;
 }
 
+function readSwitchOutputFromStatus(data, channel = 0) {
+  const row = Array.isArray(data) ? data[0] : data;
+  const status = row?.status || row?.data?.device_status || row?.device_status || {};
+  const switchKey = `switch:${channel}`;
+
+  if (typeof status?.[switchKey]?.output === "boolean") return status[switchKey].output;
+  if (typeof status?.switch?.[channel]?.output === "boolean") return status.switch[channel].output;
+  if (typeof status?.switch?.output === "boolean") return status.switch.output;
+  if (typeof row?.output === "boolean") return row.output;
+
+  return null;
+}
+
+async function getShellyGateStatus({ host, authKey, deviceId, channel }) {
+  const response = await fetch(
+    `${host}/v2/devices/api/get?auth_key=${encodeURIComponent(authKey)}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ids: [deviceId],
+        select: ["status"],
+        pick: { status: [`switch:${channel}`, "sys", "cloud"] },
+      }),
+    }
+  );
+
+  const text = await response.text();
+  let data = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = text;
+  }
+
+  if (!response.ok) {
+    throw new Error(typeof data === "string" ? data : data?.error || "Shelly Status konnte nicht geladen werden.");
+  }
+
+  const row = Array.isArray(data) ? data[0] : data;
+  const output = readSwitchOutputFromStatus(data, channel);
+
+  return {
+    online: row?.online === 1 || row?.online === true,
+    output,
+    state: output === true ? "open" : output === false ? "closed" : "unknown",
+    label: output === true ? "Offen" : output === false ? "Geschlossen" : "Unbekannt",
+    raw: data,
+  };
+}
+
 async function notifyAdminsAboutGate({ triggeredBy }) {
   if (!configureWebPush()) {
     return { attempted: false, sent: 0, reason: "VAPID-Schlüssel fehlen." };
@@ -173,9 +224,9 @@ async function notifyAdminsAboutGate({ triggeredBy }) {
 }
 
 export default async function handler(req, res) {
-  if (req.method !== "POST") {
-    res.setHeader("Allow", "POST");
-    return json(res, 405, { ok: false, error: "Nur POST erlaubt." });
+  if (!["GET", "POST"].includes(req.method)) {
+    res.setHeader("Allow", "GET, POST");
+    return json(res, 405, { ok: false, error: "Nur GET oder POST erlaubt." });
   }
 
   const host = normalizeHost(process.env.SHELLY_CLOUD_HOST);
@@ -197,15 +248,28 @@ export default async function handler(req, res) {
     return json(res, 401, { ok: false, error: "Bitte neu einloggen." });
   }
 
+  const role = String(session.role || "mitarbeiter").toLowerCase();
+  const needsGatePin = role !== "admin" && role !== "teamleiter";
+
+  if (req.method === "GET") {
+    try {
+      const status = await getShellyGateStatus({ host, authKey, deviceId, channel });
+      return json(res, 200, { ok: true, ...status });
+    } catch (error) {
+      console.error("[shelly-gate] status error:", error);
+      return json(res, 502, {
+        ok: false,
+        error: error?.message || "Shelly Status konnte nicht geladen werden.",
+      });
+    }
+  }
+
   let body;
   try {
     body = await readBody(req);
   } catch (error) {
     return json(res, 400, { ok: false, error: error.message || "Ungültige Anfrage." });
   }
-
-  const role = String(session.role || "mitarbeiter").toLowerCase();
-  const needsGatePin = role !== "admin" && role !== "teamleiter";
 
   if (needsGatePin && !timingSafeEqualText(body?.pin, gatePin)) {
     return json(res, 401, { ok: false, error: "Tor-PIN ist falsch." });

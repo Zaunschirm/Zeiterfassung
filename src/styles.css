@@ -441,6 +441,50 @@ body::-webkit-scrollbar-thumb {
   color: #fff;
 }
 
+.app-gate-status {
+  min-height: 32px;
+  padding: 5px 10px;
+  border: 1px solid rgba(123, 74, 45, 0.22);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  color: #5f3922;
+  cursor: pointer;
+  box-shadow: 0 7px 18px rgba(70, 43, 29, 0.06);
+}
+
+.app-gate-status span {
+  display: block;
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.app-gate-status small {
+  display: block;
+  margin-top: 0;
+  font-size: 8px;
+  font-weight: 850;
+}
+
+.app-gate-status-open {
+  border-color: rgba(42, 123, 64, 0.28);
+  background: #effaf1;
+  color: #256632;
+}
+
+.app-gate-status-closed {
+  border-color: rgba(66, 93, 139, 0.25);
+  background: #f0f5fb;
+  color: #284b78;
+}
+
+.app-gate-status-unknown {
+  border-color: rgba(154, 105, 43, 0.25);
+  background: #fff7e7;
+  color: #7b531e;
+}
+
 .app-gate-modal-backdrop {
   position: fixed;
   inset: 0;
@@ -3025,6 +3069,11 @@ body::-webkit-scrollbar-thumb {
     width: 100%;
     min-height: 42px;
     font-size: 14px;
+  }
+
+  .app-gate-status {
+    width: 100%;
+    min-height: 40px;
   }
 
   .app-gate-quickbar .app-gate-message {
