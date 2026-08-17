@@ -150,24 +150,30 @@ export default function NavBar({ onLogout, currentUser, role }) {
     try {
       setGateStatus((prev) => ({ ...prev, loading: true, error: "" }));
 
-      if (currentUser?.gateToken) {
-        const response = await fetchWithTimeout(gateCloudUrl, {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${currentUser.gateToken}`,
-          },
-          cache: "no-store",
-        });
-        const result = await response.json().catch(() => ({}));
-        if (!response.ok || result?.ok === false) {
-          throw new Error(result?.error || "Status nicht erreichbar.");
-        }
-
-        applyGateStatus(result?.state || "unknown", { source: result?.source || "shelly" });
+      if (!currentUser?.gateToken) {
+        setGateStatus((prev) => ({
+          ...prev,
+          loading: false,
+          state: "unknown",
+          label: "Neu einloggen",
+          error: "Bitte einmal neu einloggen, damit der Torstatus geladen werden kann.",
+        }));
         return;
       }
 
-      await loadLocalShellyStatus();
+      const response = await fetchWithTimeout(gateCloudUrl, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${currentUser.gateToken}`,
+        },
+        cache: "no-store",
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result?.ok === false) {
+        throw new Error(result?.error || "Status nicht erreichbar.");
+      }
+
+      applyGateStatus(result?.state || "unknown", { source: result?.source || "shelly" });
     } catch (error) {
       console.warn("[NavBar] gate status error:", error);
       setGateStatus((prev) => ({
