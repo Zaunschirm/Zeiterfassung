@@ -380,6 +380,20 @@ body::-webkit-scrollbar-thumb {
   gap: 10px;
 }
 
+.app-gate-message {
+  max-width: 150px;
+  color: #2f6f3b;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.15;
+}
+
+.app-gate-message.mobile {
+  flex: 1 0 100%;
+  padding: 4px 6px;
+  text-align: center;
+}
+
 .app-user-badge {
   display: inline-flex;
   align-items: center;

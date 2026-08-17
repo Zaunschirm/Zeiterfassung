@@ -4,8 +4,11 @@ import { NavLink } from "react-router-dom";
 export default function NavBar({ onLogout, currentUser, role }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [openMenu, setOpenMenu] = useState(null);
+  const [gateBusy, setGateBusy] = useState(false);
+  const [gateMessage, setGateMessage] = useState("");
   const isAdmin = role === "admin";
   const canSeeAdmin = role === "admin" || role === "teamleiter";
+  const gateUrl = "http://192.168.1.106/rpc/Switch.Set?id=0&on=true&toggle_after=1";
 
   const initials = useMemo(() => {
     const name = currentUser?.name || "HB";
@@ -63,6 +66,48 @@ export default function NavBar({ onLogout, currentUser, role }) {
     </NavLink>
   );
 
+  async function triggerSlidingGate() {
+    if (gateBusy) return;
+    setGateMessage("");
+
+    if (!window.confirm("Schiebetor wirklich auslösen? Bitte vorher Sichtkontakt prüfen.")) return;
+
+    if (window.location.protocol === "https:") {
+      setGateMessage("Schiebetor nur im lokalen WLAN/HTTP steuerbar.");
+      alert("Der Shelly ist lokal per HTTP erreichbar. Über HTTPS/Vercel blockiert der Browser diesen lokalen Aufruf meist. Bitte im lokalen WLAN/über die Desktop-App öffnen.");
+      return;
+    }
+
+    try {
+      setGateBusy(true);
+      await fetch(gateUrl, {
+        method: "GET",
+        mode: "no-cors",
+        cache: "no-store",
+      });
+      setGateMessage("Schiebetor-Impuls gesendet.");
+      window.setTimeout(() => setGateMessage(""), 3500);
+    } catch (error) {
+      console.error("[NavBar] Shelly gate error:", error);
+      setGateMessage("Schiebetor nicht erreichbar.");
+      alert("Schiebetor konnte nicht ausgelöst werden. Bitte prüfen: gleiches WLAN, Shelly-IP 192.168.1.106, Gerät online.");
+    } finally {
+      setGateBusy(false);
+    }
+  }
+
+  const renderGateButton = () => (
+    <button
+      type="button"
+      className="hbz-btn"
+      onClick={triggerSlidingGate}
+      disabled={gateBusy}
+      title="Schiebetor per Shelly-Impuls auslösen"
+    >
+      {gateBusy ? "Tor…" : "Schiebetor"}
+    </button>
+  );
+
   return (
     <>
       <nav className="app-nav" aria-label="Hauptnavigation">
@@ -95,6 +140,8 @@ export default function NavBar({ onLogout, currentUser, role }) {
         </div>
 
         <div className="app-nav-right">
+          {renderGateButton()}
+          {gateMessage && <span className="app-gate-message">{gateMessage}</span>}
           <div className="app-user-badge">
             <div className="app-user-initial">{initials}</div>
             <span className="app-user-name">
@@ -127,6 +174,8 @@ export default function NavBar({ onLogout, currentUser, role }) {
             {moreLinks.map((link) => renderNavLink(link.to, link.label))}
             {adminLinks.length > 0 && <div className="app-nav-mobile-heading">Verwaltung</div>}
             {adminLinks.map((link) => renderNavLink(link.to, link.label))}
+            {renderGateButton()}
+            {gateMessage && <div className="app-gate-message mobile">{gateMessage}</div>}
             <button type="button" className="app-nav-btn" onClick={onLogout}>
               <span className="app-nav-label">Logout</span>
             </button>
