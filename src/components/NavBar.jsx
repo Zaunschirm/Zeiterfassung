@@ -216,7 +216,7 @@ export default function NavBar({ onLogout, currentUser, role }) {
 
     if (!isGateManager && !window.confirm("Schiebetor wirklich auslösen? Bitte vorher Sichtkontakt prüfen.")) return;
 
-    if (window.location.protocol === "https:") {
+    if (currentUser?.gateToken) {
       if (isGateManager) {
         await triggerSlidingGateCloud();
         return;
@@ -240,8 +240,12 @@ export default function NavBar({ onLogout, currentUser, role }) {
       window.setTimeout(() => setGateMessage(""), 3500);
     } catch (error) {
       console.error("[NavBar] Shelly gate error:", error);
-      setGateMessage("Schiebetor nicht erreichbar.");
-      alert(`Schiebetor konnte nicht ausgelöst werden. ${error?.message || "Bitte prüfen: Shelly online und Cloud verbunden."}`);
+      const isAbort = error?.name === "AbortError" || String(error?.message || "").toLowerCase().includes("aborted");
+      const message = isAbort
+        ? "Lokaler Shelly-Aufruf hat zu lange gedauert. Bitte mit neuer Anmeldung über Cloud testen."
+        : "Schiebetor nicht erreichbar.";
+      setGateMessage(message);
+      alert(message);
     } finally {
       setGateBusy(false);
     }
