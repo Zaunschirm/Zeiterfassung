@@ -422,7 +422,6 @@ export default function NavBar({ onLogout, currentUser, role }) {
       <div className="app-gate-quickbar" aria-label="Schiebetor Schnellzugriff">
         <div>
           <span>Torsteuerung</span>
-          <small>Shelly 1 Gen4 · Impuls 1 Sekunde</small>
         </div>
         {renderGateButton()}
         {gateMotionSeconds > 0 && (
@@ -437,7 +436,6 @@ export default function NavBar({ onLogout, currentUser, role }) {
           title="Torstatus aktualisieren"
         >
           <span>{gateStatus.loading ? "Prüfe…" : `Status: ${gateStatus.label}`}</span>
-          <small>{gateStatus.error ? "nicht synchron" : "Tor-Zählstatus"}</small>
         </button>
         {isAdmin && (
           <div className="app-gate-admin-correction" aria-label="Torstatus korrigieren">
