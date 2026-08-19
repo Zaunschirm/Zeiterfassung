@@ -60,6 +60,11 @@ export default function PushSettings({ currentUser, employeeId, canEdit = true }
 
   const title = useMemo(() => "Benachrichtigungen", []);
   const radioName = useMemo(() => `work_assignment_day_${userId || "me"}`, [userId]);
+  const isLocalPreview = window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost";
+  const pushRegisterUrl = isLocalPreview ? "https://zeiterfassung-rho.vercel.app/api/push-register" : "/api/push-register";
+  const pushTestUrl = window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost"
+    ? "https://zeiterfassung-rho.vercel.app/api/push-test"
+    : "/api/push-test";
 
   useEffect(() => {
     setSupported(arePushNotificationsSupported());
@@ -188,7 +193,12 @@ export default function PushSettings({ currentUser, employeeId, canEdit = true }
 
   async function ensurePushAllowed() {
     if (!userId) return null;
-    const subscription = await savePushSubscription({ employeeId: userId, employeeName: resolvedEmployee?.name || currentUser?.name });
+    const subscription = await savePushSubscription({
+      employeeId: userId,
+      employeeName: resolvedEmployee?.name || currentUser?.name,
+      authToken: currentUser?.gateToken,
+      registerUrl: pushRegisterUrl,
+    });
     setPermission(getNotificationPermission());
     refreshDeviceStatus();
     return subscription;
@@ -313,15 +323,34 @@ export default function PushSettings({ currentUser, employeeId, canEdit = true }
       const status = await refreshDeviceStatus();
       if (!status.supported) throw new Error("Push wird auf diesem Gerät nicht unterstützt.");
       if (status.permission !== "granted") throw new Error("Benachrichtigungen sind auf diesem Gerät nicht erlaubt.");
+      if (!currentUser?.gateToken) throw new Error("Bitte neu einloggen, damit der Servertest berechtigt ist.");
 
       const registration = await navigator.serviceWorker.ready;
-      await registration.showNotification("Zeiterfassung Test", {
-        body: "Benachrichtigung funktioniert auf diesem Gerät.",
-        icon: "/icon-192.png",
-        badge: "/icon-192.png",
-        tag: "hbz-test-push",
+      let subscription = registration?.pushManager
+        ? await registration.pushManager.getSubscription()
+        : null;
+
+      if (!subscription) {
+        subscription = await ensurePushAllowed();
+      }
+
+      const response = await fetch(pushTestUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${currentUser.gateToken}`,
+        },
+        body: JSON.stringify({
+          endpoint: subscription.endpoint,
+        }),
       });
-      setMessage("Test-Benachrichtigung wurde ausgelöst.");
+
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result?.ok) {
+        throw new Error(result?.error || "Test-Push konnte vom Server nicht gesendet werden.");
+      }
+
+      setMessage("Echte Server-Test-Benachrichtigung wurde gesendet.");
     } catch (e) {
       console.error("[PushSettings] test notification error:", e);
       setMessage(e?.message || "Test-Benachrichtigung konnte nicht gesendet werden.");

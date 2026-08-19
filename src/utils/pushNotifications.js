@@ -1,5 +1,3 @@
-import { supabase } from "../lib/supabase";
-
 export function arePushNotificationsSupported() {
   if (typeof window === "undefined") return false;
   return "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
@@ -33,9 +31,10 @@ function detectPlatform() {
   return "Browser";
 }
 
-export async function savePushSubscription({ employeeId, employeeName }) {
+export async function savePushSubscription({ employeeId, employeeName, authToken, registerUrl }) {
   if (!employeeId) throw new Error("Mitarbeiter-ID fehlt.");
   if (!arePushNotificationsSupported()) throw new Error("Push wird auf diesem Gerät/Browser nicht unterstützt.");
+  if (!authToken) throw new Error("Bitte neu einloggen, damit dieses Gerät für Push gespeichert werden kann.");
 
   const vapidPublicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY;
   if (!vapidPublicKey) throw new Error("VITE_VAPID_PUBLIC_KEY fehlt in der Umgebung.");
@@ -54,19 +53,28 @@ export async function savePushSubscription({ employeeId, employeeName }) {
   }
 
   const json = subscription.toJSON();
-  const payload = {
-    employee_id: employeeId,
-    employee_name: employeeName || null,
-    endpoint: subscription.endpoint,
-    p256dh: json?.keys?.p256dh || "",
-    auth: json?.keys?.auth || "",
-    push_enabled: true,
-    device_name: detectPlatform(),
-    platform: detectPlatform(),
-    updated_at: new Date().toISOString(),
-  };
+  const platform = detectPlatform();
+  const response = await fetch(registerUrl || "/api/push-register", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${authToken}`,
+    },
+    body: JSON.stringify({
+      employee_id: employeeId,
+      employee_name: employeeName || null,
+      endpoint: subscription.endpoint,
+      p256dh: json?.keys?.p256dh || "",
+      auth: json?.keys?.auth || "",
+      device_name: platform,
+      platform,
+    }),
+  });
 
-  const { error } = await supabase.from("push_subscriptions").upsert(payload, { onConflict: "endpoint" });
-  if (error) throw error;
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || !result?.ok) {
+    throw new Error(result?.error || "Push-Gerät konnte am Server nicht gespeichert werden.");
+  }
+
   return subscription;
 }
