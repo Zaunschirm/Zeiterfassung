@@ -17,6 +17,9 @@ export default function NavBar({ onLogout, currentUser, role }) {
     label: "Unbekannt",
     error: "",
     updatedAt: null,
+    lastTriggeredBy: null,
+    lastTriggeredRole: null,
+    lastActionLabel: null,
   });
   const isAdmin = role === "admin";
   const canSeeAdmin = role === "admin" || role === "teamleiter";
@@ -101,6 +104,25 @@ export default function NavBar({ onLogout, currentUser, role }) {
     return "Unbekannt";
   }
 
+  function formatGateTime(value) {
+    if (!value) return "";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "";
+    return date.toLocaleString("de-AT", {
+      day: "2-digit",
+      month: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
+
+  function getGateAdminInfo() {
+    if (!gateStatus.lastTriggeredBy) return "";
+    const time = formatGateTime(gateStatus.updatedAt);
+    const action = gateStatus.lastActionLabel || "zuletzt ausgelöst";
+    return `${action} von ${gateStatus.lastTriggeredBy}${time ? ` · ${time}` : ""}`;
+  }
+
   function applyGateStatus(state, options = {}) {
     const normalizedState = normalizeGateState(state);
     const nextStatus = {
@@ -108,8 +130,11 @@ export default function NavBar({ onLogout, currentUser, role }) {
       state: normalizedState,
       label: gateStateLabel(normalizedState),
       error: "",
-      updatedAt: new Date().toISOString(),
+      updatedAt: options.updatedAt || new Date().toISOString(),
       source: options.source || "shelly",
+      lastTriggeredBy: options.lastTriggeredBy || null,
+      lastTriggeredRole: options.lastTriggeredRole || null,
+      lastActionLabel: options.lastActionLabel || null,
     };
 
     setGateStatus(nextStatus);
@@ -173,7 +198,13 @@ export default function NavBar({ onLogout, currentUser, role }) {
         throw new Error(result?.error || "Status nicht erreichbar.");
       }
 
-      applyGateStatus(result?.state || "unknown", { source: result?.source || "shelly" });
+      applyGateStatus(result?.state || "unknown", {
+        source: result?.source || "shelly",
+        updatedAt: result?.updated_at || result?.updatedAt,
+        lastTriggeredBy: result?.lastTriggeredBy || result?.last_triggered_by,
+        lastTriggeredRole: result?.lastTriggeredRole || result?.last_triggered_role,
+        lastActionLabel: result?.lastActionLabel || result?.last_action_label,
+      });
     } catch (error) {
       console.warn("[NavBar] gate status error:", error);
       setGateStatus((prev) => ({
@@ -282,7 +313,13 @@ export default function NavBar({ onLogout, currentUser, role }) {
         throw new Error(result?.error || "Shelly Cloud konnte nicht schalten.");
       }
 
-      applyGateStatus(result?.gateStatus?.state || "unknown", { source: result?.gateStatus?.source || "shelly" });
+      applyGateStatus(result?.gateStatus?.state || "unknown", {
+        source: result?.gateStatus?.source || "shelly",
+        updatedAt: result?.gateStatus?.updated_at || result?.gateStatus?.updatedAt,
+        lastTriggeredBy: result?.gateStatus?.lastTriggeredBy || result?.gateStatus?.last_triggered_by,
+        lastTriggeredRole: result?.gateStatus?.lastTriggeredRole || result?.gateStatus?.last_triggered_role,
+        lastActionLabel: result?.gateStatus?.lastActionLabel || result?.gateStatus?.last_action_label,
+      });
       setGatePin("");
       setGatePinOpen(false);
       setGateMessage("Schiebetor-Impuls über Cloud gesendet.");
@@ -323,7 +360,13 @@ export default function NavBar({ onLogout, currentUser, role }) {
         if (!response.ok || result?.ok === false) {
           throw new Error(result?.error || "Status konnte nicht gespeichert werden.");
         }
-        applyGateStatus(result?.gateStatus?.state || nextState, { source: result?.gateStatus?.source || "admin" });
+        applyGateStatus(result?.gateStatus?.state || nextState, {
+          source: result?.gateStatus?.source || "admin",
+          updatedAt: result?.gateStatus?.updated_at || result?.gateStatus?.updatedAt,
+          lastTriggeredBy: result?.gateStatus?.lastTriggeredBy || result?.gateStatus?.last_triggered_by,
+          lastTriggeredRole: result?.gateStatus?.lastTriggeredRole || result?.gateStatus?.last_triggered_role,
+          lastActionLabel: result?.gateStatus?.lastActionLabel || result?.gateStatus?.last_action_label,
+        });
       } else {
         applyGateStatus(nextState, { source: "admin-lokal" });
       }
@@ -422,6 +465,9 @@ export default function NavBar({ onLogout, currentUser, role }) {
       <div className="app-gate-quickbar" aria-label="Schiebetor Schnellzugriff">
         <div>
           <span>Torsteuerung</span>
+          {isAdmin && getGateAdminInfo() && (
+            <small className="app-gate-admin-last">{getGateAdminInfo()}</small>
+          )}
         </div>
         {renderGateButton()}
         {gateMotionSeconds > 0 && (

@@ -441,6 +441,14 @@ body::-webkit-scrollbar-thumb {
   font-weight: 750;
 }
 
+.app-gate-admin-last {
+  max-width: 420px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.82;
+}
+
 .app-gate-top-button {
   min-height: 32px;
   padding: 6px 14px;

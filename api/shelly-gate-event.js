@@ -80,11 +80,14 @@ async function getStoredGateState() {
       label: gateStateLabel(state),
       source: value?.source || "app",
       lastImpulseAt: value?.last_impulse_at || null,
+      lastTriggeredBy: value?.last_triggered_by || null,
+      lastTriggeredRole: value?.last_triggered_role || null,
+      lastActionLabel: value?.last_action_label || null,
       updated_at: value?.updated_at || null,
     };
   } catch (error) {
     console.warn("[shelly-gate-event] stored status fallback:", error);
-    return { state: "closed", label: "Geschlossen", source: "fallback", lastImpulseAt: null, updated_at: null };
+    return { state: "closed", label: "Geschlossen", source: "fallback", lastImpulseAt: null, lastTriggeredBy: null, lastTriggeredRole: null, lastActionLabel: null, updated_at: null };
   }
 }
 
@@ -96,6 +99,9 @@ async function saveStoredGateState(state, options = {}) {
     label: gateStateLabel(normalizedState),
     source: options.source || "shelly",
     last_impulse_at: options.lastImpulseAt || null,
+    last_triggered_by: options.triggeredBy || "Shelly App / externer Schalter",
+    last_triggered_role: options.triggeredRole || "extern",
+    last_action_label: options.actionLabel || `${gateStateLabel(normalizedState)} gesetzt`,
     updated_at: now,
   };
 
@@ -115,7 +121,7 @@ async function saveStoredGateState(state, options = {}) {
   return value;
 }
 
-async function registerGateImpulse(source = "shelly") {
+async function registerGateImpulse(source = "shelly", options = {}) {
   const currentGateStatus = await getStoredGateState();
   const lastImpulseAt = currentGateStatus.lastImpulseAt ? new Date(currentGateStatus.lastImpulseAt).getTime() : 0;
   const now = Date.now();
@@ -132,6 +138,9 @@ async function registerGateImpulse(source = "shelly") {
   return saveStoredGateState(nextGateState, {
     source,
     lastImpulseAt: new Date(now).toISOString(),
+    triggeredBy: options.triggeredBy || "Shelly App / externer Schalter",
+    triggeredRole: options.triggeredRole || "extern",
+    actionLabel: nextGateState === "open" ? "Tor geöffnet" : "Tor geschlossen",
   });
 }
 
@@ -154,7 +163,10 @@ export default async function handler(req, res) {
   }
 
   try {
-    const gateStatus = await registerGateImpulse("shelly");
+    const gateStatus = await registerGateImpulse("shelly", {
+      triggeredBy: "Shelly App / externer Schalter",
+      triggeredRole: "extern",
+    });
     return json(res, 200, { ok: true, gateStatus });
   } catch (error) {
     console.error("[shelly-gate-event] error:", error);

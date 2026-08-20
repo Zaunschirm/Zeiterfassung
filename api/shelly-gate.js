@@ -177,11 +177,14 @@ async function getStoredGateState() {
       label: gateStateLabel(state),
       source: value?.source || "app",
       lastImpulseAt: value?.last_impulse_at || null,
+      lastTriggeredBy: value?.last_triggered_by || null,
+      lastTriggeredRole: value?.last_triggered_role || null,
+      lastActionLabel: value?.last_action_label || null,
       updated_at: value?.updated_at || null,
     };
   } catch (error) {
     console.warn("[shelly-gate] stored status fallback:", error);
-    return { state: "closed", label: "Geschlossen", source: "fallback", lastImpulseAt: null, updated_at: null };
+    return { state: "closed", label: "Geschlossen", source: "fallback", lastImpulseAt: null, lastTriggeredBy: null, lastTriggeredRole: null, lastActionLabel: null, updated_at: null };
   }
 }
 
@@ -193,6 +196,9 @@ async function saveStoredGateState(state, options = {}) {
     label: gateStateLabel(normalizedState),
     source: options.source || "app",
     last_impulse_at: options.lastImpulseAt || null,
+    last_triggered_by: options.triggeredBy || null,
+    last_triggered_role: options.triggeredRole || null,
+    last_action_label: options.actionLabel || `${gateStateLabel(normalizedState)} gesetzt`,
     updated_at: now,
   };
 
@@ -212,7 +218,7 @@ async function saveStoredGateState(state, options = {}) {
   return { ...value, source: value.source };
 }
 
-async function registerGateImpulse(source = "app") {
+async function registerGateImpulse(source = "app", options = {}) {
   const currentGateStatus = await getStoredGateState();
   const lastImpulseAt = currentGateStatus.lastImpulseAt ? new Date(currentGateStatus.lastImpulseAt).getTime() : 0;
   const now = Date.now();
@@ -229,6 +235,9 @@ async function registerGateImpulse(source = "app") {
   return saveStoredGateState(nextGateState, {
     source,
     lastImpulseAt: new Date(now).toISOString(),
+    triggeredBy: options.triggeredBy || null,
+    triggeredRole: options.triggeredRole || null,
+    actionLabel: nextGateState === "open" ? "Tor geöffnet" : "Tor geschlossen",
   });
 }
 
@@ -385,7 +394,12 @@ export default async function handler(req, res) {
     }
 
     try {
-      const savedGateStatus = await saveStoredGateState(body?.state, { source: "admin" });
+      const savedGateStatus = await saveStoredGateState(body?.state, {
+        source: "admin",
+        triggeredBy: session.name || session.code || "Admin",
+        triggeredRole: role,
+        actionLabel: `Status auf ${gateStateLabel(body?.state)} gesetzt`,
+      });
       return json(req, res, 200, { ok: true, gateStatus: savedGateStatus });
     } catch (error) {
       console.error("[shelly-gate] status correction error:", error);
@@ -434,7 +448,10 @@ export default async function handler(req, res) {
     const triggeredBy = session.name || session.code || "Unbekannt";
     let gateStatus = null;
     try {
-      gateStatus = await registerGateImpulse("app");
+      gateStatus = await registerGateImpulse("app", {
+        triggeredBy,
+        triggeredRole: role,
+      });
     } catch (statusError) {
       console.warn("[shelly-gate] status update failed after trigger:", statusError);
       gateStatus = {
