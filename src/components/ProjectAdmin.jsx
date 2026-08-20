@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 const supabase =
@@ -59,6 +59,8 @@ export default function ProjectAdmin() {
   const [message, setMessage] = useState("");
   const [sortField, setSortField] = useState("name");
   const [sortDir, setSortDir] = useState("asc");
+  const [costCenterTouched, setCostCenterTouched] = useState(false);
+  const autoCostCenterRef = useRef("");
 
   useEffect(() => {
     fetchProjects();
@@ -68,15 +70,25 @@ export default function ProjectAdmin() {
 
   useEffect(() => {
     if (editId || !nextCostCenter) return;
-    setForm((current) =>
-      current.cost_center ? current : { ...current, cost_center: nextCostCenter }
-    );
-  }, [editId, nextCostCenter]);
+    setForm((current) => {
+      const isAutoValue =
+        !current.cost_center ||
+        current.cost_center === autoCostCenterRef.current ||
+        !costCenterTouched;
+
+      if (!isAutoValue) return current;
+      autoCostCenterRef.current = nextCostCenter;
+      return { ...current, cost_center: nextCostCenter };
+    });
+  }, [editId, nextCostCenter, costCenterTouched]);
 
   function getEmptyFormWithNextCostCenter(projectList = projects) {
+    const next = getNextCostCenter(projectList);
+    autoCostCenterRef.current = next;
+    setCostCenterTouched(false);
     return {
       ...emptyForm,
-      cost_center: getNextCostCenter(projectList),
+      cost_center: next,
     };
   }
 
@@ -192,6 +204,7 @@ export default function ProjectAdmin() {
 
   function onChange(e) {
     const { name, value, type, checked } = e.target;
+    if (name === "cost_center") setCostCenterTouched(true);
     setForm((f) => ({
       ...f,
       [name]: type === "checkbox" ? checked : value,
@@ -259,6 +272,7 @@ export default function ProjectAdmin() {
 
   function onEdit(p) {
     setEditId(p.id);
+    setCostCenterTouched(true);
     setForm({
       name: p.name || "",
       cost_center: p.cost_center || "",
