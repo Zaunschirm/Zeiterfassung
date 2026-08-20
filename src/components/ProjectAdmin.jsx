@@ -20,15 +20,22 @@ const emptyForm = {
 
 function getNextCostCenter(projects = [], year = new Date().getFullYear()) {
   const yearPrefix = String(year);
-  const existingNumbersForYear = (projects || [])
+  const existingNumbersForYear = [...new Set((projects || [])
     .map((project) => String(project?.cost_center || "").trim())
-    .filter((value) => new RegExp(`^${yearPrefix}\\d+$`).test(value))
+    .filter((value) => new RegExp(`^${yearPrefix}\\d{3,}$`).test(value))
     .map((value) => Number(value.slice(yearPrefix.length)))
-    .filter((value) => Number.isSafeInteger(value));
+    .filter((value) => Number.isSafeInteger(value) && value > 0))]
+    .sort((a, b) => a - b);
 
-  const nextNumber = existingNumbersForYear.length
-    ? Math.max(...existingNumbersForYear) + 1
-    : 1;
+  let lastSequentialNumber = 0;
+  for (const value of existingNumbersForYear) {
+    const isPlausibleNextNumber =
+      lastSequentialNumber === 0 || value <= lastSequentialNumber + 10;
+    if (!isPlausibleNextNumber) continue;
+    lastSequentialNumber = Math.max(lastSequentialNumber, value);
+  }
+
+  const nextNumber = lastSequentialNumber + 1;
 
   return `${yearPrefix}${String(nextNumber).padStart(3, "0")}`;
 }
