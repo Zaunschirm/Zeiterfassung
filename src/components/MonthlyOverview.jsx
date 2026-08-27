@@ -454,6 +454,7 @@ export default function MonthlyOverview() {
 
   const [employees, setEmployees] = useState([]);
   const [projects, setProjects] = useState([]);
+  const [activeProjectOptions, setActiveProjectOptions] = useState([]);
   const [selectedCodes, setSelectedCodes] = useState(
     isStaff ? [session?.code].filter(Boolean) : []
   );
@@ -500,8 +501,8 @@ export default function MonthlyOverview() {
   );
 
   const visibleProjectOptions = useMemo(
-    () => projects.filter((project) => showInactiveProjects || project.active !== false),
-    [projects, showInactiveProjects]
+    () => showInactiveProjects ? projects : activeProjectOptions,
+    [activeProjectOptions, projects, showInactiveProjects]
   );
 
   const getProjectOptionsForSelection = (currentProjectId = "") => {
@@ -589,7 +590,20 @@ export default function MonthlyOverview() {
           }
         }
       }
-      setProjects((prj.data || []).filter((p) => p?.disabled !== true));
+      const projectRows = (prj.data || []).filter((p) => p?.disabled !== true);
+      setProjects(projectRows);
+
+      const { data: activeProjects, error: activeProjectsError } = await supabase
+        .from("projects")
+        .select("id, name, code, cost_center, active")
+        .eq("active", true)
+        .order("name", { ascending: true });
+
+      setActiveProjectOptions(
+        activeProjectsError
+          ? projectRows.filter((p) => p?.active !== false)
+          : (activeProjects || []).filter((p) => p?.disabled !== true)
+      );
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isManager, role, session?.id, session?.code]);
