@@ -458,6 +458,7 @@ export default function MonthlyOverview() {
     isStaff ? [session?.code].filter(Boolean) : []
   );
   const [selectedProjectId, setSelectedProjectId] = useState("");
+  const [showInactiveProjects, setShowInactiveProjects] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState([]);
@@ -497,6 +498,21 @@ export default function MonthlyOverview() {
     () => employees.filter((e) => selectedCodes.includes(e.code)),
     [employees, selectedCodes]
   );
+
+  const visibleProjectOptions = useMemo(
+    () => projects.filter((project) => showInactiveProjects || project.active !== false),
+    [projects, showInactiveProjects]
+  );
+
+  const getProjectOptionsForSelection = (currentProjectId = "") => {
+    const currentId = String(currentProjectId || "");
+    if (!currentId || visibleProjectOptions.some((project) => String(project.id) === currentId)) {
+      return visibleProjectOptions;
+    }
+
+    const currentProject = projects.find((project) => String(project.id) === currentId);
+    return currentProject ? [...visibleProjectOptions, currentProject] : visibleProjectOptions;
+  };
 
   const employeesById = useMemo(() => {
     const map = {};
@@ -2900,12 +2916,20 @@ export default function MonthlyOverview() {
                 className="hbz-select"
               >
                 <option value="">Alle</option>
-                {projects.map((p) => (
+                {getProjectOptionsForSelection(selectedProjectId).map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.code ? `${p.code} · ${p.name}` : p.name}
+                    {`${p.code || p.cost_center ? `${p.code || p.cost_center} · ` : ""}${p.name}${p.active === false ? " (inaktiv)" : ""}`}
                   </option>
                 ))}
               </select>
+              <button
+                type="button"
+                className="hbz-btn btn-small"
+                style={{ marginTop: 8, width: "100%" }}
+                onClick={() => setShowInactiveProjects((value) => !value)}
+              >
+                {showInactiveProjects ? "Inaktive ausblenden" : "Inaktive anzeigen"}
+              </button>
             </div>
           </div>
 
@@ -3680,9 +3704,9 @@ export default function MonthlyOverview() {
                                 }
                               >
                                 <option value="">— ohne Projekt —</option>
-                                {projects.map((p) => (
+                                {getProjectOptionsForSelection(editState.project_id).map((p) => (
                                   <option key={p.id} value={p.id}>
-                                    {p.code ? `${p.code} · ${p.name}` : p.name}
+                                    {`${p.code || p.cost_center ? `${p.code || p.cost_center} · ` : ""}${p.name}${p.active === false ? " (inaktiv)" : ""}`}
                                   </option>
                                 ))}
                               </select>
@@ -3951,9 +3975,9 @@ export default function MonthlyOverview() {
                             }
                           >
                             <option value="">— ohne Projekt —</option>
-                            {projects.map((p) => (
+                            {getProjectOptionsForSelection(editState.project_id).map((p) => (
                               <option key={p.id} value={p.id}>
-                                {p.code ? `${p.code} · ${p.name}` : p.name}
+                                {`${p.code || p.cost_center ? `${p.code || p.cost_center} · ` : ""}${p.name}${p.active === false ? " (inaktiv)" : ""}`}
                               </option>
                             ))}
                           </select>
