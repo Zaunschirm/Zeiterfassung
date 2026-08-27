@@ -475,6 +475,8 @@ export default function MonthlyOverview() {
   const [payrollExportEmployeeIds, setPayrollExportEmployeeIds] = useState([]);
   const [payrollExportLoading, setPayrollExportLoading] = useState(false);
   const [payrollPreviewUrl, setPayrollPreviewUrl] = useState("");
+  const [showBillingExportDialog, setShowBillingExportDialog] = useState(false);
+  const [billingExportLoading, setBillingExportLoading] = useState(false);
   const [monthLockInfo, setMonthLockInfo] = useState(null);
   const [monthLockLoading, setMonthLockLoading] = useState(false);
   const [payrollCloseout, setPayrollCloseout] = useState(null);
@@ -2492,7 +2494,8 @@ export default function MonthlyOverview() {
     }
   }
 
-  async function exportAbrechnungPDF() {
+  async function exportAbrechnungPDF(includeTravelInBillableHours = true) {
+    setBillingExportLoading(true);
     try {
       const { jsPDF, autoTable } = await loadPdfLibs();
       if (!grouped.length) {
@@ -2521,14 +2524,15 @@ export default function MonthlyOverview() {
             clientContact: project?.client_contact || "",
             work: 0,
             travel: 0,
-            total: 0,
+            billable: 0,
             days: new Set(),
           };
 
         const workMinutes = getPureWorkMinutes(r);
+        const travelMinutes = r._travel || 0;
         current.work += workMinutes;
-        current.travel += r._travel || 0;
-        current.total += r._mins || 0;
+        current.travel += travelMinutes;
+        current.billable += includeTravelInBillableHours ? workMinutes + travelMinutes : workMinutes;
         if (r.work_date) current.days.add(r.work_date);
 
         perProject.set(key, current);
@@ -2547,7 +2551,7 @@ export default function MonthlyOverview() {
         p.name,
         `${h2(p.work).toLocaleString("de-AT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} h`,
         `${h2(p.travel).toLocaleString("de-AT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} h`,
-        `${h2(p.total).toLocaleString("de-AT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} h`,
+        `${h2(p.billable).toLocaleString("de-AT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} h`,
         String(p.days.size),
       ]);
 
@@ -2567,7 +2571,11 @@ export default function MonthlyOverview() {
       const employeeCount = new Set(rowsForExport.map((row) => String(row.employee_id || row.employee_name || "")).filter(Boolean)).size;
       const totalWorkMinutes = rowsForExport.reduce((sum, row) => sum + getPureWorkMinutes(row), 0);
       const totalTravelMinutes = rowsForExport.reduce((sum, row) => sum + (row._travel || 0), 0);
-      const totalMinutes = rowsForExport.reduce((sum, row) => sum + (row._mins || 0), 0);
+      const totalBillableMinutes = includeTravelInBillableHours ? totalWorkMinutes + totalTravelMinutes : totalWorkMinutes;
+      const billingVariantText = includeTravelInBillableHours
+        ? "Fahrzeit wird zu den abrechenbaren Gesamtstunden dazugerechnet."
+        : "Fahrzeit wird nur zur Information ausgewiesen und nicht zu den abrechenbaren Gesamtstunden dazugerechnet.";
+      const billingVariantFileLabel = includeTravelInBillableHours ? "mit_Fahrzeit" : "ohne_Fahrzeit";
 
       doc.setFillColor(...darkBrown); doc.rect(0, 0, pageWidth, 78, "F");
       doc.setTextColor(255); doc.setFont("helvetica", "bold"); doc.setFontSize(10); doc.text("HOLZBAU ZAUNSCHIRM", 40, 25);
@@ -2577,27 +2585,30 @@ export default function MonthlyOverview() {
 
       doc.setTextColor(...darkBrown); doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.text("AUSWERTUNG", 40, 101);
       doc.setFont("helvetica", "normal"); doc.setFontSize(11); doc.text(`${selectedProjectName}  |  ${employeeCount} Mitarbeiter im Export`, 40, 119);
+      doc.setFontSize(9);
+      doc.setTextColor(...gray);
+      doc.text(doc.splitTextToSize(billingVariantText, pageWidth - 80), 40, 133);
 
       const cards = [
         ["Arbeitszeit", formatHours(h2(totalWorkMinutes))],
         ["Fahrzeit", formatHours(h2(totalTravelMinutes))],
-        ["Gesamtstunden", formatHours(h2(totalMinutes))],
+        ["Abrechenbare Stunden", formatHours(h2(totalBillableMinutes))],
         ["Mitarbeiter", String(employeeCount)],
       ];
       const cardGap = 10; const cardWidth = (pageWidth - 80 - cardGap * 3) / 4;
       cards.forEach(([label, value], index) => {
         const x = 40 + index * (cardWidth + cardGap);
-        doc.setFillColor(...warm); doc.roundedRect(x, 135, cardWidth, 50, 5, 5, "F");
-        doc.setTextColor(...gray); doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.text(label.toUpperCase(), x + 12, 153);
-        doc.setTextColor(...darkBrown); doc.setFont("helvetica", "bold"); doc.setFontSize(15); doc.text(value, x + 12, 174);
+        doc.setFillColor(...warm); doc.roundedRect(x, 150, cardWidth, 50, 5, 5, "F");
+        doc.setTextColor(...gray); doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.text(label.toUpperCase(), x + 12, 168);
+        doc.setTextColor(...darkBrown); doc.setFont("helvetica", "bold"); doc.setFontSize(15); doc.text(value, x + 12, 189);
       });
 
-      doc.setTextColor(...darkBrown); doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.text("Projektübersicht", 40, 210);
+      doc.setTextColor(...darkBrown); doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.text("Projektübersicht", 40, 225);
 
       autoTable(doc, {
-        head: [["Projekt", "Arbeitszeit", "Fahrzeit", "Gesamtstunden", "Arbeitstage"]],
+        head: [["Projekt", "Arbeitszeit", "Fahrzeit", "Abrechenbare Stunden", "Arbeitstage"]],
         body: projectBody,
-        startY: 220,
+        startY: 235,
         styles: { fontSize: 9, cellPadding: 6, overflow: "linebreak", textColor: darkBrown, lineColor: [231, 224, 218], lineWidth: 0.35 },
         headStyles: { fillColor: brown, textColor: 255, fontStyle: "bold" },
         alternateRowStyles: { fillColor: warm },
@@ -2630,7 +2641,7 @@ export default function MonthlyOverview() {
       currentY += 10;
 
       const body = rowsForExport.map((r) => {
-        const totalHours = h2(r._mins);
+        const billableHours = h2(includeTravelInBillableHours ? getPureWorkMinutes(r) + (r._travel || 0) : getPureWorkMinutes(r));
         const travelHours = h2(r._travel);
         const pureWorkHours = h2(getPureWorkMinutes(r));
 
@@ -2640,12 +2651,12 @@ export default function MonthlyOverview() {
           String(r.project_name || "—"),
           formatHours(pureWorkHours),
           formatHours(travelHours),
-          formatHours(totalHours),
+          formatHours(billableHours),
         ];
       });
 
       autoTable(doc, {
-        head: [["Datum", "Mitarbeiter", "Projekt", "Arbeitszeit", "Fahrzeit", "Gesamtstunden"]],
+        head: [["Datum", "Mitarbeiter", "Projekt", "Arbeitszeit", "Fahrzeit", "Abrechenbare Stunden"]],
         body,
         startY: currentY,
         styles: { fontSize: 8.5, cellPadding: 5, overflow: "linebreak", textColor: darkBrown, lineColor: [231, 224, 218], lineWidth: 0.25 },
@@ -2665,10 +2676,13 @@ export default function MonthlyOverview() {
         doc.text(`Seite ${page} von ${pageCount}`, pageWidth - 40, pageHeight - 14, { align: "right" });
       }
 
-      doc.save(`Abrechnung_${rangeLabel.replace(/\s+/g, "_")}.pdf`);
+      doc.save(`Abrechnung_${rangeLabel.replace(/\s+/g, "_")}_${billingVariantFileLabel}.pdf`);
+      setShowBillingExportDialog(false);
     } catch (err) {
       console.error("Abrechnung PDF Fehler:", err);
       alert(`Abrechnung PDF Fehler:\n${err?.message || err}`);
+    } finally {
+      setBillingExportLoading(false);
     }
   }
 
@@ -3097,7 +3111,7 @@ export default function MonthlyOverview() {
             <button onClick={openPayrollExportDialog} className="hbz-btn hbz-btn-primary">
               Lohnverrechnung Vormonat
             </button>
-            <button onClick={exportAbrechnungPDF} className="hbz-btn">
+            <button onClick={() => setShowBillingExportDialog(true)} className="hbz-btn">
               Abrechnung
             </button>
             <button onClick={exportNachkalkulationPDF} className="hbz-btn">
@@ -3121,6 +3135,75 @@ export default function MonthlyOverview() {
           ))}
         </div>
       </div>
+
+      {showBillingExportDialog && (
+        <div
+          className="month-modal-backdrop"
+          role="presentation"
+          onClick={() => {
+            if (!billingExportLoading) setShowBillingExportDialog(false);
+          }}
+        >
+          <div
+            className="month-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="billing-export-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="month-modal-head">
+              <div>
+                <div className="month-modal-subtitle">Abrechnung</div>
+                <h3 id="billing-export-title">Fahrzeit abrechnen?</h3>
+              </div>
+              <button
+                type="button"
+                className="hbz-btn btn-small"
+                onClick={() => setShowBillingExportDialog(false)}
+                disabled={billingExportLoading}
+              >
+                Schließen
+              </button>
+            </div>
+
+            <div className="month-modal-box">
+              <div className="month-modal-box-title">
+                Soll die Fahrzeit zu den abrechenbaren Gesamtstunden dazugerechnet werden?
+              </div>
+              <div className="month-modal-subtitle">
+                Die Fahrzeit bleibt in beiden Varianten als eigene Spalte im PDF sichtbar. Bei „Ohne Fahrzeit“ dient sie nur zur Information.
+              </div>
+            </div>
+
+            <div className="month-modal-actions">
+              <button
+                type="button"
+                className="hbz-btn hbz-btn-primary"
+                onClick={() => exportAbrechnungPDF(true)}
+                disabled={billingExportLoading}
+              >
+                Mit Fahrzeit
+              </button>
+              <button
+                type="button"
+                className="hbz-btn"
+                onClick={() => exportAbrechnungPDF(false)}
+                disabled={billingExportLoading}
+              >
+                Ohne Fahrzeit
+              </button>
+              <button
+                type="button"
+                className="hbz-btn btn-small"
+                onClick={() => setShowBillingExportDialog(false)}
+                disabled={billingExportLoading}
+              >
+                Abbrechen
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showPayrollExportDialog && (
         <div
