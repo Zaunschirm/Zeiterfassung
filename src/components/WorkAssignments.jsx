@@ -215,6 +215,11 @@ export default function WorkAssignments() {
     return map;
   }, [weekDateStrings]);
 
+  const activeProjects = useMemo(
+    () => projects.filter((project) => project.active !== false),
+    [projects]
+  );
+
   const projectMap = useMemo(() => {
     const map = new Map();
     for (const project of projects) {
@@ -225,20 +230,20 @@ export default function WorkAssignments() {
 
   const projectColorMap = useMemo(() => {
     const map = new Map();
-    projects.forEach((project, index) => {
+    activeProjects.forEach((project, index) => {
       map.set(String(project.id), ACTIVE_PROJECT_COLORS[index % ACTIVE_PROJECT_COLORS.length]);
     });
     return map;
-  }, [projects]);
+  }, [activeProjects]);
 
   const filteredProjects = useMemo(() => {
     const q = projectSearch.trim().toLowerCase();
-    if (!q) return projects;
-    return projects.filter((project) => {
+    if (!q) return activeProjects;
+    return activeProjects.filter((project) => {
       const haystack = `${project.cost_center || ""} ${project.name || ""}`.toLowerCase();
       return haystack.includes(q);
     });
-  }, [projects, projectSearch]);
+  }, [activeProjects, projectSearch]);
 
   function getProjectColorStyle(projectId) {
     const color = projectColorMap.get(String(projectId));
@@ -381,32 +386,29 @@ export default function WorkAssignments() {
       throw lastError || new Error("Mitarbeiter konnten nicht geladen werden.");
     }
 
-    async function fetchActiveProjectsForAssignments() {
+    async function fetchProjectsForAssignments() {
       const selectVariants = [
-        { select: "id, name, cost_center, active", filterActive: true },
-        { select: "id, name, cost_center", filterActive: false },
-        { select: "id, name, active", filterActive: true },
-        { select: "id, name", filterActive: false },
+        "id, name, cost_center, active",
+        "id, name, cost_center",
+        "id, name, active",
+        "id, name",
       ];
 
       let lastError = null;
 
-      for (const variant of selectVariants) {
+      for (const selectText of selectVariants) {
         try {
-          let query = supabase
+          const { data, error } = await supabase
             .from("projects")
-            .select(variant.select)
+            .select(selectText)
             .order("name", { ascending: true });
 
-          if (variant.filterActive) query = query.eq("active", true);
-
-          const { data, error } = await query;
           if (error) throw error;
 
-          return (data || []).filter((project) => project.active !== false);
+          return data || [];
         } catch (e) {
           lastError = e;
-          console.warn("[WorkAssignments] project select fallback:", variant.select, e);
+          console.warn("[WorkAssignments] project select fallback:", selectText, e);
         }
       }
 
@@ -419,7 +421,7 @@ export default function WorkAssignments() {
       try {
         const [employeeData, projectData] = await Promise.all([
           fetchEmployeesForAssignments(),
-          fetchActiveProjectsForAssignments(),
+          fetchProjectsForAssignments(),
         ]);
 
         setEmployees(employeeData);
@@ -1108,7 +1110,7 @@ export default function WorkAssignments() {
             <div className="month-card-title">Aktive Projekte</div>
             <div className="help">Farben gelten nur für aktive Projekte in dieser Ansicht. Projekt antippen oder direkt in die Zelle ziehen.</div>
           </div>
-          <span className="badge">{projects.length} aktiv</span>
+          <span className="badge">{activeProjects.length} aktiv</span>
         </div>
 
         <div className="workassign-project-tools no-dropdown">
