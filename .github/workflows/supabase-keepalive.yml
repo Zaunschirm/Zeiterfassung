@@ -20,7 +20,7 @@ jobs:
             -H "apikey: $SUPABASE_ANON_KEY" \
             -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
             -H "Accept: application/json" \
-            "$SUPABASE_PROJECT_URL/rest/v1/?select=1&limit=1"
+            "$SUPABASE_PROJECT_URL/rest/v1/projects?select=id&limit=1"
 
         env:
           SUPABASE_PROJECT_URL: ${{ secrets.SUPABASE_PROJECT_URL }}
