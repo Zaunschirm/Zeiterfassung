@@ -3,6 +3,10 @@ name: Supabase Keepalive
 on:
   schedule:
     - cron: "*/30 * * * *"   # alle 30 Minuten
+  push:
+    branches: [ main ]
+    paths:
+      - ".github/workflows/supabase-keepalive.yml"
   workflow_dispatch:
 
 jobs:
@@ -14,14 +18,14 @@ jobs:
         run: |
           set -e
 
-          echo "Project URL: $SUPABASE_PROJECT_URL"
+          echo "Project URL: $VITE_SUPABASE_URL"
 
-          curl -sS \
-            -H "apikey: $SUPABASE_ANON_KEY" \
-            -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
+          curl -fsS \
+            -H "apikey: $VITE_SUPABASE_ANON_KEY" \
+            -H "Authorization: Bearer $VITE_SUPABASE_ANON_KEY" \
             -H "Accept: application/json" \
-            "$SUPABASE_PROJECT_URL/rest/v1/projects?select=id&limit=1"
+            "$VITE_SUPABASE_URL/rest/v1/projects?select=id&limit=1"
 
         env:
-          SUPABASE_PROJECT_URL: ${{ secrets.SUPABASE_PROJECT_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
