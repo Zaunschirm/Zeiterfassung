@@ -34,6 +34,24 @@ function getWeekDates(dateStr) {
   });
 }
 
+function getDatesBetweenInclusive(from, to) {
+  if (!from || !to) return [];
+  const start = new Date(`${from}T12:00:00`);
+  const end = new Date(`${to}T12:00:00`);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return [];
+
+  const first = start <= end ? start : end;
+  const last = start <= end ? end : start;
+  const out = [];
+  const d = new Date(first);
+  while (d <= last) {
+    out.push(formatLocalDate(d));
+    d.setDate(d.getDate() + 1);
+    d.setHours(12, 0, 0, 0);
+  }
+  return out;
+}
+
 function getWeekNumber(dateStr) {
   const d = new Date(`${dateStr}T12:00:00`);
   const dayNum = (d.getDay() + 6) % 7;
@@ -155,6 +173,11 @@ export default function WorkAssignments() {
   const [projectSearch, setProjectSearch] = useState("");
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [selectedPlanMode, setSelectedPlanMode] = useState("project"); // "project" | "krank" | "urlaub" | "schule"
+  const [schoolBlockEmployeeId, setSchoolBlockEmployeeId] = useState("");
+  const [schoolBlockFrom, setSchoolBlockFrom] = useState("");
+  const [schoolBlockTo, setSchoolBlockTo] = useState("");
+  const [schoolBlockReplaceProjects, setSchoolBlockReplaceProjects] = useState(true);
+  const [schoolBlockMessage, setSchoolBlockMessage] = useState("");
   const [assignments, setAssignments] = useState([]);
   const [timeOffRows, setTimeOffRows] = useState([]);
   const [employeeOrder, setEmployeeOrder] = useState([]);
@@ -974,6 +997,142 @@ export default function WorkAssignments() {
     }
   }
 
+  async function addSchoolBlock() {
+    if (!canEditAssignments) return;
+
+    setSchoolBlockMessage("");
+
+    const employeeId = String(schoolBlockEmployeeId || "").trim();
+    if (!employeeId) {
+      alert("Bitte zuerst den Lehrling/Mitarbeiter auswählen.");
+      return;
+    }
+
+    const employee = employees.find((emp) => String(emp.id) === employeeId);
+    if (!employee) {
+      alert("Mitarbeiter wurde nicht gefunden.");
+      return;
+    }
+
+    const allDates = getDatesBetweenInclusive(schoolBlockFrom, schoolBlockTo);
+    if (!allDates.length) {
+      alert("Bitte Von- und Bis-Datum für die Berufsschule eintragen.");
+      return;
+    }
+
+    const schoolDates = allDates.filter((dateStr) => {
+      const status = getDayStatus(dateStr);
+      const workDay = getEmployeeWorkDay(employee || null, dateStr);
+      const requiredMinutes = Number(workDay?.requiredMinutes || 0);
+      return !status.isHoliday && requiredMinutes > 0;
+    });
+
+    if (!schoolDates.length) {
+      alert("In diesem Zeitraum gibt es laut Arbeitszeitmodell keine Schultage zum Eintragen.");
+      return;
+    }
+
+    const ok = window.confirm(
+      `Schule/Berufsschule für ${employee.name || employee.code || "Mitarbeiter"} eintragen?\n\n` +
+      `Zeitraum: ${schoolDates[0]} bis ${schoolDates[schoolDates.length - 1]}\n` +
+      `Arbeitstage: ${schoolDates.length}\n\n` +
+      "Schule zählt neutral: keine Fehlstunden, keine Plusstunden, kein Taggeld und keine Projektstunden."
+    );
+    if (!ok) return;
+
+    try {
+      await Promise.all(schoolDates.map((dateStr) => ensureMonthUnlocked(supabase, dateStr)));
+      setBusyKey("school-block");
+
+      const [existingAbsenceRes, existingAssignmentRes] = await Promise.all([
+        supabase
+          .from("time_entries")
+          .select("id, employee_id, work_date, note, za_hours, absence_type")
+          .eq("employee_id", Number(employeeId))
+          .gte("work_date", schoolDates[0])
+          .lte("work_date", schoolDates[schoolDates.length - 1]),
+        supabase
+          .from("work_assignments")
+          .select("id, employee_id, assignment_date")
+          .eq("employee_id", Number(employeeId))
+          .gte("assignment_date", schoolDates[0])
+          .lte("assignment_date", schoolDates[schoolDates.length - 1]),
+      ]);
+
+      if (existingAbsenceRes.error) throw existingAbsenceRes.error;
+      if (existingAssignmentRes.error) throw existingAssignmentRes.error;
+
+      const schoolDateSet = new Set(schoolDates);
+      const occupiedDates = new Set(
+        (existingAbsenceRes.data || [])
+          .filter((row) => schoolDateSet.has(String(row.work_date || "").slice(0, 10)))
+          .filter(isRelevantTimeOff)
+          .map((row) => String(row.work_date || "").slice(0, 10))
+      );
+
+      const datesToInsert = schoolDates.filter((dateStr) => !occupiedDates.has(dateStr));
+
+      if (schoolBlockReplaceProjects) {
+        const assignmentIds = (existingAssignmentRes.data || [])
+          .filter((row) => schoolDateSet.has(String(row.assignment_date || "").slice(0, 10)))
+          .map((row) => row.id)
+          .filter(Boolean);
+
+        if (assignmentIds.length > 0) {
+          const { error: deleteAssignmentError } = await supabase
+            .from("work_assignments")
+            .delete()
+            .in("id", assignmentIds);
+          if (deleteAssignmentError) throw deleteAssignmentError;
+        }
+      }
+
+      if (datesToInsert.length > 0) {
+        await createTimeEntries(
+          supabase,
+          datesToInsert.map((dateStr) => ({
+            employee_id: Number(employeeId),
+            work_date: dateStr,
+            project_id: null,
+            project: null,
+            start_min: 0,
+            end_min: 0,
+            break_min: 0,
+            travel_minutes: 0,
+            travel_cost_center: "FAHRZEIT",
+            crane_hours: 0,
+            private_pkw_km: 0,
+            absence_type: "schule",
+            za_hours: 0,
+            bad_weather: false,
+            bad_weather_minutes: 0,
+            weather_auto: null,
+            weather_manual: null,
+            weather_final: null,
+            note: "[Schule] Berufsschule aus Arbeitseinteilung eingetragen",
+          }))
+        );
+      }
+
+      await Promise.all(schoolDates.map((dateStr) => markAssignmentChanged(employeeId, dateStr)));
+      await loadAssignments();
+
+      const skipped = schoolDates.length - datesToInsert.length;
+      setSchoolBlockMessage(
+        `Schule eingetragen: ${datesToInsert.length} Tag${datesToInsert.length === 1 ? "" : "e"}.` +
+        (skipped > 0 ? ` ${skipped} Tag${skipped === 1 ? "" : "e"} waren bereits mit Urlaub/Krank/ZA/Schule belegt und wurden übersprungen.` : "")
+      );
+      setSelectedPlanMode("schule");
+      setSelectedProjectId("");
+      if (projectRef.current) projectRef.current.value = "";
+    } catch (e) {
+      console.error("[WorkAssignments] school block insert error:", e);
+      alert(e?.message || e?.details || e?.hint || JSON.stringify(e) || "Schulblock konnte nicht eingetragen werden.");
+    } finally {
+      setBusyKey("");
+    }
+  }
+
   async function deleteAbsenceEntry(row) {
     if (!canEditAssignments || !row?.id) return;
 
@@ -1075,6 +1234,7 @@ export default function WorkAssignments() {
           <div>
             <div className="month-card-title">Abwesenheit</div>
             <div className="help">Krank, Urlaub oder Schule auswählen und danach unten in die gewünschte Zelle klicken. Schule/Berufsschule zählt als geplant und nicht als Baustelle.</div>
+            <div className="help">Schule ist neutral: keine Fehlstunden, keine Plusstunden, kein Taggeld und keine Lohn-/Projektstunden.</div>
           </div>
           {selectedPlanMode === "krank" || selectedPlanMode === "urlaub" || selectedPlanMode === "schule" ? <span className="badge">{selectedPlanMode === "urlaub" ? "Urlaub aktiv" : selectedPlanMode === "schule" ? "Schule aktiv" : "Krank aktiv"}</span> : null}
         </div>
@@ -1111,6 +1271,41 @@ export default function WorkAssignments() {
           >
             Abwesenheit aus
           </button>
+        </div>
+
+        <div className="workassign-school-block" style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid rgba(123,74,45,.16)" }}>
+          <div className="month-card-title" style={{ fontSize: 14 }}>Berufsschulblock eintragen</div>
+          <div className="help">Für längere Berufsschule: Mitarbeiter und Zeitraum auswählen. Eingetragen werden nur Arbeitstage laut Modell, ohne Feiertage/freie Tage.</div>
+          <div className="workassign-project-tools no-dropdown" style={{ marginTop: 8 }}>
+            <div className="hbz-col">
+              <label className="hbz-label">Mitarbeiter / Lehrling</label>
+              <select className="hbz-input" value={schoolBlockEmployeeId} onChange={(e) => setSchoolBlockEmployeeId(e.target.value)}>
+                <option value="">Bitte auswählen…</option>
+                {orderedEmployees.map((employee) => (
+                  <option key={employee.id} value={employee.id}>{employee.name || employee.code}</option>
+                ))}
+              </select>
+            </div>
+            <div className="hbz-col">
+              <label className="hbz-label">Von</label>
+              <input className="hbz-input" type="date" value={schoolBlockFrom} onChange={(e) => setSchoolBlockFrom(e.target.value)} />
+            </div>
+            <div className="hbz-col">
+              <label className="hbz-label">Bis</label>
+              <input className="hbz-input" type="date" value={schoolBlockTo} onChange={(e) => setSchoolBlockTo(e.target.value)} />
+            </div>
+            <div className="hbz-col-auto">
+              <label className="hbz-label">&nbsp;</label>
+              <button className="hbz-btn primary" type="button" onClick={addSchoolBlock} disabled={busyKey === "school-block"}>
+                {busyKey === "school-block" ? "Trage ein…" : "Schulblock eintragen"}
+              </button>
+            </div>
+          </div>
+          <label className="help" style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
+            <input type="checkbox" checked={schoolBlockReplaceProjects} onChange={(e) => setSchoolBlockReplaceProjects(e.target.checked)} />
+            Vorhandene Projekte im Zeitraum durch Schule ersetzen
+          </label>
+          {schoolBlockMessage ? <div className="success-box" style={{ marginTop: 8 }}>{schoolBlockMessage}</div> : null}
         </div>
       </div>
       ) : null}
