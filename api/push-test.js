@@ -133,6 +133,31 @@ async function disableSubscription(endpoint) {
   });
 }
 
+function buildTestPayload(allDevices = false) {
+  return JSON.stringify({
+    title: "Zeiterfassung Test",
+    body: allDevices
+      ? "Testnachricht an alle deine gespeicherten Geräte. Wenn du das siehst, funktioniert Push auf diesem Gerät."
+      : "Echte Push-Benachrichtigung vom Server. Wenn du das siehst, funktioniert Hintergrund-Push.",
+    icon: "/icons/icon-192.png",
+    badge: "/icons/icon-192.png",
+    url: "/zeiterfassung",
+  });
+}
+
+async function sendTestToSubscription(subscription, payload) {
+  await webpush.sendNotification(
+    {
+      endpoint: subscription.endpoint,
+      keys: {
+        p256dh: subscription.p256dh,
+        auth: subscription.auth,
+      },
+    },
+    payload
+  );
+}
+
 export default async function handler(req, res) {
   if (req.method === "OPTIONS") {
     setCors(req, res);
@@ -162,11 +187,66 @@ export default async function handler(req, res) {
   }
 
   const endpoint = String(body?.endpoint || "").trim();
-  if (!endpoint) {
-    return json(req, res, 400, { ok: false, error: "Geräte-Endpunkt fehlt. Bitte Gerät zuerst aktivieren." });
-  }
 
   try {
+    if (!endpoint || body?.allDevices === true) {
+      const subscriptions = await supabaseFetch(
+        `push_subscriptions?select=id,employee_id,employee_name,endpoint,p256dh,auth,push_enabled,device_name,platform&employee_id=eq.${encodeURIComponent(String(session.id))}&push_enabled=is.true`
+      );
+      const activeSubscriptions = (subscriptions || []).filter(
+        (subscription) => subscription?.endpoint && subscription?.p256dh && subscription?.auth
+      );
+
+      if (!activeSubscriptions.length) {
+        return json(req, res, 404, {
+          ok: false,
+          error: "Für deinen Benutzer ist noch kein aktives Push-Gerät gespeichert.",
+        });
+      }
+
+      const payload = buildTestPayload(true);
+      let sent = 0;
+      let failed = 0;
+      let disabledExpired = 0;
+
+      await Promise.allSettled(
+        activeSubscriptions.map(async (subscription) => {
+          try {
+            await sendTestToSubscription(subscription, payload);
+            sent += 1;
+          } catch (error) {
+            failed += 1;
+            const statusCode = Number(error?.statusCode || error?.status);
+            if (statusCode === 404 || statusCode === 410) {
+              disabledExpired += 1;
+              await disableSubscription(subscription.endpoint).catch(() => {});
+            }
+          }
+        })
+      );
+
+      if (sent < 1) {
+        return json(req, res, 410, {
+          ok: false,
+          error:
+            disabledExpired > 0
+              ? "Alle gespeicherten Geräte-Abos waren ungültig. Bitte Benachrichtigungen auf dem Handy/PC neu aktivieren."
+              : "Test-Push konnte an kein gespeichertes Gerät gesendet werden.",
+          sent,
+          failed,
+          disabledExpired,
+        });
+      }
+
+      return json(req, res, 200, {
+        ok: true,
+        sent,
+        failed,
+        disabledExpired,
+        total: activeSubscriptions.length,
+      });
+    }
+
     const subscriptions = await supabaseFetch(
       `push_subscriptions?select=id,employee_id,employee_name,endpoint,p256dh,auth,push_enabled&endpoint=eq.${encodeURIComponent(endpoint)}&limit=1`
     );
@@ -180,22 +260,7 @@ export default async function handler(req, res) {
       return json(req, res, 409, { ok: false, error: "Push ist für dieses Gerät deaktiviert." });
     }
 
-    await webpush.sendNotification(
-      {
-        endpoint: subscription.endpoint,
-        keys: {
-          p256dh: subscription.p256dh,
-          auth: subscription.auth,
-        },
-      },
-      JSON.stringify({
-        title: "Zeiterfassung Test",
-        body: "Echte Push-Benachrichtigung vom Server. Wenn du das siehst, funktioniert Hintergrund-Push.",
-        icon: "/icons/icon-192.png",
-        badge: "/icons/icon-192.png",
-        url: "/zeiterfassung",
-      })
-    );
+    await sendTestToSubscription(subscription, buildTestPayload(false));
 
     return json(req, res, 200, { ok: true, sent: 1 });
   } catch (error) {

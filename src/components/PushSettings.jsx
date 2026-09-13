@@ -57,6 +57,7 @@ export default function PushSettings({ currentUser, employeeId, canEdit = true }
   });
   const [activatingDevice, setActivatingDevice] = useState(false);
   const [testingDevice, setTestingDevice] = useState(false);
+  const [testingAllDevices, setTestingAllDevices] = useState(false);
 
   const title = useMemo(() => "Benachrichtigungen", []);
   const radioName = useMemo(() => `work_assignment_day_${userId || "me"}`, [userId]);
@@ -359,6 +360,37 @@ export default function PushSettings({ currentUser, employeeId, canEdit = true }
     }
   }
 
+  async function sendAllDevicesTestNotification() {
+    setTestingAllDevices(true);
+    setMessage("");
+
+    try {
+      if (!currentUser?.gateToken) throw new Error("Bitte neu einloggen, damit der Servertest berechtigt ist.");
+
+      const response = await fetch(pushTestUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${currentUser.gateToken}`,
+        },
+        body: JSON.stringify({ allDevices: true }),
+      });
+
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result?.ok) {
+        throw new Error(result?.error || "Test-Push konnte an deine Geräte nicht gesendet werden.");
+      }
+
+      const failedInfo = result.failed ? ` (${result.failed} alte/ungültige Geräte übersprungen)` : "";
+      setMessage(`Test an ${result.sent || 0} gespeicherte Geräte gesendet.${failedInfo}`);
+    } catch (e) {
+      console.error("[PushSettings] all devices test notification error:", e);
+      setMessage(e?.message || "Test an alle Geräte konnte nicht gesendet werden.");
+    } finally {
+      setTestingAllDevices(false);
+    }
+  }
+
   if (!currentUser && !employeeId) return null;
 
   const permissionLabel = permission === "granted" ? "Erlaubt" : permission === "denied" ? "Blockiert" : "Nicht aktiviert";
@@ -421,6 +453,14 @@ export default function PushSettings({ currentUser, employeeId, canEdit = true }
                 onClick={sendLocalTestNotification}
               >
                 {testingDevice ? "Teste…" : "Test-Benachrichtigung"}
+              </button>
+              <button
+                type="button"
+                className="mini-btn"
+                disabled={testingAllDevices || !currentUser?.gateToken}
+                onClick={sendAllDevicesTestNotification}
+              >
+                {testingAllDevices ? "Sende…" : "Test an alle meine Geräte"}
               </button>
               <button type="button" className="mini-btn" disabled={loading || saving} onClick={refreshDeviceStatus}>
                 Status prüfen
