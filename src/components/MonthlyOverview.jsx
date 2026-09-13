@@ -19,6 +19,7 @@ import {
 } from "../utils/monthLock";
 import {
   isAbsenceEntry,
+  isSchoolEntry,
   isSpecialLeaveEntry,
   isSickEntry,
   isTimeCompEntry,
@@ -394,7 +395,7 @@ const isPayrollCheckEmployee = () => true;
 const isBadWeatherRow = (r) => r?.bad_weather === true || r?.bad_weather === "true";
 const stripAbsencePrefix = (note) =>
   String(note || "")
-    .replace(/^\s*\[(Urlaub|Sonderurlaub[^\]]*|Krank|Zeitausgleich|Schlechtwetter)\]\s*/i, "")
+    .replace(/^\s*\[(Urlaub|Sonderurlaub[^\]]*|Krank|Schule|Berufsschule|Zeitausgleich|Schlechtwetter)\]\s*/i, "")
     .trim();
 const rowWorkMinutes = (r) => Math.max((r.start_min ?? r.from_min ?? 0) - 0, 0) && Math.max((r.end_min ?? r.to_min ?? 0) - (r.start_min ?? r.from_min ?? 0) - (r.break_min || 0), 0);
 const getProjectAddress = (r, projects = []) => {
@@ -406,6 +407,7 @@ const isVacationRow = isVacationEntry;
 const isSpecialLeaveRow = isSpecialLeaveEntry;
 const isSickRow = isSickEntry;
 const isTimeCompRow = isTimeCompEntry;
+const isSchoolRow = isSchoolEntry;
 
 const getPureWorkMinutes = (r) => {
   const total = r?._mins ?? entryMinutes(r);
@@ -1228,7 +1230,7 @@ export default function MonthlyOverview() {
 
       doc.setFontSize(10);
       doc.text(
-        "Geprüft werden aktive Mitarbeiter und BUAK-Arbeitstage. Urlaub/Krankenstand/Zeitausgleich zählen als erfasst, wenn ein Eintrag vorhanden ist.",
+        "Geprüft werden aktive Mitarbeiter und BUAK-Arbeitstage. Urlaub/Krankenstand/Zeitausgleich/Schule zählen als erfasst, wenn ein Eintrag vorhanden ist.",
         40,
         60
       );
@@ -1359,6 +1361,7 @@ export default function MonthlyOverview() {
           hasVacation: false,
           hasSick: false,
           hasTimeComp: false,
+          hasSchool: false,
           privatePkwKm: 0,
         };
       }
@@ -1367,10 +1370,11 @@ export default function MonthlyOverview() {
       const vacation = isVacationRow(r);
       const sick = isSickRow(r);
       const timeComp = isTimeCompRow(r);
+      const school = isSchoolRow(r);
       const badWeather = isBadWeatherRow(r);
       const mins = entryMinutes(r);
       const pureWork = getPureWorkMinutes(r);
-      const isActualWork = !vacation && !sick && !timeComp && !badWeather;
+      const isActualWork = !vacation && !sick && !timeComp && !school && !badWeather;
       if (isActualWork) {
         d.minutes += mins;
         d.travel += getTravel(r) || 0;
@@ -1381,6 +1385,7 @@ export default function MonthlyOverview() {
       if (vacation) d.hasVacation = true;
       if (sick) d.hasSick = true;
       if (timeComp) d.hasTimeComp = true;
+      if (school) d.hasSchool = true;
       if (isActualWork && pureWork > 0) d.hasWork = true;
     });
 
@@ -1399,7 +1404,7 @@ export default function MonthlyOverview() {
       if (d.privatePkwKm > 50) {
         warnings.push({ type: "Privat-PKW hoch", employee: d.employee_name, date: d.work_date, text: `${d.privatePkwKm.toLocaleString("de-AT")} km` });
       }
-      if (d.hasWork && (d.hasVacation || d.hasSick || d.hasTimeComp)) {
+      if (d.hasWork && (d.hasVacation || d.hasSick || d.hasTimeComp || d.hasSchool)) {
         warnings.push({ type: "Misch-Eintrag", employee: d.employee_name, date: d.work_date, text: "Arbeitszeit und Abwesenheit am selben Tag" });
       }
     });
@@ -1908,6 +1913,7 @@ export default function MonthlyOverview() {
           vacationDates: [],
           sickDates: [],
           timeCompDates: [],
+          schoolDates: [],
           timeCompHours: 0,
           sickHours: 0,
           badWeatherRows: [],
@@ -1930,6 +1936,7 @@ export default function MonthlyOverview() {
         const isSpecialLeave = isSpecialLeaveRow(r);
         const isSick = isSickRow(r);
         const isTimeComp = isTimeCompRow(r);
+        const isSchool = isSchoolRow(r);
         const mins = entryMinutes(r);
         const travel = getTravel(r) || 0;
 
@@ -1949,6 +1956,13 @@ export default function MonthlyOverview() {
         if (isSick) {
           if (!d.sickDates.includes(r.work_date)) {
             d.sickDates.push(r.work_date);
+          }
+          return;
+        }
+
+        if (isSchool) {
+          if (!d.schoolDates.includes(r.work_date)) {
+            d.schoolDates.push(r.work_date);
           }
           return;
         }
@@ -1990,6 +2004,7 @@ export default function MonthlyOverview() {
           .sort((a, b) => String(a.date).localeCompare(String(b.date)));
         d.sickDates = uniqueSortedDates(d.sickDates);
         d.timeCompDates = uniqueSortedDates(d.timeCompDates);
+        d.schoolDates = uniqueSortedDates(d.schoolDates);
 
         d.sickHours = d.sickDates.reduce(
           (sum, date) => sum + (Number(getEmployeeSollHoursForDay(d.emp, date)) || 0),
@@ -2004,10 +2019,11 @@ export default function MonthlyOverview() {
           const isSpecialLeave = (d.specialLeaveDates || []).some((row) => row.date === h.date);
           const isSick = d.sickDates.includes(h.date);
           const isTimeComp = d.timeCompDates.includes(h.date);
+          const isSchool = d.schoolDates.includes(h.date);
 
           // Feiertag wird bezahlt, wenn er auf einen Arbeitstag laut Arbeitszeitmodell fällt
           // und für diesen Tag keine echte Arbeitsbuchung, kein Urlaub, kein Krankenstand und kein Zeitausgleich eingetragen ist.
-          if (!hasWorkEntry && !isVacation && !isSpecialLeave && !isSick && !isTimeComp) {
+          if (!hasWorkEntry && !isVacation && !isSpecialLeave && !isSick && !isTimeComp && !isSchool) {
             d.holidayRows.push({ ...h, soll });
             d.holidayHours += soll;
           }

@@ -11,6 +11,7 @@ import {
   calcEmployeeSollHoursForRange,
 } from "../utils/time";
 import {
+  isSchoolEntry,
   isSpecialLeaveEntry,
   isSickEntry,
   isTimeCompEntry,
@@ -148,7 +149,7 @@ function isTimeCompRow(r) {
 }
 
 function isAbsenceRow(r) {
-  return isVacationRow(r) || isSpecialLeaveRow(r) || isSickRow(r) || isTimeCompRow(r);
+  return isVacationRow(r) || isSpecialLeaveRow(r) || isSickRow(r) || isTimeCompRow(r) || isSchoolEntry(r);
 }
 
 function formatDateAT(value) {

@@ -26,6 +26,7 @@ describe("overtime / ZA helpers", () => {
     expect(getEntryWorkHoursForZa({ start_min: 420, end_min: 960, break_min: 30, travel_minutes: 60 })).toBe(9.5);
     expect(getEntryWorkHoursForZa({ start_min: 420, end_min: 960, break_min: 30, note: "[Zeitausgleich]", za_hours: 8 })).toBe(0);
     expect(getEntryWorkHoursForZa({ start_min: 420, end_min: 960, break_min: 30, note: "[Urlaub]" })).toBe(0);
+    expect(getEntryWorkHoursForZa({ start_min: 420, end_min: 960, break_min: 30, note: "[Schule]" })).toBe(0);
   });
 
   it("does not double-subtract a full ZA day", () => {
@@ -65,6 +66,26 @@ describe("overtime / ZA helpers", () => {
   it("keeps vacation and sick days neutral for the ZA balance", () => {
     const day = { worked: 0, usedZa: 0, hasZa: false, hasPaidAbsence: true };
     expect(calculateZaDailyChange({ day, employee: buakEmployee, date: "2026-01-05" }).generated).toBe(0);
+  });
+
+  it("keeps school days neutral without paid absence or missing day", () => {
+    const result = calculateZaBalanceForEmployee({
+      employee: buakEmployee,
+      from: "2026-01-05",
+      to: "2026-01-05",
+      entries: [{ work_date: "2026-01-05", note: "[Schule] Berufsschule", absence_type: "schule" }],
+    });
+
+    expect(result).toMatchObject({
+      worked: 0,
+      soll: 9,
+      usedZa: 0,
+      generated: 0,
+      balance: 0,
+      missingDays: [],
+      missingSoll: 0,
+    });
+    expect(result.days[0]).toMatchObject({ entryStatus: "neutral_absence", isMissingEntry: false });
   });
 
   it("keeps Austrian holidays neutral in every ZA account", () => {

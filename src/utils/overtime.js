@@ -1,5 +1,6 @@
 import { getEmployeeSollHoursForDay, getHolidayName } from "./time.js";
 import {
+  isSchoolEntry as isSchoolAbsence,
   isSickEntry as isSickAbsence,
   isTimeCompEntry as isTimeCompAbsence,
   isVacationEntry as isVacationAbsence,
@@ -80,12 +81,16 @@ export function isTimeCompEntry(row) {
   return isTimeCompAbsence(row);
 }
 
+export function isSchoolEntry(row) {
+  return isSchoolAbsence(row);
+}
+
 export function isZaNeutralAbsence(row) {
-  return isVacationEntry(row) || isSickEntry(row);
+  return isVacationEntry(row) || isSickEntry(row) || isSchoolEntry(row);
 }
 
 export function getEntryWorkHoursForZa(row) {
-  if (!row || isVacationEntry(row) || isSickEntry(row) || isTimeCompEntry(row)) return 0;
+  if (!row || isVacationEntry(row) || isSickEntry(row) || isSchoolEntry(row) || isTimeCompEntry(row)) return 0;
 
   const start = Number(row.start_min ?? row.from_min ?? 0);
   const end = Number(row.end_min ?? row.to_min ?? 0);
@@ -110,6 +115,7 @@ export function buildZaDayMap(entries = []) {
         usedZa: 0,
         hasZa: false,
         hasPaidAbsence: false,
+        hasNeutralAbsence: false,
         rows: [],
       });
     }
@@ -124,7 +130,10 @@ export function buildZaDayMap(entries = []) {
     }
 
     if (isZaNeutralAbsence(row)) {
-      day.hasPaidAbsence = true;
+      day.hasNeutralAbsence = true;
+      if (!isSchoolEntry(row)) {
+        day.hasPaidAbsence = true;
+      }
     }
   }
 
@@ -132,22 +141,24 @@ export function buildZaDayMap(entries = []) {
 }
 
 export function calculateZaDailyChange({ day, employee, date, neutralizeHolidays = true }) {
-  const currentDay = day || { worked: 0, usedZa: 0, hasZa: false, hasPaidAbsence: false };
+  const currentDay = day || { worked: 0, usedZa: 0, hasZa: false, hasPaidAbsence: false, hasNeutralAbsence: false };
   const soll = Number(getEmployeeSollHoursForDay(employee, date)) || 0;
   const zaFallback = currentDay.hasZa && currentDay.usedZa <= 0 ? soll : currentDay.usedZa;
   const isHoliday = neutralizeHolidays && !!getHolidayName(date);
   const hasEntries = Array.isArray(currentDay.rows) && currentDay.rows.length > 0;
   const isMissingEntry = soll > 0 && !isHoliday && !hasEntries;
+  const hasNeutralAbsence = currentDay.hasNeutralAbsence || currentDay.hasPaidAbsence;
 
   let entryStatus = "recorded";
   if (soll <= 0) entryStatus = "not_required";
   else if (isHoliday) entryStatus = "holiday";
   else if (currentDay.hasPaidAbsence) entryStatus = "paid_absence";
+  else if (hasNeutralAbsence) entryStatus = "neutral_absence";
   else if (currentDay.hasZa) entryStatus = "time_comp";
   else if (isMissingEntry) entryStatus = "missing";
 
   let generated = 0;
-  if (isHoliday || (currentDay.hasPaidAbsence && !currentDay.hasZa && currentDay.worked <= 0)) {
+  if (isHoliday || (hasNeutralAbsence && !currentDay.hasZa && currentDay.worked <= 0)) {
     generated = 0;
   } else if (currentDay.hasZa && currentDay.worked <= 0) {
     generated = -zaFallback;
