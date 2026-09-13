@@ -290,7 +290,10 @@ async function notifyAdminsAboutGate({ triggeredBy }) {
   const adminIds = (employees || [])
     .filter((employee) => {
       const role = String(employee?.role || "").trim().toLowerCase();
-      return role === "admin" && employee?.disabled !== true && employee?.active !== false;
+      // Admin-Benachrichtigungen dürfen nicht an der Baustellen-Aktivität hängen:
+      // Ein Admin kann für die Zeiterfassung/Listen bewusst inaktiv sein, soll aber
+      // trotzdem Tor-Meldungen bekommen, wenn ein Push-Gerät registriert ist.
+      return role === "admin";
     })
     .map((employee) => String(employee.id));
 
