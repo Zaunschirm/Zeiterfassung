@@ -41,12 +41,32 @@ function formatDateRangeAT(fromDate, toDate) {
   return from === to ? from : `${from} – ${to}`;
 }
 
+function formatDateTimeAT(dateValue) {
+  if (!dateValue) return "";
+  const date = new Date(dateValue);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString("de-AT", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function apiUrl(path) {
+  const isLocalPreview = window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost";
+  return isLocalPreview ? `https://zeiterfassung-rho.vercel.app${path}` : path;
+}
+
 export default function App() {
   const [loggedIn, setLoggedIn] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
   const [role, setRole] = useState(null);
   const [pendingTimeOffRequestCount, setPendingTimeOffRequestCount] = useState(0);
   const [pendingTimeOffRequests, setPendingTimeOffRequests] = useState([]);
+  const [appNotifications, setAppNotifications] = useState([]);
+  const [appNotificationBusy, setAppNotificationBusy] = useState(false);
 
   const location = useLocation();
   const navigate = useNavigate();
@@ -117,6 +137,65 @@ export default function App() {
       navigate(isAdmin ? "/dashboard" : "/zeiterfassung", { replace: true });
     }
   }, [loggedIn, location.pathname, navigate, isAdmin]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadAppNotifications() {
+      if (!loggedIn || !currentUser?.gateToken) {
+        setAppNotifications([]);
+        return;
+      }
+
+      try {
+        const response = await fetch(apiUrl("/api/app-notifications"), {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${currentUser.gateToken}`,
+          },
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result?.ok) throw new Error(result?.error || "Nachrichten konnten nicht geladen werden.");
+        if (!cancelled) setAppNotifications(Array.isArray(result.notifications) ? result.notifications : []);
+      } catch (e) {
+        console.warn("[App] App-Nachrichten konnten nicht geladen werden:", e?.message || e);
+        if (!cancelled) setAppNotifications([]);
+      }
+    }
+
+    loadAppNotifications();
+    window.addEventListener("focus", loadAppNotifications);
+    window.addEventListener("hbz-app-notifications-changed", loadAppNotifications);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", loadAppNotifications);
+      window.removeEventListener("hbz-app-notifications-changed", loadAppNotifications);
+    };
+  }, [loggedIn, currentUser?.gateToken]);
+
+  async function markAppNotificationsRead(ids) {
+    const selectedIds = (Array.isArray(ids) ? ids : []).map((id) => String(id)).filter(Boolean);
+    if (!selectedIds.length || !currentUser?.gateToken) return;
+
+    setAppNotificationBusy(true);
+    try {
+      const response = await fetch(apiUrl("/api/app-notifications"), {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${currentUser.gateToken}`,
+        },
+        body: JSON.stringify({ ids: selectedIds }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result?.ok) throw new Error(result?.error || "Nachricht konnte nicht bestätigt werden.");
+      setAppNotifications((items) => items.filter((item) => !selectedIds.includes(String(item.id))));
+    } catch (e) {
+      console.warn("[App] App-Nachricht konnte nicht bestätigt werden:", e?.message || e);
+    } finally {
+      setAppNotificationBusy(false);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -284,6 +363,43 @@ export default function App() {
             />
 
             <div className="app-page">
+              {appNotifications.length > 0 && (
+                <section className="app-message-notice" aria-label="Neue Mitarbeiter-Nachricht">
+                  <div>
+                    <div className="app-message-eyebrow">Neue Nachricht</div>
+                    <h2>{appNotifications[0].title || "Nachricht"}</h2>
+                    <p>{appNotifications[0].body}</p>
+                    <small>
+                      {[appNotifications[0].sender_name, formatDateTimeAT(appNotifications[0].created_at)]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </small>
+                    {appNotifications.length > 1 && (
+                      <small>+ {appNotifications.length - 1} weitere ungelesene Nachricht{appNotifications.length - 1 === 1 ? "" : "en"}</small>
+                    )}
+                  </div>
+                  <div className="app-message-actions">
+                    <button
+                      type="button"
+                      className="hbz-btn"
+                      onClick={() => markAppNotificationsRead([appNotifications[0].id])}
+                      disabled={appNotificationBusy}
+                    >
+                      Gelesen
+                    </button>
+                    {appNotifications.length > 1 && (
+                      <button
+                        type="button"
+                        className="hbz-btn hbz-btn-primary"
+                        onClick={() => markAppNotificationsRead(appNotifications.map((item) => item.id))}
+                        disabled={appNotificationBusy}
+                      >
+                        Alle gelesen
+                      </button>
+                    )}
+                  </div>
+                </section>
+              )}
               {isAdmin && location.pathname !== "/dashboard" && (pendingTimeOffRequestCount > 0 || pendingTimeOffRequests.length > 0) && (
                 <section className="admin-approval-card" aria-label="Offene Urlaub und ZA Freigaben">
                   <div className="admin-approval-head">

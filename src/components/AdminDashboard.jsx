@@ -240,7 +240,8 @@ export default function AdminDashboard({ currentUser = null }) {
       }
 
       const failedInfo = result.failed ? `, ${result.failed} Gerät(e) nicht erreichbar` : "";
-      setMessage(`Push-Nachricht an ${result.sent || 0} Gerät(e) gesendet${failedInfo}.`);
+      const pushInfo = result.pushConfigured === false ? ", Push am Server nicht aktiv" : "";
+      setMessage(`Nachricht für ${result.stored || result.recipients || 0} Mitarbeiter gespeichert. Push sofort an ${result.sent || 0} Gerät(e) gesendet${failedInfo}${pushInfo}.`);
       setBroadcastMessage("");
     } catch (err) {
       setError(err?.message || "Push-Nachricht konnte nicht gesendet werden.");
@@ -377,9 +378,9 @@ export default function AdminDashboard({ currentUser = null }) {
     </section>
     <section className="hbz-card dashboard-broadcast">
       <div>
-        <div className="eyebrow">Push-Nachricht</div>
+        <div className="eyebrow">Mitarbeiter-Nachricht</div>
         <h2>Nachricht an Mitarbeiter senden</h2>
-        <p className="hint">Geht nur an Geräte, auf denen Benachrichtigungen aktiviert wurden.</p>
+        <p className="hint">Mit Push sofort, ohne Push beim nächsten Öffnen der App.</p>
       </div>
       <div className="dashboard-broadcast-form">
         <label>
@@ -419,7 +420,7 @@ export default function AdminDashboard({ currentUser = null }) {
             onClick={sendBroadcastPush}
             disabled={broadcastSending || !broadcastMessage.trim()}
           >
-            {broadcastSending ? "Sende…" : "Push senden"}
+            {broadcastSending ? "Sende…" : "Nachricht senden"}
           </button>
         </div>
       </div>

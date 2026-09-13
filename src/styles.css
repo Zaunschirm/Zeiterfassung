@@ -4544,3 +4544,61 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     height: 30px;
   }
 }
+
+.app-message-notice {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  margin: 0 auto 14px;
+  padding: 14px 16px;
+  max-width: 1120px;
+  border: 1px solid rgba(123, 74, 45, 0.22);
+  border-left: 5px solid #7b4a2d;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #fffaf5 0%, #f5e6d6 100%);
+  color: #332117;
+  box-shadow: 0 14px 35px rgba(80, 49, 30, 0.10);
+}
+
+.app-message-notice h2 {
+  margin: 2px 0 4px;
+  font-size: 18px;
+}
+
+.app-message-notice p {
+  margin: 0 0 6px;
+  white-space: pre-wrap;
+}
+
+.app-message-notice small {
+  display: block;
+  color: #74675e;
+  font-size: 12px;
+}
+
+.app-message-eyebrow {
+  color: #7b4a2d;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.app-message-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+@media (max-width: 640px) {
+  .app-message-notice {
+    grid-template-columns: 1fr;
+  }
+
+  .app-message-actions {
+    display: grid;
+    justify-content: stretch;
+  }
+}

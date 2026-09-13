@@ -156,6 +156,30 @@ function employeeMatchesTarget(employee, target, senderId, includeSender) {
   return isActive;
 }
 
+async function saveAppNotifications({ recipientIds, senderId, senderName, title, body, target }) {
+  const rows = [...recipientIds].map((employeeId) => ({
+    recipient_employee_id: String(employeeId),
+    sender_employee_id: senderId ? String(senderId) : null,
+    sender_name: senderName || null,
+    title,
+    body,
+    target,
+  }));
+
+  if (!rows.length) return 0;
+
+  await supabaseFetch("app_notifications", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Prefer: "return=minimal",
+    },
+    body: JSON.stringify(rows),
+  });
+
+  return rows.length;
+}
+
 export default async function handler(req, res) {
   if (req.method === "OPTIONS") {
     setCors(req, res);
@@ -174,10 +198,6 @@ export default async function handler(req, res) {
   const role = String(session.role || "").trim().toLowerCase();
   if (role !== "admin") {
     return json(req, res, 403, { ok: false, error: "Nur Admin darf Push-Nachrichten senden." });
-  }
-
-  if (!configureWebPush()) {
-    return json(req, res, 500, { ok: false, error: "Web-Push ist am Server noch nicht vollständig konfiguriert." });
   }
 
   let body;
@@ -211,6 +231,24 @@ export default async function handler(req, res) {
         .map((employee) => String(employee.id))
     );
 
+    if (!recipientIds.size) {
+      return json(req, res, 404, {
+        ok: false,
+        error: `Keine Empfänger für ${targetLabel(target)} gefunden.`,
+      });
+    }
+
+    const senderName = session.name || session.code || "Admin";
+    const title = `Nachricht von ${senderName}`;
+    const stored = await saveAppNotifications({
+      recipientIds,
+      senderId: session.id,
+      senderName,
+      title,
+      body: message,
+      target,
+    });
+
     const recipientSubscriptions = (subscriptions || []).filter(
       (subscription) =>
         subscription?.push_enabled !== false &&
@@ -220,15 +258,10 @@ export default async function handler(req, res) {
         subscription?.auth
     );
 
-    if (!recipientSubscriptions.length) {
-      return json(req, res, 404, {
-        ok: false,
-        error: `Keine aktiven Push-Geräte für ${targetLabel(target)} gefunden.`,
-      });
-    }
+    const webPushConfigured = configureWebPush();
 
     const payload = JSON.stringify({
-      title: `Nachricht von ${session.name || session.code || "Admin"}`,
+      title,
       body: message,
       icon: "/icons/icon-192.png",
       badge: "/icons/icon-192.png",
@@ -239,50 +272,44 @@ export default async function handler(req, res) {
     let failed = 0;
     let disabledExpired = 0;
 
-    await Promise.allSettled(
-      recipientSubscriptions.map(async (subscription) => {
-        try {
-          await webpush.sendNotification(
-            {
-              endpoint: subscription.endpoint,
-              keys: {
-                p256dh: subscription.p256dh,
-                auth: subscription.auth,
+    if (webPushConfigured && recipientSubscriptions.length) {
+      await Promise.allSettled(
+        recipientSubscriptions.map(async (subscription) => {
+          try {
+            await webpush.sendNotification(
+              {
+                endpoint: subscription.endpoint,
+                keys: {
+                  p256dh: subscription.p256dh,
+                  auth: subscription.auth,
+                },
               },
-            },
-            payload
-          );
-          sent += 1;
-        } catch (error) {
-          failed += 1;
-          const statusCode = Number(error?.statusCode || error?.status);
-          if (statusCode === 404 || statusCode === 410) {
-            disabledExpired += 1;
-            await disableSubscription(subscription.endpoint).catch(() => {});
+              payload
+            );
+            sent += 1;
+          } catch (error) {
+            failed += 1;
+            const statusCode = Number(error?.statusCode || error?.status);
+            if (statusCode === 404 || statusCode === 410) {
+              disabledExpired += 1;
+              await disableSubscription(subscription.endpoint).catch(() => {});
+            }
           }
-        }
-      })
-    );
-
-    if (!sent) {
-      return json(req, res, 410, {
-        ok: false,
-        error: "Nachricht konnte an kein gültiges Gerät gesendet werden.",
-        sent,
-        failed,
-        disabledExpired,
-      });
+        })
+      );
     }
 
     return json(req, res, 200, {
       ok: true,
       target,
       targetLabel: targetLabel(target),
+      stored,
       sent,
       failed,
       disabledExpired,
       devices: recipientSubscriptions.length,
       recipients: recipientIds.size,
+      pushConfigured: webPushConfigured,
     });
   } catch (error) {
     console.error("[push-broadcast] error:", error);
