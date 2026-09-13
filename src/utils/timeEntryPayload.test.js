@@ -74,6 +74,24 @@ describe("time entry payload helpers", () => {
     });
   });
 
+  it("adds a school absence prefix", () => {
+    const payload = buildNewTimeEntryPayload({
+      date: "2026-06-17",
+      projectId: null,
+      fromMin: 0,
+      toMin: 0,
+      breakMin: 0,
+      travelMin: 0,
+      absenceType: "schule",
+      note: "Berufsschule",
+    });
+
+    expect(payload).toMatchObject({
+      absence_type: "schule",
+      note: "[Schule] Berufsschule",
+    });
+  });
+
   it("calculates bad weather minutes without going below zero", () => {
     const payload = buildNewTimeEntryPayload({
       fromMin: 480,

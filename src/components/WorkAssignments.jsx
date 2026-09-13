@@ -83,13 +83,14 @@ function getTimeOffKind(row) {
 
 function isRelevantTimeOff(row) {
   const kind = getTimeOffKind(row);
-  return kind === "krank" || kind === "urlaub" || kind === "za";
+  return kind === "krank" || kind === "urlaub" || kind === "za" || kind === "schule";
 }
 
 function timeOffLabel(kind) {
   if (kind === "krank") return "Krank";
   if (kind === "urlaub") return "Urlaub";
   if (kind === "za") return "ZA";
+  if (kind === "schule") return "Schule";
   return "Abwesend";
 }
 
@@ -97,6 +98,7 @@ function timeOffStyle(kind) {
   if (kind === "krank") return { "--project-bg": "#fff7d8", "--project-border": "#d7b84d", "--project-text": "#66500a" };
   if (kind === "urlaub") return { "--project-bg": "#e6f2fb", "--project-border": "#78aed2", "--project-text": "#1d526f" };
   if (kind === "za") return { "--project-bg": "#f1ecff", "--project-border": "#aa95df", "--project-text": "#49327a" };
+  if (kind === "schule") return { "--project-bg": "#e8f7f0", "--project-border": "#6dbb90", "--project-text": "#245b3b" };
   return { "--project-bg": "#f3f0eb", "--project-border": "#c8bbad", "--project-text": "#5f564d" };
 }
 
@@ -152,7 +154,7 @@ export default function WorkAssignments() {
   const [projects, setProjects] = useState([]);
   const [projectSearch, setProjectSearch] = useState("");
   const [selectedProjectId, setSelectedProjectId] = useState("");
-  const [selectedPlanMode, setSelectedPlanMode] = useState("project"); // "project" | "krank" | "urlaub"
+  const [selectedPlanMode, setSelectedPlanMode] = useState("project"); // "project" | "krank" | "urlaub" | "schule"
   const [assignments, setAssignments] = useState([]);
   const [timeOffRows, setTimeOffRows] = useState([]);
   const [employeeOrder, setEmployeeOrder] = useState([]);
@@ -615,8 +617,8 @@ export default function WorkAssignments() {
     }
 
     const existingTimeOff = getTimeOffRows(employeeId, dateStr);
-    if (existingTimeOff.some((row) => ["urlaub", "krank", "za"].includes(getTimeOffKind(row)))) {
-      alert("An diesem Tag ist bereits Urlaub/Krank/ZA eingetragen. Die Einteilung wird nicht überschrieben.");
+    if (existingTimeOff.some((row) => ["urlaub", "krank", "za", "schule"].includes(getTimeOffKind(row)))) {
+      alert("An diesem Tag ist bereits Urlaub/Krank/ZA/Schule eingetragen. Die Einteilung wird nicht überschrieben.");
       return;
     }
 
@@ -701,7 +703,7 @@ export default function WorkAssignments() {
   async function onCellClick(employeeId, dateStr) {
     if (!canEditAssignments) return;
 
-    if (selectedPlanMode === "krank" || selectedPlanMode === "urlaub") {
+    if (selectedPlanMode === "krank" || selectedPlanMode === "urlaub" || selectedPlanMode === "schule") {
       await addAbsenceToCell(employeeId, dateStr, selectedPlanMode);
       return;
     }
@@ -709,7 +711,7 @@ export default function WorkAssignments() {
     const projectIdValue = selectedProjectId || projectRef.current?.value?.trim();
 
     if (!projectIdValue) {
-      alert("Bitte oben ein Projekt oder Krank auswählen und danach in die gewünschte Zelle klicken.");
+      alert("Bitte oben ein Projekt oder Abwesenheit auswählen und danach in die gewünschte Zelle klicken.");
       return;
     }
 
@@ -879,8 +881,8 @@ export default function WorkAssignments() {
   async function addAbsenceToCell(employeeId, dateStr, kind) {
     if (!canEditAssignments) return;
 
-    const normalizedKind = kind === "urlaub" ? "urlaub" : "krank";
-    const label = normalizedKind === "urlaub" ? "Urlaub" : "Krank";
+    const normalizedKind = kind === "urlaub" ? "urlaub" : kind === "schule" ? "schule" : "krank";
+    const label = normalizedKind === "urlaub" ? "Urlaub" : normalizedKind === "schule" ? "Schule" : "Krank";
     const status = dayStatusMap.get(dateStr) || getDayStatus(dateStr);
 
     if (status.isHoliday) {
@@ -891,7 +893,7 @@ export default function WorkAssignments() {
     const employee = employees.find((emp) => String(emp.id) === String(employeeId));
     const existingTimeOff = getTimeOffRows(employeeId, dateStr);
     if (existingTimeOff.length > 0) {
-      alert("An diesem Tag ist bereits Urlaub/Krank/ZA eingetragen.");
+      alert("An diesem Tag ist bereits Urlaub/Krank/ZA/Schule eingetragen.");
       return;
     }
 
@@ -939,6 +941,8 @@ export default function WorkAssignments() {
       weather_final: null,
       note: normalizedKind === "urlaub"
         ? "[Urlaub] aus Arbeitseinteilung eingetragen"
+        : normalizedKind === "schule"
+          ? "[Schule] Berufsschule aus Arbeitseinteilung eingetragen"
         : "[Krank] aus Arbeitseinteilung eingetragen",
     };
 
@@ -974,9 +978,9 @@ export default function WorkAssignments() {
     if (!canEditAssignments || !row?.id) return;
 
     const kind = getTimeOffKind(row);
-    if (kind !== "krank" && kind !== "urlaub") return;
+    if (kind !== "krank" && kind !== "urlaub" && kind !== "schule") return;
 
-    const label = kind === "urlaub" ? "Urlaub" : "Krankenstand";
+    const label = kind === "urlaub" ? "Urlaub" : kind === "schule" ? "Schule" : "Krankenstand";
     const dateStr = String(row.work_date || "").slice(0, 10);
     if (!window.confirm(`${label} aus der Arbeitseinteilung löschen?`)) return;
 
@@ -1037,9 +1041,9 @@ export default function WorkAssignments() {
         </div>
 
         <div className="workassign-dispo-toolbar">
-          <div className="help">
+            <div className="help">
             {canEditAssignments
-              ? "Projekt, Krank oder Urlaub auswählen und danach in die gewünschte Zelle klicken. Urlaub/ZA aus Urlaub/ZA wird automatisch angezeigt."
+              ? "Projekt, Krank, Urlaub oder Schule auswählen und danach in die gewünschte Zelle klicken. Urlaub/ZA aus Urlaub/ZA wird automatisch angezeigt."
               : "Hier siehst du die Arbeitseinteilung der Woche. Änderungen sind mit deinem Benutzer nicht erlaubt."}
           </div>
 
@@ -1070,9 +1074,9 @@ export default function WorkAssignments() {
         <div className="workassign-project-palette-head">
           <div>
             <div className="month-card-title">Abwesenheit</div>
-            <div className="help">Krank oder Urlaub auswählen und danach unten in die gewünschte Zelle klicken. Urlaub ist mit Urlaub/ZA und der Zeiterfassung verknüpft.</div>
+            <div className="help">Krank, Urlaub oder Schule auswählen und danach unten in die gewünschte Zelle klicken. Schule/Berufsschule zählt als geplant und nicht als Baustelle.</div>
           </div>
-          {selectedPlanMode === "krank" || selectedPlanMode === "urlaub" ? <span className="badge">{selectedPlanMode === "urlaub" ? "Urlaub aktiv" : "Krank aktiv"}</span> : null}
+          {selectedPlanMode === "krank" || selectedPlanMode === "urlaub" || selectedPlanMode === "schule" ? <span className="badge">{selectedPlanMode === "urlaub" ? "Urlaub aktiv" : selectedPlanMode === "schule" ? "Schule aktiv" : "Krank aktiv"}</span> : null}
         </div>
 
         <div className="workassign-absence-tools" style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
@@ -1091,6 +1095,14 @@ export default function WorkAssignments() {
             title="Urlaub auswählen und danach unten in die Zelle klicken"
           >
             Urlaub
+          </button>
+          <button
+            type="button"
+            className={`hbz-chip ${selectedPlanMode === "schule" ? "active" : ""}`}
+            onClick={() => { setSelectedPlanMode("schule"); setSelectedProjectId(""); if (projectRef.current) projectRef.current.value = ""; }}
+            title="Schule/Berufsschule auswählen und danach unten in die Zelle klicken"
+          >
+            Schule
           </button>
           <button
             type="button"
@@ -1347,7 +1359,7 @@ export default function WorkAssignments() {
                                         title={row.note || timeOffLabel(kind)}
                                       >
                                         {timeOffLabel(kind)}
-                                        {canEditAssignments && (kind === "krank" || kind === "urlaub") ? (
+                                        {canEditAssignments && (kind === "krank" || kind === "urlaub" || kind === "schule") ? (
                                           <button
                                             type="button"
                                             className="workassign-cell-chip-remove"

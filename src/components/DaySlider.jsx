@@ -928,6 +928,7 @@ export default function DaySlider() {
 
       const hasUrlaub = empEntries.some((row) => isAbsenceEntry(row, "urlaub"));
       const hasKrank = empEntries.some((row) => isAbsenceEntry(row, "krank"));
+      const hasSchule = empEntries.some((row) => isAbsenceEntry(row, "schule"));
       const hasEntry = empEntries.length > 0;
 
       let status = "missing";
@@ -948,6 +949,10 @@ export default function DaySlider() {
         status = "krank";
         label = "Krank";
         icon = "🔵";
+      } else if (hasSchule) {
+        status = "schule";
+        label = "Schule";
+        icon = "🟢";
       } else if (hasEntry) {
         status = "ok";
         label = "Eingetragen";
@@ -971,6 +976,7 @@ export default function DaySlider() {
       missing: count("missing"),
       urlaub: count("urlaub"),
       krank: count("krank"),
+      schule: count("schule"),
       notRequired: count("not_required"),
       total: dailyCheckRows.length,
     };
@@ -984,7 +990,7 @@ export default function DaySlider() {
     } else if (dailyCheckStatusFilter === "ok") {
       rows = rows.filter((row) => row.status === "ok");
     } else if (dailyCheckStatusFilter === "absence") {
-      rows = rows.filter((row) => row.status === "urlaub" || row.status === "krank");
+      rows = rows.filter((row) => row.status === "urlaub" || row.status === "krank" || row.status === "schule");
     } else if (dailyCheckStatusFilter === "not_required") {
       rows = rows.filter((row) => row.status === "not_required");
     }
@@ -1620,6 +1626,7 @@ export default function DaySlider() {
               <span className="badge-soft">❌ {dailyCheckSummary.missing}</span>
               <span className="badge-soft">🟡 {dailyCheckSummary.urlaub}</span>
               <span className="badge-soft">🔵 {dailyCheckSummary.krank}</span>
+              <span className="badge-soft">🟢 {dailyCheckSummary.schule}</span>
             </div>
           </summary>
 
@@ -1637,7 +1644,7 @@ export default function DaySlider() {
                 ✅ Eingetragen ({dailyCheckSummary.ok})
               </button>
               <button type="button" className={`daily-check-filter-btn ${dailyCheckStatusFilter === "absence" ? "active" : ""}`} onClick={() => setDailyCheckStatusFilter("absence")}>
-                🟡/🔵 Urlaub/Krank ({dailyCheckSummary.urlaub + dailyCheckSummary.krank})
+                🟡/🔵/🟢 Urlaub/Krank/Schule ({dailyCheckSummary.urlaub + dailyCheckSummary.krank + dailyCheckSummary.schule})
               </button>
               {dailyCheckSummary.notRequired > 0 && (
                 <button type="button" className={`daily-check-filter-btn ${dailyCheckStatusFilter === "not_required" ? "active" : ""}`} onClick={() => setDailyCheckStatusFilter("not_required")}>

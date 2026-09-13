@@ -4,6 +4,7 @@ import {
   getTimeEntryAbsenceKind,
   getTimeEntryAbsenceType,
   isAbsenceEntry,
+  isSchoolEntry,
   isSpecialLeaveEntry,
   isSickEntry,
   isTimeCompEntry,
@@ -14,6 +15,7 @@ describe("time entry absence checks", () => {
   it("recognizes sick leave, vacation and time compensation", () => {
     expect(getTimeEntryAbsenceKind({ note: "[Krank] eingetragen" })).toBe("Krank");
     expect(getTimeEntryAbsenceKind({ absence_type: "urlaub" })).toBe("Urlaub");
+    expect(getTimeEntryAbsenceKind({ absence_type: "schule" })).toBe("Schule");
     expect(getTimeEntryAbsenceKind({ za_hours: 8 })).toBe("ZA");
     expect(getTimeEntryAbsenceKind({ note: "Montage" })).toBe("");
   });
@@ -23,6 +25,7 @@ describe("time entry absence checks", () => {
     expect(isSickEntry({ absence_type: "krankenstand" })).toBe(true);
     expect(isVacationEntry({ note: "[Urlaub] Altbestand" })).toBe(true);
     expect(isSpecialLeaveEntry({ note: "[Sonderurlaub: Hochzeit] Altbestand" })).toBe(true);
+    expect(isSchoolEntry({ note: "[Berufsschule] Altbestand" })).toBe(true);
     expect(isTimeCompEntry({ absence_type: "za" })).toBe(true);
     expect(isAbsenceEntry({ note: "Montage" })).toBe(false);
   });

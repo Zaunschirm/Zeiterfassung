@@ -29,10 +29,14 @@ function hasAbsenceNote(entry) {
     absenceType === "urlaub" ||
     absenceType === "krank" ||
     absenceType === "krankenstand" ||
+    absenceType === "schule" ||
+    absenceType === "berufsschule" ||
     absenceType === "zeitausgleich" ||
     absenceType === "za" ||
     note.includes("[urlaub]") ||
     note.includes("[krank]") ||
+    note.includes("[schule]") ||
+    note.includes("[berufsschule]") ||
     note.includes("[zeitausgleich]")
   );
 }

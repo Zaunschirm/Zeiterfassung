@@ -16,6 +16,15 @@ export function getTimeEntryAbsenceType(entry) {
   if (absenceType === "sonderurlaub" || note.includes("[sonderurlaub") || note.includes("sonderurlaub")) {
     return "sonderurlaub";
   }
+  if (
+    absenceType === "schule" ||
+    absenceType === "berufsschule" ||
+    note.includes("[schule]") ||
+    note.includes("[berufsschule]") ||
+    note.includes("berufsschule")
+  ) {
+    return "schule";
+  }
   if (absenceType === "urlaub" || note.includes("[urlaub]") || note.includes("urlaub")) {
     return "urlaub";
   }
@@ -36,6 +45,7 @@ export function getTimeEntryAbsenceKind(entry) {
   if (type === "krank") return "Krank";
   if (type === "urlaub") return "Urlaub";
   if (type === "sonderurlaub") return "Sonderurlaub";
+  if (type === "schule") return "Schule";
   if (type === "za") return "ZA";
   return "";
 }
@@ -45,6 +55,9 @@ export const isVacationEntry = (entry) =>
 
 export const isSpecialLeaveEntry = (entry) =>
   getTimeEntryAbsenceType(entry) === "sonderurlaub";
+
+export const isSchoolEntry = (entry) =>
+  getTimeEntryAbsenceType(entry) === "schule";
 
 export const isSickEntry = (entry) =>
   getTimeEntryAbsenceType(entry) === "krank";
