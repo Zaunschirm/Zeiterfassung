@@ -336,7 +336,7 @@ export default function App() {
                 </section>
               )}
               <Routes>
-                <Route path="/dashboard" element={isAdmin ? <AdminDashboard /> : <Navigate to="/zeiterfassung" replace />} />
+                <Route path="/dashboard" element={isAdmin ? <AdminDashboard currentUser={currentUser} /> : <Navigate to="/zeiterfassung" replace />} />
                 <Route path="/zeiterfassung" element={<DaySlider />} />
                 <Route path="/projekte" element={canManageProjects ? <ProjectAdmin /> : <Navigate to="/zeiterfassung" replace />} />
                 <Route path="/abrechnung" element={isAdmin ? <ProjectBilling /> : <Navigate to="/zeiterfassung" replace />} />

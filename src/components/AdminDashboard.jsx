@@ -73,7 +73,7 @@ const fmtDate = (value) => {
 };
 const isMissingOptionalTableError = (error) => error?.code === "PGRST205" || /Could not find the table/i.test(error?.message || "");
 
-export default function AdminDashboard() {
+export default function AdminDashboard({ currentUser = null }) {
   const navigate = useNavigate();
   const [data, setData] = useState({
     pending: [],
@@ -90,6 +90,10 @@ export default function AdminDashboard() {
   });
   const [loading, setLoading] = useState(true);
   const [backupLoading, setBackupLoading] = useState(false);
+  const [broadcastSending, setBroadcastSending] = useState(false);
+  const [broadcastMessage, setBroadcastMessage] = useState("");
+  const [broadcastTarget, setBroadcastTarget] = useState("all");
+  const [broadcastIncludeSender, setBroadcastIncludeSender] = useState(true);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
@@ -193,6 +197,55 @@ export default function AdminDashboard() {
       setError(`Datensicherung fehlgeschlagen: ${err?.message || err}`);
     } finally {
       setBackupLoading(false);
+    }
+  }
+
+  async function sendBroadcastPush() {
+    const text = broadcastMessage.trim();
+    if (!text) {
+      setError("Bitte zuerst eine Nachricht eingeben.");
+      return;
+    }
+
+    if (!currentUser?.gateToken) {
+      setError("Bitte neu einloggen, damit die Push-Nachricht berechtigt gesendet werden kann.");
+      return;
+    }
+
+    setBroadcastSending(true);
+    setError("");
+    setMessage("");
+
+    try {
+      const isLocalPreview = window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost";
+      const url = isLocalPreview
+        ? "https://zeiterfassung-rho.vercel.app/api/push-broadcast"
+        : "/api/push-broadcast";
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${currentUser.gateToken}`,
+        },
+        body: JSON.stringify({
+          message: text,
+          target: broadcastTarget,
+          includeSender: broadcastIncludeSender,
+        }),
+      });
+
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result?.ok) {
+        throw new Error(result?.error || "Nachricht konnte nicht gesendet werden.");
+      }
+
+      const failedInfo = result.failed ? `, ${result.failed} Gerät(e) nicht erreichbar` : "";
+      setMessage(`Push-Nachricht an ${result.sent || 0} Gerät(e) gesendet${failedInfo}.`);
+      setBroadcastMessage("");
+    } catch (err) {
+      setError(err?.message || "Push-Nachricht konnte nicht gesendet werden.");
+    } finally {
+      setBroadcastSending(false);
     }
   }
 
@@ -322,10 +375,59 @@ export default function AdminDashboard() {
         <p className="hint">Verrechnete Regieberichte verschwinden aus der normalen Arbeitsliste und bleiben über „Archivierte anzeigen“ auffindbar.</p>
       </div>
     </section>
+    <section className="hbz-card dashboard-broadcast">
+      <div>
+        <div className="eyebrow">Push-Nachricht</div>
+        <h2>Nachricht an Mitarbeiter senden</h2>
+        <p className="hint">Geht nur an Geräte, auf denen Benachrichtigungen aktiviert wurden.</p>
+      </div>
+      <div className="dashboard-broadcast-form">
+        <label>
+          Empfänger
+          <select className="hbz-input" value={broadcastTarget} onChange={(event) => setBroadcastTarget(event.target.value)} disabled={broadcastSending}>
+            <option value="all">Alle aktiven Mitarbeiter</option>
+            <option value="teamleiter">Nur Teamleiter</option>
+            <option value="admins">Nur Admins</option>
+          </select>
+        </label>
+        <label>
+          Nachricht
+          <textarea
+            className="hbz-input"
+            rows={3}
+            maxLength={500}
+            placeholder="z. B. Morgen bitte alle um 06:30 in der Halle."
+            value={broadcastMessage}
+            onChange={(event) => setBroadcastMessage(event.target.value)}
+            disabled={broadcastSending}
+          />
+        </label>
+        <div className="dashboard-broadcast-bottom">
+          <label className="dashboard-broadcast-check">
+            <input
+              type="checkbox"
+              checked={broadcastIncludeSender}
+              onChange={(event) => setBroadcastIncludeSender(event.target.checked)}
+              disabled={broadcastSending}
+            />
+            <span>Auch an mich senden</span>
+          </label>
+          <span>{broadcastMessage.trim().length}/500</span>
+          <button
+            type="button"
+            className="hbz-btn hbz-btn-primary"
+            onClick={sendBroadcastPush}
+            disabled={broadcastSending || !broadcastMessage.trim()}
+          >
+            {broadcastSending ? "Sende…" : "Push senden"}
+          </button>
+        </div>
+      </div>
+    </section>
     <section className="dashboard-actions hbz-card">
       <div><div className="eyebrow">Schnellzugriff</div><h2>Was möchtest du prüfen?</h2></div>
       <div><button className="hbz-btn hbz-btn-primary" onClick={() => navigate("/abrechnung")}>Abrechnung</button><button className="hbz-btn" onClick={() => navigate("/monatsuebersicht")}>Lohncheck</button><button className="hbz-btn" onClick={() => navigate("/arbeitseinteilung")}>Arbeitseinteilung</button><button className="hbz-btn" onClick={() => navigate("/projekte")}>Projekte</button></div>
     </section>
-    <style>{`.dashboard-hero{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;margin-bottom:18px}.dashboard-hero h1{margin:3px 0}.dashboard-hero p{margin:0;color:#6f6259}.dashboard-hero-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}.dashboard-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:14px}.dashboard-card{border:1px solid #e4d7cd;border-top:5px solid #7b4a2d;border-radius:13px;background:#fff;padding:18px;text-align:left;display:grid;gap:7px;cursor:pointer;box-shadow:0 10px 28px rgba(75,47,30,.07)}.dashboard-card span{font-weight:800;color:#604735}.dashboard-card strong{font-size:34px;color:#2f2119}.dashboard-card small{color:#74675e;min-height:30px}.dashboard-card b{font-size:12px;color:#7b4a2d}.dashboard-card.warning{border-top-color:#d18a20}.dashboard-card.blue{border-top-color:#397ba8}.dashboard-card.danger{border-top-color:#b94a40}.dashboard-card.green{border-top-color:#438557}.dashboard-card.purple{border-top-color:#7b5aa6}.dashboard-checklist{margin-top:14px}.dashboard-checklist-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:12px}.dashboard-checklist h2{margin:3px 0 0}.dashboard-check-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}.dashboard-check-card{border:1px solid #eadfd7;border-left:5px solid #7b4a2d;border-radius:13px;background:#fffaf5;padding:12px;text-align:left;display:grid;gap:4px;cursor:pointer}.dashboard-check-card strong{font-size:26px;color:#2f2119}.dashboard-check-card span{font-weight:900;color:#3b2a20}.dashboard-check-card small{color:#6f6259}.dashboard-check-card.warning{border-left-color:#d18a20}.dashboard-check-card.danger{border-left-color:#b94a40}.dashboard-check-card.purple{border-left-color:#7b5aa6}.dashboard-columns{display:grid;grid-template-columns:1.35fr .9fr;gap:14px;margin-top:18px}.dashboard-priority h2{margin:4px 0 12px}.dashboard-priority-row{width:100%;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:3px 12px;align-items:center;border:1px solid #eadfd7;border-left:5px solid #7b4a2d;border-radius:10px;background:#fff;padding:10px 12px;margin-top:8px;text-align:left;cursor:pointer}.dashboard-priority-row span{font-weight:900;color:#3b2a20}.dashboard-priority-row small{color:#6f6259}.dashboard-priority-row b{grid-row:1/3;grid-column:2;color:#7b4a2d;font-size:12px}.dashboard-priority-row.warning{border-left-color:#d18a20}.dashboard-priority-row.blue{border-left-color:#397ba8}.dashboard-priority-row.danger{border-left-color:#b94a40}.dashboard-priority-row.purple{border-left-color:#7b5aa6}.dashboard-done-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.dashboard-done-grid div{border:1px solid #eadfd7;border-radius:12px;background:#fbf7f2;padding:14px}.dashboard-done-grid span{display:block;font-size:12px;font-weight:800;color:#6f6259}.dashboard-done-grid b{font-size:28px}.dashboard-actions{margin-top:18px;display:flex;align-items:center;justify-content:space-between;gap:16px}.dashboard-actions h2{margin:3px 0}.dashboard-actions>div:last-child{display:flex;gap:8px;flex-wrap:wrap}@media(max-width:1100px){.dashboard-grid{grid-template-columns:repeat(3,1fr)}.dashboard-check-grid{grid-template-columns:repeat(3,1fr)}.dashboard-columns{grid-template-columns:1fr}}@media(max-width:700px){.dashboard-grid,.dashboard-check-grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:600px){.dashboard-hero,.dashboard-actions,.dashboard-checklist-head{align-items:stretch;flex-direction:column}.dashboard-hero-actions{display:grid;justify-content:stretch}.dashboard-grid,.dashboard-check-grid{grid-template-columns:1fr}.dashboard-card{min-height:135px}.dashboard-actions>div:last-child{display:grid}.dashboard-actions .hbz-btn{min-height:46px}}`}</style>
+    <style>{`.dashboard-hero{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;margin-bottom:18px}.dashboard-hero h1{margin:3px 0}.dashboard-hero p{margin:0;color:#6f6259}.dashboard-hero-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}.dashboard-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:14px}.dashboard-card{border:1px solid #e4d7cd;border-top:5px solid #7b4a2d;border-radius:13px;background:#fff;padding:18px;text-align:left;display:grid;gap:7px;cursor:pointer;box-shadow:0 10px 28px rgba(75,47,30,.07)}.dashboard-card span{font-weight:800;color:#604735}.dashboard-card strong{font-size:34px;color:#2f2119}.dashboard-card small{color:#74675e;min-height:30px}.dashboard-card b{font-size:12px;color:#7b4a2d}.dashboard-card.warning{border-top-color:#d18a20}.dashboard-card.blue{border-top-color:#397ba8}.dashboard-card.danger{border-top-color:#b94a40}.dashboard-card.green{border-top-color:#438557}.dashboard-card.purple{border-top-color:#7b5aa6}.dashboard-checklist{margin-top:14px}.dashboard-checklist-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:12px}.dashboard-checklist h2{margin:3px 0 0}.dashboard-check-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}.dashboard-check-card{border:1px solid #eadfd7;border-left:5px solid #7b4a2d;border-radius:13px;background:#fffaf5;padding:12px;text-align:left;display:grid;gap:4px;cursor:pointer}.dashboard-check-card strong{font-size:26px;color:#2f2119}.dashboard-check-card span{font-weight:900;color:#3b2a20}.dashboard-check-card small{color:#6f6259}.dashboard-check-card.warning{border-left-color:#d18a20}.dashboard-check-card.danger{border-left-color:#b94a40}.dashboard-check-card.purple{border-left-color:#7b5aa6}.dashboard-columns{display:grid;grid-template-columns:1.35fr .9fr;gap:14px;margin-top:18px}.dashboard-priority h2{margin:4px 0 12px}.dashboard-priority-row{width:100%;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:3px 12px;align-items:center;border:1px solid #eadfd7;border-left:5px solid #7b4a2d;border-radius:10px;background:#fff;padding:10px 12px;margin-top:8px;text-align:left;cursor:pointer}.dashboard-priority-row span{font-weight:900;color:#3b2a20}.dashboard-priority-row small{color:#6f6259}.dashboard-priority-row b{grid-row:1/3;grid-column:2;color:#7b4a2d;font-size:12px}.dashboard-priority-row.warning{border-left-color:#d18a20}.dashboard-priority-row.blue{border-left-color:#397ba8}.dashboard-priority-row.danger{border-left-color:#b94a40}.dashboard-priority-row.purple{border-left-color:#7b5aa6}.dashboard-done-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.dashboard-done-grid div{border:1px solid #eadfd7;border-radius:12px;background:#fbf7f2;padding:14px}.dashboard-done-grid span{display:block;font-size:12px;font-weight:800;color:#6f6259}.dashboard-done-grid b{font-size:28px}.dashboard-broadcast{margin-top:18px;display:grid;grid-template-columns:.55fr 1fr;gap:16px;align-items:start}.dashboard-broadcast h2{margin:3px 0 6px}.dashboard-broadcast-form{display:grid;gap:10px}.dashboard-broadcast-form label{display:grid;gap:5px;font-size:12px;font-weight:850;color:#5a3a23}.dashboard-broadcast-form textarea{resize:vertical;min-height:78px}.dashboard-broadcast-bottom{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}.dashboard-broadcast-check{display:flex!important;grid-template-columns:none!important;align-items:center;gap:7px}.dashboard-broadcast-bottom span{font-size:12px;color:#7a6a5f;font-weight:800}.dashboard-actions{margin-top:18px;display:flex;align-items:center;justify-content:space-between;gap:16px}.dashboard-actions h2{margin:3px 0}.dashboard-actions>div:last-child{display:flex;gap:8px;flex-wrap:wrap}@media(max-width:1100px){.dashboard-grid{grid-template-columns:repeat(3,1fr)}.dashboard-check-grid{grid-template-columns:repeat(3,1fr)}.dashboard-columns,.dashboard-broadcast{grid-template-columns:1fr}}@media(max-width:700px){.dashboard-grid,.dashboard-check-grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:600px){.dashboard-hero,.dashboard-actions,.dashboard-checklist-head{align-items:stretch;flex-direction:column}.dashboard-hero-actions{display:grid;justify-content:stretch}.dashboard-grid,.dashboard-check-grid{grid-template-columns:1fr}.dashboard-card{min-height:135px}.dashboard-actions>div:last-child{display:grid}.dashboard-actions .hbz-btn{min-height:46px}.dashboard-broadcast-bottom{align-items:stretch;display:grid}.dashboard-broadcast .hbz-btn{min-height:46px}}`}</style>
   </div>;
 }
