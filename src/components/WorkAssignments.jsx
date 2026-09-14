@@ -1233,8 +1233,7 @@ export default function WorkAssignments() {
         <div className="workassign-project-palette-head">
           <div>
             <div className="month-card-title">Abwesenheit</div>
-            <div className="help">Krank, Urlaub oder Schule auswählen und danach unten in die gewünschte Zelle klicken. Schule/Berufsschule zählt als geplant und nicht als Baustelle.</div>
-            <div className="help">Schule ist neutral: keine Fehlstunden, keine Plusstunden, kein Taggeld und keine Lohn-/Projektstunden.</div>
+            <div className="help">Krank, Urlaub oder Schule auswählen und danach unten in die gewünschte Zelle klicken.</div>
           </div>
           {selectedPlanMode === "krank" || selectedPlanMode === "urlaub" || selectedPlanMode === "schule" ? <span className="badge">{selectedPlanMode === "urlaub" ? "Urlaub aktiv" : selectedPlanMode === "schule" ? "Schule aktiv" : "Krank aktiv"}</span> : null}
         </div>
@@ -1273,9 +1272,11 @@ export default function WorkAssignments() {
           </button>
         </div>
 
-        <div className="workassign-school-block" style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid rgba(123,74,45,.16)" }}>
-          <div className="month-card-title" style={{ fontSize: 14 }}>Berufsschulblock eintragen</div>
-          <div className="help">Für längere Berufsschule: Mitarbeiter und Zeitraum auswählen. Eingetragen werden nur Arbeitstage laut Modell, ohne Feiertage/freie Tage.</div>
+        <details className="workassign-school-block">
+          <summary>
+            <span>Berufsschulblock eintragen</span>
+            <small>für längere Lehrlings-Schulzeiten</small>
+          </summary>
           <div className="workassign-project-tools no-dropdown" style={{ marginTop: 8 }}>
             <div className="hbz-col">
               <label className="hbz-label">Mitarbeiter / Lehrling</label>
@@ -1305,8 +1306,9 @@ export default function WorkAssignments() {
             <input type="checkbox" checked={schoolBlockReplaceProjects} onChange={(e) => setSchoolBlockReplaceProjects(e.target.checked)} />
             Vorhandene Projekte im Zeitraum durch Schule ersetzen
           </label>
+          <div className="help">Schule zählt neutral: keine Fehlstunden, keine Plusstunden, kein Taggeld und keine Projektstunden.</div>
           {schoolBlockMessage ? <div className="success-box" style={{ marginTop: 8 }}>{schoolBlockMessage}</div> : null}
-        </div>
+        </details>
       </div>
       ) : null}
 

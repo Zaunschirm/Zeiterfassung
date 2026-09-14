@@ -4592,6 +4592,48 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   justify-content: flex-end;
 }
 
+.workassign-school-block {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(123, 74, 45, 0.14);
+}
+
+.workassign-school-block summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: auto;
+  padding: 6px 10px;
+  border: 1px solid #d9c7b8;
+  border-radius: 999px;
+  background: #fffaf5;
+  color: #6f4328;
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+  user-select: none;
+}
+
+.workassign-school-block summary::-webkit-details-marker {
+  display: none;
+}
+
+.workassign-school-block summary::before {
+  content: "▸";
+  color: #9b6a47;
+  font-size: 11px;
+}
+
+.workassign-school-block[open] summary::before {
+  content: "▾";
+}
+
+.workassign-school-block summary small {
+  color: #8a7668;
+  font-size: 11px;
+  font-weight: 700;
+}
+
 @media (max-width: 640px) {
   .app-message-notice {
     grid-template-columns: 1fr;
