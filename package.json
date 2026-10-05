@@ -30,5 +30,8 @@
     "vite-plugin-pwa": "^1.1.0",
     "vitest": "^4.1.9",
     "workbox-window": "^7.3.0"
+  },
+  "engines": {
+    "node": "24.x"
   }
 }
