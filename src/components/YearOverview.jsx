@@ -30,6 +30,7 @@ async function loadPdfLibs() {
 
 // ---- Helpers ----
 const h2 = (m) => Math.round((m / 60) * 100) / 100;
+const isPayrollExportEmployee = (employee) => employee?.include_in_payroll_export !== false;
 
 const parsePrivatePkwKm = (value) => {
   const normalized = String(value ?? "")
@@ -175,6 +176,12 @@ function eachDateBetween(from, to) {
 
 function buildPayrollMonthlySummary(sourceRows, monthList, selectedEmployees = []) {
   const employeeMonthMap = new Map();
+  const selectedEmployeeIds = new Set(
+    (selectedEmployees || []).map((employeeInfo) => String(employeeInfo.id || "")).filter(Boolean)
+  );
+  const selectedEmployeeNames = new Set(
+    (selectedEmployees || []).map((employeeInfo) => employeeInfo.name || employeeInfo.code || "—")
+  );
 
   for (const ym of monthList || []) {
     for (const employeeInfo of selectedEmployees || []) {
@@ -187,6 +194,14 @@ function buildPayrollMonthlySummary(sourceRows, monthList, selectedEmployees = [
 
     for (const r of sourceRows || []) {
       const employee = r.employee_name || r.employee_id || "—";
+      const rowEmployeeId = String(r.employee_id || "");
+      if (
+        (selectedEmployeeIds.size || selectedEmployeeNames.size) &&
+        !(rowEmployeeId && selectedEmployeeIds.has(rowEmployeeId)) &&
+        !selectedEmployeeNames.has(employee)
+      ) {
+        continue;
+      }
       const date = r.work_date || "";
       if (!date || !String(date).startsWith(`${ym}-`)) continue;
 
@@ -944,7 +959,9 @@ export default function YearOverview() {
     const payrollSummary = buildPayrollMonthlySummary(
       selectedRows,
       activeRange.monthList,
-      employees.filter((e) => pdfOptions.selectedEmployeeCodes.includes(e.code))
+      employees
+        .filter(isPayrollExportEmployee)
+        .filter((e) => pdfOptions.selectedEmployeeCodes.includes(e.code))
     );
 
     const selectedEmployeeCount = uniq(

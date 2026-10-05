@@ -146,6 +146,10 @@ function isZaAccountEnabled(emp) {
   return emp?.include_in_za_account !== false;
 }
 
+function isPayrollExportEnabled(emp) {
+  return emp?.include_in_payroll_export !== false;
+}
+
 
 export default function EmployeeList() {
   const [rows, setRows] = useState([]);
@@ -165,6 +169,7 @@ export default function EmployeeList() {
   const [workTimeSettings, setWorkTimeSettings] = useState(() => normalizeWorkTimeSettings(DEFAULT_OFFICE_WORK_TIME_SETTINGS));
   const [zaStartDate, setZaStartDate] = useState("");
   const [includeInZaAccount, setIncludeInZaAccount] = useState(true);
+  const [includeInPayrollExport, setIncludeInPayrollExport] = useState(true);
   const [isTestEmployee, setIsTestEmployee] = useState(false);
   const [saving, setSaving] = useState(false);
   const [adjustEmployeeId, setAdjustEmployeeId] = useState("");
@@ -441,6 +446,7 @@ export default function EmployeeList() {
       ...row,
       permissions: normalizePermissions(row.permissions),
       include_in_za_account: row.include_in_za_account !== false,
+      include_in_payroll_export: row.include_in_payroll_export !== false,
     }));
     setRows(nextRows);
     await loadOvertimeData(nextRows);
@@ -575,6 +581,22 @@ export default function EmployeeList() {
     load();
   }
 
+  async function togglePayrollExport(row) {
+    const nextValue = row.include_in_payroll_export === false;
+
+    const { error } = await supabase
+      .from("employees")
+      .update({ include_in_payroll_export: nextValue })
+      .eq("id", row.id);
+
+    if (error) {
+      alert("Lohnverrechnungs-Einstellung konnte nicht geändert werden. Bitte SQL-Spalte include_in_payroll_export prüfen.");
+      return;
+    }
+
+    load();
+  }
+
   async function remove(row) {
     if (!confirm(`Mitarbeiter „${row.name}“ wirklich löschen?`)) return;
 
@@ -600,6 +622,7 @@ export default function EmployeeList() {
     setWorkTimeSettings(normalizeWorkTimeSettings(row.work_time_settings, nextModel));
     setZaStartDate(row.za_start_date || "");
     setIncludeInZaAccount(row.include_in_za_account !== false);
+    setIncludeInPayrollExport(row.include_in_payroll_export !== false);
     setIsTestEmployee(row.is_test_employee === true);
   }
 
@@ -614,6 +637,7 @@ export default function EmployeeList() {
     setWorkTimeSettings(normalizeWorkTimeSettings(DEFAULT_OFFICE_WORK_TIME_SETTINGS, "verwaltung"));
     setZaStartDate("");
     setIncludeInZaAccount(true);
+    setIncludeInPayrollExport(true);
     setIsTestEmployee(false);
   }
 
@@ -661,6 +685,7 @@ export default function EmployeeList() {
         work_time_settings: workTimeModel === "buak" ? null : workTimeSettings,
         za_start_date: zaStartDate || null,
         include_in_za_account: isTestEmployee ? false : includeInZaAccount,
+        include_in_payroll_export: isTestEmployee ? false : includeInPayrollExport,
         is_test_employee: isTestEmployee,
       };
 
@@ -786,6 +811,22 @@ export default function EmployeeList() {
             </label>
           </div>
 
+          <div>
+            <label className="hbz-label">Lohnverrechnung</label>
+            <label className="employee-control-check" style={{ marginTop: 6 }}>
+              <input
+                type="checkbox"
+                checked={includeInPayrollExport && !isTestEmployee}
+                disabled={isTestEmployee}
+                onChange={(e) => setIncludeInPayrollExport(e.target.checked)}
+              />
+              <span>
+                <strong>In Lohnverrechnung berücksichtigen</strong>
+                <small>{isTestEmployee ? "Testpersonen werden nicht in der Lohnverrechnung geführt." : "Für Praktikanten deaktivieren. Sonst bleibt die Person überall normal verfügbar."}</small>
+              </span>
+            </label>
+          </div>
+
           <div style={{ gridColumn: "1 / -1" }}>
             <label className="employee-control-check">
               <input
@@ -796,6 +837,7 @@ export default function EmployeeList() {
                   if (e.target.checked) {
                     setShowInDailyCheck(false);
                     setIncludeInZaAccount(false);
+                    setIncludeInPayrollExport(false);
                   }
                 }}
               />
@@ -1148,6 +1190,7 @@ export default function EmployeeList() {
           <div className="employee-head-stats">
             <span className="badge-soft">{rows.filter((r) => !r.disabled).length} aktiv</span>
             <span className="badge-soft">{rows.filter(isZaAccountEnabled).length} mit ZA-Konto</span>
+            <span className="badge-soft">{rows.filter(isPayrollExportEnabled).length} Lohnverrechnung</span>
           </div>
         </div>
 
@@ -1208,6 +1251,11 @@ export default function EmployeeList() {
                           {r.show_in_daily_check === false ? "Tageskontrolle aus" : "Tageskontrolle an"}
                         </span>
                       </div>
+                      <div style={{ marginTop: 6 }}>
+                        <span className={`daily-check-table-pill ${isPayrollExportEnabled(r) ? "on" : "off"}`}>
+                          {isPayrollExportEnabled(r) ? "Lohnverrechnung an" : "Lohnverrechnung aus"}
+                        </span>
+                      </div>
                     </td>
                     <td data-label="Rechte" style={{ fontSize: 12, lineHeight: 1.25 }}>
                       {permissionSummary(r.permissions)}
@@ -1217,6 +1265,7 @@ export default function EmployeeList() {
                         <button type="button" className="hbz-btn btn-small" onClick={() => editEmployee(r)}>Bearbeiten</button>
                         <button type="button" className="hbz-btn btn-small" onClick={() => toggleActive(r)}>{r.disabled ? "Aktiv" : "Deaktiv"}</button>
                         <button type="button" className="hbz-btn btn-small" onClick={() => toggleZaAccount(r)}>{zaEnabled ? "ZA aus" : "ZA an"}</button>
+                        <button type="button" className="hbz-btn btn-small" onClick={() => togglePayrollExport(r)}>{isPayrollExportEnabled(r) ? "Lohn aus" : "Lohn an"}</button>
                         <button type="button" className="hbz-btn btn-small" onClick={() => resetPin(r)}>PIN</button>
                         <button type="button" className="hbz-btn btn-small" onClick={() => remove(r)}>Löschen</button>
                       </div>

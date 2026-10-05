@@ -416,6 +416,7 @@ const getPureWorkMinutes = (r) => {
 };
 
 const isActiveEmployee = (e) => e?.disabled !== true && e?.active !== false;
+const isPayrollExportEmployee = (e) => isActiveEmployee(e) && e?.include_in_payroll_export !== false;
 
 // ---------- Component ----------
 export default function MonthlyOverview() {
@@ -528,7 +529,7 @@ export default function MonthlyOverview() {
   const payrollCandidateEmployees = useMemo(
     () =>
       employees
-        .filter(isActiveEmployee)
+        .filter(isPayrollExportEmployee)
         .filter((employee) => !isTestEmployee(employee))
         .sort((a, b) => (a.name || a.code || "").localeCompare(b.name || b.code || "")),
     [employees]
@@ -1823,8 +1824,8 @@ export default function MonthlyOverview() {
     try {
       const { jsPDF, autoTable } = await loadPdfLibs();
       const targetRange = exportRange || payrollCheckRange || activeRange;
-      const employeesForExport = (selectedEmployeesForExport || employees.filter(isActiveEmployee))
-        .filter(isActiveEmployee)
+      const employeesForExport = (selectedEmployeesForExport || employees.filter(isPayrollExportEmployee))
+        .filter(isPayrollExportEmployee)
         .sort((a, b) => (a.name || a.code || "").localeCompare(b.name || b.code || ""));
 
       if (!employeesForExport.length) {
@@ -3282,7 +3283,7 @@ export default function MonthlyOverview() {
               <div>
                 <div className="month-card-title">Lohnverrechnung Vormonat</div>
                 <div className="month-main-subtitle">
-                  Zeitraum: <b>{payrollCheckRange.label}</b>. Standardmäßig sind alle aktiven Mitarbeiter ausgewählt.
+                  Zeitraum: <b>{payrollCheckRange.label}</b>. Standardmäßig sind alle für die Lohnverrechnung aktivierten Mitarbeiter ausgewählt.
                 </div>
               </div>
               <button type="button" className="hbz-btn btn-small" onClick={() => setShowPayrollExportDialog(false)}>
@@ -3409,7 +3410,7 @@ export default function MonthlyOverview() {
               <div>
                 <div className="month-card-title">Lohncheck Vormonat</div>
                 <div className="month-main-subtitle">
-                  Wähle aus, welche aktiven Mitarbeiter geprüft werden sollen. Standardmäßig sind alle aktiven Mitarbeiter ausgewählt.
+                  Wähle aus, welche lohnrelevanten Mitarbeiter geprüft werden sollen. Standardmäßig sind alle für die Lohnverrechnung aktivierten Mitarbeiter ausgewählt.
                 </div>
               </div>
               <button type="button" className="hbz-btn btn-small" onClick={() => setShowPayrollEmployeeDialog(false)}>

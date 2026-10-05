@@ -60,6 +60,7 @@ export default function EmployeeCreate() {
   const [pin, setPin] = useState("");
   const [permissions, setPermissions] = useState({ ...EMPTY_PERMISSIONS });
   const [showInDailyCheck, setShowInDailyCheck] = useState(true);
+  const [includeInPayrollExport, setIncludeInPayrollExport] = useState(true);
   const [workTimeModel, setWorkTimeModel] = useState("buak");
   const [workTimeSettings, setWorkTimeSettings] = useState(() =>
     normalizeWorkTimeSettings(DEFAULT_OFFICE_WORK_TIME_SETTINGS, "verwaltung")
@@ -181,6 +182,7 @@ export default function EmployeeCreate() {
     setPin("");
     setPermissions({ ...EMPTY_PERMISSIONS });
     setShowInDailyCheck(true);
+    setIncludeInPayrollExport(true);
     setWorkTimeModel("buak");
     setWorkTimeSettings(normalizeWorkTimeSettings(DEFAULT_OFFICE_WORK_TIME_SETTINGS, "verwaltung"));
   }
@@ -205,6 +207,7 @@ export default function EmployeeCreate() {
         disabled: false,
         permissions,
         show_in_daily_check: role === "buchhaltung" ? false : showInDailyCheck,
+        include_in_payroll_export: includeInPayrollExport,
         work_time_model: role === "buchhaltung" && workTimeModel === "buak" ? "verwaltung" : workTimeModel,
         work_time_settings: workTimeModel === "buak" ? null : normalizeWorkTimeSettings(workTimeSettings, workTimeModel),
       };
@@ -387,6 +390,20 @@ export default function EmployeeCreate() {
               <span>
                 <strong>In Tageskontrolle anzeigen</strong>
                 <small>Wenn deaktiviert, wird diese Person bei „Wer fehlt?“ nicht mitgezählt.</small>
+              </span>
+            </label>
+          </div>
+
+          <div style={{ gridColumn: "1 / -1" }}>
+            <label className="employee-control-check">
+              <input
+                type="checkbox"
+                checked={includeInPayrollExport}
+                onChange={(e) => setIncludeInPayrollExport(e.target.checked)}
+              />
+              <span>
+                <strong>In Lohnverrechnung berücksichtigen</strong>
+                <small>Für Praktikanten deaktivieren. Die Person bleibt sonst überall normal in der App verfügbar.</small>
               </span>
             </label>
           </div>
