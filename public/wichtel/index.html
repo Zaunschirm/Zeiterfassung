@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#173d31" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Wichtel" />
+  <link rel="manifest" href="/wichtel/manifest.webmanifest" />
+  <link rel="icon" href="/wichtel/icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="/icon-192.png" />
+  <title>Wichtel 🎄</title>
+  <style>
+    :root{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#17372e;background:#f3eee5}
+    *{box-sizing:border-box}
+    body{margin:0;background:radial-gradient(circle at top left,#fff9ea,transparent 28rem),#f3eee5;min-height:100vh}
+    .wrap{max-width:800px;margin:auto;padding:14px 14px 70px}
+    .hero{background:#173d31;color:#fff;border-radius:24px;padding:24px;margin-bottom:12px;box-shadow:0 14px 38px #173d3120}
+    .hero h1{margin:5px 0 7px;font-size:2rem}.hero p{margin:0;color:#d8e6df}
+    .ey{font-size:.76rem;letter-spacing:.13em;font-weight:900;color:#f2c873}
+    .card{background:#fffffff2;border:1px solid #173d3112;border-radius:20px;padding:18px;margin-top:12px;box-shadow:0 8px 24px #00000008}
+    h2,h3{margin:0 0 10px}.muted{color:#6e7a76}.row{display:flex;gap:9px;align-items:center}.grow{flex:1}.grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+    input,textarea,select{width:100%;border:1px solid #d7ddd9;border-radius:13px;padding:13px;font:inherit;background:#fff;color:#17372e;margin-top:6px}
+    textarea{min-height:95px;resize:vertical}
+    button{border:0;border-radius:13px;padding:12px 14px;font:inherit;font-weight:850;background:#e5eee9;color:#17372e;cursor:pointer}
+    button.primary{background:#173d31;color:#fff}button.red{background:#fff0ed;color:#9c3737}button.full{width:100%;padding:15px}button:disabled{opacity:.45}
+    .person{display:flex;gap:9px;align-items:center;border-top:1px solid #ecece7;padding:11px 0}.person:first-child{border-top:0}
+    .name{font-weight:800;flex:1}.small{font-size:.82rem}.ok{color:#1e7b50}.wait{color:#956a25}
+    .pill{display:inline-block;border-radius:999px;padding:6px 10px;background:#efe7d5;font-size:.8rem;font-weight:850}
+    .msg{padding:11px 12px;border-radius:12px;background:#f7efda;margin-top:10px}.locked{background:#efe6d7;border-radius:13px;padding:12px;margin:10px 0}
+    .wishbox{background:#f6f1e8;padding:13px;border-radius:13px;white-space:pre-wrap}.secret{font-size:1.65rem;font-weight:900;margin:14px 0}
+    .sep{height:1px;background:#ecece7;margin:16px 0}.hidden{display:none!important}
+    a.btn{display:inline-block;text-decoration:none;border-radius:12px;padding:10px 12px;background:#e5eee9;color:#17372e;font-weight:800}
+    .install{margin-top:12px}
+    @media(max-width:620px){.row,.grid{display:grid;grid-template-columns:1fr}.hero{padding:21px}.hero h1{font-size:1.75rem}}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hero"><div class="ey">🎄 WICHTEL</div><h1 id="title">Wichteln</h1><p id="sub">Wünsche eintragen & geheim ziehen.</p></div>
+  <div id="app"><div class="card">Wird geladen …</div></div>
+  <button id="installBtn" class="primary full install hidden">📲 Wichtel-App installieren</button>
+</div>
+<script>
+const API="https://taaxutknfbfjevwxsitm.supabase.co/functions/v1/wichtel";
+const q=new URLSearchParams(location.search);
+if(q.get("master")) localStorage.setItem("wichtel_master",q.get("master"));
+if(q.get("admin")) localStorage.setItem("wichtel_admin",q.get("admin"));
+if(q.get("invite")) localStorage.setItem("wichtel_invite",q.get("invite"));
+let master=q.get("master")||localStorage.getItem("wichtel_master");
+let admin=q.get("admin")||(!master&&localStorage.getItem("wichtel_admin"));
+let invite=q.get("invite")||(!master&&!admin&&localStorage.getItem("wichtel_invite"));
+const app=document.getElementById("app");
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+async function call(action,p={}){const r=await fetch(API,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action,master,admin,invite,...p})});const d=await r.json();if(!r.ok)throw new Error(d.error||"Fehler");return d}
+function fmtDate(s){return s?new Date(s+"T12:00:00").toLocaleDateString("de-AT"):""}
+function msg(t){const x=document.createElement("div");x.className="msg";x.textContent=t;app.prepend(x);setTimeout(()=>x.remove(),3500)}
+async function load(){try{if(master)return renderMaster(await call("master_state"));if(admin)return renderAdmin(await call("admin_state"));if(invite)return renderPublic(await call("public_state"));app.innerHTML='<div class="card"><h2>Kein gültiger Link</h2><p class="muted">Bitte öffne den Link, den du für diese Wichtelrunde bekommen hast.</p></div>'}catch(e){app.innerHTML='<div class="card"><div class="msg">'+esc(e.message)+'</div></div>'}}
+function renderMaster(d){
+ document.getElementById("title").textContent="Wichtel-Projekte"; document.getElementById("sub").textContent="Alle Wichtelrunden getrennt verwalten.";
+ app.innerHTML='<div class="card"><h2>+ Neues Projekt</h2><div class="grid"><input id="pn" placeholder="z. B. Familienwichteln 2026"><input id="pb" type="number" placeholder="Budget €"></div><input id="pd" type="date"><button class="primary full" style="margin-top:9px" onclick="createProject()">Projekt anlegen</button></div>'+
+ '<div class="card"><h2>Projekte</h2>'+(d.groups.length?d.groups.map(g=>'<div class="person"><div class="grow"><div class="name">'+esc(g.name)+'</div><div class="small">'+g.count+' Personen · '+g.ready+' Wünsche · '+g.drawn+' angesehen</div></div><span class="pill">'+(g.phase==="wishlist"?"Wunschphase":"Gesperrt")+'</span><a class="btn" href="/wichtel/?admin='+g.admin_token+'">Öffnen</a></div>').join(""):'<p class="muted">Noch keine Projekte.</p>')+'</div>';
+}
+async function createProject(){try{await call("create_project",{name:pn.value,budget:pb.value,event_date:pd.value});await load()}catch(e){msg(e.message)}}
+function renderAdmin(d){
+ const g=d.group,p=d.participants,locked=g.phase!=="wishlist"||g.locked_at; document.getElementById("title").textContent=g.name; document.getElementById("sub").textContent="Adminbereich";
+ const allReady=p.length>=2&&p.every(x=>x.registered_at);
+ app.innerHTML='<div class="card">'+(locked?'<div class="locked"><b>🔒 Projekt gesperrt.</b><br><span class="small">Teilnehmer, Wünsche und Ausschlüsse können nicht mehr geändert werden.</span></div>':'')+
+ '<div class="row"><div class="grow"><h2>Teilnehmer</h2><span class="pill">'+p.length+' Personen</span></div>'+(!locked?'<button class="primary" onclick="document.getElementById(\'add\').classList.toggle(\'hidden\')">+ Person hinzufügen</button>':'')+'</div>'+
+ (!locked?'<div id="add" class="hidden row" style="margin-top:10px"><input id="newName" placeholder="Name"><button onclick="addPerson()">Hinzufügen</button></div>':'')+
+ '<div style="margin-top:10px">'+p.map(x=>'<div class="person"><div class="name">'+esc(x.name)+'</div><div class="small">'+(x.registered_at?'<span class="ok">✅ Wunsch</span>':'<span class="wait">⏳ Wunsch offen</span>')+(locked?'<br>'+(x.drawn_at?'<span class="ok">✅ angesehen</span>':'<span class="wait">⏳ noch nicht angesehen</span>'):'')+'</div>'+(!locked?'<button class="red" onclick="removePerson(\''+x.id+'\')">Entfernen</button>':'')+'</div>').join("")+'</div></div>'+
+ (!locked?'<div class="card"><h2>Ausschlüsse</h2><p class="muted small">Optional, z. B. Partner sollen einander nicht ziehen.</p><div class="grid"><select id="giver"><option value="">Von …</option>'+p.map(x=>'<option value="'+x.id+'">'+esc(x.name)+'</option>').join("")+'</select><select id="receiver"><option value="">darf nicht …</option>'+p.map(x=>'<option value="'+x.id+'">'+esc(x.name)+'</option>').join("")+'</select></div><button style="margin-top:9px" onclick="addEx()">Ausschluss hinzufügen</button><div class="sep"></div>'+d.exclusions.map(e=>{const a=p.find(x=>x.id===e.giver_id),b=p.find(x=>x.id===e.receiver_id);return '<div class="person"><div class="grow">'+esc(a?.name||"?")+' → '+esc(b?.name||"?")+'</div><button class="red" onclick="removeEx(\''+e.id+'\')">Löschen</button></div>'}).join("")+'</div>':'')+
+ '<div class="card"><h2>WhatsApp-Link</h2><input readonly value="'+location.origin+'/wichtel/?invite='+g.invite_token+'" onclick="this.select()"><p class="muted small">Diesen einen Link kannst du in die Gruppe schicken.</p></div>'+
+ (!locked?'<div class="card"><h2>Auslosung</h2><p class="muted">'+(allReady?'Alle haben einen Wunsch eingetragen. Jetzt kann ausgelost werden.':'Die Auslosung ist erst möglich, wenn alle einen Wunsch eingetragen haben.')+'</p><button class="primary full" '+(!allReady?'disabled':'')+' onclick="startDraw()">🎁 Auslosung starten & Projekt sperren</button></div>':'');
+}
+async function addPerson(){try{await call("add_person",{name:newName.value});await load()}catch(e){msg(e.message)}}
+async function removePerson(id){if(!confirm("Person wirklich entfernen?"))return;try{await call("remove_person",{id});await load()}catch(e){msg(e.message)}}
+async function addEx(){try{await call("add_exclusion",{giver_id:giver.value,receiver_id:receiver.value});await load()}catch(e){msg(e.message)}}
+async function removeEx(id){try{await call("remove_exclusion",{id});await load()}catch(e){msg(e.message)}}
+async function startDraw(){if(!confirm("Danach ist dieses Projekt endgültig gesperrt. Auslosung jetzt starten?"))return;try{await call("start_draw");await load()}catch(e){msg(e.message)}}
+function renderPublic(d){
+ const g=d.group,p=d.participants; document.getElementById("title").textContent=g.name; document.getElementById("sub").textContent=(g.budget?"Budget: "+g.budget+" €":"")+(g.event_date?" · "+fmtDate(g.event_date):"");
+ if(g.phase==="wishlist"){
+  app.innerHTML='<div class="card"><h2>Dein Wunsch 🎁</h2><p class="muted">Wähle deinen Namen, trage deinen Wunsch ein und setze eine persönliche PIN.</p><select id="pid"><option value="">Wer bist du?</option>'+p.map(x=>'<option value="'+x.id+'">'+esc(x.name)+(x.registered_at?" ✅":"")+'</option>').join("")+'</select><textarea id="wish" placeholder="Was wünschst du dir?"></textarea><input id="pin" type="password" inputmode="numeric" placeholder="PIN (4–6 Ziffern)" maxlength="6"><button class="primary full" style="margin-top:9px" onclick="saveWish()">Wunsch speichern</button><p class="muted small">Mit derselben PIN kannst du deinen Wunsch bis zur Auslosung ändern.</p></div>';
+ } else {
+  app.innerHTML='<div class="card"><div class="locked"><b>🔒 Die Runde ist ausgelost.</b><br><span class="small">Es kann nichts mehr geändert werden.</span></div><h2>Wen hast du gezogen?</h2><select id="pid"><option value="">Wer bist du?</option>'+p.map(x=>'<option value="'+x.id+'">'+esc(x.name)+(x.drawn_at?" ✅":"")+'</option>').join("")+'</select><input id="pin" type="password" inputmode="numeric" placeholder="Deine PIN" maxlength="6"><button class="primary full" style="margin-top:9px" onclick="reveal()">🎁 Meine Ziehung ansehen</button><div id="result"></div></div>';
+ }
+}
+async function saveWish(){try{await call("save_wish",{participant_id:pid.value,wish:wish.value,pin:pin.value});msg("Wunsch gespeichert ✅");setTimeout(load,500)}catch(e){msg(e.message)}}
+async function reveal(){try{const d=await call("reveal",{participant_id:pid.value,pin:pin.value});result.innerHTML='<div class="secret">Du wichtelst für: '+esc(d.receiver.name)+' 🎄</div><div class="wishbox"><b>Wunsch:</b><br>'+esc(d.receiver.wish)+'</div>'}catch(e){msg(e.message)}}
+let installPrompt=null;
+window.addEventListener("beforeinstallprompt",e=>{e.preventDefault();installPrompt=e;document.getElementById("installBtn").classList.remove("hidden")});
+document.getElementById("installBtn").onclick=async()=>{if(installPrompt){installPrompt.prompt();installPrompt=null}else{alert("iPhone: Teilen → Zum Home-Bildschirm → Hinzufügen")}};
+if("serviceWorker" in navigator) navigator.serviceWorker.register("/wichtel/sw.js").catch(()=>{});
+if(!(window.matchMedia("(display-mode: standalone)").matches||window.navigator.standalone===true) && /iPhone|iPad|iPod/i.test(navigator.userAgent)) document.getElementById("installBtn").classList.remove("hidden");
+load();
+</script>
+</body>
+</html>
