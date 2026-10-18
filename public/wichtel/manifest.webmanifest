@@ -1,0 +1,17 @@
+{
+  "name": "Wichtel",
+  "short_name": "Wichtel",
+  "start_url": "/wichtel/",
+  "scope": "/wichtel/",
+  "display": "standalone",
+  "background_color": "#f3eee5",
+  "theme_color": "#173d31",
+  "icons": [
+    {
+      "src": "/wichtel/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
