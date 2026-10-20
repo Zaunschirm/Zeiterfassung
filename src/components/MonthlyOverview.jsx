@@ -36,6 +36,7 @@ import { filterVisibleEmployeesForRole, isTestEmployee } from "../utils/employee
 import { calculateZaBalanceDelta, calculateZaBalanceForEmployee, isOfficialZaStartAdjustment } from "../utils/overtime";
 import { collectSupabaseRows } from "../utils/pagination";
 import { addPdfWatermarks } from "../utils/pdfBranding";
+import InternWeeklyReport from "./InternWeeklyReport";
 
 async function loadPdfLibs() {
   const [{ jsPDF }, autoTableModule] = await Promise.all([
@@ -2853,6 +2854,9 @@ export default function MonthlyOverview() {
         </div>
       </div>
 
+        <div className="hbz-card" style={{ marginBottom: 16 }}>
+          <InternWeeklyReport employees={employees} />
+        </div>
       <div className="month-overview-topgrid">
         <div className="hbz-card month-filter-card">
           <div className="month-section-heading">
