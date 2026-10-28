@@ -440,13 +440,13 @@ export default function ProjectBilling() {
     setMessage("Nachtrag angelegt.");
   };
 
-  const addInvoice = (row) => {
-    const nextNet = Math.max(row.remainingNet, 0);
+  const addInvoice = (row, kind = "Teilrechnung") => {
+    const nextNet = kind === "Anzahlung" ? 0 : Math.max(row.remainingNet, 0);
     updateBilling(row.project.id, (current) => ({
       ...current,
-      invoices: [...(current.invoices || []), { id: `tr-${Date.now()}`, invoiceNumber: "", date: todayISO(), title: `${(current.invoices?.length || 0) + 1}. Teilrechnung`, period: `${from} bis ${to}`, net: nextNet ? String(nextNet.toFixed(2)) : "", status: "Entwurf", paidAt: "" }],
+      invoices: [...(current.invoices || []), { id: `tr-${Date.now()}`, kind, invoiceNumber: "", date: todayISO(), title: kind === "Anzahlung" ? "Anzahlung" : `${(current.invoices?.length || 0) + 1}. Teilrechnung`, period: `${from} bis ${to}`, net: nextNet ? String(nextNet.toFixed(2)) : "", status: "Entwurf", paidAt: "" }],
     }));
-    setMessage("Teilrechnung mit Restbetrag-Vorschlag angelegt.");
+    setMessage(kind === "Anzahlung" ? "Anzahlung angelegt. Bitte Nettobetrag und Zahlungsstatus eintragen." : "Teilrechnung mit Restbetrag-Vorschlag angelegt.");
   };
 
   const setRegieReportBilled = (row, reportId, billed = true) => {
@@ -552,7 +552,7 @@ export default function ProjectBilling() {
           ["Haftrücklass", fmtMoney(row.retentionAmount)],
           ["Deckungsrücklass", fmtMoney(row.coverageRetentionAmount)],
           ["Skonto", `${fmtMoney(row.cashDiscountAmount)}${row.billing.cashDiscountDays ? ` bei Zahlung binnen ${row.billing.cashDiscountDays} Tagen` : ""}`],
-          ["Teilrechnungen netto", fmtMoney(row.invoicedNet)],
+          ["Anzahlungen / Teilrechnungen netto", fmtMoney(row.invoicedNet)],
           ["AG-Abzüge netto", fmtMoney(row.clientDeductionNet)],
           ["Unverrechnete Regieberichte", String(row.regieBillableOpen.length)],
           ["Offener Rest netto", fmtMoney(row.remainingNet)],
@@ -560,7 +560,7 @@ export default function ProjectBilling() {
       });
       y = doc.lastAutoTable.finalY + 16;
       if (row.invoices.length) {
-        autoTable(doc, { startY: y, theme: "striped", ...brandedTable, head: [["Nr.", "Datum", "Text", "Zeitraum", "Netto", "Status", "Bezahlt am"]], body: row.invoices.map((i) => [i.invoiceNumber || "—", i.date || "—", i.title || "—", i.period || "—", fmtMoney(i.net), i.status || "—", i.paidAt || "—"]) });
+        autoTable(doc, { startY: y, theme: "striped", ...brandedTable, head: [["Nr.", "Datum", "Art / Text", "Zeitraum", "Netto", "Status", "Bezahlt am"]], body: row.invoices.map((i) => [i.invoiceNumber || "—", i.date || "—", `${i.kind || "Teilrechnung"}: ${i.title || "—"}`, i.period || "—", fmtMoney(i.net), i.status || "—", i.paidAt || "—"]) });
         y = doc.lastAutoTable.finalY + 16;
       }
       if (row.clientDeductions.length) {
@@ -663,7 +663,7 @@ export default function ProjectBilling() {
         <div>
           <div className="eyebrow">Abrechnung</div>
           <h1>Projektabrechnung</h1>
-          <p>Abrechnungsakte mit Auftragssumme, Nachträgen, Teilrechnungen, §19 und Prüfliste.</p>
+          <p>Abrechnungsakte mit Auftragssumme, Nachträgen, Anzahlungen, Teilrechnungen, §19 und Prüfliste.</p>
         </div>
         <button className="hbz-btn" type="button" onClick={load} disabled={loading}>{loading ? "Aktualisiere…" : "Aktualisieren"}</button>
       </header>
@@ -673,7 +673,7 @@ export default function ProjectBilling() {
 
       <section className="billing-summary-grid">
         <div className="billing-summary-card"><span>Auftrag + Nachträge netto</span><strong>{fmtMoney(totals.order)}</strong><small>{visibleRows.length} Projekte im Blick</small></div>
-        <div className="billing-summary-card"><span>Bereits abgerechnet</span><strong>{fmtMoney(totals.invoiced)}</strong><small>aus Teilrechnungen</small></div>
+        <div className="billing-summary-card"><span>Bereits abgerechnet</span><strong>{fmtMoney(totals.invoiced)}</strong><small>aus Anzahlungen und Teilrechnungen</small></div>
         <div className="billing-summary-card"><span>Offener Rest netto</span><strong>{fmtMoney(totals.remaining)}</strong><small>{totals.ready} Projekte fast bereit</small></div>
         <div className="billing-summary-card"><span>Leistung im Zeitraum</span><strong>{fmtHours(totals.work)}</strong><small>{fmtHours(totals.travel)} Fahrzeit</small></div>
       </section>
@@ -852,10 +852,11 @@ export default function ProjectBilling() {
               </section>
 
               <section className="billing-form-card">
-                <div className="billing-section-head invoices"><h3>Teilrechnungen</h3><button className="hbz-btn btn-small" type="button" onClick={() => addInvoice(selectedRow)}>+ Teilrechnung</button></div>
+                <div className="billing-section-head invoices"><h3>Anzahlungen / Teilrechnungen</h3><button className="hbz-btn btn-small" type="button" onClick={() => addInvoice(selectedRow, "Anzahlung")}>+ Anzahlung</button><button className="hbz-btn btn-small" type="button" onClick={() => addInvoice(selectedRow)}>+ Teilrechnung</button></div>
                 <div className="billing-lines">
-                  {selectedRow.invoices.length === 0 ? <p className="billing-empty">Noch keine Teilrechnung erfasst.</p> : selectedRow.invoices.map((item) => (
+                  {selectedRow.invoices.length === 0 ? <p className="billing-empty">Noch keine Anzahlung oder Teilrechnung erfasst.</p> : selectedRow.invoices.map((item) => (
                     <div className="billing-line invoice" key={item.id}>
+                      <label className="billing-invoice-field"><span>Art</span><select className="hbz-input" value={item.kind || "Teilrechnung"} onChange={(e) => updateListItem(selectedRow.project.id, "invoices", item.id, { kind: e.target.value })}><option>Teilrechnung</option><option>Anzahlung</option></select></label>
                       <label className="billing-invoice-field"><span>Rechnungsnummer</span><input className="hbz-input" value={item.invoiceNumber || ""} onChange={(e) => updateListItem(selectedRow.project.id, "invoices", item.id, { invoiceNumber: e.target.value })} placeholder="Rechnungsnr." /></label>
                       <label className="billing-invoice-field"><span>Rechnungsdatum</span><input className="hbz-input" type="date" value={item.date || ""} onChange={(e) => updateListItem(selectedRow.project.id, "invoices", item.id, { date: e.target.value })} /></label>
                       <label className="billing-invoice-field"><span>Bezeichnung</span><input className="hbz-input" value={item.title || ""} onChange={(e) => updateListItem(selectedRow.project.id, "invoices", item.id, { title: e.target.value })} placeholder="Bezeichnung" /></label>
@@ -884,24 +885,24 @@ export default function ProjectBilling() {
                 <div className="billing-lines">
                   {selectedRow.clientDeductions.length === 0 ? <p className="billing-empty">Noch kein AG-Abzug erfasst.</p> : selectedRow.clientDeductions.map((item) => (
                     <div className="billing-line client-deduction" key={item.id}>
-                      <input className="hbz-input" type="date" value={item.date || ""} onChange={(e) => updateListItem(selectedRow.project.id, "clientDeductions", item.id, { date: e.target.value })} />
-                      <select className="hbz-input" value={item.reason || ""} onChange={(e) => updateListItem(selectedRow.project.id, "clientDeductions", item.id, { reason: e.target.value })}>
+                      <label className="billing-invoice-field"><span>Datum</span><input className="hbz-input" type="date" value={item.date || ""} onChange={(e) => updateListItem(selectedRow.project.id, "clientDeductions", item.id, { date: e.target.value })} /></label>
+                      <label className="billing-invoice-field"><span>Grund</span><select className="hbz-input" value={item.reason || ""} onChange={(e) => updateListItem(selectedRow.project.id, "clientDeductions", item.id, { reason: e.target.value })}>
                         <option value="">Grund auswählen</option>
                         <option>Mängel / Gewährleistung</option>
                         <option>Baureinigung</option>
                         <option>Preisminderung</option>
                         <option>Gegenverrechnung</option>
                         <option>sonstiger AG-Abzug</option>
-                      </select>
-                      <input className="hbz-input" inputMode="decimal" value={item.net || ""} onChange={(e) => updateListItem(selectedRow.project.id, "clientDeductions", item.id, { net: e.target.value })} onBlur={(e) => updateListItem(selectedRow.project.id, "clientDeductions", item.id, { net: formatCalculatedNumber(e.target.value) })} placeholder="Betrag netto, z. B. 300+50" />
-                      <select className="hbz-input" value={item.status || "Offen"} onChange={(e) => updateListItem(selectedRow.project.id, "clientDeductions", item.id, { status: e.target.value })}>
+                      </select></label>
+                      <label className="billing-invoice-field"><span>Nettobetrag (€)</span><input className="hbz-input" inputMode="decimal" value={item.net || ""} onChange={(e) => updateListItem(selectedRow.project.id, "clientDeductions", item.id, { net: e.target.value })} onBlur={(e) => updateListItem(selectedRow.project.id, "clientDeductions", item.id, { net: formatCalculatedNumber(e.target.value) })} placeholder="Betrag netto, z. B. 300+50" /></label>
+                      <label className="billing-invoice-field"><span>Status</span><select className="hbz-input" value={item.status || "Offen"} onChange={(e) => updateListItem(selectedRow.project.id, "clientDeductions", item.id, { status: e.target.value })}>
                         <option>Offen</option>
                         <option>Akzeptiert</option>
                         <option>Einspruch</option>
                         <option>Geklärt</option>
                         <option>Storniert</option>
-                      </select>
-                      <input className="hbz-input" value={item.note || ""} onChange={(e) => updateListItem(selectedRow.project.id, "clientDeductions", item.id, { note: e.target.value })} placeholder="Notiz / Beleg" />
+                      </select></label>
+                      <label className="billing-invoice-field"><span>Notiz / Beleg</span><input className="hbz-input" value={item.note || ""} onChange={(e) => updateListItem(selectedRow.project.id, "clientDeductions", item.id, { note: e.target.value })} placeholder="Notiz / Beleg" /></label>
                       <button className="hbz-btn btn-small" type="button" onClick={() => removeListItem(selectedRow.project.id, "clientDeductions", item.id)}>Löschen</button>
                     </div>
                   ))}
@@ -952,12 +953,13 @@ export default function ProjectBilling() {
 
       <style>{`
         .billing-hero{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:16px;padding:30px 22px;border-radius:24px;color:#fff;background:linear-gradient(135deg,#684027,#b88555);box-shadow:0 18px 42px rgba(71,45,26,.14);overflow:hidden;position:relative}.billing-hero:after{content:"";position:absolute;right:-40px;top:-60px;width:230px;height:230px;border-radius:50%;background:rgba(255,255,255,.12)}.billing-hero h1{margin:2px 0 6px;font-size:34px;letter-spacing:-.04em}.billing-hero p{margin:0;color:rgba(255,255,255,.84)}.billing-summary-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:14px}.billing-summary-card{padding:16px;border:1px solid var(--hbz-border);border-radius:18px;background:rgba(255,252,247,.92);box-shadow:var(--hbz-shadow-sm)}.billing-summary-card span,.billing-summary-card small{display:block;color:#776252}.billing-summary-card strong{display:block;margin:5px 0;font-size:25px;color:#352419}.billing-archive-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}.billing-archive-tab{border:1px solid rgba(123,74,45,.2);border-radius:999px;background:#fffaf4;color:#5a3a23;padding:8px 12px;font-weight:900;cursor:pointer}.billing-archive-tab.active{background:#7b4a2d;color:#fff;box-shadow:0 8px 18px rgba(71,45,26,.14)}.billing-archive-tab span{display:inline-flex;margin-left:6px;min-width:24px;justify-content:center;border-radius:999px;background:rgba(255,255,255,.24);padding:2px 7px}.billing-filter-grid{display:grid;grid-template-columns:150px 150px 190px 190px minmax(220px,1fr);gap:12px}.billing-filter-grid label,.billing-check-panel label{display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:850;color:#5a3a23}.billing-doc-search{display:grid;gap:7px;margin-top:12px;padding:10px;border:1px dashed rgba(123,74,45,.22);border-radius:14px;background:#fffaf4}.billing-doc-search button{display:grid;gap:2px;border:1px solid rgba(142,103,70,.16);border-radius:10px;background:#fff;padding:9px;text-align:left;cursor:pointer}.billing-doc-search span{font-size:12px;color:#776252}.billing-workspace{display:grid;grid-template-columns:260px minmax(0,1fr) 300px;gap:14px;align-items:start}.billing-project-list,.billing-check-panel{position:sticky;top:98px}.billing-section-head,.billing-file-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:12px}.billing-section-head h2,.billing-section-head h3,.billing-file-head h2{margin:0;color:#372519}.billing-file-head p{margin:4px 0 0;color:#776252}.billing-project-items{display:grid;gap:8px;max-height:710px;overflow:auto;padding-right:3px}.billing-project-item{border:1px solid rgba(142,103,70,.18);border-radius:14px;background:#fffaf4;padding:10px;text-align:left;display:grid;gap:4px;cursor:pointer}.billing-project-item.active,.billing-project-item:hover{border-color:#7b4a2d;background:#fff2df}.billing-project-item b,.billing-project-item small,.billing-project-item em{display:block}.billing-project-item em{font-style:normal;font-weight:900;color:#4d3120}.billing-archive-hint{margin:0 0 10px;color:#776252;font-size:12px;line-height:1.4}.billing-empty-box{padding:12px;border:1px dashed rgba(123,74,45,.25);border-radius:14px;background:#fffaf4;color:#776252;font-size:13px}.billing-status{display:inline-flex;width:max-content;border-radius:999px;padding:5px 9px;font-size:11px;font-weight:900}.billing-status.missing{background:#fff0df;color:#98520b}.billing-status.open{background:#eef5ff;color:#295a8f}.billing-status.ready{background:#eaf7ec;color:#2f6e3d}.billing-status.partial{background:#fff5d8;color:#7d5700}.billing-status.done{background:#e7f6eb;color:#246a36}.billing-head-actions{display:flex;align-items:center;justify-content:flex-end;gap:7px;flex-wrap:wrap}.billing-workflow{width:auto;min-width:190px}.billing-project-meta{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:12px}.billing-project-meta div,.billing-money-box div{padding:10px;border:1px solid rgba(142,103,70,.18);border-radius:13px;background:#fff8ef}.billing-project-meta span,.billing-project-meta b,.billing-money-box span,.billing-money-box b{display:block}.billing-project-meta span,.billing-money-box span{font-size:11px;color:#7a6656}.billing-project-meta b{font-size:13px}.billing-progress-card,.billing-form-card,.billing-side-box{border:1px solid rgba(142,103,70,.16);border-radius:16px;background:rgba(255,250,244,.86);padding:14px;margin-bottom:12px}.billing-progress-top,.billing-progress-legend{display:flex;justify-content:space-between;gap:12px}.billing-progress-top span,.billing-progress-legend{color:#7a6656;font-size:12px}.billing-progress-top strong{display:block;font-size:24px}.billing-progress-track{height:13px;margin:12px 0;border-radius:999px;background:#ead8c2;overflow:hidden}.billing-progress-track span{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#7b4a2d,#c89154)}.billing-editor-grid{display:grid;grid-template-columns:1fr 120px;gap:10px}.billing-deduction-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:10px}.billing-form-card label{display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:850;color:#5a3a23}.billing-check{margin:12px 0;flex-direction:row!important;align-items:center!important}.billing-check input{width:17px;height:17px;accent-color:#7b4a2d}.billing-money-box{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.billing-money-box.deductions{grid-template-columns:repeat(3,minmax(0,1fr))}.billing-money-box b{font-size:16px}.billing-legal-note{margin-top:10px;padding:10px;border-radius:13px;background:#eef6ff;color:#245278;font-size:12px;font-weight:800}.billing-legal-note.neutral{background:#fff4df;color:#6f4b1f}.billing-lines{display:grid;gap:8px}.billing-line{display:grid;grid-template-columns:minmax(160px,1fr) 110px 120px auto;gap:7px;align-items:center}.billing-line.invoice{grid-template-columns:105px 120px minmax(130px,1fr) minmax(145px,1fr) 100px 105px 120px auto}.billing-line.client-deduction{grid-template-columns:120px minmax(150px,1fr) 110px 120px minmax(140px,1fr) auto}.billing-regie-count{display:inline-flex;align-items:center;border-radius:999px;background:#fff2df;color:#7b4a2d;padding:6px 10px;font-size:12px;font-weight:900}.billing-regie-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:10px}.billing-regie-summary div{padding:10px;border:1px solid rgba(142,103,70,.18);border-radius:13px;background:#fff8ef}.billing-regie-summary span,.billing-regie-summary b{display:block}.billing-regie-summary span{font-size:11px;color:#7a6656}.billing-regie-summary b{font-size:16px}.billing-regie-list{display:grid;gap:8px}.billing-regie-row{display:grid;grid-template-columns:minmax(180px,1fr) auto auto;gap:10px;align-items:center;padding:10px;border:1px solid rgba(142,103,70,.16);border-radius:14px;background:#fffaf4}.billing-regie-row.billed{background:#f3faf4}.billing-regie-row b,.billing-regie-row small{display:block}.billing-regie-row small{margin-top:3px;color:#776252}.billing-regie-state{border-radius:999px;padding:5px 9px;font-size:11px;font-weight:900}.billing-regie-state.open{background:#fff0df;color:#98520b}.billing-regie-state.billed{background:#e7f6eb;color:#246a36}.billing-empty{margin:0;color:#7c6b5d;font-size:13px}.billing-score{display:grid;place-items:center;width:54px;height:54px;border-radius:50%;background:#fff2df;color:#7b4a2d}.billing-checklist{display:grid;gap:7px;margin-bottom:12px}.billing-check-row{display:grid;grid-template-columns:24px 1fr;gap:8px;align-items:center;padding:9px;border-radius:12px;background:#fffaf4}.billing-check-row span{display:grid;place-items:center;width:22px;height:22px;border-radius:50%;font-weight:900}.billing-check-row.ok span{background:#e7f6eb;color:#246a36}.billing-check-row.warn span{background:#fff0df;color:#98520b}.billing-side-box p{margin:7px 0;color:#5d4d41}.billing-pdf-modal{position:fixed;inset:0;z-index:2000;background:rgba(26,20,16,.72);padding:14px;display:flex;flex-direction:column;gap:10px}.billing-pdf-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border-radius:12px;background:#fffaf4}.billing-pdf-head div{display:flex;gap:8px;flex-wrap:wrap}.billing-pdf-modal iframe{flex:1;width:100%;border:0;border-radius:12px;background:#fff}@media(max-width:1180px){.billing-workspace{grid-template-columns:240px minmax(0,1fr)}.billing-check-panel{position:static;grid-column:1 / -1}.billing-summary-grid,.billing-project-meta,.billing-money-box,.billing-money-box.deductions{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:900px){.billing-workspace,.billing-filter-grid{grid-template-columns:1fr}.billing-project-list{position:static}.billing-project-items{max-height:none}.billing-file-head{flex-direction:column}.billing-head-actions{justify-content:stretch}.billing-head-actions .hbz-btn,.billing-head-actions .hbz-input{width:100%;min-height:42px}.billing-line,.billing-line.invoice,.billing-line.client-deduction,.billing-editor-grid,.billing-deduction-grid,.billing-regie-row{grid-template-columns:1fr}}@media(max-width:680px){.billing-page{padding-left:10px;padding-right:10px}.billing-hero{align-items:stretch;flex-direction:column;padding:22px 16px}.billing-hero h1{font-size:28px}.billing-summary-grid,.billing-project-meta,.billing-money-box,.billing-money-box.deductions,.billing-regie-summary{grid-template-columns:1fr}.billing-form-card,.billing-progress-card,.billing-side-box{padding:12px}.billing-pdf-modal{padding:8px}.billing-pdf-head{align-items:stretch;flex-direction:column}}
-              .billing-workspace > *{min-width:0}
-        .billing-line.invoice{grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));gap:12px;align-items:end;padding:14px;border:1px solid rgba(142,103,70,.18);border-radius:14px;background:#fffaf4}
-        .billing-line.invoice > *{min-width:0;max-width:100%;box-sizing:border-box}
-        .billing-line.invoice .billing-invoice-field{display:flex;flex-direction:column;gap:5px;min-width:0}
-        .billing-line.invoice .hbz-input{width:100%;min-width:0;max-width:100%;box-sizing:border-box}
-        .billing-line.invoice > button{justify-self:start;min-height:40px}
+              .billing-section-head.invoices{flex-wrap:wrap;align-items:center}.billing-section-head.invoices h3{flex:1 1 100%;min-width:0}
+        .billing-workspace > *{min-width:0}
+        .billing-line.invoice,.billing-line.client-deduction{grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));gap:12px;align-items:end;padding:14px;border:1px solid rgba(142,103,70,.18);border-radius:14px;background:#fffaf4}
+        .billing-line.invoice > *,.billing-line.client-deduction > *{min-width:0;max-width:100%;box-sizing:border-box}
+        .billing-line.invoice .billing-invoice-field,.billing-line.client-deduction .billing-invoice-field{display:flex;flex-direction:column;gap:5px;min-width:0}
+        .billing-line.invoice .hbz-input,.billing-line.client-deduction .hbz-input{width:100%;min-width:0;max-width:100%;box-sizing:border-box}
+        .billing-line.invoice > button,.billing-line.client-deduction > button{justify-self:start;min-height:40px}
       `}</style>
     </div>
   );
