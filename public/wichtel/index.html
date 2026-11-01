@@ -7,9 +7,9 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Wichtel" />
-  <link rel="manifest" href="/wichtel/manifest.webmanifest" />
-  <link rel="icon" href="/wichtel/icon.svg" type="image/svg+xml" />
-  <link rel="apple-touch-icon" href="/icon-192.png" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="/icon.svg" />
   <title>Wichtel 🎄</title>
   <style>
     :root{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#17372e;background:#f3eee5}
@@ -32,8 +32,8 @@
     .wishbox{background:#f6f1e8;padding:13px;border-radius:13px;white-space:pre-wrap}.secret{font-size:1.65rem;font-weight:900;margin:14px 0}
     .sep{height:1px;background:#ecece7;margin:16px 0}.hidden{display:none!important}
     a.btn{display:inline-block;text-decoration:none;border-radius:12px;padding:10px 12px;background:#e5eee9;color:#17372e;font-weight:800}
-    .install{margin-top:12px}
-    @media(max-width:620px){.row,.grid{display:grid;grid-template-columns:1fr}.hero{padding:21px}.hero h1{font-size:1.75rem}}
+    .install{margin-top:12px}.neutral{color:#687771}.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:9px}.stat{background:#f6f1e8;border-radius:14px;padding:13px;text-align:center}.stat strong{display:block;font-size:1.4rem}.stat span{font-size:.76rem;color:#6e7a76}.pairing{display:flex;align-items:center;gap:10px;padding:11px 0;border-top:1px solid #ecece7}.pairing:first-child{border-top:0}.arrow{font-weight:900;color:#8a7657}.temp-pin{background:#173d31;color:#fff;border-radius:15px;padding:16px;margin-top:12px;text-align:center}.temp-pin strong{font-size:2rem;letter-spacing:.12em;display:block;margin:8px 0}
+    @media(max-width:620px){.row,.grid,.grid4{display:grid;grid-template-columns:1fr}.hero{padding:21px}.hero h1{font-size:1.75rem}}
   </style>
 </head>
 <body>
@@ -45,54 +45,78 @@
 <script>
 const API="https://taaxutknfbfjevwxsitm.supabase.co/functions/v1/wichtel";
 const q=new URLSearchParams(location.search);
-if(q.get("master")) localStorage.setItem("wichtel_master",q.get("master"));
-if(q.get("admin")) localStorage.setItem("wichtel_admin",q.get("admin"));
-if(q.get("invite")) localStorage.setItem("wichtel_invite",q.get("invite"));
-let master=q.get("master")||localStorage.getItem("wichtel_master");
-let admin=q.get("admin")||(!master&&localStorage.getItem("wichtel_admin"));
-let invite=q.get("invite")||(!master&&!admin&&localStorage.getItem("wichtel_invite"));
+const qMaster=q.get("master"),qAdmin=q.get("admin"),qInvite=q.get("invite"),qOwner=q.get("owner");
+if(qMaster)localStorage.setItem("wichtel_master",qMaster);
+if(qOwner)localStorage.setItem("wichtel_master",qOwner);
+if(qAdmin)localStorage.setItem("wichtel_admin",qAdmin);
+if(qInvite)localStorage.setItem("wichtel_invite",qInvite);
+let master=null,admin=null,invite=null;
+if(qMaster)master=qMaster;else if(qAdmin)admin=qAdmin;else if(qInvite)invite=qInvite;else{master=localStorage.getItem("wichtel_master");if(!master)admin=localStorage.getItem("wichtel_admin");if(!master&&!admin)invite=localStorage.getItem("wichtel_invite")}
+const ownerToken=qOwner||localStorage.getItem("wichtel_master");
 const app=document.getElementById("app");
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
-async function call(action,p={}){const r=await fetch(API,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action,master,admin,invite,...p})});const d=await r.json();if(!r.ok)throw new Error(d.error||"Fehler");return d}
+async function call(action,p={}){try{const r=await fetch(API,{method:"POST",cache:"no-store",headers:{"content-type":"application/json"},body:JSON.stringify({action,master,admin,invite,...p})});const d=await r.json();if(!r.ok)throw new Error(d.error||"Fehler");return d}catch(e){if(e instanceof TypeError)throw new Error("Verbindung fehlgeschlagen. Bitte Seite neu öffnen und nochmals versuchen.");throw e}}
 function fmtDate(s){return s?new Date(s+"T12:00:00").toLocaleDateString("de-AT"):""}
 function msg(t){const x=document.createElement("div");x.className="msg";x.textContent=t;app.prepend(x);setTimeout(()=>x.remove(),3500)}
 async function load(){try{if(master)return renderMaster(await call("master_state"));if(admin)return renderAdmin(await call("admin_state"));if(invite)return renderPublic(await call("public_state"));app.innerHTML='<div class="card"><h2>Kein gültiger Link</h2><p class="muted">Bitte öffne den Link, den du für diese Wichtelrunde bekommen hast.</p></div>'}catch(e){app.innerHTML='<div class="card"><div class="msg">'+esc(e.message)+'</div></div>'}}
 function renderMaster(d){
- document.getElementById("title").textContent="Wichtel-Projekte"; document.getElementById("sub").textContent="Alle Wichtelrunden getrennt verwalten.";
- app.innerHTML='<div class="card"><h2>+ Neues Projekt</h2><div class="grid"><input id="pn" placeholder="z. B. Familienwichteln 2026"><input id="pb" type="number" placeholder="Budget €"></div><input id="pd" type="date"><button class="primary full" style="margin-top:9px" onclick="createProject()">Projekt anlegen</button></div>'+
- '<div class="card"><h2>Projekte</h2>'+(d.groups.length?d.groups.map(g=>'<div class="person"><div class="grow"><div class="name">'+esc(g.name)+'</div><div class="small">'+g.count+' Personen · '+g.ready+' Wünsche · '+g.drawn+' angesehen</div></div><span class="pill">'+(g.phase==="wishlist"?"Wunschphase":"Gesperrt")+'</span><a class="btn" href="/wichtel/?admin='+g.admin_token+'">Öffnen</a></div>').join(""):'<p class="muted">Noch keine Projekte.</p>')+'</div>';
+ document.getElementById("title").textContent="Wichtel-Projekte";document.getElementById("sub").textContent="Alle Wichtelrunden getrennt verwalten.";
+ app.innerHTML='<div class="card"><h2>+ Neues Projekt</h2><div class="grid"><input id="pn" placeholder="z. B. Familienwichteln 2026"><input id="pb" type="number" min="0" placeholder="Budget €"></div><input id="pd" type="date"><button class="primary full" style="margin-top:9px" onclick="createProject()">Projekt anlegen</button></div>'+
+ '<div class="card"><h2>Projekte</h2>'+(d.groups.length?d.groups.map(g=>{const owner=master?("&owner="+encodeURIComponent(master)):"";return '<div class="person"><div class="grow"><div class="name">'+esc(g.name)+'</div><div class="small">'+g.count+' Teilnehmer · '+g.ready+' angemeldet · '+g.drawn+' angesehen</div></div><span class="pill">'+(g.phase==="wishlist"?"Wunschphase":"Ausgelost")+'</span><a class="btn" href="/?admin='+g.admin_token+owner+'">Öffnen</a><button class="red" onclick="deleteProject(\''+g.id+'\',\''+esc(g.name).replace(/'/g,"&#39;")+'\')">Löschen</button></div>'}).join(""):'<p class="muted">Noch keine Projekte.</p>')+'</div>';
 }
 async function createProject(){try{await call("create_project",{name:pn.value,budget:pb.value,event_date:pd.value});await load()}catch(e){msg(e.message)}}
+async function deleteProject(id,name){if(!confirm('Projekt "'+name+'" wirklich löschen?'))return;try{await call("delete_project",{id});await load()}catch(e){msg(e.message)}}
 function renderAdmin(d){
- const g=d.group,p=d.participants,locked=g.phase!=="wishlist"||g.locked_at; document.getElementById("title").textContent=g.name; document.getElementById("sub").textContent="Adminbereich";
- const allReady=p.length>=2&&p.every(x=>x.registered_at);
- app.innerHTML='<div class="card">'+(locked?'<div class="locked"><b>🔒 Projekt gesperrt.</b><br><span class="small">Teilnehmer, Wünsche und Ausschlüsse können nicht mehr geändert werden.</span></div>':'')+
- '<div class="row"><div class="grow"><h2>Teilnehmer</h2><span class="pill">'+p.length+' Personen</span></div>'+(!locked?'<button class="primary" onclick="document.getElementById(\'add\').classList.toggle(\'hidden\')">+ Person hinzufügen</button>':'')+'</div>'+
- (!locked?'<div id="add" class="hidden row" style="margin-top:10px"><input id="newName" placeholder="Name"><button onclick="addPerson()">Hinzufügen</button></div>':'')+
- '<div style="margin-top:10px">'+p.map(x=>'<div class="person"><div class="name">'+esc(x.name)+'</div><div class="small">'+(x.registered_at?'<span class="ok">✅ Wunsch</span>':'<span class="wait">⏳ Wunsch offen</span>')+(locked?'<br>'+(x.drawn_at?'<span class="ok">✅ angesehen</span>':'<span class="wait">⏳ noch nicht angesehen</span>'):'')+'</div>'+(!locked?'<button class="red" onclick="removePerson(\''+x.id+'\')">Entfernen</button>':'')+'</div>').join("")+'</div></div>'+
- (!locked?'<div class="card"><h2>Ausschlüsse</h2><p class="muted small">Optional, z. B. Partner sollen einander nicht ziehen.</p><div class="grid"><select id="giver"><option value="">Von …</option>'+p.map(x=>'<option value="'+x.id+'">'+esc(x.name)+'</option>').join("")+'</select><select id="receiver"><option value="">darf nicht …</option>'+p.map(x=>'<option value="'+x.id+'">'+esc(x.name)+'</option>').join("")+'</select></div><button style="margin-top:9px" onclick="addEx()">Ausschluss hinzufügen</button><div class="sep"></div>'+d.exclusions.map(e=>{const a=p.find(x=>x.id===e.giver_id),b=p.find(x=>x.id===e.receiver_id);return '<div class="person"><div class="grow">'+esc(a?.name||"?")+' → '+esc(b?.name||"?")+'</div><button class="red" onclick="removeEx(\''+e.id+'\')">Löschen</button></div>'}).join("")+'</div>':'')+
- '<div class="card"><h2>WhatsApp-Link</h2><input readonly value="'+location.origin+'/wichtel/?invite='+g.invite_token+'" onclick="this.select()"><p class="muted small">Diesen einen Link kannst du in die Gruppe schicken.</p></div>'+
- (!locked?'<div class="card"><h2>Auslosung</h2><p class="muted">'+(allReady?'Alle haben einen Wunsch eingetragen. Jetzt kann ausgelost werden.':'Die Auslosung ist erst möglich, wenn alle einen Wunsch eingetragen haben.')+'</p><button class="primary full" '+(!allReady?'disabled':'')+' onclick="startDraw()">🎁 Auslosung starten & Projekt sperren</button></div>':'');
+ const g=d.group,p=d.participants,locked=g.phase!=="wishlist"||!!g.locked_at;
+ const total=p.length,registered=p.filter(x=>x.registered_at).length,withWish=p.filter(x=>x.registered_at&&String(x.wish||"").trim()).length,viewed=p.filter(x=>x.drawn_at).length;
+ const allRegistered=total>=2&&registered===total;
+ document.getElementById("title").textContent=g.name;document.getElementById("sub").textContent="Adminbereich";
+ const status='<div class="card"><h2>Aktueller Stand</h2><div class="grid4"><div class="stat"><strong>'+total+'</strong><span>Teilnehmer</span></div><div class="stat"><strong>'+registered+'/'+total+'</strong><span>angemeldet</span></div><div class="stat"><strong>'+withWish+'</strong><span>mit Wunsch</span></div><div class="stat"><strong>'+(locked?viewed+'/'+total:(allRegistered?'Bereit':'Offen'))+'</strong><span>'+(locked?'angesehen':'Auslosung')+'</span></div></div>'+(locked?'<button class="full" style="margin-top:12px" onclick="showPairings()">🔐 Zuordnungen anzeigen</button><div id="pairingsPanel" class="hidden"></div>':'')+'</div>';
+ const project='<div class="card"><div class="row"><div class="grow"><button onclick="goProjects()">← Projekte</button><h2 style="margin-top:12px">Projekt</h2><b>'+esc(g.name)+'</b><div class="small muted">Budget: '+(g.budget??"—")+' € · Termin: '+(g.event_date?fmtDate(g.event_date):"—")+'</div></div>'+(!locked?'<button onclick="editProject.classList.toggle(\'hidden\')">✏️ Bearbeiten</button>':'')+'</div>'+(!locked?'<div id="editProject" class="hidden"><input id="editName" value="'+esc(g.name)+'"><div class="grid"><input id="editBudget" type="number" value="'+(g.budget??"")+'" placeholder="Budget €"><input id="editDate" type="date" value="'+(g.event_date??"")+'"></div><button class="primary full" style="margin-top:9px" onclick="updateProject()">Änderungen speichern</button></div>':'')+'</div>';
+ const people='<div class="card">'+(locked?'<div class="locked"><b>🔒 Projekt gesperrt.</b></div>':'')+'<div class="row"><div class="grow"><h2>Teilnehmer</h2><span class="pill">'+total+' Personen</span></div><div class="row"><button onclick="load()">↻ Aktualisieren</button>'+(!locked?'<button class="primary" onclick="add.classList.toggle(\'hidden\')">+ Person manuell</button>':'')+'</div></div>'+(!locked?'<div id="add" class="hidden row"><input id="newName" placeholder="Name"><button onclick="addPerson()">Hinzufügen</button></div>':'')+'<div id="tempPinBox"></div><div>'+p.map(x=>{let st=!x.registered_at?'<span class="wait">⏳ Anmeldung offen</span>':String(x.wish||"").trim()?'<span class="ok">✅ Dabei · Wunsch eingetragen</span>':'<span class="neutral">✅ Dabei · ohne Wunsch</span>';if(locked)st+='<br>'+(x.drawn_at?'<span class="ok">✅ Ziehung angesehen</span>':'<span class="wait">⏳ noch nicht angesehen</span>');return '<div class="person"><div class="name">'+esc(x.name)+'</div><div class="small">'+st+'</div><button onclick="resetPin(\''+x.id+'\',\''+esc(x.name).replace(/'/g,"&#39;")+'\')">🔑 PIN zurücksetzen</button>'+(!locked?'<button class="red" onclick="removePerson(\''+x.id+'\')">Entfernen</button>':'')+'</div>'}).join("")+'</div></div>';
+ const ex=!locked?'<div class="card"><h2>Ausschlüsse</h2><div class="grid"><select id="giver"><option value="">Von …</option>'+p.map(x=>'<option value="'+x.id+'">'+esc(x.name)+'</option>').join("")+'</select><select id="receiver"><option value="">darf nicht …</option>'+p.map(x=>'<option value="'+x.id+'">'+esc(x.name)+'</option>').join("")+'</select></div><button onclick="addEx()">Ausschluss hinzufügen</button>'+d.exclusions.map(e=>{const a=p.find(x=>x.id===e.giver_id),b=p.find(x=>x.id===e.receiver_id);return '<div class="person"><div class="grow">'+esc(a?.name||"?")+' → '+esc(b?.name||"?")+'</div><button class="red" onclick="removeEx(\''+e.id+'\')">Löschen</button></div>'}).join("")+'</div>':'';
+ const link='<div class="card"><h2>Einladungslink</h2><input id="inviteLink" readonly value="'+location.origin+'/?invite='+g.invite_token+'" onclick="this.select()">'+(!locked?'<div class="grid4" style="margin-top:9px"><button onclick="copyInvite()">📋 Kopieren</button><button class="primary" onclick="shareInvite()">💬 Teilen</button><button onclick="remindInvite()">⏰ Erinnern</button><button onclick="selfJoin(\''+g.invite_token+'\')">🎁 Selbst teilnehmen</button></div>':'')+'</div>';
+ const draw=!locked?'<div class="card"><h2>Auslosung</h2><p class="muted">Wünsche dürfen leer sein.</p><button class="primary full" '+(!allRegistered?'disabled':'')+' onclick="startDraw()">🎁 Auslosung starten & Projekt sperren</button></div>':'';
+ const del=ownerToken?'<div class="card"><button class="red full" onclick="deleteCurrentProject(\''+g.id+'\',\''+esc(g.name).replace(/'/g,"&#39;")+'\')">🗑 Projekt löschen</button></div>':'';
+ app.innerHTML=status+project+people+ex+link+draw+del;
+ window.__adminParticipants=p;
 }
+function showPairings(){if(!confirm("Damit siehst du, wer wen gezogen hat. Wirklich anzeigen?"))return;const p=window.__adminParticipants||[],byId=Object.fromEntries(p.map(x=>[x.id,x.name]));const panel=document.getElementById("pairingsPanel");panel.innerHTML='<div class="sep"></div>'+p.map(x=>'<div class="pairing"><div class="grow"><b>'+esc(x.name)+'</b></div><div class="arrow">→</div><div class="grow">'+esc(byId[x.draw_to]||"?")+'</div></div>').join("")+'<button class="full" onclick="hidePairings()">Schließen</button>';panel.classList.remove("hidden")}
+function hidePairings(){const p=document.getElementById("pairingsPanel");if(p){p.innerHTML="";p.classList.add("hidden")}}
+async function resetPin(id,name){if(!confirm("PIN von "+name+" wirklich zurücksetzen? Die bisherige PIN funktioniert danach nicht mehr."))return;try{const d=await call("reset_pin",{id});const box=document.getElementById("tempPinBox");box.innerHTML='<div class="temp-pin"><div>Neue PIN für <b>'+esc(d.name)+'</b></div><strong id="newPinValue">'+esc(d.new_pin)+'</strong><div class="small">Diese PIN wird nur jetzt angezeigt. Bitte weitergeben.</div><button style="margin-top:10px" onclick="copyTempPin()">📋 PIN kopieren</button></div>';box.scrollIntoView({behavior:"smooth",block:"center"})}catch(e){msg(e.message)}}
+async function copyTempPin(){const v=document.getElementById("newPinValue")?.textContent||"";if(!v)return;try{await navigator.clipboard.writeText(v);msg("PIN kopiert ✅")}catch{msg("PIN: "+v)}}
+async function updateProject(){try{await call("update_project",{name:editName.value,budget:editBudget.value,event_date:editDate.value});await load()}catch(e){msg(e.message)}}
+function goProjects(){const t=ownerToken||localStorage.getItem("wichtel_master");if(!t){msg("Projektübersicht bitte einmal über deinen Organizer-Start öffnen.");return}localStorage.removeItem("wichtel_admin");location.href="/?master="+encodeURIComponent(t)}
+function selfJoin(token){if(admin)localStorage.setItem("wichtel_return_admin",admin);location.href="/?invite="+encodeURIComponent(token)+(ownerToken?"&owner="+encodeURIComponent(ownerToken):"")}
+function goAdmin(){const a=localStorage.getItem("wichtel_return_admin")||localStorage.getItem("wichtel_admin");if(!a)return goProjects();localStorage.removeItem("wichtel_return_admin");location.href="/?admin="+encodeURIComponent(a)+(ownerToken?"&owner="+encodeURIComponent(ownerToken):"")}
+async function copyInvite(){const v=inviteLink.value;try{await navigator.clipboard.writeText(v);msg("Link kopiert ✅")}catch{inviteLink.select();document.execCommand("copy");msg("Link kopiert ✅")}}
+async function shareText(t){const v=inviteLink.value;if(navigator.share){try{await navigator.share({title:"Wichteln",text:t,url:v});return}catch(e){if(e.name==="AbortError")return}}location.href="https://wa.me/?text="+encodeURIComponent(t+" "+v)}
+function shareInvite(){shareText("🎄 Du bist zum Wichteln eingeladen! Trag deinen Namen und deine PIN ein. Ein Wunsch ist optional:")}
+function remindInvite(){shareText("⏰ Erinnerung ans Wichteln: Bitte trag dich noch ein bzw. ergänze deinen Wunsch:")}
+async function deleteCurrentProject(id,name){if(!ownerToken)return;if(!confirm('Projekt "'+name+'" wirklich löschen?'))return;try{await call("delete_project",{master:ownerToken,id});location.href="/?master="+encodeURIComponent(ownerToken)}catch(e){msg(e.message)}}
 async function addPerson(){try{await call("add_person",{name:newName.value});await load()}catch(e){msg(e.message)}}
 async function removePerson(id){if(!confirm("Person wirklich entfernen?"))return;try{await call("remove_person",{id});await load()}catch(e){msg(e.message)}}
 async function addEx(){try{await call("add_exclusion",{giver_id:giver.value,receiver_id:receiver.value});await load()}catch(e){msg(e.message)}}
 async function removeEx(id){try{await call("remove_exclusion",{id});await load()}catch(e){msg(e.message)}}
 async function startDraw(){if(!confirm("Danach ist dieses Projekt endgültig gesperrt. Auslosung jetzt starten?"))return;try{await call("start_draw");await load()}catch(e){msg(e.message)}}
 function renderPublic(d){
- const g=d.group,p=d.participants; document.getElementById("title").textContent=g.name; document.getElementById("sub").textContent=(g.budget?"Budget: "+g.budget+" €":"")+(g.event_date?" · "+fmtDate(g.event_date):"");
+ const g=d.group;document.getElementById("title").textContent=g.name;document.getElementById("sub").textContent=g.event_date?("Termin: "+fmtDate(g.event_date)):"Wünsche eintragen & geheim ziehen.";
+ const savedName=localStorage.getItem("wichtel_name_"+invite)||"",returnAdmin=localStorage.getItem("wichtel_return_admin");
+ const back=returnAdmin?'<button class="full" style="margin-bottom:10px" onclick="goAdmin()">← Zurück zum Adminbereich</button>':'';
+ const budget='<div class="card" style="text-align:center;background:#173d31;color:white"><div class="small">GESCHENKBUDGET</div><div style="font-size:2rem;font-weight:950">'+((g.budget!==null&&g.budget!==undefined)?Number(g.budget).toLocaleString("de-AT",{maximumFractionDigits:2})+" €":"Kein Budget festgelegt")+'</div></div>';
  if(g.phase==="wishlist"){
-  app.innerHTML='<div class="card"><h2>Dein Wunsch 🎁</h2><p class="muted">Wähle deinen Namen, trage deinen Wunsch ein und setze eine persönliche PIN.</p><select id="pid"><option value="">Wer bist du?</option>'+p.map(x=>'<option value="'+x.id+'">'+esc(x.name)+(x.registered_at?" ✅":"")+'</option>').join("")+'</select><textarea id="wish" placeholder="Was wünschst du dir?"></textarea><input id="pin" type="password" inputmode="numeric" placeholder="PIN (4–6 Ziffern)" maxlength="6"><button class="primary full" style="margin-top:9px" onclick="saveWish()">Wunsch speichern</button><p class="muted small">Mit derselben PIN kannst du deinen Wunsch bis zur Auslosung ändern.</p></div>';
- } else {
-  app.innerHTML='<div class="card"><div class="locked"><b>🔒 Die Runde ist ausgelost.</b><br><span class="small">Es kann nichts mehr geändert werden.</span></div><h2>Wen hast du gezogen?</h2><select id="pid"><option value="">Wer bist du?</option>'+p.map(x=>'<option value="'+x.id+'">'+esc(x.name)+(x.drawn_at?" ✅":"")+'</option>').join("")+'</select><input id="pin" type="password" inputmode="numeric" placeholder="Deine PIN" maxlength="6"><button class="primary full" style="margin-top:9px" onclick="reveal()">🎁 Meine Ziehung ansehen</button><div id="result"></div></div>';
+  app.innerHTML=back+budget+'<div class="card"><h2>Mitmachen 🎁</h2><p class="muted">Name und PIN sind Pflicht. Wunsch ist optional.</p><input id="pname" placeholder="Dein Name" value="'+esc(savedName)+'"><input id="pin" type="password" inputmode="numeric" placeholder="PIN (4–6 Ziffern)" maxlength="6"><button class="full" style="margin-top:9px" onclick="loadWish()">✏️ Bestehenden Wunsch laden / ändern</button><textarea id="wish" placeholder="Wunsch (optional)"></textarea><button class="primary full" style="margin-top:9px" onclick="saveWish()">✅ Teilnehmen / Änderungen speichern</button></div>';
+ }else{
+  app.innerHTML=back+budget+'<div class="card"><div class="locked"><b>🔒 Die Runde ist ausgelost.</b></div><h2>Wen hast du gezogen?</h2><input id="pname" placeholder="Dein Name" value="'+esc(savedName)+'"><input id="pin" type="password" inputmode="numeric" placeholder="Deine PIN" maxlength="6"><button class="primary full" style="margin-top:9px" onclick="reveal()">🎁 Meine Ziehung ansehen</button><div id="result"></div></div>';
  }
 }
-async function saveWish(){try{await call("save_wish",{participant_id:pid.value,wish:wish.value,pin:pin.value});msg("Wunsch gespeichert ✅");setTimeout(load,500)}catch(e){msg(e.message)}}
-async function reveal(){try{const d=await call("reveal",{participant_id:pid.value,pin:pin.value});result.innerHTML='<div class="secret">Du wichtelst für: '+esc(d.receiver.name)+' 🎄</div><div class="wishbox"><b>Wunsch:</b><br>'+esc(d.receiver.wish)+'</div>'}catch(e){msg(e.message)}}
+async function loadWish(){try{const n=pname.value.trim(),d=await call("load_wish",{name:n,pin:pin.value});localStorage.setItem("wichtel_name_"+invite,d.name||n);wish.value=d.wish||"";msg("Bestehender Wunsch geladen ✅")}catch(e){msg(e.message)}}
+async function saveWish(){try{const n=pname.value.trim(),d=await call("save_wish",{name:n,wish:wish.value,pin:pin.value});localStorage.setItem("wichtel_name_"+invite,d.name||n);app.innerHTML='<div class="card"><h2>Gespeichert ✅</h2><p><b>'+esc(d.name||n)+'</b> ist dabei.</p><p class="muted">Bis zur Auslosung kannst du denselben Link wieder öffnen und deinen Wunsch ändern.</p>'+(localStorage.getItem("wichtel_return_admin")?'<button class="primary full" onclick="goAdmin()">← Zurück zum Adminbereich</button>':'')+'</div>'}catch(e){msg(e.message)}}
+async function reveal(){try{const n=pname.value.trim(),d=await call("reveal",{name:n,pin:pin.value});localStorage.setItem("wichtel_name_"+invite,n);const w=String(d.receiver.wish||"").trim();result.innerHTML='<div class="secret">Du wichtelst für: '+esc(d.receiver.name)+' 🎄</div><div class="wishbox"><b>Wunsch:</b><br>'+(w?esc(w):'<span class="muted">Kein Wunsch angegeben.</span>')+'</div>'}catch(e){msg(e.message)}}
 let installPrompt=null;
 window.addEventListener("beforeinstallprompt",e=>{e.preventDefault();installPrompt=e;document.getElementById("installBtn").classList.remove("hidden")});
 document.getElementById("installBtn").onclick=async()=>{if(installPrompt){installPrompt.prompt();installPrompt=null}else{alert("iPhone: Teilen → Zum Home-Bildschirm → Hinzufügen")}};
-if("serviceWorker" in navigator) navigator.serviceWorker.register("/wichtel/sw.js").catch(()=>{});
+if("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(()=>{});
 if(!(window.matchMedia("(display-mode: standalone)").matches||window.navigator.standalone===true) && /iPhone|iPad|iPod/i.test(navigator.userAgent)) document.getElementById("installBtn").classList.remove("hidden");
 load();
 </script>
