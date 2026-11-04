@@ -18,7 +18,7 @@ import {
   isVacationEntry,
 } from "../utils/timeEntryAbsences";
 import { collectSupabaseRows } from "../utils/pagination";
-import { absenceDateRanges } from "../utils/absenceDateRanges";
+import { absenceDateRanges, payrollAbsenceCell } from "../utils/absenceDateRanges";
 
 async function loadPdfLibs() {
   const [{ jsPDF }, autoTableModule] = await Promise.all([
@@ -263,9 +263,9 @@ function buildPayrollMonthlySummary(sourceRows, monthList, selectedEmployees = [
       sollHours,
       overtime,
       holidayRows: item.holidayRows || [],
-      vacationDates: item.vacationDates.sort((a, b) => a.localeCompare(b)).map(formatDateAT),
+      vacationDates: item.vacationDates,
       specialLeaveDates: item.specialLeaveDates.sort((a, b) => a.localeCompare(b)).map(formatDateAT),
-      sickDates: item.sickDates.sort((a, b) => a.localeCompare(b)).map(formatDateAT),
+      sickDates: item.sickDates,
       timeCompDates: item.timeCompDates.sort((a, b) => a.localeCompare(b)).map(formatDateAT),
     };
   }).sort((a, b) => a.employee.localeCompare(b.employee) || a.month.localeCompare(b.month));
@@ -1329,10 +1329,10 @@ export default function YearOverview() {
             row.sollHours.toFixed(2),
             (row.timeCompHours || 0).toFixed(2),
             row.overtime.toFixed(2),
-            row.vacationDates.length ? row.vacationDates.join(", ") : "—",
+            payrollAbsenceCell(row.vacationDates),
             row.specialLeaveDates.length ? row.specialLeaveDates.join(", ") : "—",
             row.timeCompDates.length ? row.timeCompDates.join(", ") : "—",
-            row.sickDates.length ? row.sickDates.join(", ") : "—",
+            payrollAbsenceCell(row.sickDates),
           ]),
           startY: 82,
           styles: { fontSize: 8.5, cellPadding: 3 },
