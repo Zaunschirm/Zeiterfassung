@@ -13,3 +13,9 @@ export function absenceDateRanges(dates) {
     ? display(start)
     : display(start) + " – " + display(end)).join(", ") || "—";
 }
+
+export function payrollAbsenceCell(dates) {
+  const days = [...new Set(dates)];
+  if (!days.length) return "—";
+  return `${days.length} ${days.length === 1 ? "Tag" : "Tage"}\n${absenceDateRanges(days)}`;
+}
