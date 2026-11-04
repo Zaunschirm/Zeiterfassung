@@ -356,6 +356,7 @@ export default function YearOverview() {
   const [selectedProjectId, setSelectedProjectId] = useState("");
 
   const [rows, setRows] = useState([]);
+  const [absenceRows, setAbsenceRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -435,12 +436,13 @@ export default function YearOverview() {
         .map((e) => e.id);
 
       if (!ids.length) {
+        setAbsenceRows([]);
         setRows([]);
         setLoading(false);
         return;
       }
 
-      const loadedRows = await collectSupabaseRows(() => {
+      const workQuery = () => {
         let query = supabase
           .from("v_time_entries_expanded")
           .select("*")
@@ -452,11 +454,23 @@ export default function YearOverview() {
           .order("employee_name", { ascending: true })
           .order("work_date", { ascending: true })
           .order("id", { ascending: true });
-      });
-
+      };
+      const absenceQuery = () => supabase.from("time_entries")
+        .select("employee_id,work_date,absence_type,note")
+        .in("employee_id", ids)
+        .gte("work_date", range.from)
+        .lte("work_date", range.to)
+        .or("absence_type.in.(urlaub,krank,krankenstand),note.ilike.*urlaub*,note.ilike.*krank*")
+        .order("id");
+      const [loadedRows, absences] = await Promise.all([
+        collectSupabaseRows(workQuery),
+        collectSupabaseRows(absenceQuery),
+      ]);
       setRows(loadedRows);
+      setAbsenceRows(absences);
     } catch (e) {
       console.error("YearOverview load error:", e);
+      setAbsenceRows([]);
       setRows([]);
       setError(
         "Daten konnten nicht geladen werden. Bitte Konsole prüfen oder Filter anpassen."
@@ -472,6 +486,21 @@ export default function YearOverview() {
   );
 
   const rangeLabel = useMemo(() => activeRange.label, [activeRange]);
+
+  const absenceSummary = useMemo(() => {
+    const byEmployee = new Map();
+    for (const row of absenceRows) {
+      const kind = isVacationRow(row) ? "urlaub" : isSickRow(row) ? "krank" : null;
+      if (!kind || !row.work_date) continue;
+      const id = String(row.employee_id);
+      if (!byEmployee.has(id)) byEmployee.set(id, { urlaub: new Set(), krank: new Set() });
+      byEmployee.get(id)[kind].add(row.work_date);
+    }
+    return employees.filter(employee => selectedCodes.includes(employee.code)).map(employee => {
+      const days = byEmployee.get(String(employee.id));
+      return { employee, urlaub: [...(days?.urlaub || [])].sort(), krank: [...(days?.krank || [])].sort() };
+    });
+  }, [absenceRows, employees, selectedCodes]);
 
   const byProject = useMemo(() => {
     const map = new Map();
@@ -1821,6 +1850,30 @@ export default function YearOverview() {
           <div className="year-error-box">
             <b>Hinweis:</b> {error}
           </div>
+        )}
+
+        {!loading && !error && absenceSummary.length > 0 && (
+          <section className="year-section">
+            <div className="year-section-head"><h3>Urlaub und Krankenstand</h3></div>
+            <p>Erfasste Tage im gewählten Zeitraum, über alle Projekte.</p>
+            <div className="year-table-wrap">
+              <table className="year-table">
+                <thead><tr><th>Mitarbeiter</th><th>Urlaubstage</th><th>Krankenstandstage</th></tr></thead>
+                <tbody>{absenceSummary.map(({ employee, urlaub, krank }) => (
+                  <tr key={employee.id}>
+                    <td>{employee.name || employee.code}</td>
+                    {[urlaub, krank].map((dates, index) => (
+                      <td key={index}>{dates.length ? (
+                        <details><summary>{dates.length} {dates.length === 1 ? "Tag" : "Tage"}</summary>
+                          <div style={{ whiteSpace: "normal" }}>{dates.map(formatDateAT).join(", ")}</div>
+                        </details>
+                      ) : "0 Tage"}</td>
+                    ))}
+                  </tr>
+                ))}</tbody>
+              </table>
+            </div>
+          </section>
         )}
 
         {!hasData && !loading && (
