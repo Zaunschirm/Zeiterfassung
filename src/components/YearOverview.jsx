@@ -18,6 +18,7 @@ import {
   isVacationEntry,
 } from "../utils/timeEntryAbsences";
 import { collectSupabaseRows } from "../utils/pagination";
+import { absenceDateRanges } from "../utils/absenceDateRanges";
 
 async function loadPdfLibs() {
   const [{ jsPDF }, autoTableModule] = await Promise.all([
@@ -363,6 +364,7 @@ export default function YearOverview() {
   const [showPdfDialog, setShowPdfDialog] = useState(false);
   const [pdfOptions, setPdfOptions] = useState({
     selectedEmployeeCodes: [],
+    includeAbsences: true,
     includeProjects: true,
     includeSiteDailyReport: true,
     includeEmployees: true,
@@ -847,7 +849,10 @@ export default function YearOverview() {
       return pdfOptions.selectedEmployeeCodes.includes(emp?.code);
     });
 
-    if (!selectedRows.length) {
+    const exportAbsences = pdfOptions.includeAbsences
+      ? absenceSummary.filter(({ employee }) => pdfOptions.selectedEmployeeCodes.includes(employee.code))
+      : [];
+    if (!selectedRows.length && !exportAbsences.length) {
       alert("Keine Daten für den PDF Export ausgewählt.");
       return;
     }
@@ -1399,7 +1404,7 @@ export default function YearOverview() {
       });
 
     if (exportBadWeatherRows.length > 0) {
-      if (y > pageH - 130) {
+      if (y > doc.internal.pageSize.getHeight() - 130) {
         doc.addPage();
         y = 40;
       }
@@ -1414,6 +1419,28 @@ export default function YearOverview() {
         margin: { left: 40, right: 40 },
       });
       y = (doc.lastAutoTable?.finalY || y) + 14;
+      drewSomething = true;
+    }
+
+    if (exportAbsences.length) {
+      if (drewSomething) doc.addPage();
+      doc.setFontSize(14);
+      const headingY = drewSomething ? 42 : y;
+      doc.text("Urlaub und Krankenstand", 40, headingY);
+      doc.setFontSize(10);
+      doc.text(rangeLabel + " · alle Projekte", 40, headingY + 17);
+      autoTable(doc, {
+        startY: headingY + 28,
+        head: [["Mitarbeiter", "Abwesenheit", "Datum / Zeitraum", "Summe (Tage)"]],
+        body: exportAbsences.flatMap(({ employee, urlaub, krank }) => [
+          [employee.name || employee.code, "Urlaub", absenceDateRanges(urlaub), urlaub.length],
+          [employee.name || employee.code, "Krankenstand", absenceDateRanges(krank), krank.length],
+        ]),
+        styles: { fontSize: 9, overflow: "linebreak" },
+        columnStyles: { 3: { halign: "right" } },
+        headStyles: { fillColor: [123, 74, 45] },
+        margin: { left: 40, right: 40 },
+      });
       drewSomething = true;
     }
 
@@ -1548,7 +1575,7 @@ export default function YearOverview() {
               <button
                 onClick={openPdfDialog}
                 className="hbz-btn hbz-btn-primary"
-                disabled={!hasData}
+                disabled={loading || (!hasData && !absenceSummary.some(row => row.urlaub.length || row.krank.length))}
               >
                 PDF export
               </button>
@@ -2099,6 +2126,7 @@ export default function YearOverview() {
                     onClick={() =>
                       setPdfOptions((p) => ({
                         ...p,
+                        includeAbsences: true,
                         includeProjects: true,
                         includeSiteDailyReport: true,
                         includeEmployees: true,
@@ -2120,6 +2148,7 @@ export default function YearOverview() {
                     onClick={() =>
                       setPdfOptions((p) => ({
                         ...p,
+                        includeAbsences: false,
                         includeProjects: false,
                         includeSiteDailyReport: true,
                         includeEmployees: true,
@@ -2141,6 +2170,7 @@ export default function YearOverview() {
                     onClick={() =>
                       setPdfOptions((p) => ({
                         ...p,
+                        includeAbsences: true,
                         includeProjects: true,
                         includeSiteDailyReport: true,
                         includeEmployees: true,
@@ -2162,6 +2192,7 @@ export default function YearOverview() {
                     onClick={() =>
                       setPdfOptions((p) => ({
                         ...p,
+                        includeAbsences: true,
                         includeProjects: false,
                         includeSiteDailyReport: true,
                         includeEmployees: false,
@@ -2182,6 +2213,11 @@ export default function YearOverview() {
                 <div className="export-card-grid">
                   <div className="export-section">
                     <div className="export-section-title">Auswertung</div>
+                    <label className="export-option">
+                      <input type="checkbox" checked={pdfOptions.includeAbsences}
+                        onChange={e => setPdfOptions(p => ({ ...p, includeAbsences: e.target.checked }))} />
+                      <span className="export-option-body">Urlaub und Krankenstand mit Datum und Tagessummen</span>
+                    </label>
 
                     <label className="export-option">
                       <input
