@@ -172,7 +172,7 @@ export default function WorkAssignments() {
   const [projects, setProjects] = useState([]);
   const [projectSearch, setProjectSearch] = useState("");
   const [selectedProjectId, setSelectedProjectId] = useState("");
-  const [selectedPlanMode, setSelectedPlanMode] = useState("project"); // "project" | "krank" | "urlaub" | "schule"
+  const [selectedPlanMode, setSelectedPlanMode] = useState("project"); // "project" | "krank" | "urlaub" | "schule" | "za"
   const [schoolBlockEmployeeId, setSchoolBlockEmployeeId] = useState("");
   const [schoolBlockFrom, setSchoolBlockFrom] = useState("");
   const [schoolBlockTo, setSchoolBlockTo] = useState("");
@@ -726,7 +726,7 @@ export default function WorkAssignments() {
   async function onCellClick(employeeId, dateStr) {
     if (!canEditAssignments) return;
 
-    if (selectedPlanMode === "krank" || selectedPlanMode === "urlaub" || selectedPlanMode === "schule") {
+    if (selectedPlanMode === "krank" || selectedPlanMode === "urlaub" || selectedPlanMode === "schule" || selectedPlanMode === "za") {
       await addAbsenceToCell(employeeId, dateStr, selectedPlanMode);
       return;
     }
@@ -904,8 +904,8 @@ export default function WorkAssignments() {
   async function addAbsenceToCell(employeeId, dateStr, kind) {
     if (!canEditAssignments) return;
 
-    const normalizedKind = kind === "urlaub" ? "urlaub" : kind === "schule" ? "schule" : "krank";
-    const label = normalizedKind === "urlaub" ? "Urlaub" : normalizedKind === "schule" ? "Schule" : "Krank";
+    const normalizedKind = kind === "za" ? "za" : kind === "urlaub" ? "urlaub" : kind === "schule" ? "schule" : "krank";
+    const label = timeOffLabel(normalizedKind);
     const status = dayStatusMap.get(dateStr) || getDayStatus(dateStr);
 
     if (status.isHoliday) {
@@ -942,6 +942,14 @@ export default function WorkAssignments() {
       end = start + requiredMinutes;
     }
 
+    const zaHours = normalizedKind === "za"
+      ? Number(getEmployeeWorkDay(employee || null, dateStr)?.requiredMinutes || 0) / 60
+      : 0;
+    if (normalizedKind === "za" && zaHours <= 0) {
+      alert("Für diesen Tag gibt es laut Arbeitszeitmodell keine Sollzeit. ZA wird daher nicht eingetragen.");
+      return;
+    }
+
     const assignmentIds = existingAssignments.map((row) => row.id);
     const payload = {
       employee_id: Number(employeeId),
@@ -956,13 +964,15 @@ export default function WorkAssignments() {
       crane_hours: 0,
       private_pkw_km: 0,
       absence_type: normalizedKind,
-      za_hours: 0,
+      za_hours: zaHours,
       bad_weather: false,
       bad_weather_minutes: 0,
       weather_auto: null,
       weather_manual: null,
       weather_final: null,
-      note: normalizedKind === "urlaub"
+      note: normalizedKind === "za"
+        ? "[Zeitausgleich] aus Arbeitseinteilung eingetragen"
+        : normalizedKind === "urlaub"
         ? "[Urlaub] aus Arbeitseinteilung eingetragen"
         : normalizedKind === "schule"
           ? "[Schule] Berufsschule aus Arbeitseinteilung eingetragen"
@@ -972,6 +982,16 @@ export default function WorkAssignments() {
     try {
       await ensureMonthUnlocked(supabase, dateStr);
       setBusyKey(`${normalizedKind}-${employeeId}-${dateStr}`);
+      if (normalizedKind === "za") {
+        const { data: existingEntries, error: entryError } = await supabase
+          .from("time_entries").select("id")
+          .eq("employee_id", employeeId).eq("work_date", dateStr).limit(1);
+        if (entryError) throw entryError;
+        if (existingEntries?.length) {
+          alert("An diesem Tag gibt es bereits eine Zeitbuchung. Ganztägiger ZA kann hier nicht zusätzlich eingetragen werden.");
+          return;
+        }
+      }
 
       if (assignmentIds.length > 0) {
         const { error: deleteAssignmentError } = await supabase
@@ -1202,7 +1222,7 @@ export default function WorkAssignments() {
         <div className="workassign-dispo-toolbar">
             <div className="help">
             {canEditAssignments
-              ? "Projekt, Krank, Urlaub oder Schule auswählen und danach in die gewünschte Zelle klicken. Urlaub/ZA aus Urlaub/ZA wird automatisch angezeigt."
+              ? "Projekt, Krank, Urlaub, ZA oder Schule auswählen und danach in die gewünschte Zelle klicken. Urlaub/ZA aus Urlaub/ZA wird automatisch angezeigt."
               : "Hier siehst du die Arbeitseinteilung der Woche. Änderungen sind mit deinem Benutzer nicht erlaubt."}
           </div>
 
@@ -1233,9 +1253,9 @@ export default function WorkAssignments() {
         <div className="workassign-project-palette-head">
           <div>
             <div className="month-card-title">Abwesenheit</div>
-            <div className="help">Krank, Urlaub oder Schule auswählen und danach unten in die gewünschte Zelle klicken.</div>
+            <div className="help">Krank, Urlaub, ZA oder Schule auswählen und danach unten in die gewünschte Zelle klicken.</div>
           </div>
-          {selectedPlanMode === "krank" || selectedPlanMode === "urlaub" || selectedPlanMode === "schule" ? <span className="badge">{selectedPlanMode === "urlaub" ? "Urlaub aktiv" : selectedPlanMode === "schule" ? "Schule aktiv" : "Krank aktiv"}</span> : null}
+          {selectedPlanMode === "krank" || selectedPlanMode === "urlaub" || selectedPlanMode === "schule" || selectedPlanMode === "za" ? <span className="badge">{`${timeOffLabel(selectedPlanMode)} aktiv`}</span> : null}
         </div>
 
         <div className="workassign-absence-tools" style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
@@ -1254,6 +1274,15 @@ export default function WorkAssignments() {
             title="Urlaub auswählen und danach unten in die Zelle klicken"
           >
             Urlaub
+          </button>
+          <button
+            type="button"
+            className={`hbz-chip ${selectedPlanMode === "za" ? "active" : ""}`}
+            aria-pressed={selectedPlanMode === "za"}
+            onClick={() => { setSelectedPlanMode("za"); setSelectedProjectId(""); if (projectRef.current) projectRef.current.value = ""; }}
+            title="Zeitausgleich für den ganzen Tag gemäß Sollstunden eintragen"
+          >
+            ZA
           </button>
           <button
             type="button"
