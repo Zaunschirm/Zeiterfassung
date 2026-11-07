@@ -1157,9 +1157,9 @@ export default function WorkAssignments() {
     if (!canEditAssignments || !row?.id) return;
 
     const kind = getTimeOffKind(row);
-    if (kind !== "krank" && kind !== "urlaub" && kind !== "schule") return;
+    if (!isRelevantTimeOff(row)) return;
 
-    const label = kind === "urlaub" ? "Urlaub" : kind === "schule" ? "Schule" : "Krankenstand";
+    const label = kind === "za" ? "Zeitausgleich" : kind === "urlaub" ? "Urlaub" : kind === "schule" ? "Schule" : "Krankenstand";
     const dateStr = String(row.work_date || "").slice(0, 10);
     if (!window.confirm(`${label} aus der Arbeitseinteilung löschen?`)) return;
 
@@ -1585,10 +1585,11 @@ export default function WorkAssignments() {
                                         title={row.note || timeOffLabel(kind)}
                                       >
                                         {timeOffLabel(kind)}
-                                        {canEditAssignments && (kind === "krank" || kind === "urlaub" || kind === "schule") ? (
+                                        {canEditAssignments && isRelevantTimeOff(row) ? (
                                           <button
                                             type="button"
                                             className="workassign-cell-chip-remove"
+                                            aria-label={`${timeOffLabel(kind)} löschen`}
                                             onClick={(ev) => {
                                               ev.stopPropagation();
                                               deleteAbsenceEntry(row);
