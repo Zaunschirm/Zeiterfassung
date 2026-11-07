@@ -175,7 +175,7 @@ function eachDateBetween(from, to) {
   return out;
 }
 
-function buildPayrollMonthlySummary(sourceRows, monthList, selectedEmployees = []) {
+export function buildPayrollMonthlySummary(sourceRows, monthList, selectedEmployees = []) {
   const employeeMonthMap = new Map();
   const selectedEmployeeIds = new Set(
     (selectedEmployees || []).map((employeeInfo) => String(employeeInfo.id || "")).filter(Boolean)
@@ -210,7 +210,7 @@ function buildPayrollMonthlySummary(sourceRows, monthList, selectedEmployees = [
       const current = employeeMonthMap.get(key) || { key, employee, month: ym, totalMinutes: 0, workDays: new Set(), entryDates: new Set(), vacationDates: [], specialLeaveDates: [], sickDates: [], timeCompDates: [], timeCompHours: 0, holidayRows: [], holidayExtraHours: 0 };
 
       const { total } = splitMinutes(r);
-      current.totalMinutes += total || 0;
+      current.totalMinutes += isTimeCompRow(r) ? 0 : total || 0;
       current.entryDates.add(date);
 
       if (isVacationRow(r)) current.vacationDates.push(date);
@@ -248,8 +248,8 @@ function buildPayrollMonthlySummary(sourceRows, monthList, selectedEmployees = [
     const range = getMonthRange(item.month);
     const empInfo = (selectedEmployees || []).find((e) => (e.name || e.code || "—") === item.employee) || {};
     const sollHours = range ? calcEmployeeSollHoursForRange(empInfo, range.from, range.to, true) : 0;
-    const payrollHours = totalHours + (item.holidayExtraHours || 0);
     const timeCompHours = item.timeCompHours || 0;
+    const payrollHours = totalHours + (item.holidayExtraHours || 0) + timeCompHours;
     const overtime = payrollHours - sollHours - timeCompHours;
     return {
       key: item.key,
@@ -1296,12 +1296,11 @@ export default function YearOverview() {
         doc.text("Lohnverrechnung", 40, y);
 
         doc.setFontSize(10);
-        doc.text(
-          "Hinweis: Gesamtstunden inkl. Fahrzeit. Feiertage, die auf einen BUAK-Arbeitstag fallen, werden bezahlt. In der Spalte „Lohnstunden gesamt“ sind Feiertagsstunden bereits inbegriffen. Urlaubstage sind mit 0,00 Stunden berücksichtigt. Zeitausgleich wird separat als Verbrauch vom ZA-Konto abgezogen. Krankenstandstage werden gemäß hinterlegter Sollzeit automatisch berücksichtigt.",
-          40,
-          54,
-          { maxWidth: 760 }
+        const payrollNoteLines = doc.splitTextToSize(
+          "Hinweis: Gesamtstunden inkl. Fahrzeit. Feiertage, die auf einen BUAK-Arbeitstag fallen, werden bezahlt. In der Spalte „Lohnstunden gesamt“ sind Feiertagsstunden und ZA-Stunden bereits inbegriffen. Urlaubstage sind mit 0,00 Stunden berücksichtigt. ZA zählt als bezahlte Ausfallzeit, nicht als geleistete Arbeitszeit. Beim Stundensaldo wird der ZA-Verbrauch einmal berücksichtigt. Krankenstandstage werden gemäß hinterlegter Sollzeit automatisch berücksichtigt.",
+          doc.internal.pageSize.getWidth() - 80
         );
+        doc.text(payrollNoteLines, 40, 54);
 
         autoTable(doc, {
           head: [[
@@ -1309,11 +1308,11 @@ export default function YearOverview() {
             "Mitarbeiter",
             "Erfasste Gesamtstunden inkl. Fahrzeit",
             "Feiertagsstunden ergänzt",
-            "Lohnstunden gesamt (Feiertage inbegriffen)",
+            "Lohnstunden gesamt (inkl. Feiertage und ZA)",
             "Arbeitstage",
             "Sollstunden",
             "Zeitausgleich (h)",
-            "Überstunden nach ZA",
+            "Stundensaldo nach ZA",
             "Urlaub (Datum)",
             "Sonderurlaub (Datum)",
             "Zeitausgleich (Datum)",
@@ -1334,7 +1333,7 @@ export default function YearOverview() {
             row.timeCompDates.length ? row.timeCompDates.join(", ") : "—",
             payrollAbsenceCell(row.sickDates),
           ]),
-          startY: 82,
+          startY: Math.max(82, 54 + payrollNoteLines.length * 11.5 + 8),
           styles: { fontSize: 8.5, cellPadding: 3 },
           headStyles: { fillColor: [123, 74, 45] },
           margin: { left: 40, right: 40 },
