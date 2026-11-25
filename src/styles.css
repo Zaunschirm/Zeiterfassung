@@ -323,6 +323,20 @@ body::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.9);
 }
 
+.employee-app-link {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border-top: 1px solid #dfcbb5;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+.employee-app-link label { display: grid; gap: 6px; }
+.employee-app-link input { width: 100%; min-width: 0; box-sizing: border-box; font-size: 12px; }
+.employee-app-link small, .employee-app-link [role="status"] { font-size: 12px; line-height: 1.4; }
+.employee-app-link [role="status"]:empty { display: none; }
+
 .app-nav-dropdown {
   position: absolute;
   z-index: 40;

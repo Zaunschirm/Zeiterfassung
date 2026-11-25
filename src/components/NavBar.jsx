@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { NavLink } from "react-router-dom";
 import WebsiteEditLink from "./WebsiteEditLink.jsx";
+import EmployeeAppLink from "./EmployeeAppLink.jsx";
 
 export default function NavBar({ onLogout, currentUser, role }) {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -419,6 +420,7 @@ export default function NavBar({ onLogout, currentUser, role }) {
               <div className="app-nav-dropdown">
                 {adminLinks.map((link) => renderNavLink(link.to, link.label))}
                 <WebsiteEditLink currentUser={currentUser} role={role} />
+                <EmployeeAppLink currentUser={currentUser} role={role} />
               </div>
             </details>
           )}
@@ -458,6 +460,7 @@ export default function NavBar({ onLogout, currentUser, role }) {
             {adminLinks.length > 0 && <div className="app-nav-mobile-heading">Verwaltung</div>}
             {adminLinks.map((link) => renderNavLink(link.to, link.label))}
             <WebsiteEditLink currentUser={currentUser} role={role} />
+            <EmployeeAppLink currentUser={currentUser} role={role} />
             <button type="button" className="app-nav-btn" onClick={onLogout}>
               <span className="app-nav-label">Logout</span>
             </button>
